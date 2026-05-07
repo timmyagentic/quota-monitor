@@ -1,0 +1,47 @@
+# Runs the swift-testing suite on every push and PR.
+#
+# Why a single workflow / single job: the project's main risk is upstream
+# wire-format drift (Codex CLI app-server JSON-RPC + Anthropic OAuth
+# usage payloads) silently breaking the decoder. The 70-test suite is
+# the canary — running it on every push catches that drift before it
+# ships in a DMG. Dev box is CLT-only, so the dev `swift test` already
+# uses swift-testing (not XCTest); this workflow mirrors that exactly.
+#
+# macos-15 runner ships Swift 6 (Xcode 16.x) — the project requires
+# Swift 6 + StrictConcurrency, so an older runner image won't compile.
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs for the same ref when a new push lands —
+# saves macOS minutes (which are 10x linux on the free tier).
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-test:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        # Surface swift / xcode versions in the log so a future Swift-7
+        # default on the runner is visible at the top of the run.
+        run: |
+          swift --version
+          xcodebuild -version || true
+
+      - name: swift test
+        # No --parallel: QuotaPaceLabelTests mutates the process-global
+        # LocalizationStore.activeLanguage byte and is .serialized within
+        # its suite; cross-suite parallelism is fine but not needed for
+        # an 8-second test run, and serial output is easier to read in CI.
+        run: swift test

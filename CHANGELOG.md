@@ -7,6 +7,32 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-05-07
+
+### Fixed
+- **Simplified-Chinese localization gaps in the menu bar.** The pace
+  verdict labels next to each quota row ("On pace" / "X% in deficit ·
+  Runs out in 47m" / "X% in reserve") and the inline duration units
+  (`d/h/m`) had no Chinese translation — Chinese users saw English
+  chrome on every quota row. Now route through `L10n` and emit
+  `节奏正常 / 超出节奏 N% · 预计 X后耗尽 / 慢于节奏 N%`, with duration
+  units rendered as `天/小时/分`. Pinned by 9 new tests in
+  `QuotaPaceLabelTests` (both languages, both deficit branches, the
+  cold-start gate).
+- **Pace percent rounding.** A `1.789` ratio rendered as `78%` due to
+  `Int()` truncation; now uses `.rounded()` so the displayed integer
+  matches the intuitive value (`79%`).
+
+### Changed
+- **Unified zh terminology.** Four small but visible inconsistencies
+  resolved: `token` → `Token` in help text and the count chip, `服务商`
+  → `Provider` (kept latin to match the rest of the file), `5h 窗口`
+  → `5 小时窗口`. The "节余 N%" reserve label that read as a
+  savings/accounting term was reworded to `慢于节奏 N%` so it pairs
+  symmetrically with `超出节奏 N%`.
+
+[0.2.2]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.2
+
 ## [0.2.1] — 2026-05-07
 
 ### Changed
