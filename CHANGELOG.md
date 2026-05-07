@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-05-07
+
 ### Changed
 - **Renamed product from CodexMonitor → QuotaMonitor** (display: "Quota Monitor").
   Bundle ID is now `dev.tjzhou.QuotaMonitor`; OSLog subsystem follows. The
@@ -17,6 +19,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   the new domain (idempotent, guarded). The old `/Applications/CodexMonitor.app`
   install must be removed manually — the rename leaves it intact so the
   user can roll back if the migration misbehaves.
+
+[0.2.1]: https://github.com/tjzhou/codexmonitor/releases/tag/v0.2.1
 
 ## [0.2.0] — 2026-05-06
 
