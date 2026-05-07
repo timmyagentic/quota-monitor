@@ -188,12 +188,10 @@ enum L10n {
     // MARK: - pace verdict (used by QuotaPaceLabel)
     //
     // The pace label sits next to each quota row and translates burn-rate
-    // into one short sentence. Three shapes:
-    //   - "On pace"
-    //   - "27% in deficit · Runs out in 47m"   (or no ETA suffix when the
-    //                                          projection lands after the
-    //                                          natural reset)
-    //   - "39% in reserve"
+    // into one short sentence. Three shapes (EN / ZH):
+    //   - "On pace"                              / "节奏正常"
+    //   - "27% in deficit · Runs out in 47m"     / "超出节奏 27% · 预计 47分后耗尽"
+    //   - "39% in reserve"                       / "慢于节奏 39%"
     // Numbers are integers (already rounded at the call site). The deficit
     // template exists in two variants because the ETA suffix is optional.
 
