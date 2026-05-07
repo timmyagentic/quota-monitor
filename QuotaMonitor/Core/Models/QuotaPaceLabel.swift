@@ -33,10 +33,10 @@ enum QuotaPaceLabel {
         guard let ratio = paceRatio, ratio.isFinite, ratio > 0 else { return nil }
 
         if ratio >= 0.85 && ratio <= 1.15 {
-            return .init(text: "On pace", severity: .neutral)
+            return .init(text: L10n.paceOnPace, severity: .neutral)
         }
 
-        let deltaPct = abs(ratio - 1) * 100
+        let deltaPct = Int((abs(ratio - 1) * 100).rounded())
 
         if ratio > 1.15 {
             // Burning hot — extrapolate when we hit 100%.
@@ -48,18 +48,16 @@ enum QuotaPaceLabel {
             let etaSeconds = etaToHundred(usedPercent: usedPercent,
                                           paceRatio: ratio,
                                           timeUntilReset: timeUntilReset)
-            let prefix = String(format: "%.0f%% in deficit", deltaPct)
             if let eta = etaSeconds {
                 let runsOut = formatDuration(eta)
-                return .init(text: "\(prefix) · Runs out in \(runsOut)",
+                return .init(text: L10n.paceDeficitRunsOut(percent: deltaPct, eta: runsOut),
                              severity: deltaPct > 50 ? .danger : .warning)
             }
-            return .init(text: prefix, severity: .warning)
+            return .init(text: L10n.paceDeficit(percent: deltaPct), severity: .warning)
         }
 
         // Slower than linear — under-consuming, will not exhaust.
-        let prefix = String(format: "%.0f%% in reserve", deltaPct)
-        return .init(text: prefix, severity: .good)
+        return .init(text: L10n.paceReserve(percent: deltaPct), severity: .good)
     }
 
     /// Returns seconds until usedPercent hits 100, capped at the time
@@ -90,16 +88,19 @@ enum QuotaPaceLabel {
 
     private static func formatDuration(_ seconds: TimeInterval) -> String {
         let totalMin = Int(seconds / 60)
+        let dUnit = L10n.unitDayShort
+        let hUnit = L10n.unitHourShort
+        let mUnit = L10n.unitMinuteShort
         if totalMin >= 1440 {
             let d = totalMin / 1440
             let h = (totalMin % 1440) / 60
-            return h == 0 ? "\(d)d" : "\(d)d \(h)h"
+            return h == 0 ? "\(d)\(dUnit)" : "\(d)\(dUnit) \(h)\(hUnit)"
         }
         if totalMin >= 60 {
             let h = totalMin / 60
             let m = totalMin % 60
-            return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+            return m == 0 ? "\(h)\(hUnit)" : "\(h)\(hUnit) \(m)\(mUnit)"
         }
-        return "\(totalMin)m"
+        return "\(totalMin)\(mUnit)"
     }
 }

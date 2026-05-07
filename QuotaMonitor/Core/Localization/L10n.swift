@@ -184,6 +184,41 @@ enum L10n {
         t(en: "Refreshing — window reset",
           zh: "已重置 · 等待刷新")
     }
+
+    // MARK: - pace verdict (used by QuotaPaceLabel)
+    //
+    // The pace label sits next to each quota row and translates burn-rate
+    // into one short sentence. Three shapes:
+    //   - "On pace"
+    //   - "27% in deficit · Runs out in 47m"   (or no ETA suffix when the
+    //                                          projection lands after the
+    //                                          natural reset)
+    //   - "39% in reserve"
+    // Numbers are integers (already rounded at the call site). The deficit
+    // template exists in two variants because the ETA suffix is optional.
+
+    static var paceOnPace: String { t(en: "On pace", zh: "节奏正常") }
+    static func paceDeficit(percent: Int) -> String {
+        t(en: "\(percent)% in deficit", zh: "超出节奏 \(percent)%")
+    }
+    static func paceDeficitRunsOut(percent: Int, eta: String) -> String {
+        t(en: "\(percent)% in deficit · Runs out in \(eta)",
+          zh: "超出节奏 \(percent)% · 预计 \(eta)后耗尽")
+    }
+    static func paceReserve(percent: Int) -> String {
+        t(en: "\(percent)% in reserve", zh: "节余 \(percent)%")
+    }
+
+    // MARK: - duration units (single-letter, used inline like "2d 14h")
+    //
+    // Kept as separate L10n keys (not hard-coded) so Chinese can use the
+    // CJK forms 天/小时/分 instead of the English-style "d/h/m" letters.
+    // Composed by `QuotaPaceLabel.formatDuration` and any other place that
+    // wants a compact "Nd Nh Nm" rendering.
+
+    static var unitDayShort: String { t(en: "d", zh: "天") }
+    static var unitHourShort: String { t(en: "h", zh: "小时") }
+    static var unitMinuteShort: String { t(en: "m", zh: "分") }
     static func resetsRelative(_ relative: String) -> String {
         // The `relative` argument comes from `RelativeDateTimeFormatter`
         // which produces locale-native chrome ("in 23 min" / "23 分钟后").
