@@ -89,7 +89,7 @@ enum L10n {
     /// Wording is window-agnostic — only the period in the caption changes.
     static var headlineApiEquivalentHelp: String {
         t(en: "What these tokens would have cost if billed at API list price. Not what you actually paid for your subscription.",
-          zh: "如果按 API 标价计费，这些 token 会花掉的金额。并不是你订阅实际支付的费用。")
+          zh: "如果按 API 标价计费，这些 Token 会花掉的金额。并不是你订阅实际支付的费用。")
     }
     /// Settings UI: section header + picker label + per-option labels for
     /// the rolling-window switch that drives the menu bar's headline KPI.
@@ -99,7 +99,7 @@ enum L10n {
     }
     static var menuBarHeadlineWindowHelp: String {
         t(en: "Time horizon for the headline $ + tokens line and the session count on each provider block.",
-          zh: "每个服务商卡片上金额、token 数与会话数所采用的时间范围。")
+          zh: "每个 Provider 卡片上金额、Token 数与会话数所采用的时间范围。")
     }
     static func headlineWindowLabel(_ window: HeadlineWindow) -> String {
         switch window {
@@ -138,13 +138,13 @@ enum L10n {
     static func providerSessionCount(_ n: Int) -> String {
         t(en: "\(n) sessions", zh: "\(n) 会话")
     }
-    /// Headline secondary chip: "· 725M tokens" / "· 725M token"
+    /// Headline secondary chip: "· 725M tokens" / "· 725M Token"
     /// rendered next to the USD figure. Compact-name notation handled
     /// by the caller (so the digits + scale suffix sit in one Text and
     /// stay monospaced together).
     static func headlineTokensSuffix(_ formattedCount: String) -> String {
         t(en: "· \(formattedCount) tokens",
-          zh: "· \(formattedCount) tokens")  // "tokens" intentionally untranslated, see i18n memory
+          zh: "· \(formattedCount) Token")
     }
     static var lastScan: String { t(en: "Last scan", zh: "上次扫描") }
     static func scanSummary(scanned: Int, changed: Int, events: Int) -> String {
@@ -164,8 +164,8 @@ enum L10n {
         t(en: "… +\(n) more (truncated)", zh: "… 还有 \(n) 条（已截断）")
     }
     static func fiveHBlockState(active: Bool) -> String {
-        active ? t(en: "5h block · active", zh: "5h 窗口 · 活跃")
-               : t(en: "5h block · last",   zh: "5h 窗口 · 上次")
+        active ? t(en: "5h block · active", zh: "5 小时窗口 · 活跃")
+               : t(en: "5h block · last",   zh: "5 小时窗口 · 上次")
     }
     static func minutesLeft(_ formatted: String) -> String {
         t(en: "· \(formatted) left", zh: "· 剩余 \(formatted)")
