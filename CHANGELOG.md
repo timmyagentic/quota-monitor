@@ -20,7 +20,7 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   install must be removed manually — the rename leaves it intact so the
   user can roll back if the migration misbehaves.
 
-[0.2.1]: https://github.com/tjzhou/codexmonitor/releases/tag/v0.2.1
+[0.2.1]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.1
 
 ## [0.2.0] — 2026-05-06
 
@@ -94,7 +94,7 @@ GUI-launch path bug that left spawned `codex` unable to find `node`.
   `SalvageBodyFromErrorMessageTests`, `ClaudeOAuthRefreshTests`
   (URL-protocol-stubbed refresh + write-back + concurrency coalescing).
 
-[0.2.0]: https://github.com/tjzhou/codexmonitor/releases/tag/v0.2.0
+[0.2.0]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.0
 
 ## [0.1.0] — 2026-04-30
 
@@ -146,4 +146,4 @@ usage.
 - 37 tests across `RolloutParser`, `Aggregator`, `ClaudeUsageDecoder`,
   `ClaudeUsagePoller`, and `ClaudeUsageHydrator`.
 
-[0.1.0]: https://github.com/tjzhou/codexmonitor/releases/tag/v0.1.0
+[0.1.0]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.1.0
