@@ -332,16 +332,41 @@ actor AppServerClient {
         }
 
         defer {
-            // Ensure no zombie codex processes.
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-            }
+            // Closing stdin politely tells app-server we're done; well-behaved
+            // children exit on their own once stdin closes.
             try? stdin.fileHandleForWriting.close()
+
+            // Asynchronous termination. NEVER call process.waitUntilExit() here:
+            // it's synchronous and would block the actor forever if the child
+            // is wedged. Observed 2026-05-09: a long-lived QuotaMonitor
+            // accumulated an orphan `codex app-server --listen stdio://` while
+            // every subsequent pollOnce queued behind a deadlocked actor.
+            //
+            // SIGTERM is sent inline (cheap, just a signal) so the child gets
+            // the chance to exit cleanly while the actor returns immediately;
+            // a detached task escalates to SIGKILL after 2 s if needed.
+            if process.isRunning {
+                let handle = SendableProcessRef(process: process)
+                process.terminate()
+                Task.detached {
+                    for _ in 0..<20 { // up to 2 s
+                        try? await Task.sleep(for: .milliseconds(100))
+                        if !handle.process.isRunning { return }
+                    }
+                    kill(handle.process.processIdentifier, SIGKILL)
+                }
+            }
         }
 
         return try await body(send, recv)
     }
+}
+
+/// Process isn't Sendable, but we only need to ferry the reference into a
+/// detached escalation task that touches it from one place at a time. Safe
+/// because nothing else holds the Process after the actor's defer fires.
+private struct SendableProcessRef: @unchecked Sendable {
+    let process: Process
 }
 
 // Helper structs
