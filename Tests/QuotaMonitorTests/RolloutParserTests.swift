@@ -69,23 +69,34 @@ struct RolloutParserTests {
 
     // MARK: - cumulative → delta
 
-    @Test("first token_count is baseline (no delta), second yields the diff")
+    @Test("first token_count emits cumulative-as-delta, second yields the diff")
     func deltaComputationFromCumulativeCounters() throws {
         let url = try loadFixture("cli_0_40_with_cwd")
         let parsed = try #require(try RolloutParser.parse(fileURL: url))
 
-        // Two token_count events, only the second yields a delta:
-        // first event:  totals = (input=100, output=0)
-        // second event: totals = (input=250, output=40)
-        // delta:                  (input=150, output=40, total=190)
-        #expect(parsed.usageDeltas.count == 1)
-        let delta = try #require(parsed.usageDeltas.first)
-        #expect(delta.inputTokens == 150)
-        #expect(delta.outputTokens == 40)
-        #expect(delta.totalTokens == 190)
-        #expect(delta.modelId == "gpt-5.5",
+        // Two token_count events. `total_token_usage` is cumulative from
+        // session start, so the first sample IS the delta from t=0:
+        //   first event:  totals = (input=100, output=0,  total=100)
+        //                 delta  = (input=100, output=0,  total=100)
+        //   second event: totals = (input=250, output=40, total=290)
+        //                 delta  = (input=150, output=40, total=190)
+        // Mirrors codex-pacer's importer.rs:719-723 which clones `current`
+        // when `previous` is None.
+        #expect(parsed.usageDeltas.count == 2)
+
+        let first = parsed.usageDeltas[0]
+        #expect(first.inputTokens == 100)
+        #expect(first.outputTokens == 0)
+        #expect(first.totalTokens == 100)
+        #expect(first.modelId == "gpt-5.5",
                 "model from turn_context must be normalized to lowercase")
-        #expect(delta.modelInferred == false)
+        #expect(first.modelInferred == false)
+
+        let second = parsed.usageDeltas[1]
+        #expect(second.inputTokens == 150)
+        #expect(second.outputTokens == 40)
+        #expect(second.totalTokens == 190)
+        #expect(second.modelInferred == false)
     }
 
     // MARK: - rate-limit sample extraction
@@ -109,10 +120,12 @@ struct RolloutParserTests {
         let url = try loadFixture("subagent_no_turn_context")
         let parsed = try #require(try RolloutParser.parse(fileURL: url))
 
-        #expect(parsed.usageDeltas.count == 1)
-        let delta = try #require(parsed.usageDeltas.first)
-        #expect(delta.modelId == LegacyFallbackModel)
-        #expect(delta.modelInferred == true,
-                "no turn_context anywhere in the file → cost is approximate, must be flagged")
+        // Two token_count events → two deltas (first is cumulative-as-delta).
+        #expect(parsed.usageDeltas.count == 2)
+        for delta in parsed.usageDeltas {
+            #expect(delta.modelId == LegacyFallbackModel)
+            #expect(delta.modelInferred == true,
+                    "no turn_context anywhere in the file → cost is approximate, must be flagged")
+        }
     }
 }

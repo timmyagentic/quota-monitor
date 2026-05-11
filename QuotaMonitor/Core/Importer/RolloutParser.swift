@@ -4,9 +4,11 @@ import Foundation
 //
 // Key invariants (lifted from codex-pacer's importer.rs):
 //   1. token_count.info.total_token_usage is CUMULATIVE per session.
-//      We must compute deltas between consecutive events.
+//      The first sample IS the delta from t=0; subsequent samples are
+//      computed as the diff against the previous cumulative value.
 //   2. If the cumulative counter ever decreases (context reset / new turn),
-//      treat the current event as a fresh baseline (delta = 0, don't underflow).
+//      the current sample is itself the post-reset running total — emit it
+//      as a fresh delta rather than dropping it.
 //   3. token_count events do not carry a model_id in today's CLI — we use the
 //      most recent `turn_context.payload.model`. Defensive fallbacks on the
 //      payload itself match ccusage's `extractModel` heuristic. If everything
@@ -189,33 +191,35 @@ enum RolloutParser {
     private static func computeDelta(
         previous: TokenUsageWire?, current: TokenUsageWire
     ) -> TokenUsageWire? {
+        // First event: total_token_usage is cumulative from session start, so
+        // the first sample IS the delta from t=0 to now. Mirrors codex-pacer's
+        // importer.rs which clones `current` when `previous` is None
+        // (importer.rs:719-723). The earlier "skip first sample" behavior
+        // here was a bug that systematically dropped the opening event of
+        // every session.
         guard let previous else {
-            // First event in the file — treat as baseline; emit no delta.
-            // (codex-pacer's importer also skips emitting a delta on the first sample.)
-            return nil
+            return current == .zero ? nil : current
         }
         let wentBackwards =
             current.inputTokens < previous.inputTokens
             || current.cachedInputTokens < previous.cachedInputTokens
             || current.outputTokens < previous.outputTokens
             || current.reasoningOutputTokens < previous.reasoningOutputTokens
+            || current.totalTokens < previous.totalTokens
         if wentBackwards {
-            // Counter went backwards → context reset. Treat as new baseline.
-            return nil
+            // Counter went backwards → context reset. `current` is now the
+            // running total of the post-reset session segment; treat it as
+            // a fresh delta rather than dropping it (mirrors codex-pacer's
+            // importer.rs:796-804).
+            return current == .zero ? nil : current
         }
 
-        let inputDelta: Int64 = current.inputTokens - previous.inputTokens
-        let cachedDelta: Int64 = current.cachedInputTokens - previous.cachedInputTokens
-        let outputDelta: Int64 = current.outputTokens - previous.outputTokens
-        let reasoningDelta: Int64 = current.reasoningOutputTokens - previous.reasoningOutputTokens
-        let totalDelta: Int64 = max(0, current.totalTokens - previous.totalTokens)
-
         let delta = TokenUsageWire(
-            inputTokens: inputDelta,
-            cachedInputTokens: cachedDelta,
-            outputTokens: outputDelta,
-            reasoningOutputTokens: reasoningDelta,
-            totalTokens: totalDelta)
+            inputTokens: current.inputTokens - previous.inputTokens,
+            cachedInputTokens: current.cachedInputTokens - previous.cachedInputTokens,
+            outputTokens: current.outputTokens - previous.outputTokens,
+            reasoningOutputTokens: current.reasoningOutputTokens - previous.reasoningOutputTokens,
+            totalTokens: current.totalTokens - previous.totalTokens)
 
         // Skip zero-delta events; they're keepalives.
         if delta == .zero { return nil }
