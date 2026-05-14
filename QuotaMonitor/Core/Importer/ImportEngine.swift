@@ -167,7 +167,8 @@ actor ImportEngine {
                     valueUsd: 0,            // pricing layer fills this later
                     cacheCreationTokens: 0,
                     provider: "codex",
-                    modelInferred: delta.modelInferred)
+                    modelInferred: delta.modelInferred,
+                    providerMessageId: nil)
                 try event.insert(db)
             }
 
@@ -192,13 +193,16 @@ actor ImportEngine {
                 try sample.insert(db)
             }
 
-            // 4. Update import_state.
+            // 4. Update import_state. Codex still re-parses the full file
+            // every time, so leave byte_offset at 0 — the v5 schema has the
+            // column but the Codex engine doesn't use it yet.
             let state = ImportStateRecord(
                 sourcePath: file.path,
                 sessionId: parsed.sessionId,
                 fileSize: file.fileSize,
                 fileMtimeMs: file.fileMtimeMs,
-                lastImportedAt: now)
+                lastImportedAt: now,
+                byteOffset: 0)
             try state.save(db)
 
             // Drop any other import_state rows pointing at this same session

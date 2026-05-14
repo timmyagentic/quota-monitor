@@ -291,6 +291,13 @@ struct LineReader: Sequence, IteratorProtocol {
     private var buffer = Data()
     private var cursor = 0
     private var eof = false
+    /// True when the most recent `next()` returned a line whose trailing
+    /// `\n` had been seen in the file. False only for the final tail when
+    /// the file ends without a newline (mid-write JSONL). Callers that
+    /// need to track byte progress should not advance their offset over
+    /// such a tail — a future scan needs to re-read it once it's been
+    /// finished by the writer.
+    private(set) var lastLineHadNewline = false
 
     init(handle: FileHandle, chunkSize: Int = 256 * 1024) throws {
         self.handle = handle
@@ -315,6 +322,7 @@ struct LineReader: Sequence, IteratorProtocol {
                 if let nl {
                     let line = buffer.subdata(in: cursor..<nl)
                     cursor = nl + 1
+                    lastLineHadNewline = true
                     return line
                 }
             }
@@ -328,6 +336,7 @@ struct LineReader: Sequence, IteratorProtocol {
                 if !buffer.isEmpty {
                     let last = buffer
                     buffer = Data()
+                    lastLineHadNewline = false
                     return last
                 }
                 return nil

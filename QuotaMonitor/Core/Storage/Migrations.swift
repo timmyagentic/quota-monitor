@@ -151,5 +151,35 @@ enum Migrations {
                 WHERE last_model_id = 'unknown'
                 """)
         }
+
+        // v5: incremental rollout reads (Claude only for now).
+        //   - import_state.byte_offset: last successfully-parsed byte offset
+        //     into the source file. Default 0 means "next scan reads the
+        //     whole file" — back-compatible with rows written by v4 and
+        //     earlier. ClaudeImportEngine bumps this on every successful
+        //     persist; if the file later shrinks below the recorded offset
+        //     (truncation, rotation), the engine resets to 0.
+        //   - usage_events.provider_message_id: stable per-message dedup key
+        //     (Claude's `message.id`). Nullable because Codex doesn't have
+        //     one. The partial unique index lets `INSERT OR IGNORE` swallow
+        //     duplicates that arise from re-parsing the trailing window
+        //     during incremental scans, so we no longer need an in-memory
+        //     `seenMessageIds` Set across scan invocations.
+        migrator.registerMigration("v5-incremental-imports") { db in
+            try db.alter(table: "import_state") { t in
+                t.add(column: "byte_offset", .integer)
+                    .notNull().defaults(to: 0)
+            }
+            try db.alter(table: "usage_events") { t in
+                t.add(column: "provider_message_id", .text)
+            }
+            // Partial unique index: only enforced when the column is set,
+            // so Codex rows (which leave it NULL) aren't constrained.
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_provider_message
+                ON usage_events(session_id, provider_message_id)
+                WHERE provider_message_id IS NOT NULL
+                """)
+        }
     }
 }

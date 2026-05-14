@@ -58,6 +58,11 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
     var cacheCreationTokens: Int64    // Claude-only; 0 for Codex
     var provider: String              // 'codex' | 'claude'
     var modelInferred: Bool           // true when parser fell back to gpt-5
+    /// Stable per-message dedup key; today only Claude (`message.id`).
+    /// `nil` for Codex events. The partial unique index in v5 keys off
+    /// `(session_id, provider_message_id)` so re-parsing the tail of a
+    /// rollout during an incremental scan can `INSERT OR IGNORE` cleanly.
+    var providerMessageId: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -73,6 +78,7 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
         case cacheCreationTokens = "cache_creation_tokens"
         case provider
         case modelInferred = "model_inferred"
+        case providerMessageId = "provider_message_id"
     }
 }
 
@@ -84,6 +90,10 @@ struct ImportStateRecord: Codable, FetchableRecord, PersistableRecord, Equatable
     var fileSize: Int64
     var fileMtimeMs: Int64
     var lastImportedAt: String
+    /// Last byte offset successfully consumed by the parser. Default 0
+    /// (back-compatible with v4 rows) means "next scan starts from
+    /// the beginning of the file." Bumped on every successful persist.
+    var byteOffset: Int64
 
     enum CodingKeys: String, CodingKey {
         case sourcePath = "source_path"
@@ -91,6 +101,7 @@ struct ImportStateRecord: Codable, FetchableRecord, PersistableRecord, Equatable
         case fileSize = "file_size"
         case fileMtimeMs = "file_mtime_ms"
         case lastImportedAt = "last_imported_at"
+        case byteOffset = "byte_offset"
     }
 }
 

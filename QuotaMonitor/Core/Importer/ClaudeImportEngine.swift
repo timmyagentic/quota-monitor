@@ -73,37 +73,74 @@ actor ClaudeImportEngine {
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })
         }
 
-        let changed = files.filter { file in
-            guard let prior = priorState[file.path] else { return true }
-            return prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs
+        // Decide per file: skipped, full re-read, or incremental tail.
+        // - First sighting → full read from offset 0.
+        // - File shrank below `byteOffset` → truncation/rotation; re-read from 0.
+        // - Same size+mtime as last scan → no work.
+        // - Otherwise grew or mtime moved → incremental from the recorded offset.
+        struct PlannedScan {
+            let file: ClaudeFile
+            let fromOffset: Int64
+            /// True when we're starting a fresh read; persist clears the
+            /// session's existing usage_events. False for tail reads;
+            /// persist relies on the v5 partial unique index to swallow
+            /// re-emitted rows.
+            let resetSession: Bool
+        }
+
+        let planned: [PlannedScan] = files.compactMap { file in
+            guard let prior = priorState[file.path] else {
+                return PlannedScan(file: file, fromOffset: 0, resetSession: true)
+            }
+            if prior.fileSize == file.fileSize && prior.fileMtimeMs == file.fileMtimeMs {
+                return nil
+            }
+            // Truncation or rotation: file is smaller than the offset we
+            // last consumed, so the bytes at that offset can't possibly
+            // be what they used to be. Safest is a full re-read.
+            if file.fileSize < prior.byteOffset {
+                return PlannedScan(file: file, fromOffset: 0, resetSession: true)
+            }
+            // First time we see this file post-v5 (legacy import_state row
+            // had no offset). One last full read regenerates
+            // `provider_message_id` so the unique index can do its job
+            // on subsequent scans.
+            if prior.byteOffset == 0 {
+                return PlannedScan(file: file, fromOffset: 0, resetSession: true)
+            }
+            return PlannedScan(file: file, fromOffset: prior.byteOffset, resetSession: false)
         }
 
         var importedSessions = 0
         var importedEvents = 0
         var errors: [String] = []
 
-        for file in changed {
+        for plan in planned {
             do {
-                guard let parsed = try ClaudeRolloutParser.parse(fileURL: file.url) else {
-                    // File parsed cleanly but contained zero billable
-                    // assistant events (subagent stubs, prompt-only
-                    // sessions, etc). Not an error — record import
-                    // state so we don't re-scan it next pass, but stay
-                    // silent in the UI.
-                    try await persistEmpty(file: file)
+                let output = try ClaudeRolloutParser.parse(
+                    fileURL: plan.file.url, fromOffset: plan.fromOffset)
+                guard let parsed = output.session else {
+                    // Either the slice contained nothing, or this is a
+                    // first-pass empty file. Either way: bump import_state
+                    // so we don't re-scan.
+                    try await persistEmpty(file: plan.file, byteOffset: output.endOffset)
                     continue
                 }
-                let count = try await persist(parsed: parsed, file: file)
+                let count = try await persist(
+                    parsed: parsed,
+                    file: plan.file,
+                    byteOffset: output.endOffset,
+                    resetSession: plan.resetSession)
                 importedSessions += 1
                 importedEvents += count
             } catch {
-                errors.append("\(file.path): \(error)")
+                errors.append("\(plan.file.path): \(error)")
             }
         }
 
         return ImportEngine.ScanReport(
             scannedFiles: files.count,
-            changedFiles: changed.count,
+            changedFiles: planned.count,
             importedSessions: importedSessions,
             importedEvents: importedEvents,
             importedRateLimitSamples: 0,    // Claude rollouts don't carry rate-limit samples.
@@ -149,7 +186,7 @@ actor ClaudeImportEngine {
     /// Record that we visited a file that had no billable events, so
     /// the next scan can skip it via mtime/size check. Without this,
     /// every scan re-reads every empty subagent stub forever.
-    private func persistEmpty(file: ClaudeFile) async throws {
+    private func persistEmpty(file: ClaudeFile, byteOffset: Int64) async throws {
         let now = ISO8601.fractional.string(from: Date())
         try await database.pool.write { db in
             let state = ImportStateRecord(
@@ -157,26 +194,46 @@ actor ClaudeImportEngine {
                 sessionId: file.sessionId,
                 fileSize: file.fileSize,
                 fileMtimeMs: file.fileMtimeMs,
-                lastImportedAt: now)
+                lastImportedAt: now,
+                byteOffset: byteOffset)
             try state.save(db)
         }
     }
 
     // MARK: - persist
 
-    private func persist(parsed: ParsedClaudeSession, file: ClaudeFile) async throws -> Int {
+    private func persist(
+        parsed: ParsedClaudeSession,
+        file: ClaudeFile,
+        byteOffset: Int64,
+        resetSession: Bool
+    ) async throws -> Int {
         let now = ISO8601.fractional.string(from: Date())
         return try await database.pool.write { db in
             let existing = try SessionRecord
                 .filter(Column("session_id") == parsed.sessionId)
                 .fetchOne(db)
+            // For incremental tail reads we don't want to overwrite the
+            // session's `started_at` with whatever the slice happens to
+            // start at — keep the original. The other fields all want
+            // the latest values regardless.
+            let resolvedStartedAt: String? = {
+                if !resetSession, let existing { return existing.startedAt }
+                return parsed.startedAt
+            }()
+            let resolvedTitle: String? = {
+                if !resetSession, let existing, let t = existing.title, !t.isEmpty {
+                    return t
+                }
+                return parsed.title
+            }()
             let session = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.sessionId,
                 parentSessionId: nil,
-                title: parsed.title,
+                title: resolvedTitle,
                 sourcePath: file.path,
-                startedAt: parsed.startedAt,
+                startedAt: resolvedStartedAt,
                 updatedAt: parsed.updatedAt,
                 agentNickname: nil,
                 agentRole: nil,
@@ -188,26 +245,40 @@ actor ClaudeImportEngine {
                 provider: "claude")
             try session.save(db)
 
-            try UsageEventRecord
-                .filter(Column("session_id") == parsed.sessionId)
-                .deleteAll(db)
+            if resetSession {
+                try UsageEventRecord
+                    .filter(Column("session_id") == parsed.sessionId)
+                    .deleteAll(db)
+            }
+
+            // INSERT OR IGNORE so the partial unique index on
+            // (session_id, provider_message_id) silently swallows any
+            // re-emitted rows. Required for incremental tail reads —
+            // the writer may flush a half-written `assistant` line
+            // (caught by lastLineHadNewline) which then turns into a
+            // new line on the next scan; if our `byteOffset` happens
+            // to land mid-message it's also possible for the SAME
+            // event to arrive twice across passes.
+            var inserted = 0
             for evt in parsed.events {
-                let row = UsageEventRecord(
-                    id: nil,
-                    sessionId: parsed.sessionId,
-                    timestamp: evt.timestamp,
-                    modelId: evt.modelId,
-                    inputTokens: evt.inputTokens,
-                    cachedInputTokens: evt.cacheReadTokens,
-                    outputTokens: evt.outputTokens,
-                    reasoningOutputTokens: 0,
-                    totalTokens: evt.inputTokens + evt.cacheReadTokens
-                                + evt.cacheCreationTokens + evt.outputTokens,
-                    valueUsd: 0,
-                    cacheCreationTokens: evt.cacheCreationTokens,
-                    provider: "claude",
-                    modelInferred: false)
-                try row.insert(db)
+                let total = evt.inputTokens + evt.cacheReadTokens
+                    + evt.cacheCreationTokens + evt.outputTokens
+                try db.execute(literal: """
+                    INSERT OR IGNORE INTO usage_events (
+                        session_id, timestamp, model_id,
+                        input_tokens, cached_input_tokens, output_tokens,
+                        reasoning_output_tokens, total_tokens, value_usd,
+                        cache_creation_tokens, provider, model_inferred,
+                        provider_message_id
+                    ) VALUES (
+                        \(parsed.sessionId), \(evt.timestamp), \(evt.modelId),
+                        \(evt.inputTokens), \(evt.cacheReadTokens), \(evt.outputTokens),
+                        \(0), \(total), \(0.0),
+                        \(evt.cacheCreationTokens), \("claude"), \(false),
+                        \(evt.messageId)
+                    )
+                    """)
+                inserted += db.changesCount
             }
 
             let state = ImportStateRecord(
@@ -215,10 +286,11 @@ actor ClaudeImportEngine {
                 sessionId: parsed.sessionId,
                 fileSize: file.fileSize,
                 fileMtimeMs: file.fileMtimeMs,
-                lastImportedAt: now)
+                lastImportedAt: now,
+                byteOffset: byteOffset)
             try state.save(db)
 
-            return parsed.events.count
+            return inserted
         }
     }
 }
@@ -241,13 +313,47 @@ struct ClaudeUsageEvent {
     let cacheReadTokens: Int64
     let cacheCreationTokens: Int64
     let outputTokens: Int64
+    /// `message.id` from the rollout. Used as the dedup key so that
+    /// re-parsing the trailing slice during incremental scans is
+    /// idempotent at the SQL layer (partial unique index added in v5).
+    /// `nil` when the rollout omitted it (very old Claude builds).
+    let messageId: String?
 }
 
 enum ClaudeRolloutParser {
 
-    static func parse(fileURL: URL) throws -> ParsedClaudeSession? {
+    /// Parse result from a single read pass.
+    struct Output {
+        let session: ParsedClaudeSession?
+        /// Byte offset in the file directly after the last newline that was
+        /// fully consumed. Pass this back as `fromOffset` next time to
+        /// resume incrementally. Equal to `fromOffset` when the file
+        /// contained no parseable bytes after that point.
+        let endOffset: Int64
+    }
+
+    /// Parse the file starting at `fromOffset`. Pass `0` for a full read.
+    ///
+    /// Important guarantees for the incremental path:
+    ///   - We only advance `endOffset` past a complete line (we stop at the
+    ///     last `\n` we saw), so a mid-write tail never gets half-parsed and
+    ///     then "completed" on the next pass.
+    ///   - When `fromOffset > 0` we don't rebuild session-header fields
+    ///     (sessionId/title/startedAt) — those landed in the DB on the
+    ///     first pass; we still bump `updatedAt`/`lastModelId` if the new
+    ///     slice contains them.
+    ///   - In-pass `seenMessageIds` still dedupes the well-known "stub then
+    ///     real assistant row" pattern. Cross-pass dedup is the SQL layer's
+    ///     job (partial unique index on `(session_id, provider_message_id)`).
+    static func parse(
+        fileURL: URL, fromOffset: Int64 = 0
+    ) throws -> Output {
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
+
+        if fromOffset > 0 {
+            try handle.seek(toOffset: UInt64(fromOffset))
+        }
 
         var sessionId: String? = nil
         var title: String? = nil
@@ -256,13 +362,27 @@ enum ClaudeRolloutParser {
         var lastModelId: String? = nil
         var events: [ClaudeUsageEvent] = []
 
-        // Dedup by message.id — the same assistant message can appear in
-        // multiple rollout snapshots if Claude rewrites the file mid-session.
-        // ccusage uses (sessionId, requestId, messageId); we just use messageId
-        // because Claude Code's id is request-scoped.
+        // Same-pass dedup for the "stub then real row" pattern (see longer
+        // comment below). The cross-scan analogue is the partial unique
+        // index in v5 — we no longer rely on this Set carrying state across
+        // invocations.
         var seenMessageIds: Set<String> = []
 
-        for line in try LineReader(handle: handle) {
+        var reader = try LineReader(handle: handle)
+        var consumed: Int64 = fromOffset
+
+        while let line = reader.next() {
+            // We only commit to having "consumed" a line once we've seen
+            // its terminating newline. LineReader yields the trailing
+            // un-terminated tail as a final line (returning nil thereafter)
+            // and reports `lastLineHadNewline == false` for it; in that
+            // case, leave `consumed` pointing at the start of that tail
+            // so the next scan re-reads it once it's been finished.
+            let lineByteCount = Int64(line.count) + (reader.lastLineHadNewline ? 1 : 0)
+            if reader.lastLineHadNewline {
+                consumed &+= lineByteCount
+            }
+
             guard !line.isEmpty,
                   let raw = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
             else { continue }
@@ -305,7 +425,8 @@ enum ClaudeRolloutParser {
             // session was being silently dropped.)
             if inputTokens == 0 && cacheRead == 0 && cacheCreate == 0 && output == 0 { continue }
 
-            if let messageId = message["id"] as? String {
+            let messageId = message["id"] as? String
+            if let messageId {
                 if !seenMessageIds.insert(messageId).inserted { continue }
             }
 
@@ -317,22 +438,26 @@ enum ClaudeRolloutParser {
                 inputTokens: inputTokens,
                 cacheReadTokens: cacheRead,
                 cacheCreationTokens: cacheCreate,
-                outputTokens: output))
+                outputTokens: output,
+                messageId: messageId))
         }
 
         // Fall back to the filename stem if no event carried sessionId.
         if sessionId == nil {
             sessionId = fileURL.deletingPathExtension().lastPathComponent
         }
-        guard let sid = sessionId, !events.isEmpty else { return nil }
+        guard let sid = sessionId, !events.isEmpty else {
+            return Output(session: nil, endOffset: consumed)
+        }
 
-        return ParsedClaudeSession(
+        let session = ParsedClaudeSession(
             sessionId: sid,
             title: title,
             startedAt: startedAt,
             updatedAt: updatedAt,
             lastModelId: lastModelId,
             events: events)
+        return Output(session: session, endOffset: consumed)
     }
 
     private static func int64(_ any: Any?) -> Int64? {
