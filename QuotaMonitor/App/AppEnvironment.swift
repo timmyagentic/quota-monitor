@@ -297,7 +297,13 @@ final class AppEnvironment {
     /// Load the menu-bar snapshot. Always queries both providers + the
     /// Anthropic 5h block, regardless of `providerFilter`. Cheap enough to
     /// run on every popover open / scan / refresh.
-    func refreshMenuBar() {
+    ///
+    /// `precomputedBlocks` lets a caller that *just* loaded BillingBlocks
+    /// (e.g. `refreshDashboard()`) hand the result through instead of
+    /// re-running the same usage_events scan a second time. Nil means
+    /// "no shared result, fetch fresh" — that's the right default for the
+    /// stand-alone paths (popover open, scan completion, scenePhase wakeup).
+    func refreshMenuBar(precomputedBlocks: BillingBlocks.Snapshot? = nil) {
         guard !isLoadingMenuBar else { return }
         isLoadingMenuBar = true
         Task { [weak self] in
@@ -307,8 +313,8 @@ final class AppEnvironment {
                 let (db, _) = try self.ensureServices()
                 let snap: MenuBarSnapshot = try await db.pool.read { conn in
                     let perProvider = try Aggregator.fetchPerProviderStats(db: conn)
-                    let blocks = try BillingBlocks.loadSnapshot(
-                        db: conn, provider: .claude)
+                    let blocks = try precomputedBlocks
+                        ?? BillingBlocks.loadSnapshot(db: conn, provider: .claude)
                     return MenuBarSnapshot(
                         codex: perProvider["codex"] ?? MenuBarSnapshot.empty("codex"),
                         claude: perProvider["claude"] ?? MenuBarSnapshot.empty("claude"),
@@ -345,8 +351,13 @@ final class AppEnvironment {
                 }
                 // Menu bar is provider-agnostic — refresh alongside the
                 // dashboard so price edits, scans, and filter toggles all
-                // keep both views in sync.
-                self.refreshMenuBar()
+                // keep both views in sync. Pass the BillingBlocks snapshot
+                // through when we already have it (filter != .codex) so
+                // the menu-bar path skips a redundant usage_events scan.
+                // When the dashboard filter is .codex, blocks is nil and
+                // refreshMenuBar still fetches fresh (the menu bar always
+                // wants the Claude block regardless of dashboard filter).
+                self.refreshMenuBar(precomputedBlocks: blocks)
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }
             }
