@@ -112,13 +112,33 @@ final class SettingsStore {
         }
     }
     /// Set once the user has completed the provider step of onboarding.
-    /// Existing-installation upgrades infer `true` in `init` so they
-    /// never see the new step.
+    /// Existing-installation upgrades infer `true` in `init` (see the
+    /// `looksLikeExistingUser` heuristic) EXCEPT when the stored
+    /// `lastOnboardedVersion` is older than `onboardingResetMinVersion`
+    /// — in that case we drag them back through the provider step so
+    /// they see any release-specific copy or new options. Language is
+    /// never reset (`app.language` is left untouched), only the
+    /// provider step is re-prompted.
     private(set) var hasCompletedProviderOnboarding: Bool {
         didSet { defaults.set(hasCompletedProviderOnboarding,
                               forKey: Keys.providerOnboardingDone) }
     }
     var needsProviderOnboarding: Bool { !hasCompletedProviderOnboarding }
+
+    /// The bundle version (`CFBundleShortVersionString`) this instance
+    /// was constructed with. Stamped into `lastOnboardedVersion` when
+    /// the user finishes the provider step so a future release can
+    /// detect "did this user finish onboarding at a version ≥ X".
+    /// Tests inject an explicit value; production reads `Bundle.main`.
+    private let appVersion: String?
+
+    /// Bump this when a release introduces an onboarding step (or
+    /// changes copy) you want existing users to see. On launch, any
+    /// user whose `lastOnboardedVersion` is missing or strictly less
+    /// than this string is dragged back through the provider step,
+    /// even if they previously completed onboarding. Language pick is
+    /// preserved.
+    nonisolated static let onboardingResetMinVersion = "0.2.7"
 
     enum KeychainPolicy: String, CaseIterable, Sendable, Identifiable {
         /// Try keychain only when the on-disk credentials file is missing
@@ -143,8 +163,10 @@ final class SettingsStore {
     /// can do simple Set operations when reconciling.
     nonisolated static let knownIconProviders: Set<String> = ["codex", "claude"]
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard,
+         appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) {
         self.defaults = defaults
+        self.appVersion = appVersion
         self.codexBinaryOverride = defaults.string(forKey: Keys.codexBinary) ?? ""
         self.codexHomeOverride   = defaults.string(forKey: Keys.codexHome) ?? ""
         self.claudeHomeOverride  = defaults.string(forKey: Keys.claudeHome) ?? ""
@@ -195,23 +217,66 @@ final class SettingsStore {
             // saw in onboarding.
             self.menuBarIconProviders = resolvedEnabled
         }
-        // Onboarding-done flag. If it's missing AND the user already has
-        // some prior settings written (e.g. they picked a language on a
-        // previous launch), assume they're an existing user and don't
-        // re-prompt them. Only fully-fresh installs get the new step.
+        // Onboarding-done flag. Resolution has two layers:
+        //
+        //  1. Base value. If `providerOnboardingDone` is stored, use it.
+        //     Otherwise infer from "looks like an existing user" — i.e.
+        //     any of language / providers / poll interval / threshold
+        //     already set on this UserDefaults. Fresh installs alone
+        //     get `false` here and see the full onboarding.
+        //
+        //  2. Version-gated reset. If `lastOnboardedVersion` is missing
+        //     or strictly less than `onboardingResetMinVersion`, force
+        //     the flag back to `false` regardless of (1). This is what
+        //     drags upgrading users back through the provider step
+        //     when a release ships changes worth re-confirming.
+        //
+        // Result is persisted so a partial-quit-mid-onboarding doesn't
+        // re-trigger the reset on every launch — the false sticks
+        // until the user finishes via `markProviderOnboardingDone()`,
+        // which also stamps `lastOnboardedVersion`.
         let storedDone = defaults.object(forKey: Keys.providerOnboardingDone) as? Bool
+        let baseDone: Bool
         if let done = storedDone {
-            self.hasCompletedProviderOnboarding = done
+            baseDone = done
         } else {
-            let looksLikeExistingUser =
+            baseDone =
                 defaults.string(forKey: "app.language") != nil
                 || storedProviders != nil
                 || storedInterval > 0
                 || storedThreshold > 0
-            self.hasCompletedProviderOnboarding = looksLikeExistingUser
-            // Persist the inference so we don't redo it on every launch.
-            defaults.set(looksLikeExistingUser, forKey: Keys.providerOnboardingDone)
         }
+        let lastOnboarded = defaults.string(forKey: Keys.lastOnboardedVersion)
+        let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
+        let resolvedDone = baseDone && !resetGate
+        self.hasCompletedProviderOnboarding = resolvedDone
+        defaults.set(resolvedDone, forKey: Keys.providerOnboardingDone)
+    }
+
+    /// True iff `lastOnboarded` is missing or strictly less than
+    /// `onboardingResetMinVersion`. Comparison is component-wise numeric
+    /// to avoid the lexicographic "0.10.0" < "0.2.0" trap.
+    nonisolated static func shouldResetOnboarding(lastOnboarded: String?) -> Bool {
+        guard let lastOnboarded else { return true }
+        return compareSemver(lastOnboarded, onboardingResetMinVersion) < 0
+    }
+
+    /// Component-wise numeric semver compare. Trailing pre-release tags
+    /// (everything after `-`) are stripped — release builds don't ship
+    /// them and the onboarding gate doesn't need their resolution.
+    /// Returns negative / 0 / positive like `strcmp`.
+    nonisolated static func compareSemver(_ a: String, _ b: String) -> Int {
+        func parts(_ s: String) -> [Int] {
+            let core = s.split(separator: "-", maxSplits: 1).first.map(String.init) ?? s
+            return core.split(separator: ".").map { Int($0) ?? 0 }
+        }
+        let pa = parts(a), pb = parts(b)
+        for i in 0..<max(pa.count, pb.count) {
+            let x = i < pa.count ? pa[i] : 0
+            let y = i < pb.count ? pb[i] : 0
+            if x != y { return x < y ? -1 : 1 }
+        }
+        return 0
     }
 
     /// Update one provider's enabled state, honouring the "at least one
@@ -255,10 +320,19 @@ final class SettingsStore {
         return true
     }
 
-    /// Mark the provider step of onboarding as done. Idempotent.
+    /// Mark the provider step of onboarding as done. Idempotent for the
+    /// flag itself (the didSet won't fire if already true), but always
+    /// stamps `lastOnboardedVersion` so a user who re-runs onboarding
+    /// after a `onboardingResetMinVersion` bump records the new version
+    /// even if the flag survived the reset gate (it shouldn't, but be
+    /// safe).
     func markProviderOnboardingDone() {
-        guard !hasCompletedProviderOnboarding else { return }
-        hasCompletedProviderOnboarding = true
+        if !hasCompletedProviderOnboarding {
+            hasCompletedProviderOnboarding = true
+        }
+        if let appVersion {
+            defaults.set(appVersion, forKey: Keys.lastOnboardedVersion)
+        }
     }
 
     /// Replace the enabled set wholesale (e.g. from the onboarding
@@ -342,5 +416,6 @@ final class SettingsStore {
         static let legacyMenuBarIconProvider = "settings.menuBarIconProvider"
         static let enabledProviders = "settings.enabledProviders"
         static let providerOnboardingDone = "onboarding.providersDone"
+        static let lastOnboardedVersion = "onboarding.lastVersion"
     }
 }

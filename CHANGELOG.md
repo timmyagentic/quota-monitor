@@ -32,6 +32,17 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   second via `TimelineView` and self-hides at expiry without needing
   the actor to broadcast a "cleared" event.
 
+### Changed
+- **Upgrading users are dragged back through the provider step of
+  onboarding once on first launch of this release.** `SettingsStore`
+  now persists `lastOnboardedVersion` and resets the provider step
+  whenever that stamp is missing or older than
+  `onboardingResetMinVersion` (currently "0.2.7"). Language pick is
+  preserved — only the provider screen re-prompts. Bumping the
+  `onboardingResetMinVersion` constant in a future release will
+  re-trigger the same one-shot prompt for whatever step needs
+  re-confirmation then.
+
 ## [0.2.6] — 2026-05-14
 
 ### Performance
