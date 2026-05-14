@@ -13,6 +13,14 @@ final class DatabaseManager: Sendable {
             at: parent, withIntermediateDirectories: true)
 
         var config = Configuration()
+        // GRDB defaults to 5 concurrent reader connections. The app only
+        // has 3 read paths that can plausibly overlap (refreshMenuBar,
+        // refreshDashboard, ImportEngine.scan's import_state lookup), so
+        // the extra two connections sit idle each holding ~2 MB of
+        // SQLite page cache + an fd. Capping at 3 covers the realistic
+        // worst case (user mashes Refresh while the dashboard is open
+        // mid-scan) without leaving spare connections lying around.
+        config.maximumReaderCount = 3
         config.prepareDatabase { db in
             try db.execute(sql: "PRAGMA journal_mode = WAL")
             try db.execute(sql: "PRAGMA foreign_keys = ON")
