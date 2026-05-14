@@ -44,9 +44,13 @@ extension AppEnvironment {
                     }
                     let merged = Self.mergeScanReports(
                         try await codexReport, try await claudeTask.value)
-                    // Final backfill so any Claude rows that landed after the
-                    // Codex engine's own backfill still get value_usd computed.
-                    try await db.pool.write { try PricingService.backfillAllValues(in: $0) }
+                    // Single backfill at the tail values any Codex/Claude rows
+                    // imported in this pass and propagates price-table edits.
+                    // Skip when nothing changed — backfill is sub-second, but
+                    // it still pulls a write lock and walks every event row.
+                    if merged.changedFiles > 0 {
+                        try await db.pool.write { try PricingService.backfillAllValues(in: $0) }
+                    }
                     return merged
                 }
                 await MainActor.run { self.lastScanReport = merged }

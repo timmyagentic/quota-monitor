@@ -151,7 +151,7 @@ enum PricingService {
     /// LiteLLM refresh / user's edits. We INSERT new rows but only UPDATE when
     /// price_source is still 'seed'.
     static func seedCatalog(in db: Database) throws {
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = ISO8601.fractional.string(from: Date())
         for entry in PricingSeed.entries {
             try db.execute(sql: """
                 INSERT INTO pricing_catalog
@@ -201,7 +201,7 @@ enum PricingService {
     /// Returns the number of rows actually updated.
     @discardableResult
     static func applyLiteLLMUpdate(entries: [LiteLLMEntry], in db: Database) throws -> Int {
-        let now = ISO8601DateFormatter().string(from: Date())
+        let now = ISO8601.fractional.string(from: Date())
 
         let existingIds = try String.fetchAll(db, sql:
             "SELECT model_id FROM pricing_catalog WHERE price_source != 'local'")

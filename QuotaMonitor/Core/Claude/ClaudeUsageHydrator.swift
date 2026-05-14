@@ -29,14 +29,9 @@ enum ClaudeUsageHydrator {
 
             guard !rows.isEmpty else { return nil }
 
-            let isoFractional = ISO8601DateFormatter()
-            isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let isoPlain = ISO8601DateFormatter()
-            isoPlain.formatOptions = [.withInternetDateTime]
-
             func parseDate(_ s: String?) -> Date? {
                 guard let s else { return nil }
-                return isoFractional.date(from: s) ?? isoPlain.date(from: s)
+                return ISO8601.parse(s)
             }
 
             let capturedAt = parseDate(captured) ?? Date()

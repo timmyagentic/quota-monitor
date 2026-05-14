@@ -111,7 +111,7 @@ enum RolloutParser {
             case .tokenCount(let tc, let envelopeTs):
                 guard let info = tc.info,
                       let total = info.totalTokenUsage else { continue }
-                let timestamp = envelopeTs ?? ISO8601DateFormatter().string(from: Date())
+                let timestamp = envelopeTs ?? ISO8601.fractional.string(from: Date())
 
                 // Resolution order: explicit on payload → tracked turn_context →
                 // legacy fallback. Only the last counts as inferred.
@@ -239,7 +239,7 @@ enum RolloutParser {
                 sampleTimestamp: timestamp,
                 planType: rl.planType,
                 limitName: rl.limitName,
-                resetsAt: ISO8601DateFormatter().string(
+                resetsAt: ISO8601.fractional.string(
                     from: Date(timeIntervalSince1970: resets)),
                 usedPercent: primary.usedPercent,
                 remainingPercent: max(0, 100 - primary.usedPercent)))
@@ -250,7 +250,7 @@ enum RolloutParser {
                 sampleTimestamp: timestamp,
                 planType: rl.planType,
                 limitName: rl.limitName,
-                resetsAt: ISO8601DateFormatter().string(
+                resetsAt: ISO8601.fractional.string(
                     from: Date(timeIntervalSince1970: resets)),
                 usedPercent: secondary.usedPercent,
                 remainingPercent: max(0, 100 - secondary.usedPercent)))

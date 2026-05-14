@@ -207,13 +207,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             throw FetchError.malformed("\(error)")
         }
 
-        let isoMillis = ISO8601DateFormatter()
-        isoMillis.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoPlain = ISO8601DateFormatter()
-        isoPlain.formatOptions = [.withInternetDateTime]
         func parseDate(_ s: String?) -> Date? {
             guard let s, !s.isEmpty else { return nil }
-            return isoMillis.date(from: s) ?? isoPlain.date(from: s)
+            return ISO8601.parse(s)
         }
 
         // Anthropic's current `/api/oauth/usage` returns `utilization`

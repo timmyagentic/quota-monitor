@@ -17,7 +17,7 @@ extension AppEnvironment {
                     WHERE fetched_at IS NOT NULL
                     ORDER BY fetched_at DESC LIMIT 1
                     """)
-                return iso.flatMap(ISO8601DateFormatter().date(from:))
+                return iso.flatMap(ISO8601.parse)
             }
             lastPricingFetchedAt = latest
             if let latest, Date().timeIntervalSince(latest) < maxAge { return }
@@ -47,7 +47,7 @@ extension AppEnvironment {
                 WHERE fetched_at IS NOT NULL
                 ORDER BY fetched_at DESC LIMIT 1
                 """)
-            return iso.flatMap(ISO8601DateFormatter().date(from:))
+            return iso.flatMap(ISO8601.parse)
         }
         lastPricingFetchedAt = latest
         lastPricingUpdateCount = updated

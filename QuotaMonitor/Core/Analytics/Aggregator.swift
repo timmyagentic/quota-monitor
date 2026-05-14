@@ -350,16 +350,16 @@ enum Aggregator {
     /// Used by the rate-limit query family.
     static func parseTimestamp(_ s: String) -> Date? {
         if s.isEmpty { return nil }
-        let isoFractional = ISO8601DateFormatter()
-        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = isoFractional.date(from: s) { return d }
-        let isoPlain = ISO8601DateFormatter()
-        isoPlain.formatOptions = [.withInternetDateTime]
-        if let d = isoPlain.date(from: s) { return d }
-        let sqlite = DateFormatter()
-        sqlite.locale = Locale(identifier: "en_US_POSIX")
-        sqlite.timeZone = TimeZone(identifier: "UTC")
-        sqlite.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return sqlite.date(from: s)
+        if let d = ISO8601.fractional.date(from: s) { return d }
+        if let d = ISO8601.plain.date(from: s) { return d }
+        return Self.sqliteFormatter.date(from: s)
     }
+
+    private static let sqliteFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
 }

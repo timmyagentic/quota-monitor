@@ -108,7 +108,7 @@ struct PricingSettingsTab: View {
 
     private var lastRefreshedLabel: String {
         let latest = rows.compactMap { $0.fetchedAt }.max()
-        guard let latest, let date = ISO8601DateFormatter().date(from: latest) else {
+        guard let latest, let date = ISO8601.parse(latest) else {
             return L10n.neverRefreshed
         }
         let formatter = RelativeDateTimeFormatter()

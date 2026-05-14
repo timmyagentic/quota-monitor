@@ -155,9 +155,7 @@ actor ClaudeUsagePoller {
     }
 
     private func persist(snapshot: ClaudeUsageSnapshot) async throws {
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let captured = isoFormatter.string(from: snapshot.capturedAt)
+        let captured = ISO8601.fractional.string(from: snapshot.capturedAt)
         let plan = snapshot.tier
         try await database.pool.write { db in
             // We persist all four windows under bucket=primary/secondary
@@ -187,7 +185,7 @@ actor ClaudeUsagePoller {
         bucket: String, limitName: String?,
         window: ClaudeUsageSnapshot.Window
     ) throws {
-        let resetIso = ISO8601DateFormatter().string(from: window.resetAt)
+        let resetIso = ISO8601.fractional.string(from: window.resetAt)
         try db.execute(sql: """
             INSERT INTO rate_limit_samples
               (source_kind, source_session_id, bucket, sample_timestamp,

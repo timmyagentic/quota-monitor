@@ -200,10 +200,7 @@ private struct SessionRowView: View {
     }
 
     private func formatRelative(_ iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
-        guard let date else { return iso }
+        guard let date = ISO8601.parse(iso) else { return iso }
         let rf = RelativeDateTimeFormatter()
         rf.locale = LocalizationStore.activeLanguage.locale
         rf.unitsStyle = .short

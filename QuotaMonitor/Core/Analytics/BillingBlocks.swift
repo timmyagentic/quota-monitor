@@ -77,7 +77,13 @@ enum BillingBlocks {
         now: Date = Date(),
         recentDays: Int = 3
     ) throws -> Snapshot {
-        let entries = try fetchEntries(db: db, provider: provider)
+        // Only fetch what `recentBlocks` could possibly need plus a generous
+        // safety buffer (one extra day) so an in-progress block whose start
+        // is exactly at the cutoff still has all its events to sum. Without
+        // this, fetchEntries scans the full usage_events table on every
+        // refresh — minutes of work once the table reaches 100k rows.
+        let fetchCutoff = now.addingTimeInterval(-Double(recentDays + 1) * 24 * 3600)
+        let entries = try fetchEntries(db: db, provider: provider, since: fetchCutoff)
         let blocks = identifyBlocks(entries: entries, now: now)
 
         let active = blocks.first { $0.isActive && !$0.isGap }
@@ -113,31 +119,40 @@ enum BillingBlocks {
     }
 
     private static func fetchEntries(
-        db: Database, provider: ProviderFilter
+        db: Database, provider: ProviderFilter, since: Date? = nil
     ) throws -> [RawEntry] {
+        let providerWhere = provider.whereClause(table: "usage_events")
+        let timeFilterSQL: String
+        var arguments: StatementArguments = []
+        if let since {
+            // ISO-8601 string compares lexicographically the same way it sorts
+            // chronologically, so `>=` works on the text column without needing
+            // a numeric cast. Combine with whatever provider filter is in play.
+            let sinceIso = ISO8601.fractional.string(from: since)
+            timeFilterSQL = providerWhere.isEmpty
+                ? "WHERE timestamp >= ?"
+                : "\(providerWhere) AND timestamp >= ?"
+            arguments = [sinceIso]
+        } else {
+            timeFilterSQL = providerWhere
+        }
+
         let rows = try Row.fetchAll(db, sql: """
             SELECT timestamp, model_id,
                    input_tokens, output_tokens,
                    cached_input_tokens, cache_creation_tokens,
                    value_usd
             FROM usage_events
-            \(provider.whereClause(table: "usage_events"))
+            \(timeFilterSQL)
             ORDER BY timestamp ASC, id ASC
-            """)
+            """, arguments: arguments)
 
-        let isoFractional = ISO8601DateFormatter()
-        isoFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoPlain = ISO8601DateFormatter()
-        isoPlain.formatOptions = [.withInternetDateTime]
-        let sqlite = DateFormatter()
-        sqlite.locale = Locale(identifier: "en_US_POSIX")
-        sqlite.timeZone = TimeZone(identifier: "UTC")
-        sqlite.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let sqlite = Self.sqliteFormatter
 
         return rows.compactMap { row -> RawEntry? in
             let ts: String = row["timestamp"] ?? ""
-            let date = isoFractional.date(from: ts)
-                ?? isoPlain.date(from: ts)
+            let date = ISO8601.fractional.date(from: ts)
+                ?? ISO8601.plain.date(from: ts)
                 ?? sqlite.date(from: ts)
             guard let date else { return nil }
             return RawEntry(
@@ -226,7 +241,7 @@ enum BillingBlocks {
         }
 
         return Block(
-            id: ISO8601DateFormatter().string(from: start),
+            id: ISO8601.fractional.string(from: start),
             startTime: start,
             endTime: end,
             firstEntryAt: firstAt,
@@ -243,7 +258,7 @@ enum BillingBlocks {
         let gap = nextActivity.timeIntervalSince(lastActivity)
         guard gap > sessionDuration else { return nil }
         let gapStart = lastActivity.addingTimeInterval(sessionDuration)
-        let iso = ISO8601DateFormatter().string(from: gapStart)
+        let iso = ISO8601.fractional.string(from: gapStart)
         return Block(
             id: "gap-\(iso)",
             startTime: gapStart,
@@ -287,4 +302,14 @@ enum BillingBlocks {
             totalCost: projectedCost,
             remainingMinutes: Int(remainingMinutes.rounded()))
     }
+
+    /// Cached SQLite-text fallback formatter; constant locale/timezone so the
+    /// shared instance is safe across calls.
+    private static let sqliteFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return f
+    }()
 }

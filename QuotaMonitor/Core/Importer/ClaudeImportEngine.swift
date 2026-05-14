@@ -39,15 +39,11 @@ import GRDB
 actor ClaudeImportEngine {
     private let database: DatabaseManager
     private let claudeRoots: [URL]
-    private let isoFormatter: ISO8601DateFormatter
 
     init(database: DatabaseManager,
          claudeRoots: [URL] = ClaudeImportEngine.defaultRoots()) {
         self.database = database
         self.claudeRoots = claudeRoots
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        self.isoFormatter = f
     }
 
     /// Resolve the directories where Claude Code stores rollouts.
@@ -154,7 +150,7 @@ actor ClaudeImportEngine {
     /// the next scan can skip it via mtime/size check. Without this,
     /// every scan re-reads every empty subagent stub forever.
     private func persistEmpty(file: ClaudeFile) async throws {
-        let now = isoFormatter.string(from: Date())
+        let now = ISO8601.fractional.string(from: Date())
         try await database.pool.write { db in
             let state = ImportStateRecord(
                 sourcePath: file.path,
@@ -169,7 +165,7 @@ actor ClaudeImportEngine {
     // MARK: - persist
 
     private func persist(parsed: ParsedClaudeSession, file: ClaudeFile) async throws -> Int {
-        let now = isoFormatter.string(from: Date())
+        let now = ISO8601.fractional.string(from: Date())
         return try await database.pool.write { db in
             let existing = try SessionRecord
                 .filter(Column("session_id") == parsed.sessionId)
@@ -316,7 +312,7 @@ enum ClaudeRolloutParser {
             lastModelId = normalized
 
             events.append(ClaudeUsageEvent(
-                timestamp: ts ?? ISO8601DateFormatter().string(from: Date()),
+                timestamp: ts ?? ISO8601.fractional.string(from: Date()),
                 modelId: normalized,
                 inputTokens: inputTokens,
                 cacheReadTokens: cacheRead,

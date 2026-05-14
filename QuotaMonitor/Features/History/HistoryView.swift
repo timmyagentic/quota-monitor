@@ -342,11 +342,8 @@ private struct ExpandableSessionRow: View {
     }
 
     private func timeRange(started: String, ended: String?) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
-        let s = f.date(from: started) ?? plain.date(from: started)
-        let e = ended.flatMap { f.date(from: $0) ?? plain.date(from: $0) }
+        let s = ISO8601.parse(started)
+        let e = ended.flatMap { ISO8601.parse($0) }
         guard let s else { return "" }
         let sStr = s.formatted(.dateTime.hour().minute())
         if let e, e.timeIntervalSince(s) > 60 {

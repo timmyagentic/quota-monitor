@@ -16,8 +16,6 @@ actor RateLimitPoller {
     private var task: Task<Void, Never>?
     private let onSnapshot: @Sendable (RateLimitSnapshot) async -> Void
 
-    private let isoFormatter: ISO8601DateFormatter
-
     init(
         appServer: AppServerClient,
         database: DatabaseManager,
@@ -28,9 +26,6 @@ actor RateLimitPoller {
         self.database = database
         self.interval = interval
         self.onSnapshot = onSnapshot
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        self.isoFormatter = f
     }
 
     func start() {
@@ -74,7 +69,7 @@ actor RateLimitPoller {
     }
 
     private func persist(snapshot: RateLimitSnapshot) async throws {
-        let captured = isoFormatter.string(from: snapshot.capturedAt)
+        let captured = ISO8601.fractional.string(from: snapshot.capturedAt)
         let plan = snapshot.planType
         try await database.pool.write { db in
             if let p = snapshot.primary {
@@ -110,7 +105,7 @@ actor RateLimitPoller {
         limitName: String?,
         window: RateLimitSnapshot.Window
     ) throws {
-        let resetIso = ISO8601DateFormatter().string(from: window.resetAt)
+        let resetIso = ISO8601.fractional.string(from: window.resetAt)
         try db.execute(sql: """
             INSERT INTO rate_limit_samples
               (source_kind, source_session_id, bucket, sample_timestamp,

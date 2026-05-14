@@ -12,7 +12,6 @@ import GRDB
 actor ImportEngine {
     private let database: DatabaseManager
     private let codexHome: URL
-    private let isoFormatter: ISO8601DateFormatter
 
     struct ScanReport: Sendable {
         let scannedFiles: Int
@@ -31,9 +30,6 @@ actor ImportEngine {
     init(database: DatabaseManager, codexHome: URL = SessionScanner.defaultCodexHome()) {
         self.database = database
         self.codexHome = codexHome
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        self.isoFormatter = f
     }
 
     func performScan() async throws -> ScanReport {
@@ -96,12 +92,11 @@ actor ImportEngine {
         // Cheap (single pass, all in one transaction) and idempotent.
         try await reconcileSessionTree()
 
-        // Recompute API-equivalent value for every event with a known model.
-        // Cheap (sub-second for tens of thousands of rows); always run, even if
-        // no files changed, so price-table edits propagate on the next scan.
-        try await database.pool.write { db in
-            try PricingService.backfillAllValues(in: db)
-        }
+        // NOTE: PricingService.backfillAllValues is intentionally NOT called
+        // here. ScanController.runScan() invokes it exactly once after both
+        // engines complete, which is enough to (a) value Claude rows that
+        // landed in this pass and (b) propagate price-table edits — without
+        // doing the same UPDATE twice per scan.
 
         let report = ScanReport(
             scannedFiles: files.count,
@@ -124,7 +119,7 @@ actor ImportEngine {
     private struct PersistCounts { let events: Int; let samples: Int }
 
     private func persist(parsed: ParsedSession, file: SessionFile) async throws -> PersistCounts {
-        let now = isoFormatter.string(from: Date())
+        let now = ISO8601.fractional.string(from: Date())
 
         return try await database.pool.write { db in
             // 1. Upsert the session row.

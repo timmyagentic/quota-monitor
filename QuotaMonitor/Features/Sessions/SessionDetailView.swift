@@ -168,10 +168,7 @@ struct SessionDetailView: View {
     }
 
     private func shortDate(_ iso: String) -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let d = f.date(from: iso) ?? ISO8601DateFormatter().date(from: iso)
-        guard let d else { return iso }
+        guard let d = ISO8601.parse(iso) else { return iso }
         return d.formatted(.dateTime.month(.abbreviated).day().hour().minute())
     }
 }
@@ -215,10 +212,7 @@ struct EventRow: View {
     }
 
     private var timestampShort: String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let d = f.date(from: event.timestamp) ?? ISO8601DateFormatter().date(from: event.timestamp)
-        guard let d else { return event.timestamp }
+        guard let d = ISO8601.parse(event.timestamp) else { return event.timestamp }
         return d.formatted(.dateTime.hour().minute().second())
     }
 
