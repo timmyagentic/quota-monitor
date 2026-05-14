@@ -7,6 +7,30 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-05-14
+
+### Added
+- **Per-tool tracking toggles.** Settings → General → "Tracked tools"
+  lets you turn off Codex or Claude Code if you only have one of the
+  CLIs installed. Disabling a provider stops its background poller,
+  hides its menu-bar block, and drops it from the Dashboard's
+  Forecast / Composition / statline. The first-launch onboarding
+  sheet has a matching second step so new users can pick what they
+  actually use; Codex defaults on, Claude Code defaults off (Claude
+  triggers a one-time macOS Keychain prompt and many users won't
+  have it installed).
+- **Live usage in the menu-bar icon.** Settings → General → "Show in
+  menu bar" replaces the static gauge symbol with one or both of:
+  `5h XX% · 7d XX%` for Codex and/or Claude Code. Picking both joins
+  them on a single line with `CX` / `CC` prefixes; picking neither
+  falls back to the gauge symbol.
+- **Opt-in Claude credentials cache.** Settings → Advanced → Claude
+  Code → "Cache Claude credentials to disk" mirrors the Keychain
+  entry to `~/.claude/.credentials.json` so the macOS Keychain
+  password prompt stops firing on every ad-hoc-signed launch. Off
+  by default — moving credentials from Keychain to a plain file is
+  a security trade-off and the help text spells it out.
+
 ## [0.2.3] — 2026-05-11
 
 ### Fixed

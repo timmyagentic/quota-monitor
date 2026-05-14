@@ -101,8 +101,14 @@ struct OnboardingView: View {
     /// `SettingsStore.enabledProviders` until the user clicks Continue
     /// — that way the live UI (menu bar + dashboard) doesn't flicker
     /// as they tick boxes.
+    ///
+    /// Defaults: Codex on, Claude Code off. Codex is the lower-friction
+    /// default (no Keychain prompt, simpler setup); users who actually
+    /// have Claude Code installed will tick its switch on this same
+    /// screen, and users who don't will be spared the macOS Keychain
+    /// password prompt that fires the first time we read Claude creds.
     @State private var pickedCodex = true
-    @State private var pickedClaude = true
+    @State private var pickedClaude = false
 
     @ViewBuilder
     private var providerStep: some View {
