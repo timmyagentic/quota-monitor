@@ -36,8 +36,17 @@ struct OnboardingView: View {
     /// view's `body` re-derives the step on each render so existing
     /// users (already-set language, missing providers flag) jump
     /// straight to step 2.
+
+    /// Flips to `true` when step 2's Continue is clicked with **both**
+    /// providers selected, transitioning the wizard to the menu-bar
+    /// step. Session-scoped on purpose — closing and re-opening the
+    /// window resets it to `false`, which is what we want (re-do step 2).
+    @State private var providersCommitted = false
+
     private var step: Step {
-        loc.needsOnboarding ? .language : .providers
+        if loc.needsOnboarding { return .language }
+        if !providersCommitted   { return .providers }
+        return .menuBar
     }
 
     var body: some View {
@@ -45,6 +54,7 @@ struct OnboardingView: View {
             switch step {
             case .language: languageStep
             case .providers: providerStep
+            case .menuBar:  menuBarStep
             }
         }
         .padding(20)
@@ -204,5 +214,15 @@ struct OnboardingView: View {
         dismissWindow(id: "onboarding")
     }
 
-    private enum Step { case language, providers }
+    // MARK: - menu-bar step (filled in next task)
+
+    @State private var iconCodex = true
+    @State private var iconClaude = false
+
+    @ViewBuilder
+    private var menuBarStep: some View {
+        EmptyView()
+    }
+
+    private enum Step { case language, providers, menuBar }
 }
