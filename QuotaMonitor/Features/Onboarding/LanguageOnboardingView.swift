@@ -255,7 +255,7 @@ struct OnboardingView: View {
             // fallback) per SettingsStore.menuBarIconProviders semantics.
             Button {
                 var icons = Set<String>()
-                if iconCodex  { icons.insert("codex") }
+                if iconCodex { icons.insert("codex") }
                 if iconClaude { icons.insert("claude") }
                 finishOnboarding(providers: ["codex", "claude"],
                                  iconProviders: icons)
