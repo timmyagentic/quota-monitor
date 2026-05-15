@@ -23,10 +23,13 @@ import SwiftUI
 /// while the underlying `needs*` flags are still true. The window
 /// gets cleanly closed once Continue runs and the flags clear.
 ///
-/// **Existing-installation upgrade path.** `SettingsStore.init` sets
-/// `hasCompletedProviderOnboarding = true` whenever any prior settings
-/// key exists, so users who already had the app installed never see
-/// the new step.
+/// **Existing-installation upgrade path.** `SettingsStore` carries a
+/// version stamp (`onboarding.lastVersion`) and a min reset version
+/// (`onboardingResetMinVersion`). On launch a user whose stamp is
+/// missing or older is dragged back through step 2 (and step 3 if
+/// they pick both) so release-specific changes — like the new
+/// menu-bar question — land. Users already at-or-above the min
+/// version skip onboarding entirely.
 struct OnboardingView: View {
     @Environment(LocalizationStore.self) private var loc
     @Environment(SettingsStore.self) private var settings
