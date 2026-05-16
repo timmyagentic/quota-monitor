@@ -7,6 +7,62 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-05-16
+
+### Fixed
+- **macOS Keychain prompt no longer fires on every launch when the
+  credentials file is already fresh.** `loadAccessToken` was reading
+  both `~/.claude/.credentials.json` and the `Claude Code-credentials`
+  keychain item up front before checking expiry, so the keychain ACL
+  prompt could fire on every cold launch even when the file token was
+  perfectly valid. The function now matches what its own doc comment
+  already claimed: read the file first; only consult the keychain
+  when the file is missing or stale. Combined with the existing
+  `mirrorClaudeKeychainToFile` opt-in (Settings → Advanced), the
+  steady-state launch flow becomes one file read with zero keychain
+  access. Particularly visible during development — ad-hoc rebuilds
+  generate a different code signature each time, invalidating the
+  keychain ACL the user just approved.
+
+### Changed
+- **Settings → Pricing has been folded into Settings → Advanced.**
+  The standalone Pricing tab's only purpose was to render a read-only
+  5-column catalog table; the two interactive controls users actually
+  touched (Sync from LiteLLM, Restore Defaults) plus a "last synced"
+  timestamp now live as a section at the bottom of Advanced. Two
+  tabs (General + Advanced) reads as "the normal stuff and the
+  power-user stuff," which is the truer mental model than weighting
+  pricing as a first-class concern. Users who want to inspect
+  specific catalog rows can read the sqlite database directly via
+  Advanced → Database → Reveal in Finder.
+- **Onboarding gains a menu-bar display step** when the user picks
+  both Codex and Claude Code on step 2. Users tracking both CLIs can
+  now decide up front which provider's quotas appear in the menu-bar
+  readout, instead of inheriting the "show both" default and having
+  to flip it off in Advanced after the fact. Picking only one
+  provider on step 2 still skips this step — the question is
+  degenerate. Upgrading users get re-prompted once via the
+  `lastOnboardedVersion` reset gate added in 0.2.7.
+
+### Performance
+- **Menu-bar refresh and dashboard now share a single BillingBlocks
+  snapshot.** Both surfaces previously ran independent aggregations
+  on every poll, querying the same `usage_events` rows twice. They
+  now consume a shared snapshot recomputed once per poll cycle.
+- **GRDB reader pool capped at 3 connections** (down from the default
+  5). Five concurrent readers was over-provisioning a desktop
+  menu-bar app whose hottest path has at most two simultaneous
+  queries (poller + dashboard view).
+
+### Polish
+- **Menu-bar live-quota readout uses a mixed-font rhythm.** Window
+  labels ("5h" / "7d") render at 9pt medium next to 11pt heavy
+  monospaced-digit percentages, joined by a U+2009 thin space.
+  Between the two windows " · " at 9pt regular reads as a calm
+  pause; between providers a triple space separates "CX …" from
+  "CC …" without adding another glyph. Replaces the previous flat
+  11pt semibold row with " | " separators.
+
 ## [0.2.7] — 2026-05-14
 
 ### Fixed
