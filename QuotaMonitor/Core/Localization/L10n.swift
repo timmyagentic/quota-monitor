@@ -511,15 +511,6 @@ enum L10n {
     static var notifyAt: String { t(en: "Notify at", zh: "通知阈值") }
 
     // pricing
-    static var colModel: String { t(en: "Model", zh: "模型") }
-    static var colInputPerM: String { t(en: "Input $/M", zh: "输入 $/M") }
-    static var colCachedPerM: String { t(en: "Cached $/M", zh: "缓存 $/M") }
-    static var colOutputPerM: String { t(en: "Output $/M", zh: "输出 $/M") }
-    static var colCacheCreatePerM: String { t(en: "Cache create $/M", zh: "缓存创建 $/M") }
-    static var helpLocallyEdited: String {
-        t(en: "Locally edited — LiteLLM refresh will skip this row",
-          zh: "本地已编辑 — LiteLLM 刷新会跳过此行")
-    }
     static var pricingRestoreDefaults: String { t(en: "Restore Defaults", zh: "恢复默认") }
     static var pricingFetchLiteLLM: String { t(en: "Sync from LiteLLM", zh: "从 LiteLLM 同步") }
     static var livePricesViaLiteLLM: String { t(en: "Live prices via LiteLLM", zh: "通过 LiteLLM 获取实时价格") }
@@ -530,9 +521,6 @@ enum L10n {
     static func lastRefreshed(_ relative: String) -> String {
         t(en: "Last refreshed \(relative)", zh: "上次刷新 \(relative)")
     }
-    static var badgeLive: String { t(en: "live", zh: "实时") }
-    static var badgeLocal: String { t(en: "local", zh: "本地") }
-    static var badgeSeed: String { t(en: "seed", zh: "内置") }
     static var restoredSeedPrices: String {
         t(en: "Restored seed prices.", zh: "已恢复内置价格。")
     }
