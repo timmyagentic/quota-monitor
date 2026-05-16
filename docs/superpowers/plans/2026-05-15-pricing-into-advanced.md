@@ -282,7 +282,7 @@ If matches exist outside the deleted file: investigate. Likely culprits are a Xc
 swift build && swift test
 ```
 
-Expected: Both pass. The existing pricing tests live at the env layer (`AppEnvironment.refreshPricingFromLiteLLM`, `loadPricingCatalog`) and are unaffected by the view change.
+Expected: Both pass. Note: `Tests/QuotaMonitorTests/PricingValueBackfillTests.swift` covers `PricingService.backfillAllValues`, not the three `AppEnvironment` pricing APIs the new section calls — those have no automated coverage today (manual QA only). This refactor doesn't change that.
 
 If `swift build` fails complaining about `PricingSettingsTab` being missing: there's a stale reference Step 4's grep missed. Search again.
 
@@ -353,7 +353,7 @@ No commit for this task — it's pure verification. The previous two commits alr
 
 ## Notes for the implementer
 
-- **No new tests.** The spec is explicit: behavior-level pricing tests live at `AppEnvironment` and are unaffected. The view-level disappearance doesn't need new coverage.
+- **No new tests.** Not because env-layer coverage exists (it doesn't — see Task 2 note), but because this refactor moves UI without changing behavior. Adding env-layer tests for `refreshPricingFromLiteLLM` / `loadPricingCatalog` / `restorePricingDefaults` is a separate, worthwhile follow-up.
 - **No new L10n keys.** Every string the new section uses already exists. If you find yourself reaching for `t(en:…, zh:…)`, stop — check `L10n.swift` first.
 - **No data-layer edits.** The three pricing APIs on `AppEnvironment` (`refreshPricingFromLiteLLM`, `restorePricingDefaults`, `loadPricingCatalog`) are called exactly as the old tab called them. Don't refactor them.
 - **Watch for the `restorePricingDefaults()` name collision** between the new instance method on `AdvancedSettingsTab` and `env.restorePricingDefaults()`. Both names are intentional; Swift's name resolution makes `env.restorePricingDefaults()` unambiguous at the call site. If the build complains, you've likely shadowed it in the wrong scope.

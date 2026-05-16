@@ -151,7 +151,7 @@ source elsewhere.
 | Last-synced query fails (e.g., row truncated) | Treat as "never refreshed." Don't surface a database error in the Advanced UI — the legitimate user action is still "click Sync." |
 | Refresh fails | Same as today: `errorMessage` shows `L10n.litellmRefreshFailed(err)` for the next render until cleared. |
 | Pricing data still loads correctly | Untouched. The catalog table is gone from the UI only; cost calculations elsewhere still read the same rows. |
-| Test coverage | The only behavior tested today is `loadPricingCatalog` and `refreshPricingFromLiteLLM` at the env layer; both remain. The view-level disappearance doesn't need a new test. |
+| Test coverage | The Sync / Restore / catalog-load paths have no automated coverage — `Tests/QuotaMonitorTests/PricingValueBackfillTests.swift` covers a different code path (`PricingService.backfillAllValues`), and the three `AppEnvironment` pricing APIs are exercised only by manual QA. This refactor doesn't make that worse, but it also doesn't fix it. View-level disappearance doesn't need a new test; the buttons' env-layer wiring is unchanged from the deleted tab. |
 
 ## Resolved during brainstorming
 
