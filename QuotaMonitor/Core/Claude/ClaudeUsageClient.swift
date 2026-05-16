@@ -259,16 +259,19 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             return cached
         }
 
-        // Read both sources up front, no expiry gate. We need to know
-        // whether *anything* exists before deciding to spawn the CLI.
+        // Strictly file-first. The Keychain read is what triggers
+        // macOS's password prompt when the running binary's code
+        // signature doesn't match the item's ACL — and ad-hoc dev
+        // rebuilds invalidate that ACL on every launch. So skip the
+        // Keychain entirely when the file already holds a fresh token.
         let fileCreds = Self.readStoredCredentialsFile()
-        let kcCreds = readKeychainCredsIfAllowed()
-
-        // Prefer the source whose token is still valid.
         if let f = fileCreds, !Self.isExpired(f) {
             cachedToken = f.accessToken
             return f.accessToken
         }
+
+        // File missing or stale. Now we have to consult the Keychain.
+        let kcCreds = readKeychainCredsIfAllowed()
         if let k = kcCreds, !Self.isExpired(k) {
             cachedToken = k.accessToken
             return k.accessToken
@@ -284,14 +287,14 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             }
             if await refreshTrigger.triggerRefreshIfAllowed() {
                 // Re-read after the CLI updates the Keychain (and
-                // possibly the file).
-                let f2 = Self.readStoredCredentialsFile()
-                let k2 = readKeychainCredsIfAllowed()
-                if let f = f2, !Self.isExpired(f) {
+                // possibly the file). Same file-first ordering — if the
+                // CLI rewrote the file we don't need to touch the
+                // Keychain again.
+                if let f = Self.readStoredCredentialsFile(), !Self.isExpired(f) {
                     cachedToken = f.accessToken
                     return f.accessToken
                 }
-                if let k = k2, !Self.isExpired(k) {
+                if let k = readKeychainCredsIfAllowed(), !Self.isExpired(k) {
                     cachedToken = k.accessToken
                     return k.accessToken
                 }
