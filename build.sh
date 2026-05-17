@@ -58,8 +58,33 @@ else
     echo "warning: Resources/AppIcon.icns missing — run tools/make-icon.sh" >&2
 fi
 
-echo "==> Ad-hoc codesign"
-codesign --force --deep --sign - "${APP_BUNDLE}"
+# Signing identity selection
+# ---------------------------
+# A stable self-signed identity keeps the Keychain ACL valid across rebuilds,
+# so /usage credentials don't trigger a Keychain prompt every restart in dev.
+# CI has no such identity in its login keychain and falls through to ad-hoc,
+# which keeps the private key off GitHub Actions entirely (a CI cert leak
+# would let an attacker sign a malicious QuotaMonitor that every end-user's
+# Mac silently trusts — local-only is the safer trade).
+#
+# One-time setup on a dev Mac (skip if QM_CODESIGN_IDENTITY is already set
+# to an existing identity):
+#   1. Open Keychain Access → Keychain Access menu → Certificate Assistant
+#      → Create a Certificate…
+#   2. Name: "QuotaMonitor Dev"
+#      Identity Type: Self Signed Root
+#      Certificate Type: Code Signing
+#   3. Continue → Done. Cert lands in the login keychain.
+#   4. Verify: `security find-identity -v -p codesigning` shows the name.
+SIGN_IDENTITY="${QM_CODESIGN_IDENTITY:-QuotaMonitor Dev}"
+if security find-identity -v -p codesigning 2>/dev/null \
+        | grep -q " \"${SIGN_IDENTITY}\""; then
+    echo "==> codesign with '${SIGN_IDENTITY}'"
+    codesign --force --deep --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
+else
+    echo "==> Ad-hoc codesign (identity '${SIGN_IDENTITY}' not found)"
+    codesign --force --deep --sign - "${APP_BUNDLE}"
+fi
 
 echo "==> Done: ${APP_BUNDLE}"
 echo "Run with: open '${APP_BUNDLE}'"
