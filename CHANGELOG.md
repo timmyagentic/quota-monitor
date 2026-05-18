@@ -7,6 +7,34 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.12] — 2026-05-19
+
+### Fixed
+- **Menu-bar label no longer collapses to the gauge icon when the
+  Codex CLI can't find `node`.** On nvm-managed setups, `node` lives
+  under `~/.nvm/versions/node/<version>/bin` — a path the spawned-
+  child PATH builder didn't know about, so the npm-installed `codex`
+  shell script (which starts with `#!/usr/bin/env node`) failed at
+  shebang resolution. The poller logged `env: node: No such file or
+  directory` followed by `stream ended before id=init` on every
+  attempt, `latestRateLimits` stayed nil forever, and the menu-bar
+  label fell back to the static gauge SF Symbol — looking like the
+  live-usage display had vanished. `AppServerClient` and
+  `ClaudeCLIRefreshTrigger` now each cache the user's interactive
+  login-shell PATH once per process (`$SHELL -ilc 'printf %s
+  "$PATH"'`) and splice it into the spawned child's environment, so
+  whatever the user's dotfiles add — nvm, asdf, rbenv, manual
+  prependers — comes along for the ride.
+- **Cold-launch menu bar warm-starts from the database.**
+  `startClaudePoller` already hydrated `latestClaudeUsage` from the
+  last persisted `rate_limit_samples` row before the first live poll
+  fired, but `startCodexPoller` didn't. Any cold launch where the
+  first Codex poll was slow or transiently failing left the menu-bar
+  label on the gauge fallback icon. A new `RateLimitsHydrator`
+  mirrors the Claude side, taking the max-per-(bucket, limit_name)
+  across `live` and `jsonl` source rows so the freshest stored
+  snapshot is rendered immediately on launch.
+
 ## [0.2.11] — 2026-05-18
 
 ### Added
