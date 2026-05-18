@@ -7,6 +7,39 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.11] — 2026-05-18
+
+### Added
+- **In-app uninstaller.** Settings → Advanced now has an "Uninstall
+  QuotaMonitor…" button that wipes everything the app owns under
+  `~/Library/` (Application Support, Preferences, Caches, Saved
+  Application State, HTTPStorages — for both the current
+  `dev.tjzhou.QuotaMonitor` bundle id and the legacy
+  `dev.tjzhou.CodexMonitor` id from before the rename), moves the
+  `.app` to Trash, and terminates. macOS has no first-party
+  uninstaller framework — Apple's "drag to Trash" only removes the
+  bundle and leaves orphan data behind, which is noticeably untidy
+  for a menu-bar app that writes a SQLite database. The button is
+  destructive-styled and gated behind a confirmation alert. The
+  Codex CLI's `~/.codex/` and Claude Code's `~/.claude/` directories
+  are deliberately not touched — they're owned by the upstream
+  tools, not by QuotaMonitor.
+
+### Fixed
+- **Onboarding is now a hard gate against premature Keychain
+  prompts and JSONL scans.** Before this release, on a fresh install
+  the menu-bar popover could trigger a refresh (which reads the
+  Claude Code Keychain credential and rescans local JSONL files)
+  before the user finished the onboarding wizard's "Tracked tools"
+  step. That meant the macOS Keychain ACL prompt could fire — for
+  data the user hadn't yet opted in to track — and a JSONL scan
+  could run against providers the user intended to disable. The
+  four entry points (`startBackgroundPolling`, `refreshRateLimits`,
+  `refreshClaudeUsage`, `runScan`) now short-circuit while
+  `hasCompletedProviderOnboarding` is false. The menu-bar popover
+  itself swaps in a lock screen with an "Open setup" button so the
+  user can't accidentally click Refresh either.
+
 ## [0.2.10] — 2026-05-18
 
 ### Added
