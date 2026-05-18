@@ -27,6 +27,7 @@ struct AdvancedSettingsTab: View {
     @State private var restoringPricing = false
     @State private var pricingStatusMessage: String?
     @State private var pricingErrorMessage: String?
+    @State private var showingUninstallConfirm = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -161,9 +162,37 @@ struct AdvancedSettingsTab: View {
                         .lineLimit(2)
                 }
             }
+
+            // Destructive — kept at the very bottom and behind a
+            // confirm alert. Replaces the (impossible-for-non-techies)
+            // task of cleaning ~/Library/Application Support,
+            // ~/Library/Preferences, etc. by hand after dragging the
+            // .app to Trash. See UninstallController.swift for the
+            // full list of paths.
+            Section(L10n.sectionUninstall) {
+                Button(role: .destructive) {
+                    showingUninstallConfirm = true
+                } label: {
+                    Text(L10n.uninstallButton)
+                        .foregroundStyle(.red)
+                }
+                Text(L10n.uninstallExplain)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .formStyle(.grouped)
         .padding(20)
+        .alert(L10n.uninstallConfirmTitle,
+               isPresented: $showingUninstallConfirm) {
+            Button(L10n.uninstallConfirmAction, role: .destructive) {
+                env.performUninstall()
+            }
+            Button(L10n.cancel, role: .cancel) { }
+        } message: {
+            Text(L10n.uninstallConfirmBody)
+        }
         .task {
             if !pricingLoaded {
                 pricingLoaded = true

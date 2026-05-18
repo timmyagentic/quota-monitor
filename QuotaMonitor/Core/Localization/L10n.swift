@@ -616,6 +616,28 @@ enum L10n {
           zh: "选择哪些工具的 5 小时与 7 日使用率显示在菜单栏图标上。两个都选会并排显示在一行，只选一个会更短，都不选则显示原本的表盘图标。")
     }
 
+    // MARK: - settings · advanced · uninstall
+
+    static var sectionUninstall: String { t(en: "Uninstall", zh: "卸载") }
+    static var uninstallButton: String {
+        t(en: "Uninstall Quota Monitor…", zh: "卸载 Quota Monitor…")
+    }
+    static var uninstallExplain: String {
+        t(en: "Removes the usage database, settings, and caches, then moves the app to Trash. Your ~/.codex and ~/.claude folders are not touched.",
+          zh: "删除使用记录数据库、设置和缓存，并将应用移到废纸篓。你的 ~/.codex 与 ~/.claude 目录不会被动。")
+    }
+    static var uninstallConfirmTitle: String {
+        t(en: "Uninstall Quota Monitor?", zh: "确认卸载 Quota Monitor？")
+    }
+    static var uninstallConfirmBody: String {
+        t(en: "This will permanently delete your local usage history and settings, then move the app to Trash. This cannot be undone.",
+          zh: "此操作会永久删除本地的使用历史与设置，并把应用移到废纸篓。无法撤销。")
+    }
+    static var uninstallConfirmAction: String {
+        t(en: "Uninstall", zh: "卸载")
+    }
+    static var cancel: String { t(en: "Cancel", zh: "取消") }
+
     // MARK: - settings · advanced · claude credentials mirror
 
     static var mirrorClaudeCredsLabel: String {
