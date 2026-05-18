@@ -134,6 +134,21 @@ final class AppEnvironment {
     /// no-op if it's already running.
     private func startCodexPoller(database db: DatabaseManager) {
         guard poller == nil else { return }
+        // Warm-start: hydrate the last persisted Codex snapshot from the
+        // DB so the menu bar has something to show before the first
+        // live poll lands (which can take seconds in the happy case and
+        // never in failure modes like the codex CLI's node shebang not
+        // resolving). Without this, `MenuBarLabelView` falls back to
+        // the gauge SF Symbol, which reads as "feature broken" rather
+        // than "fetching". Same pattern as `startClaudePoller`.
+        Task { [weak self] in
+            if let cached = try? await RateLimitsHydrator.loadLatest(database: db) {
+                await MainActor.run {
+                    guard let self, self.latestRateLimits == nil else { return }
+                    self.latestRateLimits = cached
+                }
+            }
+        }
         let interval = SettingsStore.snapshot().pollIntervalSeconds
         let p = RateLimitPoller(
             appServer: appServer,
