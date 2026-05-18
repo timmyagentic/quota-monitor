@@ -111,10 +111,25 @@ struct MenuBarContentView: View {
         // Text views, not text inside Button labels. Lets the user copy
         // a USD figure or a token count without screenshotting.
         .textSelection(.enabled)
-        // Refresh whenever the popover comes back into the foreground so the
-        // user always sees current stats without clicking Refresh.
+        // Refresh whenever the popover comes back into the foreground so
+        // the user always sees current stats without clicking Refresh.
+        // The button's three actions are mirrored here, but each carries
+        // a `minInterval` so popping the popover open three times in a
+        // row doesn't trigger three back-to-back JSONL scans + three
+        // app-server `/rateLimits/read` calls. The Refresh button itself
+        // still goes through with no gate (nil minInterval) because the
+        // user clicking it is explicit intent.
+        //
+        // refreshClaudeUsage / refreshMenuBar manage their own throttling
+        // internally (60s spam gap on the Claude poller, isLoadingMenuBar
+        // guard on the menu-bar reader) so they don't need an external
+        // gate here.
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { env.refreshMenuBar() }
+            guard phase == .active else { return }
+            env.refreshRateLimits(minInterval: 30)
+            env.refreshClaudeUsage()
+            env.runScan(minInterval: 20)
+            env.refreshMenuBar()
         }
     }
 

@@ -49,6 +49,18 @@ final class AppEnvironment {
     var lastPricingUpdateCount: Int?
     var lastError: String?
 
+    /// Timestamps that drive the auto-refresh-on-popover-open time gates.
+    /// The Refresh **button** never honours these — the user clicking
+    /// "Refresh" is an explicit intent and we always run. Only the
+    /// implicit popover-open path consults them, so reopening the
+    /// popover three times in five seconds doesn't trigger three back-
+    /// to-back file scans and three subprocess calls.
+    ///
+    /// Not `private` so ScanController (an extension in another file)
+    /// can stamp `lastScanAt` after a successful scan.
+    var lastRateLimitsRefreshAt: Date?
+    var lastScanAt: Date?
+
     /// Top-level provider filter applied to dashboard / sessions / history.
     /// Defaults to `.all` (union view).
     var providerFilter: ProviderFilter = .all {
@@ -247,13 +259,20 @@ final class AppEnvironment {
 
     // MARK: - actions
 
-    func refreshRateLimits() {
+    /// `minInterval` is honoured **only** by the auto-refresh-on-popover-open
+    /// caller (it passes a non-nil interval). The explicit Refresh button
+    /// passes nil → no gate → user-driven intent is never throttled.
+    func refreshRateLimits(minInterval: TimeInterval? = nil) {
         guard !isRefreshingRateLimits else { return }
         // The Refresh button is hidden when Codex is disabled, but a
         // stale binding (e.g. user disabled Codex while a refresh was
         // in flight) could still call this — guard so we don't spawn a
         // child app-server process the user has explicitly opted out of.
         guard SettingsStore.snapshot().enabledProviders.contains("codex") else { return }
+        if let interval = minInterval, let last = lastRateLimitsRefreshAt,
+           Date().timeIntervalSince(last) < interval {
+            return
+        }
         isRefreshingRateLimits = true
         lastError = nil
 
@@ -275,6 +294,7 @@ final class AppEnvironment {
                 let snapshot = RateLimitSnapshot(from: payload)
                 await MainActor.run {
                     self.latestRateLimits = snapshot
+                    self.lastRateLimitsRefreshAt = Date()
                     QuotaNotifier.shared.evaluate(snapshot: snapshot)
                 }
             } catch {
@@ -350,13 +370,8 @@ final class AppEnvironment {
                     self.billingBlocks = blocks
                 }
                 // Menu bar is provider-agnostic — refresh alongside the
-                // dashboard so price edits, scans, and filter toggles all
-                // keep both views in sync. Pass the BillingBlocks snapshot
-                // through when we already have it (filter != .codex) so
-                // the menu-bar path skips a redundant usage_events scan.
-                // When the dashboard filter is .codex, blocks is nil and
-                // refreshMenuBar still fetches fresh (the menu bar always
-                // wants the Claude block regardless of dashboard filter).
+                // dashboard so price edits, filter toggles, and settings
+                // changes keep both views in sync.
                 self.refreshMenuBar(precomputedBlocks: blocks)
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }

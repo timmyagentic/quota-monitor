@@ -5,8 +5,15 @@ import GRDB
 
 extension AppEnvironment {
 
-    func runScan() {
+    /// `minInterval` is honoured **only** by the auto-refresh-on-popover-open
+    /// caller. Refresh button presses pass nil → always run, because the
+    /// user expressing explicit intent should never be silently throttled.
+    func runScan(minInterval: TimeInterval? = nil) {
         guard !isScanning else { return }
+        if let interval = minInterval, let last = lastScanAt,
+           Date().timeIntervalSince(last) < interval {
+            return
+        }
         isScanning = true
         lastError = nil
 
@@ -53,13 +60,23 @@ extension AppEnvironment {
                     }
                     return merged
                 }
-                await MainActor.run { self.lastScanReport = merged }
-                // refreshDashboard() already chains to refreshMenuBar() at
-                // its tail. Calling refreshMenuBar() again here would
-                // cause two near-simultaneous DB reads — wasteful and
-                // occasionally produced flickering KPIs while the second
-                // load raced the first.
-                self.refreshDashboard()
+                await MainActor.run {
+                    self.lastScanReport = merged
+                    self.lastScanAt = Date()
+                }
+                // runScan() only fires from the popover (open + Refresh
+                // button), so we refresh only the menu bar here.
+                // Dashboard refreshes itself via `.task { refreshDashboard() }`
+                // when its window opens, and the Dashboard's own Refresh
+                // button is a separate path that doesn't go through runScan.
+                // Skipping the Dashboard's heavy aggregator query keeps the
+                // popover-triggered refresh cheap.
+                let blocks = try? await db.pool.read { conn in
+                    try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
+                }
+                await MainActor.run {
+                    self.refreshMenuBar(precomputedBlocks: blocks)
+                }
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }
             }
