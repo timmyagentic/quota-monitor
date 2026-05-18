@@ -7,6 +7,40 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.10] — 2026-05-18
+
+### Added
+- **Menu-bar popover auto-refreshes on open.** Opening the menu-bar
+  card now re-pulls Codex `/rateLimits/read`, Claude `/usage`, and
+  rescans the local JSONL files automatically — you no longer have
+  to click Refresh to see current numbers. Implicit triggers carry
+  per-action time gates (30 s on Codex, 20 s on the file scan) so
+  reopening the popover three times in five seconds doesn't spawn
+  three back-to-back refreshes; the Refresh button itself stays
+  un-throttled because clicking it is explicit intent.
+- **Claude 5-hour window idle placeholder.** When you have 7-day
+  Claude data but no 5-hour activity, the menu-bar card now shows
+  an explicit "idle" row instead of dropping the line entirely.
+
+### Changed
+- **Popover-triggered refresh skips the Dashboard's heavy aggregator
+  query.** `runScan()` only fires from the popover (open + Refresh
+  button) and the Dashboard refreshes itself when its window opens,
+  so chaining the Dashboard's aggregator off every popover refresh
+  was wasted work. The popover refresh now only updates the menu-bar
+  snapshot, making the Refresh button feel noticeably snappier.
+
+### Removed
+- **Quota threshold notification feature.** Settings → General →
+  Notifications and the per-reset desktop alert that fired the
+  first time a Codex rate-limit window crossed the threshold have
+  been removed. The feature only covered Codex (Claude 5h/7d windows
+  have different semantics and were never wired in), and the
+  menu-bar percentage is glanceable enough on its own. The stale
+  `settings.notifyThreshold` key in UserDefaults from older installs
+  is left alone — it's harmless dead bytes that the app no longer
+  reads.
+
 ## [0.2.9] — 2026-05-17
 
 ### Fixed
