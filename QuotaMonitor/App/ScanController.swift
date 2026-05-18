@@ -10,6 +10,11 @@ extension AppEnvironment {
     /// user expressing explicit intent should never be silently throttled.
     func runScan(minInterval: TimeInterval? = nil) {
         guard !isScanning else { return }
+        // Hard gate: don't touch ~/.codex or ~/.claude until the user
+        // has finished onboarding. Same rationale as the network
+        // refreshes in AppEnvironment — first-launch should see the
+        // setup wizard before anything starts probing user folders.
+        guard SettingsStore.snapshot().hasCompletedProviderOnboarding else { return }
         if let interval = minInterval, let last = lastScanAt,
            Date().timeIntervalSince(last) < interval {
             return

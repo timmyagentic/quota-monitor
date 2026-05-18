@@ -106,10 +106,19 @@ final class AppEnvironment {
     }
 
     /// Boot the background rate-limit poller. Idempotent.
+    ///
+    /// Hard-gated on onboarding completion so a fresh-install user
+    /// doesn't see a Keychain ACL prompt fire before the onboarding
+    /// window can render. `finishOnboarding` calls
+    /// `applyEnabledProviders()` (which routes through the
+    /// `startCodexPoller` / `startClaudePoller` entry points directly)
+    /// once the user clicks Continue, so the gate self-clears.
     func startBackgroundPolling() {
+        let snap = SettingsStore.snapshot()
+        guard snap.hasCompletedProviderOnboarding else { return }
         do {
             let (db, _) = try ensureServices()
-            let enabled = SettingsStore.snapshot().enabledProviders
+            let enabled = snap.enabledProviders
             if enabled.contains("codex") {
                 startCodexPoller(database: db)
             }
@@ -262,11 +271,18 @@ final class AppEnvironment {
     /// passes nil → no gate → user-driven intent is never throttled.
     func refreshRateLimits(minInterval: TimeInterval? = nil) {
         guard !isRefreshingRateLimits else { return }
+        let snap = SettingsStore.snapshot()
+        // Hard gate: nothing external runs until the user has finished
+        // onboarding. The popover's auto-refresh + the Refresh button
+        // both route through here, and we don't want either spawning a
+        // Codex app-server child before the user has even seen the
+        // setup wizard.
+        guard snap.hasCompletedProviderOnboarding else { return }
         // The Refresh button is hidden when Codex is disabled, but a
         // stale binding (e.g. user disabled Codex while a refresh was
         // in flight) could still call this — guard so we don't spawn a
         // child app-server process the user has explicitly opted out of.
-        guard SettingsStore.snapshot().enabledProviders.contains("codex") else { return }
+        guard snap.enabledProviders.contains("codex") else { return }
         if let interval = minInterval, let last = lastRateLimitsRefreshAt,
            Date().timeIntervalSince(last) < interval {
             return
@@ -306,7 +322,11 @@ final class AppEnvironment {
     /// via the `onSnapshot` callback. We surface nothing on a skip — a
     /// silently-dropped click is preferable to nag toasts.
     func refreshClaudeUsage() {
-        guard SettingsStore.snapshot().enabledProviders.contains("claude") else { return }
+        let snap = SettingsStore.snapshot()
+        // Hard gate: see `refreshRateLimits` — Keychain reads in
+        // particular must not fire before the onboarding window.
+        guard snap.hasCompletedProviderOnboarding else { return }
+        guard snap.enabledProviders.contains("claude") else { return }
         guard let cp = claudeUsagePoller else { return }
         Task { await cp.pollOnce() }
     }

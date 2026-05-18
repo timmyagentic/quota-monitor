@@ -593,6 +593,19 @@ enum L10n {
     }
     static var onboardingContinue: String { t(en: "Continue", zh: "继续") }
 
+    /// Popover lock screen shown while the onboarding window is open
+    /// (or was closed mid-setup). Replaces the entire normal popover
+    /// body so the user can't trigger refreshes, scans, or settings
+    /// before completing the wizard.
+    static var setupNotComplete: String {
+        t(en: "Setup not finished", zh: "设置尚未完成")
+    }
+    static var setupNotCompleteBody: String {
+        t(en: "Finish the setup wizard so Quota Monitor knows which tools to track.",
+          zh: "请先完成设置向导，Quota Monitor 才能知道要跟踪哪些工具。")
+    }
+    static var openSetup: String { t(en: "Open setup", zh: "打开设置向导") }
+
     // MARK: - settings · menu bar icon
 
     static var menuBarIconProviderLabel: String {

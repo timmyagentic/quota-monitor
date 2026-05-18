@@ -375,7 +375,12 @@ final class SettingsStore {
             keychainPolicy: (d.string(forKey: Keys.keychainPolicy)
                 .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback,
             mirrorClaudeKeychainToFile: d.bool(forKey: Keys.mirrorClaudeKeychainToFile),
-            enabledProviders: providers
+            enabledProviders: providers,
+            // SettingsStore.init writes the resolved value to this key on
+            // every launch (see `defaults.set(resolvedDone, …)` near the
+            // tail of `init`), so a raw `bool(forKey:)` is correct here —
+            // we don't need to re-run the heuristic.
+            hasCompletedProviderOnboarding: d.bool(forKey: Keys.providerOnboardingDone)
         )
     }
 
@@ -387,6 +392,7 @@ final class SettingsStore {
         let keychainPolicy: KeychainPolicy
         let mirrorClaudeKeychainToFile: Bool
         let enabledProviders: Set<String>
+        let hasCompletedProviderOnboarding: Bool
     }
 
     private enum Keys {

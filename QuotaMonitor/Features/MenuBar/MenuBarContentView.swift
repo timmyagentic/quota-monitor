@@ -16,6 +16,59 @@ struct MenuBarContentView: View {
     @State var showingErrors = false
 
     var body: some View {
+        Group {
+            // Onboarding is a hard gate: until the user has finished
+            // the wizard we replace the entire popover body with a
+            // lock screen. Refreshes, scans, and Settings are all
+            // disabled so a first-launch user can't accidentally fire
+            // a Keychain prompt or a JSONL scan before opting in.
+            // AppEnvironment.refresh*() / runScan() are independently
+            // guarded on the same flag (defense in depth), but
+            // swapping the UI is what stops the user from being
+            // confused about why nothing reacts.
+            if settings.needsProviderOnboarding {
+                onboardingLock
+            } else {
+                normalContent
+            }
+        }
+        .padding(14)
+        .frame(width: 360)
+        // Allow click-and-drag to select any number / label in the popover.
+        // Buttons stay clickable — `.textSelection` only affects standalone
+        // Text views, not text inside Button labels. Lets the user copy
+        // a USD figure or a token count without screenshotting.
+        .textSelection(.enabled)
+        // Refresh whenever the popover comes back into the foreground so
+        // the user always sees current stats without clicking Refresh.
+        // The button's three actions are mirrored here, but each carries
+        // a `minInterval` so popping the popover open three times in a
+        // row doesn't trigger three back-to-back JSONL scans + three
+        // app-server `/rateLimits/read` calls. The Refresh button itself
+        // still goes through with no gate (nil minInterval) because the
+        // user clicking it is explicit intent.
+        //
+        // refreshClaudeUsage / refreshMenuBar manage their own throttling
+        // internally (60s spam gap on the Claude poller, isLoadingMenuBar
+        // guard on the menu-bar reader) so they don't need an external
+        // gate here.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            // Onboarding gate — skip the auto-refresh fan-out entirely
+            // while the wizard is up. AppEnvironment's per-method
+            // guards would catch this too, but bailing at the source
+            // also avoids touching `SettingsStore.snapshot()` four
+            // times for a no-op.
+            guard !settings.needsProviderOnboarding else { return }
+            env.refreshRateLimits(minInterval: 30)
+            env.refreshClaudeUsage()
+            env.runScan(minInterval: 20)
+            env.refreshMenuBar()
+        }
+    }
+
+    @ViewBuilder
+    private var normalContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
 
@@ -104,32 +157,39 @@ struct MenuBarContentView: View {
             .controlSize(.regular)
             .keyboardShortcut(",")
         }
-        .padding(14)
-        .frame(width: 360)
-        // Allow click-and-drag to select any number / label in the popover.
-        // Buttons stay clickable — `.textSelection` only affects standalone
-        // Text views, not text inside Button labels. Lets the user copy
-        // a USD figure or a token count without screenshotting.
-        .textSelection(.enabled)
-        // Refresh whenever the popover comes back into the foreground so
-        // the user always sees current stats without clicking Refresh.
-        // The button's three actions are mirrored here, but each carries
-        // a `minInterval` so popping the popover open three times in a
-        // row doesn't trigger three back-to-back JSONL scans + three
-        // app-server `/rateLimits/read` calls. The Refresh button itself
-        // still goes through with no gate (nil minInterval) because the
-        // user clicking it is explicit intent.
-        //
-        // refreshClaudeUsage / refreshMenuBar manage their own throttling
-        // internally (60s spam gap on the Claude poller, isLoadingMenuBar
-        // guard on the menu-bar reader) so they don't need an external
-        // gate here.
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            env.refreshRateLimits(minInterval: 30)
-            env.refreshClaudeUsage()
-            env.runScan(minInterval: 20)
-            env.refreshMenuBar()
+    }
+
+    /// Placeholder content shown while `settings.needsProviderOnboarding`
+    /// is true. The onboarding Window is auto-opened by
+    /// `MenuBarLabelView.task`, but it can be dismissed via the title
+    /// bar close button — when that happens we still re-open it from
+    /// `onDisappear`, but the user might land here in the brief gap.
+    /// "Open setup" is the explicit escape hatch.
+    @ViewBuilder
+    private var onboardingLock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+            VStack(alignment: .leading, spacing: 6) {
+                Text(L10n.setupNotComplete)
+                    .font(.headline)
+                Text(L10n.setupNotCompleteBody)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 4)
+            Button {
+                env.activateForWindow()
+                openWindow(id: "onboarding")
+            } label: {
+                Label(L10n.openSetup, systemImage: "checklist")
+                    .frame(maxWidth: .infinity)
+            }
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+            Button(L10n.quit) { NSApplication.shared.terminate(nil) }
+                .keyboardShortcut("q")
+                .frame(maxWidth: .infinity)
         }
     }
 
