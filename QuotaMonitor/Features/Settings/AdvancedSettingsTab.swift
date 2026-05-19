@@ -31,7 +31,15 @@ struct AdvancedSettingsTab: View {
 
     var body: some View {
         @Bindable var settings = settings
+        // Hide a provider's whole section once it's untracked in
+        // General → Tracked tools. The poller is already off for
+        // disabled providers, so leaving binary-path / keychain knobs
+        // visible would just be dead controls — same logic that hides
+        // the provider's card from the menu bar and Dashboard.
+        let showCodex = settings.enabledProviders.contains("codex")
+        let showClaude = settings.enabledProviders.contains("claude")
         Form {
+            if showCodex {
             Section(L10n.sectionCodexCLI) {
                 LabeledContent(L10n.binaryPath) {
                     pathField(
@@ -75,7 +83,9 @@ struct AdvancedSettingsTab: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            }
 
+            if showClaude {
             Section(L10n.sectionClaudeCode) {
                 LabeledContent(L10n.claudeHomeLabel) {
                     pathField(
@@ -109,6 +119,7 @@ struct AdvancedSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
             }
 
             Section(L10n.sectionDatabase) {
