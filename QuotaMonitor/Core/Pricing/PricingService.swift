@@ -52,8 +52,40 @@ struct PricingEntry: Sendable, Hashable {
     }
 }
 
+/// Codex Fast-Mode billing multipliers. The Codex CLI doesn't surface
+/// per-call tier info in its JSONL output, so we can't detect Fast vs
+/// Standard at import time. Instead the user flips one global toggle in
+/// Settings → Advanced → Codex CLI ("Bill as Fast Mode"). When ON, every
+/// usage_events row whose model_id is one of these keys gets repriced
+/// with its base price × the listed multiplier.
+///
+/// **Why a hard-coded map, not catalog rows.** We seed synthetic
+/// `-fast` rows in `PricingSeed.entries` derived from these numbers so
+/// the catalog stays the single source of truth; `applyLiteLLMUpdate`
+/// keeps them in sync whenever the base row is refreshed.
+///
+/// Update this when OpenAI publishes a new Fast tier ratio or a new
+/// model gains a Fast variant — and tweak the seed rows below.
+enum CodexFastMode {
+    /// model_id → multiplier (applied to input, cached, output rates).
+    /// Empty for any model not listed (toggle effectively no-ops for it).
+    static let multipliers: [String: Double] = [
+        "gpt-5.5": 2.5,
+        "gpt-5.4": 2.0,
+    ]
+    /// Suffix appended to the base model_id to form the synthetic
+    /// catalog row that holds Fast-tier prices.
+    static let suffix = "-fast"
+}
+
 enum PricingSeed {
-    static let entries: [PricingEntry] = [
+    /// Concrete catalog entries shipped with the binary. Includes the
+    /// real model rows plus synthetic `*-fast` siblings derived from
+    /// `CodexFastMode.multipliers` so the Fast-Mode toggle can JOIN
+    /// against them directly.
+    static let entries: [PricingEntry] = base + fastVariants
+
+    private static let base: [PricingEntry] = [
         // Legacy fallback used by RolloutParser when no model_id was ever
         // recorded for a session. Matches openai.com gpt-5 pricing.
         .init(modelId: "gpt-5", displayName: "GPT-5 (legacy fallback)",
@@ -141,6 +173,34 @@ enum PricingSeed {
               note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
               sourceUrl: "https://www.anthropic.com/pricing")
     ]
+
+    /// Synthetic `*-fast` rows for every entry in `CodexFastMode.multipliers`.
+    /// We require the base model to exist in `base` so a typo in the
+    /// multiplier dict surfaces immediately rather than seeding zero
+    /// prices. Source URL points at the base model's pricing page (the
+    /// Fast tier multipliers don't have their own canonical doc).
+    private static let fastVariants: [PricingEntry] = {
+        let byId = Dictionary(uniqueKeysWithValues: base.map { ($0.modelId, $0) })
+        return CodexFastMode.multipliers.compactMap { (baseId, mul) -> PricingEntry? in
+            guard let b = byId[baseId] else {
+                assertionFailure("CodexFastMode multiplier references unknown base model '\(baseId)'")
+                return nil
+            }
+            return PricingEntry(
+                modelId: b.modelId + CodexFastMode.suffix,
+                displayName: "\(b.displayName) (Fast)",
+                inputPricePerMillion: b.inputPricePerMillion * mul,
+                cachedInputPricePerMillion: b.cachedInputPricePerMillion * mul,
+                outputPricePerMillion: b.outputPricePerMillion * mul,
+                cacheCreationPricePerMillion: b.cacheCreationPricePerMillion * mul,
+                effectiveModelId: b.effectiveModelId,
+                isOfficial: false,
+                note: "Codex Fast-Mode tier (= \(mul)× standard). Synthetic row used when 'Bill as Fast Mode' is enabled.",
+                sourceUrl: b.sourceUrl)
+        }
+        // Sort so seeding is deterministic across launches / test runs.
+        .sorted { $0.modelId < $1.modelId }
+    }()
 }
 
 enum PricingService {
@@ -200,7 +260,11 @@ enum PricingService {
     ///
     /// Returns the number of rows actually updated.
     @discardableResult
-    static func applyLiteLLMUpdate(entries: [LiteLLMEntry], in db: Database) throws -> Int {
+    static func applyLiteLLMUpdate(
+        entries: [LiteLLMEntry],
+        in db: Database,
+        codexFastModeBilling: Bool = false
+    ) throws -> Int {
         let now = ISO8601.fractional.string(from: Date())
 
         let existingIds = try String.fetchAll(db, sql:
@@ -264,10 +328,51 @@ enum PricingService {
                     modelId
                 ])
             updated += db.changesCount
+
+            // If this base model has a Fast-Mode variant, keep its
+            // synthetic `<model>-fast` row in sync. We re-derive the
+            // Fast prices from the *just-updated* base prices so a
+            // LiteLLM refresh that bumps gpt-5.5 also bumps
+            // gpt-5.5-fast (no drift between Standard and Fast).
+            // price_source on the fast row stays 'litellm' so a
+            // subsequent Restore Defaults won't blow it away unless
+            // the user truly intends that.
+            if let mul = CodexFastMode.multipliers[modelId] {
+                let fastId = modelId + CodexFastMode.suffix
+                try db.execute(sql: """
+                    UPDATE pricing_catalog
+                    SET input_price_per_million = ?,
+                        cached_input_price_per_million = ?,
+                        output_price_per_million = ?,
+                        cache_creation_price_per_million = ?,
+                        above_200k_input_price_per_million = ?,
+                        above_200k_output_price_per_million = ?,
+                        max_input_tokens = ?,
+                        max_output_tokens = ?,
+                        price_source = 'litellm',
+                        fetched_at = ?,
+                        updated_at = ?
+                    WHERE model_id = ? AND price_source != 'local'
+                    """, arguments: [
+                        inP * mul,
+                        cachedP * mul,
+                        outP * mul,
+                        (entry.perMillionCacheCreation ?? 0) * mul,
+                        entry.perMillionAbove200kInput.map { $0 * mul },
+                        entry.perMillionAbove200kOutput.map { $0 * mul },
+                        entry.maxInputTokens,
+                        entry.maxOutputTokens,
+                        now,
+                        now,
+                        fastId
+                    ])
+                updated += db.changesCount
+            }
         }
 
         if updated > 0 {
-            try backfillAllValues(in: db)
+            try backfillAllValues(in: db,
+                                  codexFastModeBilling: codexFastModeBilling)
         }
         return updated
     }
@@ -285,8 +390,17 @@ enum PricingService {
     ///     the cached rate, `cache_creation_input_tokens` is billed at the 5x
     ///     write rate. No subtraction needed.
     ///
+    /// When `codexFastModeBilling` is true, codex events whose model_id is in
+    /// `CodexFastMode.multipliers` are JOINed against the synthetic
+    /// `<model>-fast` catalog row instead of the base row, so the dollar
+    /// figure reflects the Fast-tier rate.
+    ///
     /// Cheap (sub-second for tens of thousands of rows).
-    static func backfillAllValues(in db: Database) throws {
+    static func backfillAllValues(
+        in db: Database,
+        codexFastModeBilling: Bool = false
+    ) throws {
+        let effectiveExpr = effectiveModelIdSQL(codexFastModeBilling: codexFastModeBilling)
         try db.execute(sql: """
             UPDATE usage_events
             SET value_usd = (
@@ -312,12 +426,45 @@ enum PricingService {
                       ) / 1000000.0
                   END
               FROM pricing_catalog pc
-              WHERE pc.model_id = usage_events.model_id
+              WHERE pc.model_id = \(effectiveExpr)
             )
             WHERE EXISTS (
               SELECT 1 FROM pricing_catalog pc
-              WHERE pc.model_id = usage_events.model_id
+              WHERE pc.model_id = \(effectiveExpr)
             )
             """)
+    }
+
+    /// SQL expression that resolves to the catalog `model_id` we should
+    /// price this event against. When Fast-Mode is off (or the event
+    /// isn't codex / isn't a model with a Fast variant), it's just
+    /// `usage_events.model_id`. When Fast-Mode is on for a recognised
+    /// codex model, it becomes `usage_events.model_id || '-fast'`.
+    ///
+    /// We string-interpolate the model id list and the suffix because
+    /// they're code-controlled (sourced from `CodexFastMode`), never
+    /// user input. Single-quote escaping is unnecessary here, but the
+    /// model id assertion below makes the assumption explicit.
+    private static func effectiveModelIdSQL(codexFastModeBilling: Bool) -> String {
+        guard codexFastModeBilling,
+              !CodexFastMode.multipliers.isEmpty else {
+            return "usage_events.model_id"
+        }
+        // Determinism + simpler diffs.
+        let ids = CodexFastMode.multipliers.keys.sorted()
+        for id in ids {
+            assert(!id.contains("'"),
+                   "CodexFastMode multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
+        }
+        let quoted = ids.map { "'\($0)'" }.joined(separator: ",")
+        let suffix = CodexFastMode.suffix
+        return """
+        CASE
+          WHEN usage_events.provider = 'codex'
+               AND usage_events.model_id IN (\(quoted))
+          THEN usage_events.model_id || '\(suffix)'
+          ELSE usage_events.model_id
+        END
+        """
     }
 }

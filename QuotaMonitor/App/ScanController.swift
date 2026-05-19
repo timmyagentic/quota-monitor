@@ -29,7 +29,9 @@ extension AppEnvironment {
             do {
                 let (db, engine) = try self.ensureServices()
                 let claude = self.claudeEngine
-                let enabled = SettingsStore.snapshot().enabledProviders
+                let snap = SettingsStore.snapshot()
+                let enabled = snap.enabledProviders
+                let fastMode = snap.codexFastModeBilling
                 // Hard 5-minute cap so a runaway parser (e.g. a hundreds-of-MB
                 // rollout from a still-active Codex session) can't strand
                 // `isScanning = true` and freeze the Refresh button forever.
@@ -62,7 +64,10 @@ extension AppEnvironment {
                     // Skip when nothing changed — backfill is sub-second, but
                     // it still pulls a write lock and walks every event row.
                     if merged.changedFiles > 0 {
-                        try await db.pool.write { try PricingService.backfillAllValues(in: $0) }
+                        try await db.pool.write {
+                            try PricingService.backfillAllValues(
+                                in: $0, codexFastModeBilling: fastMode)
+                        }
                     }
                     return merged
                 }

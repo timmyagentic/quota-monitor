@@ -220,6 +220,99 @@ struct PricingValueBackfillTests {
                 "second backfill must not change values (formula is pure)")
     }
 
+    // MARK: - codex Fast-Mode billing remaps to -fast catalog row
+
+    @Test("codex Fast-Mode: gpt-5.5 event reprices against gpt-5.5-fast catalog row")
+    func codexFastModeRoutesToFastVariant() throws {
+        let db = try makeDatabase()
+        // Standard rate (matches base PricingSeed shape; numbers chosen
+        // so the maths is hand-verifiable).
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        // Synthetic fast row = 2.5× base (mirrors `CodexFastMode.multipliers`).
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        // 1_000_000 input, 0 cached, 1_000_000 output:
+        //   Standard: 1*5 + 0 + 1*30 = $35.00
+        //   Fast:     1*12.5 + 0 + 1*75 = $87.50  (= 35 * 2.5)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000)
+
+        // Standard billing leaves us at $35.
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+        let standard = try valueUSD(in: db)
+        #expect(abs(standard[0] - 35.00) < 1e-6,
+                "standard-tier expected 35.00, got \(standard[0])")
+
+        // Fast-mode flips the JOIN to gpt-5.5-fast → $87.50.
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let fast = try valueUSD(in: db)
+        #expect(abs(fast[0] - 87.50) < 1e-6,
+                "fast-tier expected 87.50 (= 35 * 2.5), got \(fast[0])")
+
+        // And toggling back puts us right where we started — the flag
+        // is the only thing that changed, not the event row.
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+        let backToStandard = try valueUSD(in: db)
+        #expect(abs(backToStandard[0] - 35.00) < 1e-6,
+                "toggling Fast-Mode off must restore standard pricing")
+    }
+
+    @Test("codex Fast-Mode: only listed models reroute; gpt-5-codex stays on its own row")
+    func codexFastModeIgnoresUnlistedModels() throws {
+        let db = try makeDatabase()
+        // gpt-5-codex is NOT in CodexFastMode.multipliers, so even when
+        // the flag is on it should JOIN against its base row.
+        try insertPriceRow(in: db, modelId: "gpt-5-codex",
+                           input: 1.25, cached: 0.125, output: 10.00)
+        // We intentionally also seed an unrelated `-fast` row to prove
+        // the JOIN is not falling back to "any *-fast row".
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 99.00, cached: 99.00, output: 99.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5-codex",
+                             input: 1_000_000, cached: 0, output: 1_000_000)
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let values = try valueUSD(in: db)
+        // 1 * 1.25 + 1 * 10.00 = 11.25
+        #expect(abs(values[0] - 11.25) < 1e-6,
+                "unlisted codex model must price against its base row even with fast mode on, got \(values[0])")
+    }
+
+    @Test("claude events ignore codex Fast-Mode flag")
+    func claudeUntouchedByCodexFastMode() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "claude-test",
+                           input: 3.00, cached: 0.30,
+                           output: 15.00, cacheCreation: 3.75)
+        // Distractor: even if a claude model id happened to collide
+        // with a CodexFastMode key, the provider='codex' guard in the
+        // CASE blocks the remap. We don't have such a collision today,
+        // but the test pins the contract.
+        try insertUsageEvent(in: db, provider: "claude", modelId: "claude-test",
+                             input: 100_000, cached: 50_000,
+                             output: 200_000, cacheCreation: 10_000)
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let values = try valueUSD(in: db)
+        // Same math as the additive-claude test: 0.30 + 0.015 + 0.0375 + 3.00 = 3.3525
+        #expect(abs(values[0] - 3.3525) < 1e-6,
+                "claude event must not be affected by codex Fast-Mode, got \(values[0])")
+    }
+
     // MARK: - price edit propagates
 
     @Test("after editing a price, backfill recomputes only matching rows")

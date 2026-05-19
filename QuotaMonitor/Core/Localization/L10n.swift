@@ -493,6 +493,17 @@ enum L10n {
         t(en: "How often Codex's local rate-limit quota is fetched. Claude's quota is polled separately every 2 hours and isn't affected by this.",
           zh: "多久从本地 Codex 拉取一次速率限制配额。Claude 的配额由独立的 2 小时间隔拉取，不受此设置影响。")
     }
+    // Codex Fast-Mode billing — Codex CLI's JSONL doesn't surface tier
+    // per turn, so the user toggles their account-wide billing mode
+    // here. ON means every GPT-5.5 / GPT-5.4 call is repriced at the
+    // Fast tier (2.5× / 2× standard). History is recomputed on flip.
+    static var codexFastModeBillingLabel: String {
+        t(en: "Bill as Fast Mode", zh: "按 Fast Mode 计费")
+    }
+    static var codexFastModeBillingHelp: String {
+        t(en: "Codex CLI doesn't record per-call tier, so this toggle is global. When ON, every GPT-5.5 call is priced at 2.5× standard and every GPT-5.4 call at 2× — including historical events. Leave OFF if you're on the standard tier.",
+          zh: "Codex CLI 的日志里没有逐次记录是否为 Fast Mode，所以这个开关是全局生效。打开后，所有 GPT-5.5 调用按 2.5 倍标准价计费、GPT-5.4 按 2 倍计费，并会回填历史记录。如果你用的是标准档位，保持关闭即可。")
+    }
     static var sectionDatabase: String { t(en: "Database", zh: "数据库") }
     static var sectionExport: String { t(en: "Export", zh: "导出") }
 

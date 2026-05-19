@@ -82,6 +82,23 @@ struct AdvancedSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                // Global Fast-Mode billing toggle. Sits with the rest of
+                // the Codex-only knobs (binary path, CODEX_HOME, poll
+                // cadence) because it's a power-user setting tied
+                // specifically to how Codex meters their usage. Live-
+                // applied: env.applyCodexFastModeBilling() re-runs the
+                // value backfill so menu bar + dashboard reflect the new
+                // dollar totals without a relaunch.
+                Toggle(L10n.codexFastModeBillingLabel,
+                       isOn: $settings.codexFastModeBilling)
+                    .onChange(of: settings.codexFastModeBilling) { _, _ in
+                        env.applyCodexFastModeBilling()
+                    }
+                Text(L10n.codexFastModeBillingHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             }
 

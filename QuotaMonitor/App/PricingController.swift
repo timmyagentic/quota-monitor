@@ -37,8 +37,11 @@ extension AppEnvironment {
 
         let (db, _) = try ensureServices()
         let entries = try await pricingSource.fetch()
+        let fastMode = SettingsStore.snapshot().codexFastModeBilling
         let updated = try await db.pool.write { conn in
-            try PricingService.applyLiteLLMUpdate(entries: entries, in: conn)
+            try PricingService.applyLiteLLMUpdate(
+                entries: entries, in: conn,
+                codexFastModeBilling: fastMode)
         }
         // Stamp the most-recent fetched_at we can see (any non-local row).
         let latest = try await db.pool.read { conn -> Date? in
@@ -57,11 +60,35 @@ extension AppEnvironment {
 
     func restorePricingDefaults() async throws {
         let (db, _) = try ensureServices()
+        let fastMode = SettingsStore.snapshot().codexFastModeBilling
         try await db.pool.write { conn in
             try PricingService.seedCatalog(in: conn)
-            try PricingService.backfillAllValues(in: conn)
+            try PricingService.backfillAllValues(
+                in: conn, codexFastModeBilling: fastMode)
         }
         refreshDashboard()
+    }
+
+    /// Re-price every event under the new Codex Fast-Mode setting and
+    /// refresh menu-bar + dashboard so the user sees the new dollar
+    /// totals immediately. Called from the Advanced tab toggle's
+    /// `onChange`. Swallows errors into `lastError` rather than throwing
+    /// so a transient DB hiccup doesn't crash the settings sheet.
+    func applyCodexFastModeBilling() {
+        Task {
+            do {
+                let (db, _) = try ensureServices()
+                let fastMode = SettingsStore.shared.codexFastModeBilling
+                try await db.pool.write { conn in
+                    try PricingService.backfillAllValues(
+                        in: conn, codexFastModeBilling: fastMode)
+                }
+                refreshDashboard()
+                refreshMenuBar()
+            } catch {
+                self.lastError = "Codex Fast-Mode billing apply failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     func loadPricingCatalog() async throws -> [PricingCatalogRow] {

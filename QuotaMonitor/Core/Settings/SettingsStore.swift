@@ -94,6 +94,23 @@ final class SettingsStore {
         didSet { defaults.set(tokenUnitLanguage.rawValue,
                               forKey: Keys.tokenUnitLanguage) }
     }
+    /// Global override for Codex CLI billing tier. Codex's JSONL output
+    /// does not record whether a given turn used Fast Mode, so we can't
+    /// auto-detect per call. When ON, the value-backfill SQL routes
+    /// every event for the models listed in `CodexFastMode.multipliers`
+    /// (currently GPT-5.5 → 2.5×, GPT-5.4 → 2.0×) to a synthetic
+    /// `<model>-fast` catalog row so the dollar figure reflects the
+    /// Fast-tier rate. Toggling re-runs `backfillAllValues` so history
+    /// is recomputed end-to-end — a flip changes every prior chart and
+    /// the menu-bar headline immediately.
+    ///
+    /// Default OFF: most Codex users are on Standard, and we don't want
+    /// to silently inflate the $ for someone who never enabled Fast
+    /// Mode on the OpenAI side.
+    var codexFastModeBilling: Bool {
+        didSet { defaults.set(codexFastModeBilling,
+                              forKey: Keys.codexFastModeBilling) }
+    }
     /// Which provider's quota fills the menu-bar icon (one row per
     /// window: 5h + 7d, "X% used"). Multi-select — the user can show
     /// one provider, both side-by-side, or neither (in which case the
@@ -247,6 +264,11 @@ final class SettingsStore {
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.tokenUnitLanguage = (defaults.string(forKey: Keys.tokenUnitLanguage)
             .flatMap(TokenUnitLanguage.init(rawValue:))) ?? .followLanguage
+        // Default false. A missing key reads as false via
+        // `defaults.bool(forKey:)`, which is exactly what we want for
+        // fresh installs and existing users (we don't enable Fast
+        // billing for anyone who hasn't asked for it).
+        self.codexFastModeBilling = defaults.bool(forKey: Keys.codexFastModeBilling)
         // Enabled providers — defaults to the full set so an old build
         // upgrading to this binary keeps tracking both. We sanitise to
         // drop unknown tokens (future renames / deletions) and refuse
@@ -446,6 +468,7 @@ final class SettingsStore {
                 .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback,
             mirrorClaudeKeychainToFile: d.bool(forKey: Keys.mirrorClaudeKeychainToFile),
             enabledProviders: providers,
+            codexFastModeBilling: d.bool(forKey: Keys.codexFastModeBilling),
             // SettingsStore.init writes the resolved value to this key on
             // every launch (see `defaults.set(resolvedDone, …)` near the
             // tail of `init`), so a raw `bool(forKey:)` is correct here —
@@ -462,6 +485,7 @@ final class SettingsStore {
         let keychainPolicy: KeychainPolicy
         let mirrorClaudeKeychainToFile: Bool
         let enabledProviders: Set<String>
+        let codexFastModeBilling: Bool
         let hasCompletedProviderOnboarding: Bool
     }
 
@@ -475,6 +499,7 @@ final class SettingsStore {
         static let showDockIconForWindows = "settings.showDockIconForWindows"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"
+        static let codexFastModeBilling = "settings.codexFastModeBilling"
         // Multi-select store (current). Persisted as `[String]`.
         static let menuBarIconProviders = "settings.menuBarIconProviders"
         // Legacy single-string key (pre-multi-select). Read-only — we
