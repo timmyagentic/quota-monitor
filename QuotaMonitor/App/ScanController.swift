@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import GRDB
 
@@ -69,18 +70,27 @@ extension AppEnvironment {
                     self.lastScanReport = merged
                     self.lastScanAt = Date()
                 }
-                // runScan() only fires from the popover (open + Refresh
-                // button), so we refresh only the menu bar here.
-                // Dashboard refreshes itself via `.task { refreshDashboard() }`
-                // when its window opens, and the Dashboard's own Refresh
-                // button is a separate path that doesn't go through runScan.
-                // Skipping the Dashboard's heavy aggregator query keeps the
-                // popover-triggered refresh cheap.
+                // runScan() typically fires from the popover (open +
+                // Refresh button). Always refresh the menu bar; only
+                // refresh the Dashboard when its window is actually
+                // visible, since `loadDashboard` is a much heavier
+                // aggregator query and would be wasted work if no one
+                // is looking. When the Dashboard *is* open, skipping
+                // the refresh used to leave it lagging behind the
+                // menu-bar card until the user re-focused the window.
                 let blocks = try? await db.pool.read { conn in
                     try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
                 }
+                let dashboardVisible = await MainActor.run {
+                    NSApp.windows.contains { w in
+                        w.identifier?.rawValue == "dashboard" && w.isVisible
+                    }
+                }
                 await MainActor.run {
                     self.refreshMenuBar(precomputedBlocks: blocks)
+                    if dashboardVisible {
+                        self.refreshDashboard()
+                    }
                 }
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }

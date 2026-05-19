@@ -41,6 +41,13 @@ final class AppEnvironment {
     /// Always reflects the union view, never affected by `providerFilter`.
     var menuBarSnapshot: MenuBarSnapshot?
     var isLoadingMenuBar = false
+    /// Coalescing flag for `refreshMenuBar`. When a refresh is requested
+    /// while another is in flight, we set this and bail; the current
+    /// task notices it in its `defer` and fires one trailing re-run so
+    /// chained callers (refreshDashboard, runScan) can't be silently
+    /// dropped. At most one queued re-run — `true` stays `true` whether
+    /// 1 or 10 calls arrived during the in-flight window.
+    private var menuBarRefreshPending = false
     var isRefreshingRateLimits = false
     var isScanning = false
     var isLoadingDashboard = false
@@ -356,11 +363,29 @@ final class AppEnvironment {
     /// "no shared result, fetch fresh" — that's the right default for the
     /// stand-alone paths (popover open, scan completion, scenePhase wakeup).
     func refreshMenuBar(precomputedBlocks: BillingBlocks.Snapshot? = nil) {
-        guard !isLoadingMenuBar else { return }
+        guard !isLoadingMenuBar else {
+            // Coalesce: a refresh is already running. Mark a trailing
+            // re-run so the chained call (typically from
+            // `refreshDashboard` / `runScan` tail) doesn't get silently
+            // dropped — which used to leave `menuBarSnapshot` lagging
+            // one tick behind `dashboardSnapshot`. The trailing call
+            // can't reuse `precomputedBlocks` (they may be stale by
+            // the time it fires) so it'll re-read BillingBlocks.
+            menuBarRefreshPending = true
+            return
+        }
         isLoadingMenuBar = true
         Task { [weak self] in
             guard let self else { return }
-            defer { Task { @MainActor in self.isLoadingMenuBar = false } }
+            defer {
+                Task { @MainActor in
+                    self.isLoadingMenuBar = false
+                    if self.menuBarRefreshPending {
+                        self.menuBarRefreshPending = false
+                        self.refreshMenuBar()
+                    }
+                }
+            }
             do {
                 let (db, _) = try self.ensureServices()
                 let snap: MenuBarSnapshot = try await db.pool.read { conn in
