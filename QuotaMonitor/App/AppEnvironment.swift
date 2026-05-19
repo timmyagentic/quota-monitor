@@ -464,19 +464,17 @@ final class AppEnvironment {
 
     /// Re-apply the activation policy based on the current setting.
     /// Called from the Settings toggle's binding so a flip takes
-    /// effect without requiring the user to close and reopen a
-    /// window. Looks at `NSApp.windows` to decide whether any
-    /// app-owned window is currently on screen.
+    /// effect immediately. Looks at `NSApp.windows` to decide whether
+    /// any app-owned window is currently on screen.
     ///
-    /// One-way live: only `.accessory → .regular` flips happen here.
-    /// The reverse path closes the very window the user is interacting
-    /// with — macOS deactivates the app when it leaves Dock-icon
-    /// territory, and SwiftUI's `Settings` scene takes that as a cue
-    /// to close itself. So when the user toggles OFF with windows
-    /// open, we leave the Dock icon visible until they close the
-    /// window naturally; `demoteToAccessory()` then drops back to
-    /// `.accessory` on close. Accepted trade-off vs. yanking the
-    /// window out from under their cursor.
+    /// Bidirectional now that Settings is a plain `Window(id:)` scene
+    /// rather than `Settings { }`. The previous implementation only
+    /// promoted because demoting under `Settings { }` made macOS
+    /// deactivate the app, which SwiftUI took as a cue to close the
+    /// very Settings window the user was toggling — yanking the
+    /// window out from under their cursor. Regular `Window` scenes
+    /// survive that deactivation, so demoting on toggle OFF is safe
+    /// and matches the "immediate effect" UX users expect.
     func applyDockIconPolicy() {
         let anyWindowOpen = NSApp.windows.contains { win in
             guard win.isVisible else { return false }
@@ -504,9 +502,13 @@ final class AppEnvironment {
         guard anyWindowOpen else { return }
         if SettingsStore.shared.showDockIconForWindows {
             NSApp.setActivationPolicy(.regular)
+        } else {
+            // Toggle OFF with a window still open: drop the Dock icon
+            // right now. The Settings window stays put because it's a
+            // `Window(id:)` scene, not the auto-closing `Settings { }`
+            // scene the old code had to dance around.
+            NSApp.setActivationPolicy(.accessory)
         }
-        // No demote branch — see one-way-live note above. Deferred
-        // to `demoteToAccessory()` on next window close.
     }
 
     // MARK: - timeout helper

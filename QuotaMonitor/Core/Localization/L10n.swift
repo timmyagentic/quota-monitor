@@ -29,6 +29,10 @@ enum L10n {
     static var reload: String { t(en: "Reload", zh: "重新加载") }
     static var openDashboard: String { t(en: "Open Dashboard", zh: "打开仪表盘") }
     static var settingsMenuItem: String { t(en: "Settings…", zh: "设置…") }
+    /// Window title for the Settings scene. Distinct from `settingsMenuItem`
+    /// because window titles don't take the trailing ellipsis (which is a
+    /// macOS HIG convention reserved for menu items that open further UI).
+    static var settingsWindowTitle: String { t(en: "Settings", zh: "设置") }
     static var quit: String { t(en: "Quit", zh: "退出") }
     static var copy: String { t(en: "Copy", zh: "复制") }
     static var copyAll: String { t(en: "Copy all", zh: "全部复制") }

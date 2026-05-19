@@ -98,7 +98,17 @@ struct QuotaMonitorApp: App {
         }
         .defaultSize(width: 980, height: 680)
 
-        Settings {
+        // Settings is a regular `Window` scene rather than SwiftUI's
+        // special-purpose `Settings { }` scene. The latter closes
+        // itself whenever the app deactivates (which is what
+        // `setActivationPolicy(.accessory)` triggers), and that
+        // collision made the "Show Dock icon when windows are open"
+        // toggle untenable — flipping it OFF inside Settings would
+        // yank the very window the user was interacting with. As a
+        // regular Window the Settings scene stays open across
+        // activation-policy flips, so `applyDockIconPolicy()` can
+        // demote immediately on toggle OFF.
+        Window(L10n.settingsWindowTitle, id: "settings") {
             SettingsView()
                 .environment(environment)
                 .environment(localization)
@@ -110,5 +120,6 @@ struct QuotaMonitorApp: App {
         // view's min/ideal frame allows. Without this the scene defaults
         // can clamp the window to its first measurement and ignore drag.
         .windowResizability(.contentMinSize)
+        .defaultPosition(.center)
     }
 }

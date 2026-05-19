@@ -11,7 +11,6 @@ struct MenuBarContentView: View {
     @Environment(AppEnvironment.self) var env
     @Environment(SettingsStore.self) var settings
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.scenePhase) private var scenePhase
     @State var showingErrors = false
 
@@ -140,16 +139,15 @@ struct MenuBarContentView: View {
             .controlSize(.large)
             .keyboardShortcut("d")
 
-            // macOS 14+ official entry point. The previous
-            // `NSApp.sendAction(Selector(("showSettingsWindow:")), …)`
-            // hack silently no-op'd because the private selector was
-            // retired in macOS 14, which is why this button "did
-            // nothing" before. `openSettings` is the SwiftUI environment
-            // action that replaces it. activateForWindow() runs first
-            // so the Settings window comes forward over the menu popover.
+            // Settings is a regular `Window(id: "settings")` scene
+            // (see QuotaMonitorApp.swift for why) so we open it by id
+            // rather than via SwiftUI's `openSettings` action — that
+            // action only targets a `Settings { }` scene, which we
+            // explicitly don't have. activateForWindow() runs first so
+            // the Settings window comes forward over the menu popover.
             Button {
                 env.activateForWindow()
-                openSettings()
+                openWindow(id: "settings")
             } label: {
                 Label(L10n.settingsMenuItem, systemImage: "gearshape")
                     .frame(maxWidth: .infinity)

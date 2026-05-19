@@ -42,5 +42,12 @@ struct SettingsView: View {
         // Form controls (Toggle / Picker / Stepper labels) are unaffected
         // because they render as control text, not Text.
         .textSelection(.enabled)
+        // Pure menu-bar agent unless another window is still up. Mirrors
+        // MainWindowView's onDisappear — closing Settings shouldn't leave
+        // a stale Dock icon behind once the Dashboard is also closed.
+        // `demoteToAccessory()` itself checks for any visible non-popover
+        // window before flipping the policy, so this is safe to call
+        // unconditionally.
+        .onDisappear { env.demoteToAccessory() }
     }
 }
