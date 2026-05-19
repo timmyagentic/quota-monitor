@@ -7,6 +7,8 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.12] — 2026-05-19
+
 ### Added
 - **Dock icon visibility toggle.** Settings → General → Appearance
   now has a "Show Dock icon when windows are open" toggle, default
