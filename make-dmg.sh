@@ -42,4 +42,7 @@ hdiutil create \
     -format UDZO \
     "${DMG_PATH}" >/dev/null
 
+( cd "${DIST_DIR}" && shasum -a 256 "${DMG_NAME}" > "${DMG_NAME}.sha256" )
+
 echo "==> Done: ${DMG_PATH} ($(du -h "${DMG_PATH}" | cut -f1))"
+echo "==> SHA256: $(cut -d' ' -f1 < "${DMG_PATH}.sha256")"
