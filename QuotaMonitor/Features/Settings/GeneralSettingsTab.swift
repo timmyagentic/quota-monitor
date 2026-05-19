@@ -74,22 +74,25 @@ struct GeneralSettingsTab: View {
                     .foregroundStyle(.secondary)
 
                 // Which provider(s) the menu-bar slot displays. Multi-
-                // select: pick one, both, or neither (empty set falls
-                // back to the gauge SF Symbol). We only render the
-                // picker when at least two providers are enabled —
-                // with one enabled the choice trivially collapses.
-                if settings.enabledProviders.count > 1 {
-                    LabeledContent(L10n.menuBarIconProviderLabel) {
-                        VStack(alignment: .trailing, spacing: 4) {
+                // select: pick one, both (when both are tracked), or
+                // neither — an empty set is a valid resting state and
+                // falls back to the gauge SF Symbol. Only render a
+                // toggle for each currently-tracked provider; a
+                // disabled tool can't sensibly appear in the menu bar.
+                LabeledContent(L10n.menuBarIconProviderLabel) {
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if settings.enabledProviders.contains("codex") {
                             iconProviderToggle(id: "codex", label: L10n.codex)
+                        }
+                        if settings.enabledProviders.contains("claude") {
                             iconProviderToggle(id: "claude", label: L10n.claudeCode)
                         }
-                        .frame(maxWidth: 220, alignment: .trailing)
                     }
-                    Text(L10n.menuBarIconProviderHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .frame(maxWidth: 220, alignment: .trailing)
                 }
+                Text(L10n.menuBarIconProviderHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             // Tracked tools — let users hide a CLI they don't have
