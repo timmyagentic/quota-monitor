@@ -417,6 +417,37 @@ final class AppEnvironment {
         NSApp.setActivationPolicy(.accessory)
     }
 
+    /// Re-apply the activation policy based on the current setting.
+    /// Called from the Settings toggle's binding so a flip takes
+    /// effect without requiring the user to close and reopen a
+    /// window. Looks at `NSApp.windows` to decide whether any
+    /// app-owned window is currently on screen; if so and the
+    /// setting just turned ON, promotes to `.regular`; if so and
+    /// the setting just turned OFF, demotes to `.accessory`. If no
+    /// app-owned window is visible, leaves the policy alone — the
+    /// next `activateForWindow()` call will pick up the value.
+    func applyDockIconPolicy() {
+        let anyWindowOpen = NSApp.windows.contains { win in
+            // Skip the menu-bar popover host (NSStatusBarWindow and
+            // friends are private classes; matching the class-name
+            // prefix avoids depending on a specific symbol). The
+            // popover is a transient panel, not the kind of window
+            // we're tracking here.
+            guard win.isVisible else { return false }
+            let cls = NSStringFromClass(type(of: win))
+            if cls.contains("StatusBar") || cls.contains("Popover") {
+                return false
+            }
+            return true
+        }
+        guard anyWindowOpen else { return }
+        if SettingsStore.shared.showDockIconForWindows {
+            NSApp.setActivationPolicy(.regular)
+        } else {
+            NSApp.setActivationPolicy(.accessory)
+        }
+    }
+
     // MARK: - timeout helper
 
     /// Hard time-bound for long-running async work. Race the operation against
