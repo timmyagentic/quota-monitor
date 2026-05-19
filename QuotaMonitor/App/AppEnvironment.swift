@@ -425,10 +425,15 @@ final class AppEnvironment {
     }
 
     /// Demote back to a menu-bar-only app once the last window closes.
-    /// No-op when `showDockIconForWindows` is OFF — we never promoted
-    /// past `.accessory` in the first place.
+    /// Gates on the *current* policy rather than the setting: in the
+    /// normal flow (setting ON, we promoted on open) the policy is
+    /// `.regular` and we demote; in the mid-session-toggle-OFF flow
+    /// (`applyDockIconPolicy` deferred the demote to here) the policy
+    /// is also `.regular`, so this still fires. With the setting OFF
+    /// the whole time we never promoted, the policy is already
+    /// `.accessory`, and we no-op.
     func demoteToAccessory() {
-        guard SettingsStore.shared.showDockIconForWindows else { return }
+        guard NSApp.activationPolicy() == .regular else { return }
         NSApp.setActivationPolicy(.accessory)
     }
 
@@ -436,11 +441,17 @@ final class AppEnvironment {
     /// Called from the Settings toggle's binding so a flip takes
     /// effect without requiring the user to close and reopen a
     /// window. Looks at `NSApp.windows` to decide whether any
-    /// app-owned window is currently on screen; if so and the
-    /// setting just turned ON, promotes to `.regular`; if so and
-    /// the setting just turned OFF, demotes to `.accessory`. If no
-    /// app-owned window is visible, leaves the policy alone — the
-    /// next `activateForWindow()` call will pick up the value.
+    /// app-owned window is currently on screen.
+    ///
+    /// One-way live: only `.accessory → .regular` flips happen here.
+    /// The reverse path closes the very window the user is interacting
+    /// with — macOS deactivates the app when it leaves Dock-icon
+    /// territory, and SwiftUI's `Settings` scene takes that as a cue
+    /// to close itself. So when the user toggles OFF with windows
+    /// open, we leave the Dock icon visible until they close the
+    /// window naturally; `demoteToAccessory()` then drops back to
+    /// `.accessory` on close. Accepted trade-off vs. yanking the
+    /// window out from under their cursor.
     func applyDockIconPolicy() {
         let anyWindowOpen = NSApp.windows.contains { win in
             guard win.isVisible else { return false }
@@ -468,9 +479,9 @@ final class AppEnvironment {
         guard anyWindowOpen else { return }
         if SettingsStore.shared.showDockIconForWindows {
             NSApp.setActivationPolicy(.regular)
-        } else {
-            NSApp.setActivationPolicy(.accessory)
         }
+        // No demote branch — see one-way-live note above. Deferred
+        // to `demoteToAccessory()` on next window close.
     }
 
     // MARK: - timeout helper
