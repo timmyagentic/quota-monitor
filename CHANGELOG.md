@@ -7,6 +7,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- **Dock icon visibility toggle.** Settings → General → Appearance
+  now has a "Show Dock icon when windows are open" toggle, default
+  OFF. By default QuotaMonitor stays a pure menu-bar agent — no
+  Dock icon ever appears, even while the Dashboard or Settings
+  window is open. The trade-off accepted in this default is that
+  the app's windows do not appear in Cmd+Tab; users who want the
+  classic Dock-icon-while-window-open behaviour can flip the
+  toggle on and the change applies immediately.
+
 ## [0.2.11] — 2026-05-18
 
 ### Added
