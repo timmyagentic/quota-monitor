@@ -25,6 +25,7 @@ struct DashboardView: View {
                         snapshot: snapshot,
                         blocks: env.billingBlocks,
                         claudeUsage: env.latestClaudeUsage,
+                        liveCodexRateLimits: env.latestRateLimits,
                         providerFilter: env.providerFilter,
                         enabledProviders: settings.enabledProviders)
                     TrendsSection(

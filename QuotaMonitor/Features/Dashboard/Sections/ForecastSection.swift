@@ -11,6 +11,15 @@ struct ForecastSection: View {
     let snapshot: DashboardSnapshot
     let blocks: BillingBlocks.Snapshot?
     let claudeUsage: ClaudeUsageSnapshot?
+    /// Live Codex rate-limits pushed by the poller. Single source of
+    /// truth for primary/secondary `usedPercent` so the Dashboard
+    /// matches the menu-bar card in real time — the DB-derived
+    /// `snapshot.codexQuota` lags one `refreshDashboard()` behind the
+    /// poller, which is what used to cause "card says 14%, dashboard
+    /// says 11%". We still read `burn` off the DB snapshot because
+    /// it's a regression over sample history that the live payload
+    /// doesn't carry.
+    let liveCodexRateLimits: RateLimitSnapshot?
     let providerFilter: ProviderFilter
     /// Providers the user has enabled in Settings. We render a card
     /// only when both the toolbar filter allows it AND the user
@@ -57,32 +66,52 @@ struct ForecastSection: View {
 
     @ViewBuilder
     private var codexCard: some View {
-        let quota = snapshot.codexQuota
+        // Live poll = source of truth for the % bar (matches the menu
+        // bar verbatim). DB snapshot is the fallback when the poller
+        // hasn't landed a sample yet (cold launch before warm-start
+        // hydrator, signed-out, etc.) and the source for burn.
+        let dbQuota = snapshot.codexQuota
+        let livePrimary = liveCodexRateLimits?.primary
+        let liveSecondary = liveCodexRateLimits?.secondary
+        let hasPrimary = livePrimary != nil || dbQuota?.primary != nil
+        let hasSecondary = liveSecondary != nil || dbQuota?.secondary != nil
         ProviderForecastCard(
             label: L10n.codex,
             tier: nil,
             tooltip: nil,
-            isEmpty: quota?.primary == nil && quota?.secondary == nil,
+            isEmpty: !hasPrimary && !hasSecondary,
             emptyText: L10n.forecastNoCodexQuota
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                if let primary = quota?.primary {
+                if let live = livePrimary {
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle5h,
-                        usedPercent: primary.usedPercent,
-                        resetsAt: primary.resetsAt,
-                        burn: quota?.burn["primary"])
+                        usedPercent: live.usedPercent,
+                        resetsAt: live.resetAt,
+                        burn: dbQuota?.burn["primary"])
+                } else if let dbP = dbQuota?.primary {
+                    QuotaProgressRow(
+                        title: L10n.quotaCardTitle5h,
+                        usedPercent: dbP.usedPercent,
+                        resetsAt: dbP.resetsAt,
+                        burn: dbQuota?.burn["primary"])
                 }
-                if let secondary = quota?.secondary {
+                if let live = liveSecondary {
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle7d,
-                        usedPercent: secondary.usedPercent,
-                        resetsAt: secondary.resetsAt,
-                        burn: quota?.burn["secondary"])
+                        usedPercent: live.usedPercent,
+                        resetsAt: live.resetAt,
+                        burn: dbQuota?.burn["secondary"])
+                } else if let dbS = dbQuota?.secondary {
+                    QuotaProgressRow(
+                        title: L10n.quotaCardTitle7d,
+                        usedPercent: dbS.usedPercent,
+                        resetsAt: dbS.resetsAt,
+                        burn: dbQuota?.burn["secondary"])
                 }
                 // Pace line: prefer the 5h burn rate (more responsive); fall
                 // back to the 7d slope when only that bucket has samples.
-                if let burn = quota?.burn["primary"] ?? quota?.burn["secondary"],
+                if let burn = dbQuota?.burn["primary"] ?? dbQuota?.burn["secondary"],
                    abs(burn.percentPerMinute) > 0.0005 {
                     Text(L10n.forecastPaceCodex(percentPerHr: burn.percentPerMinute * 60))
                         .font(.caption2.monospacedDigit())
