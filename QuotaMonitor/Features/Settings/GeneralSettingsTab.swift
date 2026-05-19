@@ -90,7 +90,12 @@ struct GeneralSettingsTab: View {
                     }
                     .frame(maxWidth: 220, alignment: .trailing)
                 }
-                Text(L10n.menuBarIconProviderHelp)
+                // Swap the help copy when only one provider is tracked —
+                // the default text talks about "choose both" which is
+                // nonsensical when there's nothing else to choose.
+                Text(settings.enabledProviders.count > 1
+                     ? L10n.menuBarIconProviderHelp
+                     : L10n.menuBarIconProviderHelpSingle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
