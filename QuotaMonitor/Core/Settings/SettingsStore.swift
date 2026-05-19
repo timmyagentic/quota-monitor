@@ -59,6 +59,21 @@ final class SettingsStore {
         didSet { defaults.set(mirrorClaudeKeychainToFile,
                               forKey: Keys.mirrorClaudeKeychainToFile) }
     }
+    /// Whether to promote the menu-bar app to `.regular` activation
+    /// policy while a Dashboard / Settings / Onboarding window is on
+    /// screen. **Default false** — by default QuotaMonitor stays a
+    /// pure menu-bar agent (no Dock icon, not in Cmd+Tab). Users who
+    /// want the more conventional Dock-icon-while-window-open
+    /// behaviour can flip this in Settings → General → Appearance.
+    ///
+    /// Live-applied: the General tab's toggle calls
+    /// `AppEnvironment.applyDockIconPolicy()` after mutating, so a
+    /// flip takes effect on the next render even with a window
+    /// already open.
+    var showDockIconForWindows: Bool {
+        didSet { defaults.set(showDockIconForWindows,
+                              forKey: Keys.showDockIconForWindows) }
+    }
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
     /// 7 days because most users want a "what did I do this week"
@@ -175,6 +190,12 @@ final class SettingsStore {
         // see `mirrorClaudeKeychainToFile` doc comment.
         self.mirrorClaudeKeychainToFile =
             defaults.bool(forKey: Keys.mirrorClaudeKeychainToFile)
+        // Default false. A missing key reads as false via
+        // `defaults.bool(forKey:)`, which is exactly the resolved
+        // default we want for both fresh installs and existing users
+        // upgrading to this release (per the user-confirmed spec).
+        self.showDockIconForWindows =
+            defaults.bool(forKey: Keys.showDockIconForWindows)
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         // Enabled providers — defaults to the full set so an old build
@@ -402,6 +423,7 @@ final class SettingsStore {
         static let pollInterval   = "settings.pollIntervalSeconds"
         static let keychainPolicy = "settings.keychainPolicy"
         static let mirrorClaudeKeychainToFile = "settings.mirrorClaudeKeychainToFile"
+        static let showDockIconForWindows = "settings.showDockIconForWindows"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         // Multi-select store (current). Persisted as `[String]`.
         static let menuBarIconProviders = "settings.menuBarIconProviders"
