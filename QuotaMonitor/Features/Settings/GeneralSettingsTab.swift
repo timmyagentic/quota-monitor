@@ -17,12 +17,9 @@ struct GeneralSettingsTab: View {
     var body: some View {
         @Bindable var settings = settings
         Form {
-            // Appearance section. Single knob — whether the Dock icon
-            // is shown while a Dashboard / Settings / Onboarding
-            // window is open. Default OFF: pure menu-bar agent. The
-            // toggle's binding applies the change live via
-            // `env.applyDockIconPolicy()` so users don't have to
-            // close and reopen a window to see the effect.
+            // Appearance — placed first because the Dock-icon toggle
+            // is the only path back to Cmd+Tab visibility when a
+            // user wants it. Default OFF (pure menu-bar agent).
             Section(L10n.sectionAppearance) {
                 Toggle(L10n.showDockIconLabel, isOn: Binding(
                     get: { settings.showDockIconForWindows },
@@ -37,13 +34,6 @@ struct GeneralSettingsTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Language section was originally the first thing in the
-            // form (it's what the user is likely to look for after
-            // the onboarding sheet promised "you can change it later
-            // in Settings"). It's now second — Appearance edges it
-            // out because the Dock-icon toggle is the only place
-            // users can recover the "show in Cmd+Tab" behaviour, and
-            // that's a high-discoverability concern.
             Section(L10n.sectionLanguage) {
                 LabeledContent(L10n.languagePickerLabel) {
                     Picker("", selection: Binding(
