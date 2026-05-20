@@ -57,10 +57,6 @@ enum L10n {
     static var quotaCardTitle7dOpus: String { t(en: "7-day · Opus", zh: "7 天 · Opus") }
     static var quotaCardTitle7dSonnet: String { t(en: "7-day · Sonnet", zh: "7 天 · Sonnet") }
 
-    static var helpClaudeTierBadge: String {
-        t(en: "Claude plan tier reported by /api/oauth/usage",
-          zh: "由 /api/oauth/usage 报告的 Claude 套餐等级")
-    }
     static var codexSignInPrompt: String {
         t(en: "Sign in via codex CLI to see live quotas",
           zh: "通过 codex CLI 登录以查看实时配额")
@@ -298,8 +294,6 @@ enum L10n {
     // MARK: - dashboard
 
     static var dashboardTitle: String { t(en: "Dashboard", zh: "仪表盘") }
-    static var sessions: String { t(en: "Sessions", zh: "会话") }
-    static var history: String { t(en: "History", zh: "历史") }
     static var providerAll: String { t(en: "All providers", zh: "全部 Provider") }
     static var providerCodex: String { "Codex" }
     static var providerClaude: String { "Claude" }
@@ -501,7 +495,6 @@ enum L10n {
 
     // MARK: - settings
 
-    static var settingsTitle: String { t(en: "Quota Monitor Settings", zh: "Quota Monitor 设置") }
     static var settingsTabGeneral: String { t(en: "General", zh: "通用") }
     static var settingsTabPricing: String { t(en: "Pricing", zh: "计费") }
     static var settingsTabAdvanced: String { t(en: "Advanced", zh: "高级") }
@@ -511,7 +504,6 @@ enum L10n {
     static var sectionLanguage: String { t(en: "Language", zh: "语言") }
     static var sectionCodexCLI: String { "Codex CLI" }
     static var sectionClaudeCode: String { "Claude Code" }
-    static var sectionRateLimitPolling: String { t(en: "Codex polling", zh: "Codex 轮询") }
     /// Explainer under the Codex polling stepper. Calls out two things
     /// new users get wrong: (1) this only drives the Codex CLI quota
     /// fetch, not Claude; (2) Claude's interval is fixed at 2 h to avoid
@@ -575,7 +567,6 @@ enum L10n {
     // pricing
     static var pricingRestoreDefaults: String { t(en: "Restore Defaults", zh: "恢复默认") }
     static var pricingFetchLiteLLM: String { t(en: "Sync from LiteLLM", zh: "从 LiteLLM 同步") }
-    static var livePricesViaLiteLLM: String { t(en: "Live prices via LiteLLM", zh: "通过 LiteLLM 获取实时价格") }
     // Pricing catalog sheet (Advanced → Pricing → View catalog)
     static var pricingViewCatalog: String { t(en: "View Catalog…", zh: "查看价目表…") }
     static var pricingSheetTitle: String { t(en: "Pricing Catalog", zh: "价目表") }

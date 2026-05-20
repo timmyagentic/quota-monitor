@@ -54,9 +54,14 @@ final class AppEnvironment {
     var isRefreshingRateLimits = false
     var isScanning = false
     var isLoadingDashboard = false
+    /// Internal re-entrancy guard for `refreshPricingFromLiteLLM`. Not
+    /// observed by any view — opted out of `@Observable` tracking so it
+    /// doesn't churn the dependency graph on every settings refresh.
+    /// Lives on the type rather than as a `private var` because the
+    /// owning method sits in a `PricingController.swift` extension and
+    /// Swift extensions can't add stored properties.
+    @ObservationIgnored
     var isRefreshingPricing = false
-    var lastPricingFetchedAt: Date?
-    var lastPricingUpdateCount: Int?
     var lastError: String?
 
     /// Timestamps that drive the auto-refresh-on-popover-open time gates.
@@ -581,7 +586,7 @@ final class AppEnvironment {
     /// (e.g. `refreshDashboard()`) hand the result through instead of
     /// re-running the same usage_events scan a second time. Nil means
     /// "no shared result, fetch fresh" — that's the right default for the
-    /// stand-alone paths (popover open, scan completion, scenePhase wakeup).
+    /// stand-alone paths (popover open, scan completion, settings change).
     func refreshMenuBar(
         precomputedBlocks: BillingBlocks.Snapshot? = nil,
         trigger: String = "internal",

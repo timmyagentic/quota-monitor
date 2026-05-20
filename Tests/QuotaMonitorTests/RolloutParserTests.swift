@@ -15,7 +15,7 @@ import Testing
 ///      payload itself doesn't carry one, attribute to `gpt-5` and flag the
 ///      event so the UI can asterisk the cost.
 ///
-/// Fixtures live under `Tests/CodexMonitorTests/Fixtures/Rollout/` and are
+/// Fixtures live under `Tests/QuotaMonitorTests/Fixtures/Rollout/` and are
 /// bundled via `Package.swift` `resources: [.copy("Fixtures")]`.
 @Suite("RolloutParser")
 struct RolloutParserTests {

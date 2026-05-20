@@ -24,7 +24,6 @@ extension AppEnvironment {
                     """)
                 return iso.flatMap(ISO8601.parse)
             }
-            lastPricingFetchedAt = latest
             if let latest, Date().timeIntervalSince(latest) < maxAge {
                 DeveloperLog.finishOperation(
                     op,
@@ -87,8 +86,6 @@ extension AppEnvironment {
                     """)
                 return iso.flatMap(ISO8601.parse)
             }
-            lastPricingFetchedAt = latest
-            lastPricingUpdateCount = updated
             refreshDashboard(trigger: "pricing", parentOperation: op)
             DeveloperLog.finishOperation(
                 op,

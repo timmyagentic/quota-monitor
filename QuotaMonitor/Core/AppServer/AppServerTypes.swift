@@ -41,18 +41,6 @@ struct InitializeResult: Decodable {
     let platformOs: String?
 }
 
-// MARK: - account/read
-
-struct AccountReadResult: Decodable {
-    struct Account: Decodable {
-        let type: String?
-        let email: String?
-        let planType: String?
-    }
-    let account: Account?
-    let requiresOpenaiAuth: Bool?
-}
-
 // MARK: - account/rateLimits/read
 //
 // Mirrors the upstream `chatgpt.com/backend-api/wham/usage` shape.
@@ -72,69 +60,40 @@ struct AccountReadResult: Decodable {
 // path).
 
 struct RateLimitsPayload: Decodable {
-    let userId: String?
-    let accountId: String?
-    let email: String?
     let planType: String?           // free-form! "plus", "pro", "prolite", ...
     let rateLimit: RateLimitGroup?
     let additionalRateLimits: [AdditionalRateLimit]?
-    let credits: Credits?
-    let spendControl: SpendControl?
-    let rateLimitReachedType: String?
 
     private enum CodingKeys: String, CodingKey {
-        // shared
-        case email
-        case credits
         // legacy snake_case
-        case userId = "user_id"
-        case accountId = "account_id"
         case planTypeSnake = "plan_type"
         case rateLimitSnake = "rate_limit"
         case additionalRateLimitsSnake = "additional_rate_limits"
-        case spendControlSnake = "spend_control"
-        case rateLimitReachedTypeSnake = "rate_limit_reached_type"
         // current camelCase (codex CLI ≥ 0.128)
-        case userIdCamel = "userId"
-        case accountIdCamel = "accountId"
         case planTypeCamel = "planType"
         case rateLimitsCamel = "rateLimits"
         case rateLimitsByLimitIdCamel = "rateLimitsByLimitId"
-        case spendControlCamel = "spendControl"
-        case rateLimitReachedTypeCamel = "rateLimitReachedType"
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.email = try c.decodeIfPresent(String.self, forKey: .email)
-        self.credits = try c.decodeIfPresent(Credits.self, forKey: .credits)
-        self.userId = try c.decodeIfPresent(String.self, forKey: .userIdCamel)
-            ?? c.decodeIfPresent(String.self, forKey: .userId)
-        self.accountId = try c.decodeIfPresent(String.self, forKey: .accountIdCamel)
-            ?? c.decodeIfPresent(String.self, forKey: .accountId)
 
         // The new format puts planType inside the `rateLimits` object too;
         // pick whichever is present, preferring the top-level one for parity
         // with the old layout.
         let topLevelPlan = try c.decodeIfPresent(String.self, forKey: .planTypeCamel)
             ?? c.decodeIfPresent(String.self, forKey: .planTypeSnake)
-        let topLevelReached = try c.decodeIfPresent(String.self, forKey: .rateLimitReachedTypeCamel)
-            ?? c.decodeIfPresent(String.self, forKey: .rateLimitReachedTypeSnake)
-        self.spendControl = try c.decodeIfPresent(SpendControl.self, forKey: .spendControlCamel)
-            ?? c.decodeIfPresent(SpendControl.self, forKey: .spendControlSnake)
 
         // rate_limit (snake) is a RateLimitGroup with primary_window /
         // secondary_window. rateLimits (camel) is the same shape but with
-        // primary / secondary keys plus inline planType and credits.
+        // primary / secondary keys plus inline planType.
         if let group = try c.decodeIfPresent(RateLimitGroup.self, forKey: .rateLimitsCamel) {
             self.rateLimit = group
             // Inline planType inside rateLimits wins if present.
             self.planType = group.inlinePlanType ?? topLevelPlan
-            self.rateLimitReachedType = group.inlineRateLimitReachedType ?? topLevelReached
         } else {
             self.rateLimit = try c.decodeIfPresent(RateLimitGroup.self, forKey: .rateLimitSnake)
             self.planType = topLevelPlan
-            self.rateLimitReachedType = topLevelReached
         }
 
         // additional rate limits: snake = array, camel = object keyed by id.
@@ -167,9 +126,8 @@ struct RateLimitGroup: Decodable {
     let limitReached: Bool?
     let primaryWindow: RateLimitWindow?
     let secondaryWindow: RateLimitWindow?
-    // Camel-format-only — surfaced so the parent can promote them.
+    // Camel-format-only — surfaced so the parent can promote it.
     fileprivate let inlinePlanType: String?
-    fileprivate let inlineRateLimitReachedType: String?
 
     private enum CodingKeys: String, CodingKey {
         // shared
@@ -183,7 +141,6 @@ struct RateLimitGroup: Decodable {
         case primaryCamel = "primary"
         case secondaryCamel = "secondary"
         case inlinePlanType = "planType"
-        case inlineRateLimitReachedType = "rateLimitReachedType"
     }
 
     init(from decoder: Decoder) throws {
@@ -196,8 +153,6 @@ struct RateLimitGroup: Decodable {
         self.secondaryWindow = try c.decodeIfPresent(RateLimitWindow.self, forKey: .secondaryCamel)
             ?? c.decodeIfPresent(RateLimitWindow.self, forKey: .secondaryWindowSnake)
         self.inlinePlanType = try c.decodeIfPresent(String.self, forKey: .inlinePlanType)
-        self.inlineRateLimitReachedType = try c.decodeIfPresent(
-            String.self, forKey: .inlineRateLimitReachedType)
     }
 }
 
@@ -273,7 +228,7 @@ private struct AdditionalRateLimitWire: Decodable {
         return (try? JSONDecoder().decode(RateLimitGroup.self, from: data))
             ?? RateLimitGroup(allowed: nil, limitReached: nil,
                               primaryWindow: nil, secondaryWindow: nil,
-                              inlinePlanType: nil, inlineRateLimitReachedType: nil)
+                              inlinePlanType: nil)
     }
 
     private static func windowDict(_ w: RateLimitWindow) -> [String: Any] {
@@ -291,33 +246,14 @@ extension RateLimitGroup {
     fileprivate init(
         allowed: Bool?, limitReached: Bool?,
         primaryWindow: RateLimitWindow?, secondaryWindow: RateLimitWindow?,
-        inlinePlanType: String?, inlineRateLimitReachedType: String?
+        inlinePlanType: String?
     ) {
         self.allowed = allowed
         self.limitReached = limitReached
         self.primaryWindow = primaryWindow
         self.secondaryWindow = secondaryWindow
         self.inlinePlanType = inlinePlanType
-        self.inlineRateLimitReachedType = inlineRateLimitReachedType
     }
-}
-
-struct Credits: Decodable {
-    let hasCredits: Bool?
-    let unlimited: Bool?
-    let overageLimitReached: Bool?
-    let balance: String?
-
-    enum CodingKeys: String, CodingKey {
-        case hasCredits = "has_credits"
-        case unlimited
-        case overageLimitReached = "overage_limit_reached"
-        case balance
-    }
-}
-
-struct SpendControl: Decodable {
-    let reached: Bool?
 }
 
 // MARK: - JSONValue (lossless any)

@@ -203,15 +203,6 @@ actor AppServerClient {
         throw ClientError.malformedResponse("missing both result and error")
     }
 
-    func readAccount() async throws -> AccountReadResult {
-        let response = try await call(method: "account/read", params: EmptyParams())
-        if let err = response.error { throw ClientError.rpcError(err) }
-        guard let result = response.result else {
-            throw ClientError.malformedResponse("account/read returned no result")
-        }
-        return try result.decode(as: AccountReadResult.self)
-    }
-
     // MARK: - Internals
 
     /// Pull the JSON object that the CLI embeds in its error.message after `body=`.
