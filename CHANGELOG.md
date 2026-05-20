@@ -7,14 +7,23 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.16] — 2026-05-20
+
 ### Added
 - **Developer Mode persistent diagnostics.** Settings → Advanced now
   includes a Developer Mode toggle that writes lifecycle, refresh,
   scan, pricing, query, settings, migration, and uninstall diagnostics
   to `~/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log`.
-  The file logger is off by default, creates its parent directory on
-  demand, escapes multiline messages, and exposes a "Reveal Log File"
-  button for support/debug sessions.
+  Records are structured JSONL with operation IDs that thread parent /
+  child calls together, automatic redaction of sensitive fields, and
+  size-based rotation. The file logger is off by default, creates its
+  parent directory on demand, escapes multiline messages, and exposes a
+  "Reveal Log File" button for support / debug sessions.
+- **Quota percentage display mode.** General settings now exposes a
+  "Used vs Remaining" toggle that flips every quota percentage between
+  the two framings. Applies to the menu-bar icon, the popover quota
+  rows, and the Dashboard forecast rows; the choice persists across
+  launches.
 
 ### Changed
 - **Refresh fan-out is now centralized.** Cold launch, popover-open
@@ -28,6 +37,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   because a background scan started from opening the popover. Scan
   status now lives in the progress row, while the refresh actions keep
   their own re-entrancy guards.
+- **Claude cache-creation billing now splits 5-minute and 1-hour
+  writes.** A new schema migration adds `cache_creation_5m_tokens` /
+  `cache_creation_1h_tokens` columns and re-reads existing Claude
+  rollouts so historical rows pick up the split. The pricing backfill
+  bills 1h cache writes at 2x base input while 5m writes keep the
+  catalog `cache_creation` rate; seeded Claude prices were refreshed to
+  the April-2026 list rates. See `docs/billing-logic.md` for the full
+  pricing pipeline.
+- **L10n copy.** "Indexing local history" → "Scanning local history"
+  so the wording lines up with the rest of the scan-status UI.
 
 ### Fixed
 - **Menu-bar auto-refresh now fires when the popover opens.**
@@ -39,6 +58,23 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   button now remounts the active tab, so History and Sessions re-run
   their own list-loading tasks instead of only refreshing the Dashboard
   snapshot.
+- **Popover no longer shows a "Loading…" placeholder during the
+  cold-launch scan.** Launch now hydrates `menuBarSnapshot` from the
+  database before the initial scan completes, so opening the popover
+  during a first-run scan immediately surfaces the previous run's data
+  instead of a generic spinner. The scan-tail refresh still overwrites
+  it with fresh numbers once the scan finishes.
+
+### Internal
+- **Post-refactor dead-code sweep.** Removed the unused
+  `account/read` JSONRPC method and `AccountReadResult` decoder,
+  six `RateLimitsPayload` fields that were decoded but never read
+  (`userId`, `accountId`, `email`, `credits`, `spendControl`,
+  `rateLimitReachedType`) plus their `Credits` / `SpendControl`
+  helper structs, two write-only `@Observable` properties
+  (`lastPricingFetchedAt`, `lastPricingUpdateCount`), and six unused
+  L10n keys. Marked `isRefreshingPricing` as `@ObservationIgnored`
+  since no view observes it. Net –80 lines.
 
 ## [0.2.15] — 2026-05-20
 
