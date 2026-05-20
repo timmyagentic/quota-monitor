@@ -46,13 +46,6 @@ actor AppServerClient {
     private static func resolveBinary() -> String? {
         let env = ProcessInfo.processInfo.environment
 
-        // 0. User-supplied override from Settings.
-        let userOverride = SettingsStore.snapshot().codexBinaryOverride
-        if !userOverride.isEmpty,
-           FileManager.default.isExecutableFile(atPath: userOverride) {
-            return userOverride
-        }
-
         // 1. Explicit override (set in launchctl or via env var).
         if let override = env["CODEX_BINARY"],
            !override.isEmpty,

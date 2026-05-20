@@ -52,8 +52,13 @@ shasum -c QuotaMonitor-<version>.dmg.sha256
 - **Sessions** — searchable list with sort by recency / value / tokens,
   drilldown to event-level token breakdown.
 - **History** — per-day rollups + per-session inspection on each day.
-- **Settings** — language picker, Codex / Claude paths, polling interval,
-  notification threshold, pricing catalog editor, CSV export.
+- **Settings** — two tabs:
+  - **General** — language, Dock-icon visibility, Codex Fast-Mode billing,
+    menu-bar display window, tracked tools toggle.
+  - **Advanced** — Codex poll interval, Claude Keychain policy + optional
+    credentials mirror, database location, CSV export, pricing catalog
+    (Sync from LiteLLM / Restore Defaults / View Catalog), in-app
+    uninstaller.
 
 Languages: English (default) and 简体中文, hot-swappable.
 
@@ -93,10 +98,11 @@ Version is sourced from `Resources/VERSION` — bump that single file to
 release a new version; both `Info.plist` (via PlistBuddy injection at
 build time) and the DMG filename pick it up automatically.
 
-After launch the menu bar shows a gauge icon. Click it → "Refresh" to
+After launch the menu bar shows a live `5h XX% · 7d XX%` readout (or the
+gauge icon fallback if no data is available yet). Click it → "Refresh" to
 pull live Codex rate limits **and** rescan local jsonl in one go,
-"Open Dashboard" (⌘D) for the main window, "Settings…" (⌘,) for paths /
-interval / pricing.
+"Open Dashboard" (⌘D) for the main window, "Settings…" (⌘,) for the
+General / Advanced preferences.
 
 ## Layout
 
@@ -132,7 +138,7 @@ QuotaMonitor/
 │   ├── History/                    // day rollups + per-day events
 │   ├── MainWindow/                 // tab container
 │   ├── Onboarding/                 // first-launch language picker
-│   ├── Settings/                   // General / Pricing / Data tabs (one file each)
+│   ├── Settings/                   // General + Advanced tabs + PricingCatalogSheet
 │   └── MenuBar/                    // popover + provider blocks + atoms
 ├── Resources/
 │   ├── Info.plist                  // LSUIElement, bundle id (version injected at build)

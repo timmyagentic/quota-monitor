@@ -18,15 +18,6 @@ final class SettingsStore {
 
     private let defaults: UserDefaults
 
-    var codexBinaryOverride: String {
-        didSet { defaults.set(codexBinaryOverride, forKey: Keys.codexBinary) }
-    }
-    var codexHomeOverride: String {
-        didSet { defaults.set(codexHomeOverride, forKey: Keys.codexHome) }
-    }
-    var claudeHomeOverride: String {
-        didSet { defaults.set(claudeHomeOverride, forKey: Keys.claudeHome) }
-    }
     var pollIntervalSeconds: Int {
         didSet { defaults.set(pollIntervalSeconds, forKey: Keys.pollInterval) }
     }
@@ -120,14 +111,20 @@ final class SettingsStore {
     ///
     /// Default on fresh install: same set as `enabledProviders`. On
     /// upgrades from the legacy single-string key we migrate the old
-    /// choice once. Reconcile behaviour: disabling a provider drops
-    /// it from this set; we do NOT reseed an empty set because empty
-    /// is a valid "show the gauge icon" choice.
+    /// choice once.
     ///
-    /// Constraint: must be a subset of `knownIconProviders` AND
-    /// `enabledProviders`. UI should call
-    /// `setMenuBarIconProviderEnabled(_:enabled:)` to enforce the
-    /// "must be currently enabled" rule when adding.
+    /// **Stored as user intent, not as the currently-displayed set.**
+    /// Toggling a provider OFF in Tracked tools does NOT trim it from
+    /// here — the menu-bar render path (`MenuBarLabelView.pickRows`)
+    /// already intersects with `enabledProviders` at draw time, so a
+    /// disabled provider is invisible regardless. Keeping the intent
+    /// intact means re-enabling tracking restores the icon
+    /// automatically, instead of stranding the user in "icon
+    /// silently disappeared" state.
+    ///
+    /// Constraint: must be a subset of `knownIconProviders`. UI should
+    /// call `setMenuBarIconProviderEnabled(_:enabled:)` for explicit
+    /// user changes.
     private(set) var menuBarIconProviders: Set<String> {
         didSet {
             defaults.set(Array(menuBarIconProviders).sorted(),
@@ -243,9 +240,6 @@ final class SettingsStore {
          appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) {
         self.defaults = defaults
         self.appVersion = appVersion
-        self.codexBinaryOverride = defaults.string(forKey: Keys.codexBinary) ?? ""
-        self.codexHomeOverride   = defaults.string(forKey: Keys.codexHome) ?? ""
-        self.claudeHomeOverride  = defaults.string(forKey: Keys.claudeHome) ?? ""
         let storedInterval = defaults.integer(forKey: Keys.pollInterval)
         self.pollIntervalSeconds = storedInterval > 0 ? storedInterval : 300
         self.keychainPolicy = (defaults.string(forKey: Keys.keychainPolicy)
@@ -281,28 +275,47 @@ final class SettingsStore {
             ? Self.knownProviders
             : sanitised
         self.enabledProviders = resolvedEnabled
-        // Menu-bar icon providers (multi-select). Defaults to whatever
-        // is enabled. We also migrate the legacy single-string key
-        // `settings.menuBarIconProvider` (one of "codex"/"claude") so
-        // upgrading users keep their previous choice. Sanitise against
-        // both knownIconProviders AND the resolved enabled set so we
-        // never persist a row that points at a disabled provider.
+        // Menu-bar icon providers (multi-select). Stored as user
+        // *intent* — we sanitise only against `knownIconProviders` to
+        // drop unknown tokens, and deliberately do NOT intersect with
+        // `resolvedEnabled`. Intersecting on load would re-trim the
+        // intent the moment a user disabled tracking, defeating the
+        // "icon comes back when tracking comes back" guarantee
+        // documented on `menuBarIconProviders`. The render path
+        // (`MenuBarLabelView.pickRows`) does the per-draw filter
+        // against `enabledProviders`, so disabled providers stay
+        // invisible regardless of what intent is stored here.
+        //
+        // Legacy single-string key `settings.menuBarIconProvider`
+        // ("codex" / "claude") is migrated once for upgrading users.
         let storedIconArr = defaults.array(forKey: Keys.menuBarIconProviders) as? [String]
-        let sanitisedIcons: Set<String> = storedIconArr.map {
-            Set($0).intersection(Self.knownIconProviders).intersection(resolvedEnabled)
-        } ?? []
-        if !sanitisedIcons.isEmpty {
-            self.menuBarIconProviders = sanitisedIcons
+        let seededIcons: Set<String>
+        if let storedIconArr {
+            // User has explicit stored intent (an empty array is a
+            // valid "show neither" choice and must be preserved).
+            seededIcons = Set(storedIconArr).intersection(Self.knownIconProviders)
         } else if let legacy = defaults.string(forKey: Keys.legacyMenuBarIconProvider),
-                  Self.knownIconProviders.contains(legacy),
-                  resolvedEnabled.contains(legacy) {
-            self.menuBarIconProviders = [legacy]
+                  Self.knownIconProviders.contains(legacy) {
+            seededIcons = [legacy]
         } else {
-            // Fresh install (or legacy value pointed at a now-disabled
-            // provider). Show every enabled provider — that's the
-            // least-surprising default and matches what the user just
-            // saw in onboarding.
-            self.menuBarIconProviders = resolvedEnabled
+            // Fresh install — seed with every enabled provider so the
+            // menu bar shows what the user just confirmed in
+            // onboarding rather than a blank gauge icon.
+            seededIcons = resolvedEnabled
+        }
+        self.menuBarIconProviders = seededIcons
+        // First-seed persistence. Swift suppresses `didSet` on the
+        // initializer's first assignment, so a fresh install that
+        // never explicitly touches the icon checkboxes would have
+        // nothing written to UserDefaults. That left a hole where
+        // disabling a tracked provider before quitting would, on
+        // relaunch, re-seed the icon set from the now-smaller
+        // `resolvedEnabled` — silently dropping the icon. Stamping
+        // the resolved value here once turns the seed into durable
+        // intent.
+        if storedIconArr == nil {
+            defaults.set(Array(seededIcons).sorted(),
+                         forKey: Keys.menuBarIconProviders)
         }
         // Onboarding-done flag. Resolution has two layers:
         //
@@ -382,7 +395,11 @@ final class SettingsStore {
         guard !next.isEmpty else { return false }
         guard next != enabledProviders else { return true }
         enabledProviders = next
-        reconcileMenuBarIconProviders()
+        // Intentionally NOT trimming `menuBarIconProviders` here.
+        // It stores user intent; the render path intersects with
+        // `enabledProviders` at draw time. Keeping intent intact lets
+        // a flipped-off-then-on tracked tool restore its menu-bar icon
+        // automatically instead of silently vanishing.
         return true
     }
 
@@ -428,20 +445,7 @@ final class SettingsStore {
         let cleaned = providers.intersection(Self.knownProviders)
         guard !cleaned.isEmpty else { return false }
         enabledProviders = cleaned
-        reconcileMenuBarIconProviders()
         return true
-    }
-
-    /// Drop any icon-provider entries that aren't currently enabled.
-    /// Empty is a valid resting state (the menu-bar label falls back
-    /// to the gauge SF Symbol) so we do NOT reseed when the
-    /// intersection clears out — that would override the user's
-    /// explicit "show neither" choice next time they toggle providers.
-    private func reconcileMenuBarIconProviders() {
-        let next = menuBarIconProviders.intersection(enabledProviders)
-        if next != menuBarIconProviders {
-            menuBarIconProviders = next
-        }
     }
 
     /// Provider IDs the app currently knows about. Match the `provider`
@@ -459,9 +463,6 @@ final class SettingsStore {
         } ?? []
         let providers = sanitised.isEmpty ? knownProviders : sanitised
         return Snapshot(
-            codexBinaryOverride: d.string(forKey: Keys.codexBinary) ?? "",
-            codexHomeOverride: d.string(forKey: Keys.codexHome) ?? "",
-            claudeHomeOverride: d.string(forKey: Keys.claudeHome) ?? "",
             pollIntervalSeconds: max(60, d.integer(forKey: Keys.pollInterval) > 0
                 ? d.integer(forKey: Keys.pollInterval) : 300),
             keychainPolicy: (d.string(forKey: Keys.keychainPolicy)
@@ -478,9 +479,6 @@ final class SettingsStore {
     }
 
     struct Snapshot: Sendable {
-        let codexBinaryOverride: String
-        let codexHomeOverride: String
-        let claudeHomeOverride: String
         let pollIntervalSeconds: Int
         let keychainPolicy: KeychainPolicy
         let mirrorClaudeKeychainToFile: Bool
@@ -490,9 +488,6 @@ final class SettingsStore {
     }
 
     private enum Keys {
-        static let codexBinary    = "settings.codexBinary"
-        static let codexHome      = "settings.codexHome"
-        static let claudeHome     = "settings.claudeHome"
         static let pollInterval   = "settings.pollIntervalSeconds"
         static let keychainPolicy = "settings.keychainPolicy"
         static let mirrorClaudeKeychainToFile = "settings.mirrorClaudeKeychainToFile"

@@ -46,24 +46,16 @@ actor ClaudeImportEngine {
         self.claudeRoots = claudeRoots
     }
 
-    /// Resolve the directories where Claude Code stores rollouts.
-    /// Settings override → both legacy (`~/.claude/projects`) and new
-    /// (`~/.config/claude/projects`) defaults. Non-existent directories are
+    /// Resolve the directories where Claude Code stores rollouts —
+    /// both legacy (`~/.claude/projects`) and new
+    /// (`~/.config/claude/projects`). Non-existent directories are
     /// silently ignored — `scan()` just returns an empty list.
     static func defaultRoots() -> [URL] {
-        var roots: [URL] = []
-        let override = SettingsStore.snapshot().claudeHomeOverride
-        if !override.isEmpty {
-            roots.append(URL(fileURLWithPath:
-                (override as NSString).expandingTildeInPath)
-                .appendingPathComponent("projects", isDirectory: true))
-        }
         let home = FileManager.default.homeDirectoryForCurrentUser
-        roots.append(home.appendingPathComponent(".claude/projects", isDirectory: true))
-        roots.append(home.appendingPathComponent(".config/claude/projects", isDirectory: true))
-        // Dedup while preserving order.
-        var seen: Set<String> = []
-        return roots.filter { seen.insert($0.path).inserted }
+        return [
+            home.appendingPathComponent(".claude/projects", isDirectory: true),
+            home.appendingPathComponent(".config/claude/projects", isDirectory: true),
+        ]
     }
 
     func performScan() async throws -> ImportEngine.ScanReport {

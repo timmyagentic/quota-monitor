@@ -198,8 +198,10 @@ struct EnabledProvidersTests {
     @Test
     func onboardingCommitSequenceProducesExpectedEndState() {
         // Locks down the call sequence OnboardingView.finishOnboarding uses:
-        //   1. replaceEnabledProviders(providers)  — internally reconciles
-        //      menuBarIconProviders to a subset of the new enabled set
+        //   1. replaceEnabledProviders(providers)  — does NOT touch
+        //      menuBarIconProviders; that field stores user intent and
+        //      the menu-bar render path intersects with enabledProviders
+        //      at draw time.
         //   2. setMenuBarIconProviderEnabled(_:enabled:) for every known
         //      icon provider, driven by the user's step-3 picks
         // Three representative cases — pick-both/show-codex-only,
@@ -236,14 +238,79 @@ struct EnabledProvidersTests {
             let store = SettingsStore(defaults: d)
             #expect(store.replaceEnabledProviders(["codex"]))
             #expect(store.setMenuBarIconProviderEnabled("codex", enabled: true))
-            // setMenuBarIconProviderEnabled returns true here because
-            // the resulting set equals the current one — its guard
-            // short-circuits any no-op as success. Claude was already
-            // dropped from menuBarIconProviders by the reconcile that
-            // ran inside replaceEnabledProviders.
+            // Claude is still in menuBarIconProviders here — fresh
+            // init seeded it with the full default set and
+            // replaceEnabledProviders no longer trims. The explicit
+            // setMenuBarIconProviderEnabled call below is what removes
+            // it, matching what step 3 of onboarding would do.
             #expect(store.setMenuBarIconProviderEnabled("claude", enabled: false))
             #expect(store.enabledProviders == ["codex"])
             #expect(store.menuBarIconProviders == ["codex"])
         }
+    }
+
+    /// Regression: disabling a provider then re-enabling it should
+    /// restore its menu-bar icon automatically. Previously
+    /// `setProviderEnabled(_, false)` invoked
+    /// `reconcileMenuBarIconProviders` which trimmed the icon set;
+    /// the symmetric re-enable path never reseeded, leaving the user
+    /// in a "silently lost my icon" state.
+    @Test
+    func reenablingProviderRestoresMenuBarIcon() {
+        let d = Self.freshDefaults()
+        let store = SettingsStore(defaults: d)
+        // Fresh install seeds both providers everywhere.
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(store.menuBarIconProviders == ["codex", "claude"])
+
+        // Disable Codex tracking. Icon intent must NOT shrink.
+        #expect(store.setProviderEnabled("codex", enabled: false))
+        #expect(store.enabledProviders == ["claude"])
+        #expect(store.menuBarIconProviders == ["codex", "claude"])
+
+        // Re-enable Codex. Icon comes back without any extra call.
+        #expect(store.setProviderEnabled("codex", enabled: true))
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(store.menuBarIconProviders == ["codex", "claude"])
+    }
+
+    /// User explicitly unchecks Codex's menu-bar icon while it's still
+    /// tracked. Later they disable Codex tracking then re-enable it.
+    /// The explicit "don't show in menu bar" choice must survive.
+    @Test
+    func explicitIconOffSurvivesProviderTrackingFlip() {
+        let d = Self.freshDefaults()
+        let store = SettingsStore(defaults: d)
+        #expect(store.setMenuBarIconProviderEnabled("codex", enabled: false))
+        #expect(store.menuBarIconProviders == ["claude"])
+
+        #expect(store.setProviderEnabled("codex", enabled: false))
+        #expect(store.setProviderEnabled("codex", enabled: true))
+        // Intent for Codex was off → still off after the round trip.
+        #expect(store.menuBarIconProviders == ["claude"])
+    }
+
+    /// Regression for an in-init bug discovered during self-audit:
+    /// `SettingsStore.init` used to intersect the loaded icon set with
+    /// the currently-enabled providers, so a "disable tracking →
+    /// quit → relaunch → re-enable tracking" cycle silently dropped
+    /// the icon. The disable/re-enable test above doesn't catch this
+    /// because it stays inside a single SettingsStore instance.
+    @Test
+    func reenablingProviderRestoresMenuBarIconAcrossRelaunch() {
+        let d = Self.freshDefaults()
+        do {
+            let store = SettingsStore(defaults: d)
+            #expect(store.setProviderEnabled("codex", enabled: false))
+            // Intent on disk is still [codex, claude] at this point.
+            #expect(store.menuBarIconProviders == ["codex", "claude"])
+        }
+        // Simulate a relaunch — same UserDefaults, fresh store.
+        let relaunched = SettingsStore(defaults: d)
+        #expect(relaunched.enabledProviders == ["claude"])
+        #expect(relaunched.menuBarIconProviders == ["codex", "claude"])
+
+        #expect(relaunched.setProviderEnabled("codex", enabled: true))
+        #expect(relaunched.menuBarIconProviders == ["codex", "claude"])
     }
 }

@@ -24,12 +24,8 @@ struct SessionFile: Equatable {
 
 enum SessionScanner {
 
-    /// Resolve $CODEX_HOME (Settings override → env var → ~/.codex).
+    /// Resolve $CODEX_HOME (env var → ~/.codex).
     static func defaultCodexHome() -> URL {
-        let settingsOverride = SettingsStore.snapshot().codexHomeOverride
-        if !settingsOverride.isEmpty {
-            return URL(fileURLWithPath: (settingsOverride as NSString).expandingTildeInPath)
-        }
         if let override = ProcessInfo.processInfo.environment["CODEX_HOME"],
            !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)

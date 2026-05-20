@@ -5,17 +5,15 @@ import UniformTypeIdentifiers
 /// Power-user / debugging knobs. Anything that 95% of users never need
 /// but 5% absolutely require lives here. Sections:
 ///
-///   - Codex CLI: binary path + CODEX_HOME override
-///   - Claude Code: home path override + Keychain access policy
+///   - Codex CLI: rate-limit poll interval
+///   - Claude Code: Keychain policy + credentials-mirror toggle
 ///   - Database: location + reveal in Finder
 ///   - Export: usage_events.csv dump
-///   - Pricing: LiteLLM sync + Restore Defaults (folded in from the
-///     deleted Pricing tab — power-user controls, not a top-level tab)
+///   - Pricing: LiteLLM sync + Restore Defaults + view catalog
 ///
-/// **Why a separate tab:** the General tab was getting visually
-/// overwhelming with eight controls before this split. Pushing rare
-/// knobs here keeps the General tab to four obvious settings without
-/// taking any feature away from the people who need them.
+/// Path resolution (codex binary, CODEX_HOME, Claude home) is the
+/// app's problem to solve — we autoprobe env vars and well-known
+/// install locations rather than asking the user to type a path.
 struct AdvancedSettingsTab: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(AppEnvironment.self) private var env
@@ -28,42 +26,22 @@ struct AdvancedSettingsTab: View {
     @State private var pricingStatusMessage: String?
     @State private var pricingErrorMessage: String?
     @State private var showingUninstallConfirm = false
+    @State private var showingPricingSheet = false
 
     var body: some View {
         @Bindable var settings = settings
         // Hide a provider's whole section once it's untracked in
         // General → Tracked tools. The poller is already off for
-        // disabled providers, so leaving binary-path / keychain knobs
-        // visible would just be dead controls — same logic that hides
-        // the provider's card from the menu bar and Dashboard.
+        // disabled providers, so leaving keychain knobs visible would
+        // just be dead controls — same logic that hides the
+        // provider's card from the menu bar and Dashboard.
         let showCodex = settings.enabledProviders.contains("codex")
         let showClaude = settings.enabledProviders.contains("claude")
         Form {
             if showCodex {
             Section(L10n.sectionCodexCLI) {
-                LabeledContent(L10n.binaryPath) {
-                    pathField(
-                        text: $settings.codexBinaryOverride,
-                        prompt: L10n.autoDetectPrompt) { url in
-                            url.path
-                        }
-                }
-                LabeledContent("CODEX_HOME") {
-                    pathField(
-                        text: $settings.codexHomeOverride,
-                        prompt: L10n.codexHomePrompt,
-                        chooseDirectories: true) { url in
-                            url.path
-                        }
-                }
-                Text(L10n.pathOverrideHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                // Codex rate-limit poll cadence. Lives here (not General)
-                // because the value only affects the Codex CLI IPC pull;
+                // Codex rate-limit poll cadence. Codex CLI IPC only;
                 // Claude /usage is a separate timer hard-coded to 2 h.
-                // Surfacing it next to the other Codex CLI knobs makes
-                // the scope obvious.
                 LabeledContent(L10n.interval) {
                     HStack(spacing: 8) {
                         Text(L10n.minutesShort(settings.pollIntervalSeconds / 60))
@@ -87,17 +65,6 @@ struct AdvancedSettingsTab: View {
 
             if showClaude {
             Section(L10n.sectionClaudeCode) {
-                LabeledContent(L10n.claudeHomeLabel) {
-                    pathField(
-                        text: $settings.claudeHomeOverride,
-                        prompt: L10n.claudeHomePrompt,
-                        chooseDirectories: true) { url in
-                            url.path
-                        }
-                }
-                Text(L10n.claudePathOverrideHint)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 LabeledContent(L10n.keychainPolicyLabel) {
                     Picker("", selection: $settings.keychainPolicy) {
                         ForEach(SettingsStore.KeychainPolicy.allCases) { p in
@@ -155,6 +122,10 @@ struct AdvancedSettingsTab: View {
                     }
                     .disabled(restoringPricing || refreshingPricing)
                     if refreshingPricing { ProgressView().controlSize(.small) }
+                    Button(L10n.pricingViewCatalog) {
+                        showingPricingSheet = true
+                    }
+                    .disabled(pricingRows.isEmpty)
                     Spacer()
                     Button(L10n.pricingRestoreDefaults) {
                         Task { await restorePricingDefaults() }
@@ -195,6 +166,10 @@ struct AdvancedSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(20)
+        .sheet(isPresented: $showingPricingSheet) {
+            PricingCatalogSheet(rows: pricingRows,
+                                onDismiss: { showingPricingSheet = false })
+        }
         .alert(L10n.uninstallConfirmTitle,
                isPresented: $showingUninstallConfirm) {
             Button(L10n.uninstallConfirmAction, role: .destructive) {
@@ -208,30 +183,6 @@ struct AdvancedSettingsTab: View {
             if !pricingLoaded {
                 pricingLoaded = true
                 await reloadPricing()
-            }
-        }
-    }
-
-    private func pathField(
-        text: Binding<String>,
-        prompt: String,
-        chooseDirectories: Bool = false,
-        transform: @escaping (URL) -> String
-    ) -> some View {
-        HStack {
-            TextField(prompt, text: text)
-                .textFieldStyle(.roundedBorder)
-            Button(L10n.choose) {
-                let panel = NSOpenPanel()
-                panel.canChooseFiles = !chooseDirectories
-                panel.canChooseDirectories = chooseDirectories
-                panel.allowsMultipleSelection = false
-                if panel.runModal() == .OK, let url = panel.url {
-                    text.wrappedValue = transform(url)
-                }
-            }
-            if !text.wrappedValue.isEmpty {
-                Button(L10n.clear) { text.wrappedValue = "" }
             }
         }
     }

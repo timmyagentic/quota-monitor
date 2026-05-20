@@ -472,13 +472,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             scopes: inner.scopes)
     }
 
-    /// Resolve `~/.claude/.credentials.json` (respecting the
-    /// `claudeHomeOverride` setting used by tests).
+    /// Resolve `~/.claude/.credentials.json`.
     static func credentialsFilePath() -> String {
-        let override = SettingsStore.snapshot().claudeHomeOverride
-        let home = !override.isEmpty
-            ? override
-            : (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+        let home = (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
         return (home as NSString).appendingPathComponent(".credentials.json")
     }
 

@@ -46,9 +46,6 @@ enum L10n {
     static var loadingDashboard: String { t(en: "Loading dashboard…", zh: "正在加载仪表盘…") }
     static var noData: String { t(en: "No data yet", zh: "暂无数据") }
     static var noDataLower: String { t(en: "no data yet", zh: "暂无数据") }
-    static var clear: String { t(en: "Clear", zh: "清除") }
-    static var choose: String { t(en: "Choose…", zh: "选择…") }
-
     // MARK: - menu bar
 
     static var codex: String { "Codex" }                 // proper noun
@@ -495,8 +492,9 @@ enum L10n {
     }
     // Codex Fast-Mode billing — Codex CLI's JSONL doesn't surface tier
     // per turn, so the user toggles their account-wide billing mode
-    // here. ON means every GPT-5.5 / GPT-5.4 call is repriced at the
-    // Fast tier (2.5× / 2× standard). History is recomputed on flip.
+    // here. Help copy intentionally hides the per-model multipliers;
+    // users only need to know the toggle is global because per-call
+    // tier isn't observable.
     static var sectionCodexBilling: String {
         t(en: "Codex Billing", zh: "Codex 计费")
     }
@@ -504,8 +502,8 @@ enum L10n {
         t(en: "Codex Bill as Fast Mode", zh: "Codex 按 Fast Mode 计费")
     }
     static var codexFastModeBillingHelp: String {
-        t(en: "Codex CLI doesn't record per-call tier, so this toggle is global. When ON, every GPT-5.5 call is priced at 2.5× standard and every GPT-5.4 call at 2× — including historical events. Leave OFF if you're on the standard tier.",
-          zh: "Codex CLI 的日志里没有逐次记录是否为 Fast Mode，所以这个开关是全局生效。打开后，所有 GPT-5.5 调用按 2.5 倍标准价计费、GPT-5.4 按 2 倍计费，并会回填历史记录。如果你用的是标准档位，保持关闭即可。")
+        t(en: "Codex doesn't tag each request with its billing tier, so this toggle applies to your whole account — including history. Turn it on if you regularly use Fast Mode.",
+          zh: "Codex 不会标记每次请求的计费档位，所以这里只能按账户整体估算费用，切换后历史记录会同步重算。如果长期使用 Fast Mode 就打开。")
     }
     static var sectionDatabase: String { t(en: "Database", zh: "数据库") }
     static var sectionExport: String { t(en: "Export", zh: "导出") }
@@ -517,20 +515,6 @@ enum L10n {
           zh: "立即生效，无需重启。")
     }
 
-    // codex / claude paths
-    static var binaryPath: String { t(en: "Binary path", zh: "可执行文件路径") }
-    static var autoDetectPrompt: String { t(en: "Auto-detect (leave blank)", zh: "自动检测（留空）") }
-    static var codexHomePrompt: String { "~/.codex (default)" }
-    static var pathOverrideHint: String {
-        t(en: "Path overrides take effect on next app launch.",
-          zh: "路径覆盖将在下次启动应用时生效。")
-    }
-    static var claudeHomeLabel: String { t(en: "Claude home", zh: "Claude 主目录") }
-    static var claudeHomePrompt: String { "~/.claude or ~/.config/claude (default)" }
-    static var claudePathOverrideHint: String {
-        t(en: "Path override takes effect on next app launch. The scanner looks at both legacy and new layouts automatically.",
-          zh: "路径覆盖将在下次启动应用时生效。扫描器会自动检查旧布局和新布局。")
-    }
     static var claudeOAuthExplanation: String {
         t(en: "Anthropic's `/api/oauth/usage` endpoint requires the Claude Code OAuth token. We read `~/.claude/.credentials.json` first; the Keychain item is a fallback for macOS GUI apps (may prompt the first time).",
           zh: "Anthropic 的 `/api/oauth/usage` 端点需要 Claude Code OAuth token。我们优先读取 `~/.claude/.credentials.json`；Keychain 项是 macOS GUI 应用的兜底（首次可能弹窗）。")
@@ -551,6 +535,24 @@ enum L10n {
     static var pricingRestoreDefaults: String { t(en: "Restore Defaults", zh: "恢复默认") }
     static var pricingFetchLiteLLM: String { t(en: "Sync from LiteLLM", zh: "从 LiteLLM 同步") }
     static var livePricesViaLiteLLM: String { t(en: "Live prices via LiteLLM", zh: "通过 LiteLLM 获取实时价格") }
+    // Pricing catalog sheet (Advanced → Pricing → View catalog)
+    static var pricingViewCatalog: String { t(en: "View Catalog…", zh: "查看价目表…") }
+    static var pricingSheetTitle: String { t(en: "Pricing Catalog", zh: "价目表") }
+    static var pricingSheetUnit: String {
+        t(en: "USD per million tokens", zh: "美元 / 百万 token")
+    }
+    static var colModel: String { t(en: "Model", zh: "模型") }
+    static var colInputPerM: String { t(en: "Input", zh: "输入") }
+    static var colCachedPerM: String { t(en: "Cached", zh: "缓存读取") }
+    static var colOutputPerM: String { t(en: "Output", zh: "输出") }
+    static var colCacheCreatePerM: String { t(en: "Cache create", zh: "缓存创建") }
+    static var badgeLive: String { t(en: "LIVE", zh: "实时") }
+    static var badgeLocal: String { t(en: "LOCAL", zh: "本地") }
+    static var badgeSeed: String { t(en: "SEED", zh: "内置") }
+    static var helpLocallyEdited: String {
+        t(en: "This row was edited locally.", zh: "该行已被本地修改。")
+    }
+    static var done: String { t(en: "Done", zh: "完成") }
     static var neverRefreshed: String {
         t(en: "Never refreshed — click to fetch the live catalog.",
           zh: "尚未刷新 — 点击以获取实时目录。")

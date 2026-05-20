@@ -7,6 +7,67 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.14] — 2026-05-20
+
+### Added
+- **Pricing catalog viewer in Advanced.** Settings → Advanced →
+  Pricing → "View Catalog" opens a sheet with the per-model rate
+  table (input / cached / output / cache-creation $/M, plus a
+  LIVE / LOCAL / SEED source badge per row). The top-level Pricing
+  tab was folded into Advanced back in 0.2.8 and lost the inspection
+  surface; this restores it as a read-only sheet without making
+  pricing a first-class concern again. Sync from LiteLLM and Restore
+  Defaults still live alongside the View Catalog button on the same
+  row.
+- **General-tab Codex Billing section.** A "Codex Fast-Mode billing"
+  toggle for users on Fast Mode — the Codex CLI doesn't tag each
+  request with its billing tier, so this is a global re-price that
+  also backfills history. Placed at position 2 (after Appearance,
+  before Language) so it's discoverable for the audience that needs
+  it without distracting users who don't.
+
+### Changed
+- **Codex Fast-Mode help copy reworded.** Drops the multiplier
+  internals (2.5× / 2× per model) that users shouldn't have to know
+  about and prefixes the explanation with the upstream constraint
+  ("Due to Codex limitations, the CLI doesn't tag each request with
+  its billing tier"). Ends with a plain rule of thumb — turn it on
+  if you regularly use Fast Mode.
+- **Advanced settings hide untracked-provider sections.** The Codex
+  CLI and Claude Code sections in Advanced are only shown when the
+  matching provider is enabled in General → Tracked tools. Showing
+  knobs whose poller is already off was just dead controls; same
+  filter the menu-bar block / Dashboard already apply.
+
+### Removed
+- **Codex binary / `CODEX_HOME` / Claude home path overrides.**
+  Settings → Advanced no longer asks the user to type in path
+  overrides for the Codex executable, the Codex sessions directory,
+  or the Claude home directory. Resolving these is the app's
+  problem to solve — it now autoprobes environment variables
+  (`$CODEX_BINARY`, `$CODEX_HOME`) and well-known install
+  locations. If a path can't be found, that's a bug we need to fix,
+  not a knob to expose. The corresponding L10n strings and
+  `SettingsStore.codexBinaryOverride` / `codexHomeOverride` /
+  `claudeHomeOverride` properties are gone with no migration shim;
+  any previously-stored values in UserDefaults are silently ignored.
+
+### Fixed
+- **Re-enabling a tracked tool restores its menu-bar icon.**
+  Toggling a provider off in General → Tracked tools used to also
+  drop it from the menu-bar icon set, but re-enabling the provider
+  never re-seeded the icon — the slot stayed empty until the user
+  manually re-checked it in the menu-bar provider picker. The icon
+  set is now stored as user intent (independent of which providers
+  are currently tracked); the renderer filters by enabled providers
+  at draw time. The fix also catches an adjacent bug where Swift's
+  `didSet` doesn't fire on the initializer's first assignment, so
+  on a fresh install the initial icon-providers seed was never
+  persisted to UserDefaults — the next launch re-derived from
+  `enabledProviders` and the user's earlier choice didn't survive.
+  Three regression tests (in-process, cross-relaunch, explicit-off
+  survives) added to `EnabledProvidersTests`.
+
 ## [0.2.13] — 2026-05-19
 
 ### Added
