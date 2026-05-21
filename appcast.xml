@@ -15,5 +15,19 @@
           this Mac satisfies, so the order isn't load-bearing, but
           keeping newest-first is conventional and human-readable.
         -->
+        <item>
+            <title>QuotaMonitor 0.2.18</title>
+            <pubDate>Thu, 21 May 2026 05:41:49 +0000</pubDate>
+            <sparkle:version>0.2.18</sparkle:version>
+            <sparkle:shortVersionString>0.2.18</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+                See CHANGELOG.md for what's new in 0.2.18.
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.18/QuotaMonitor-0.2.18.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="Gq+n6deJoMo4aFI8EeuRXgzSKxOhrNWQQ1CSvhOarOxGH2+kRsDqE1yIS5LZlsCiBDt5L4bb7HWHALWrAjuQDA==" length="4722182" />
+        </item>
     </channel>
 </rss>
