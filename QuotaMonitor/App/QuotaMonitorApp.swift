@@ -15,6 +15,11 @@ struct QuotaMonitorApp: App {
     // localization — exposed in every Scene so any view can flip a
     // setting and have it reflected app-wide on the next render.
     @State private var settings: SettingsStore
+    // Sparkle (auto-update). Single instance — passed via `.environment`
+    // so the Settings tab can wire the "Check Now" button + automatic-
+    // check toggle to the same SPUUpdater that the scheduled background
+    // checks use. Lifetime is the app's; init is cheap (no network).
+    @State private var updater: UpdaterController
 
     init() {
         // Migrate UserDefaults from the legacy `dev.tjzhou.CodexMonitor`
@@ -29,6 +34,7 @@ struct QuotaMonitorApp: App {
         _environment = State(wrappedValue: AppEnvironment())
         _localization = State(wrappedValue: LocalizationStore.shared)
         _settings = State(wrappedValue: SettingsStore.shared)
+        _updater = State(wrappedValue: UpdaterController())
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
             ?? "unknown"
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"
@@ -149,6 +155,7 @@ struct QuotaMonitorApp: App {
                 .environment(environment)
                 .environment(localization)
                 .environment(settings)
+                .environment(updater)
                 .environment(\.locale, localization.locale)
                 .id(localization.tickForceRedraw)
         }

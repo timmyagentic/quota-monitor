@@ -58,6 +58,32 @@ else
     echo "warning: Resources/AppIcon.icns missing — run tools/make-icon.sh" >&2
 fi
 
+# Sparkle.framework embedding
+# ----------------------------
+# SwiftPM links the Sparkle dylib at build time but won't place the
+# framework's runtime payload (Autoupdate.app, XPCServices/) inside our
+# .app bundle — that's an Xcode-target thing. We do it by hand: copy
+# the resolved xcframework's macos slice into Contents/Frameworks/.
+# Without this, Sparkle crashes the moment it tries to spawn its
+# installer subprocess (the user clicks "Install Update" and nothing
+# happens, or worse, the app SIGABRTs).
+#
+# `swift package resolve` must have run first so the xcframework is on
+# disk. `build.sh` runs `swift build` above, which implies a resolve.
+SPARKLE_XCFW=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework"
+SPARKLE_SLICE="${SPARKLE_XCFW}/macos-arm64_x86_64/Sparkle.framework"
+if [[ -d "${SPARKLE_SLICE}" ]]; then
+    echo "==> Embedding Sparkle.framework"
+    mkdir -p "${CONTENTS}/Frameworks"
+    rm -rf "${CONTENTS}/Frameworks/Sparkle.framework"
+    # -R preserves the framework's internal symlinks (Versions/B/...).
+    cp -R "${SPARKLE_SLICE}" "${CONTENTS}/Frameworks/Sparkle.framework"
+else
+    echo "warning: ${SPARKLE_SLICE} not found — Sparkle.framework will" >&2
+    echo "         be missing from the .app. Auto-update will crash on first use." >&2
+    echo "         Did 'swift build' finish without resolving Sparkle?" >&2
+fi
+
 # Signing identity selection
 # ---------------------------
 # A stable self-signed identity keeps the Keychain ACL valid across rebuilds,

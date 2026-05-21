@@ -541,6 +541,20 @@ enum L10n {
     static var developerLogFileLabel: String { t(en: "Log file", zh: "日志文件") }
     static var revealLogFile: String { t(en: "Reveal Log File", zh: "显示日志文件") }
 
+    // updates (Sparkle)
+    static var sectionUpdates: String { t(en: "Updates", zh: "更新") }
+    static var updatesAutoCheckLabel: String {
+        t(en: "Check for updates automatically",
+          zh: "自动检查更新")
+    }
+    static var updatesAutoCheckHelp: String {
+        t(en: "Sparkle polls a signed appcast once a day and prompts you when a new version is available. Disabling skips the schedule but the button below still works.",
+          zh: "Sparkle 每天检查一次签名的 appcast，发现新版本会弹窗提示。关闭只是停掉自动检查，下面的按钮仍可手动触发。")
+    }
+    static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
+    static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
+    static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
+
     // language
     static var languagePickerLabel: String { t(en: "Display language", zh: "显示语言") }
     static var languagePickerHelp: String {

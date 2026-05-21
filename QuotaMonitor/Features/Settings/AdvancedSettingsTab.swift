@@ -17,6 +17,7 @@ import UniformTypeIdentifiers
 struct AdvancedSettingsTab: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(AppEnvironment.self) private var env
+    @Environment(UpdaterController.self) private var updater
     @State private var exportStatus: String?
     @State private var exporting = false
     @State private var pricingRows: [PricingCatalogRow] = []
@@ -108,6 +109,34 @@ struct AdvancedSettingsTab: View {
                 }
                 Button(L10n.revealLogFile) {
                     revealDeveloperLog()
+                }
+            }
+
+            Section(L10n.sectionUpdates) {
+                // Automatic-check toggle. Two-way bound through the
+                // wrapper so flipping it both updates Sparkle's
+                // schedule and persists to UserDefaults under
+                // SUEnableAutomaticChecks. The KVO publisher then
+                // mirrors the new value back into `updater.auto…` so
+                // the toggle reflects external changes too (e.g. a
+                // user running `defaults write` manually).
+                Toggle(L10n.updatesAutoCheckLabel,
+                       isOn: Binding(
+                        get: { updater.automaticallyChecksForUpdates },
+                        set: { updater.setAutomaticallyChecks($0) }))
+                Text(L10n.updatesAutoCheckHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button(L10n.updatesCheckNow) { updater.checkNow() }
+                        .disabled(!updater.canCheckForUpdates)
+                    Spacer()
+                    LabeledContent(L10n.updatesLastCheckedLabel) {
+                        Text(lastCheckedLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -234,6 +263,16 @@ struct AdvancedSettingsTab: View {
         formatter.locale = LocalizationStore.activeLanguage.locale
         formatter.unitsStyle = .short
         return L10n.lastRefreshed(formatter.localizedString(for: date, relativeTo: Date()))
+    }
+
+    private var lastCheckedLabel: String {
+        guard let date = updater.lastUpdateCheckDate else {
+            return L10n.updatesNeverChecked
+        }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = LocalizationStore.activeLanguage.locale
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private func reloadPricing() async {

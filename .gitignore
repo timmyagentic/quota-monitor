@@ -26,3 +26,12 @@ Packages/
 
 # Release artifacts (produced by tools/release.sh)
 dist/
+
+# Sparkle Ed25519 signing material. Real keys live at
+# ~/.config/sparkle/ outside the repo; the patterns below are
+# defence-in-depth in case someone misconfigures `QM_SPARKLE_KEY`
+# or accidentally copies a key into the repo root.
+*.ed25519
+*-ed25519.key
+*-ed25519.pub
+sparkle-private*.key

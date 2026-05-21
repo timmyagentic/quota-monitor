@@ -32,5 +32,34 @@
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <!--
+      Sparkle (auto-update) configuration.
+
+      SUFeedURL points at the appcast XML in this repo. We host it on
+      raw.githubusercontent.com so a release only needs a `git push` to
+      reach every user. Switching to GitHub Pages later is a URL change
+      with no client-side work.
+
+      SUPublicEDKey is the BASE64 Ed25519 public key. The matching
+      private key lives outside this repo (see docs/release.md) and is
+      used by `sign_update` to sign every DMG. Empty key here = Sparkle
+      will refuse to install updates (intended fail-safe). The release
+      pipeline must replace this with the real key before shipping.
+
+      SUEnableInstallerLauncherService=false because we're not Apple-
+      notarized; the in-process installer path is good enough for
+      ad-hoc-signed builds and avoids the XPC installer's stricter
+      sandbox checks.
+    -->
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string></string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUEnableInstallerLauncherService</key>
+    <false/>
 </dict>
 </plist>

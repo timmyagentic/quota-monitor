@@ -1,0 +1,19 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+     xmlns:dc="http://purl.org/dc/elements/1.1/"
+     version="2.0">
+    <channel>
+        <title>QuotaMonitor</title>
+        <link>https://github.com/systemoutprintlnnnn/quota-monitor</link>
+        <description>Auto-update feed for QuotaMonitor.</description>
+        <language>en</language>
+        <!--
+          Append a new <item> at the TOP of the list for every release.
+          tools/release-sparkle.sh emits the right block — copy-paste into
+          here, commit, push. Sparkle picks "latest" by the highest
+          sparkle:version among items whose sparkle:minimumSystemVersion
+          this Mac satisfies, so the order isn't load-bearing, but
+          keeping newest-first is conventional and human-readable.
+        -->
+    </channel>
+</rss>
