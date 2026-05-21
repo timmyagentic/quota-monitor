@@ -16,18 +16,25 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
-            <title>QuotaMonitor 0.2.18</title>
-            <pubDate>Thu, 21 May 2026 05:41:49 +0000</pubDate>
-            <sparkle:version>0.2.18</sparkle:version>
-            <sparkle:shortVersionString>0.2.18</sparkle:shortVersionString>
+            <title>QuotaMonitor 0.2.19</title>
+            <pubDate>Thu, 21 May 2026 08:19:24 +0000</pubDate>
+            <sparkle:version>0.2.19</sparkle:version>
+            <sparkle:shortVersionString>0.2.19</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description><![CDATA[
-                See CHANGELOG.md for what's new in 0.2.18.
+                See CHANGELOG.md for what's new in 0.2.19.
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.18/QuotaMonitor-0.2.18.dmg"
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.19/QuotaMonitor-0.2.19.dmg"
                 type="application/octet-stream"
-                sparkle:edSignature="Gq+n6deJoMo4aFI8EeuRXgzSKxOhrNWQQ1CSvhOarOxGH2+kRsDqE1yIS5LZlsCiBDt5L4bb7HWHALWrAjuQDA==" length="4722182" />
+                sparkle:edSignature="tub+0PS6HR5szgMCSz2n31cPpZZOwa33UTQD0SU2DuWT0Pp4y31b8vF3+IU8V593QZrhSRWH446D2JUZSWumBQ==" length="4722174" />
         </item>
+        <!--
+          v0.2.18 was a broken release (dyld couldn't find
+          Sparkle.framework because the binary's LC_RPATH didn't include
+          @executable_path/../Frameworks). It is intentionally omitted
+          from this appcast — clients should always upgrade past it.
+        -->
+
     </channel>
 </rss>
