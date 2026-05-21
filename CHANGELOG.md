@@ -7,6 +7,22 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.19] — 2026-05-21
+
+### Fixed
+- **App now launches.** v0.2.18 shipped a regression where the
+  embedded Sparkle.framework could not be located by dyld at startup
+  because SwiftPM's executable target only sets `@loader_path` as
+  its LC_RPATH — which resolves to `Contents/MacOS/`, the wrong
+  directory for frameworks that live under `Contents/Frameworks/`.
+  Every v0.2.18 launch SIGABRTed with `Library not loaded:
+  @rpath/Sparkle.framework/...` before the menu-bar icon could
+  appear. `build.sh` now runs `install_name_tool -add_rpath
+  "@executable_path/../Frameworks"` against the binary before
+  embedding Sparkle.framework and re-signing, which restores the
+  standard macOS bundle search path. **v0.2.18 should be considered
+  unusable; this release supersedes it.**
+
 ## [0.2.18] — 2026-05-21
 
 ### Changed
