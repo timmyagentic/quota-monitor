@@ -16,6 +16,23 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
+            <title>QuotaMonitor 0.2.24</title>
+            <pubDate>Thu, 21 May 2026 16:18:14 +0000</pubDate>
+            <sparkle:version>0.2.24</sparkle:version>
+            <sparkle:shortVersionString>0.2.24</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[
+<h3>Changed</h3>
+<ul>
+<li><b>Menu-bar popover now only shows scan status while a scan is active.</b> The always-visible "Last scan / files / changed / events" summary is hidden again to keep the compact menu focused on quota state and the primary actions. Manual refresh still shows the live scan progress bar.</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.24/QuotaMonitor-0.2.24.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="pvtqHwO858I5CdMaqu18qFfcUiNs5IH5BC6N51m3ioOpMdL4qBr1vrQp9qfYI3hIowTTiShNJFrYK+B0deMrCw==" length="4717560" />
+        </item>
+        <item>
             <title>QuotaMonitor 0.2.23</title>
             <pubDate>Thu, 21 May 2026 15:27:20 +0000</pubDate>
             <sparkle:version>0.2.23</sparkle:version>
