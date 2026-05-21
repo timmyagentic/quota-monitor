@@ -135,6 +135,61 @@ struct RolloutParserTests {
         #expect(parsed.latestPlanType == "prolite")
     }
 
+    @Test("last_token_usage wins when total_token_usage is non-monotonic")
+    func lastTokenUsageWinsForCurrentCodexRows() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":1010},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1100,"cached_input_tokens":990,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":1120},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":900,"cached_input_tokens":800,"output_tokens":25,"reasoning_output_tokens":0,"total_tokens":925},"last_token_usage":{"input_tokens":50,"cached_input_tokens":40,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":55}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 110, 55])
+    }
+
+    @Test("total-only token_count samples with zero component buckets are skipped")
+    func malformedTotalOnlySamplesAreSkipped() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":1010},"last_token_usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":12460012}}}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1100,"cached_input_tokens":990,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":1120},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [110])
+    }
+
+    @Test("repeated token snapshots are skipped even when last_token_usage is present")
+    func repeatedTokenSnapshotsAreSkipped() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":1010},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1100,"cached_input_tokens":990,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":1120},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":1010},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1200,"cached_input_tokens":1080,"output_tokens":30,"reasoning_output_tokens":0,"total_tokens":1230},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 110, 110])
+    }
+
+    @Test("same cumulative total with different last_token_usage is kept")
+    func sameTotalWithDifferentLastUsageIsKept() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":1010},"last_token_usage":{"input_tokens":100,"cached_input_tokens":90,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":1010},"last_token_usage":{"input_tokens":25,"cached_input_tokens":20,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":30}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 30])
+    }
+
     // MARK: - legacy fallback
 
     @Test("subagent without turn_context: legacy gpt-5 fallback, modelInferred=true")

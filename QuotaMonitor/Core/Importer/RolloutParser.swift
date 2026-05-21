@@ -2,13 +2,15 @@ import Foundation
 
 // Reads one rollout-*.jsonl file and produces a ParsedSession that's ready to insert.
 //
-// Key invariants (lifted from codex-pacer's importer.rs):
-//   1. token_count.info.total_token_usage is CUMULATIVE per session.
-//      The first sample IS the delta from t=0; subsequent samples are
-//      computed as the diff against the previous cumulative value.
-//   2. If the cumulative counter ever decreases (context reset / new turn),
-//      the current sample is itself the post-reset running total — emit it
-//      as a fresh delta rather than dropping it.
+// Key invariants:
+//   1. token_count.info.last_token_usage is the preferred per-event delta
+//      when present. ccusage documents this as the delta for the most recent
+//      turn. Current Codex rollouts may interleave multiple cumulative
+//      total_token_usage streams, so total_token_usage is not always monotonic
+//      in file order.
+//   2. Older rollouts may only have total_token_usage. For those, compute the
+//      delta from the previous cumulative value, and treat a backwards counter
+//      as the start of a fresh cumulative segment.
 //   3. token_count events do not carry a model_id in today's CLI — we use the
 //      most recent `turn_context.payload.model`. Defensive fallbacks on the
 //      payload itself match ccusage's `extractModel` heuristic. If everything
@@ -83,6 +85,7 @@ enum RolloutParser {
         var latestPlanType: String?
 
         var previousUsage: TokenUsageWire?
+        var seenUsageSnapshots: Set<UsageSnapshotKey> = []
         var deltas: [UsageDelta] = []
         var rateLimitSamples: [RateLimitSampleDraft] = []
 
@@ -114,8 +117,7 @@ enum RolloutParser {
                 rateLimitSamples.append(contentsOf:
                     extractSamples(from: tc.rateLimits, at: timestamp))
 
-                guard let info = tc.info,
-                      let total = info.totalTokenUsage else { continue }
+                guard let info = tc.info else { continue }
 
                 // Resolution order: explicit on payload → tracked turn_context →
                 // legacy fallback. Only the last counts as inferred.
@@ -137,7 +139,11 @@ enum RolloutParser {
                 }
                 seenModels.insert(resolvedModel)
 
-                if let delta = computeDelta(previous: previousUsage, current: total) {
+                let delta = usageDelta(
+                    from: info,
+                    previousTotal: &previousUsage,
+                    seenUsageSnapshots: &seenUsageSnapshots)
+                if let delta {
                     deltas.append(UsageDelta(
                         timestamp: timestamp,
                         modelId: resolvedModel,
@@ -148,7 +154,6 @@ enum RolloutParser {
                         totalTokens: delta.totalTokens,
                         modelInferred: inferred))
                 }
-                previousUsage = total
                 updatedAt = timestamp
 
             case .other:
@@ -188,17 +193,51 @@ enum RolloutParser {
 
     // MARK: - delta logic
 
+    private static func usageDelta(
+        from info: TokenCountInfo,
+        previousTotal: inout TokenUsageWire?,
+        seenUsageSnapshots: inout Set<UsageSnapshotKey>
+    ) -> TokenUsageWire? {
+        if let total = info.totalTokenUsage {
+            let snapshot = UsageSnapshotKey(total: total, last: info.lastTokenUsage)
+            if seenUsageSnapshots.contains(snapshot) { return nil }
+            seenUsageSnapshots.insert(snapshot)
+            if let last = info.lastTokenUsage {
+                previousTotal = total
+                return meaningfulUsage(last)
+            }
+            let delta = computeDelta(previous: previousTotal, current: total)
+            previousTotal = total
+            return delta
+        }
+        if let last = info.lastTokenUsage {
+            return meaningfulUsage(last)
+        }
+        return nil
+    }
+
+    private static func meaningfulUsage(_ usage: TokenUsageWire) -> TokenUsageWire? {
+        if usage == .zero { return nil }
+        let hasComponentBuckets =
+            usage.inputTokens != 0
+            || usage.cachedInputTokens != 0
+            || usage.outputTokens != 0
+            || usage.reasoningOutputTokens != 0
+        // Some historical Codex rows carry a huge `total_tokens` value while
+        // every token bucket is zero. Pricing cannot use those rows and the
+        // UI token totals become nonsense, so treat them as malformed samples.
+        if usage.totalTokens > 0 && !hasComponentBuckets { return nil }
+        return usage
+    }
+
     private static func computeDelta(
         previous: TokenUsageWire?, current: TokenUsageWire
     ) -> TokenUsageWire? {
+        // Fallback for older rollout rows that predate last_token_usage.
         // First event: total_token_usage is cumulative from session start, so
-        // the first sample IS the delta from t=0 to now. Mirrors codex-pacer's
-        // importer.rs which clones `current` when `previous` is None
-        // (importer.rs:719-723). The earlier "skip first sample" behavior
-        // here was a bug that systematically dropped the opening event of
-        // every session.
+        // the first sample IS the delta from t=0 to now.
         guard let previous else {
-            return current == .zero ? nil : current
+            return meaningfulUsage(current)
         }
         let wentBackwards =
             current.inputTokens < previous.inputTokens
@@ -211,7 +250,7 @@ enum RolloutParser {
             // running total of the post-reset session segment; treat it as
             // a fresh delta rather than dropping it (mirrors codex-pacer's
             // importer.rs:796-804).
-            return current == .zero ? nil : current
+            return meaningfulUsage(current)
         }
 
         let delta = TokenUsageWire(
@@ -222,8 +261,7 @@ enum RolloutParser {
             totalTokens: current.totalTokens - previous.totalTokens)
 
         // Skip zero-delta events; they're keepalives.
-        if delta == .zero { return nil }
-        return delta
+        return meaningfulUsage(delta)
     }
 
     // MARK: - rate-limit samples
@@ -267,6 +305,11 @@ enum RolloutParser {
         // session ids are UUID-ish: 8-4-4-4-12. The trailing 5 segments form it.
         return parts.suffix(5).joined(separator: "-")
     }
+}
+
+private struct UsageSnapshotKey: Hashable {
+    let total: TokenUsageWire
+    let last: TokenUsageWire?
 }
 
 // MARK: - line reader

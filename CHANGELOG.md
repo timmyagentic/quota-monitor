@@ -7,6 +7,28 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.23] — 2026-05-21
+
+### Fixed
+- **Codex token totals no longer explode on modern rollouts.** The
+  importer now prefers `token_count.info.last_token_usage` as the
+  per-event delta when Codex emits it, instead of deriving deltas from
+  interleaved `total_token_usage` snapshots that can move backwards in
+  long-running sessions. Legacy rows that only contain cumulative
+  totals still use the old cumulative-diff fallback.
+- **Duplicate token_count snapshots are ignored without dropping distinct
+  events.** Replayed rows with the same `total_token_usage` and
+  `last_token_usage` pair are skipped, while rows with a different
+  `last_token_usage` remain billable. This keeps long active sessions
+  from double-counting repeated status snapshots without returning to
+  the previous under/over-counting behavior.
+- **Malformed token_count rows with only a large `total_tokens` value are
+  discarded.** Rows whose input/cache/output/reasoning buckets are all
+  zero cannot be priced correctly and no longer inflate history totals.
+- **DMG creation no longer collides with older mounted releases.** The
+  installer volume name now includes the release version, so a stale
+  `Install QuotaMonitor` mount cannot block packaging a new DMG.
+
 ## [0.2.22] — 2026-05-21
 
 ### Changed

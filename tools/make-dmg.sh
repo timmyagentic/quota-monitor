@@ -45,7 +45,7 @@ else
 fi
 
 NAME="QuotaMonitor-${VER}.dmg"
-VOLNAME="Install QuotaMonitor"
+VOLNAME="Install QuotaMonitor ${VER}"
 BG_PATH="Resources/dmg-background.png"
 
 STAGING=$(mktemp -d)
