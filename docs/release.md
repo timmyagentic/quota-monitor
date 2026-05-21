@@ -49,55 +49,85 @@ swapping the bundle.
 
 ## One-time setup (per developer machine)
 
-You only do this once per machine, ever.
+You only do this once per machine, ever. The QuotaMonitor maintainer
+machine ALREADY has this set up — the steps below are for restoring it
+on a fresh machine (new laptop, etc.).
 
 ### 1. Generate an Ed25519 key pair
+
+Sparkle stores the private key in your macOS **login Keychain**, never
+on disk as plaintext. macOS will pop a Keychain dialog the first time
+the tool writes — click "Always Allow" so future signings don't
+prompt.
 
 ```sh
 # Resolve the Sparkle artifact so the bin/ tools exist:
 swift package resolve
 
-mkdir -p ~/.config/sparkle
-
-# Generate the keypair. -x writes the PRIVATE key; -p reads it back
-# and prints the public key on stdout.
+# Generates the key, stores in Keychain under account "quotamonitor",
+# prints the public key + a ready-to-paste Info.plist snippet on stdout.
 .build/artifacts/sparkle/Sparkle/bin/generate_keys \
-    -x ~/.config/sparkle/quotamonitor-ed25519.key
-
-# Lock it down. Anyone who reads this file can sign updates that
-# every QuotaMonitor user will trust and auto-install.
-chmod 600 ~/.config/sparkle/quotamonitor-ed25519.key
-
-# Print the public key (you'll paste this into Info.plist):
-.build/artifacts/sparkle/Sparkle/bin/generate_keys \
-    -p ~/.config/sparkle/quotamonitor-ed25519.key
+    --account quotamonitor
 ```
+
+If a key already exists for that account, the tool reuses it instead
+of overwriting — running it twice is safe.
 
 ### 2. Embed the public key
 
 Open `Resources/Info.plist`, find `SUPublicEDKey`, paste the base64
-public key from the previous step. Commit + push.
+public key the tool printed in step 1 into the `<string>...</string>`.
+Commit + push.
 
 ### 3. Back up the private key offline
 
-Burn it to a USB stick, print it on paper, store in a password manager
-— anything not connected to the internet. **If you lose this key, every
-existing install is stuck on its current version forever** (no way to
-ship a new signed update without it).
+Export the private key from Keychain to an offline backup (USB stick,
+encrypted disk, password manager):
+
+```sh
+.build/artifacts/sparkle/Sparkle/bin/generate_keys \
+    --account quotamonitor \
+    -x ~/Desktop/quotamonitor-private-key-BACKUP.key
+chmod 600 ~/Desktop/quotamonitor-private-key-BACKUP.key
+```
+
+Then move that file off this Mac and onto your backup medium.
+**Delete the on-disk copy** once it's backed up:
+
+```sh
+rm ~/Desktop/quotamonitor-private-key-BACKUP.key
+```
+
+**If you lose this key, every existing install is stuck on its current
+version forever** — there's no way to ship a new signed update without
+it.
 
 Conversely, if this key leaks, an attacker can ship a malicious
 "update" that every running copy will silently install. Treat it like
 production database credentials.
 
-### 4. (Optional) Override the key path
+### 4. Restoring on a fresh machine
 
-Default path is `~/.config/sparkle/quotamonitor-ed25519.key`. To put it
-elsewhere (e.g. on a hardware token like a YubiKey-backed file), set:
+If you ever import the backed-up private key onto a new Mac:
 
 ```sh
-export QM_SPARKLE_KEY=~/some/other/path/qm.key
+.build/artifacts/sparkle/Sparkle/bin/generate_keys \
+    --account quotamonitor \
+    -f /path/to/quotamonitor-private-key-BACKUP.key
+```
+
+### 5. (Optional) Override the Keychain account name
+
+Default account is `quotamonitor`. If you want a different label (e.g.
+because you share a Mac with another Sparkle project), set:
+
+```sh
+export QM_SPARKLE_ACCOUNT=myname
 ./tools/release-sparkle.sh
 ```
+
+Make sure `generate_keys --account` and `sign_update --account` use
+the same name.
 
 ---
 
