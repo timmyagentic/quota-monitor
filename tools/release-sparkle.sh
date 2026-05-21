@@ -55,6 +55,21 @@ DOWNLOAD_URL="https://github.com/systemoutprintlnnnn/quota-monitor/releases/down
 PUBDATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
 MIN_OS="14.0"
 
+# Pull the [X.Y.Z] section out of CHANGELOG.md and convert its
+# markdown to inline HTML for Sparkle's release-notes WebView.
+# Sparkle renders the <description> CDATA block as HTML, so giving
+# it bullet lists + headings + bold makes the "What's new" dialog
+# usable instead of showing "See CHANGELOG.md for what's new" (which
+# the user can't actually click on — Sparkle's WebView doesn't run
+# JS or open file:// links inside an app-bundled dialog).
+#
+# The conversion logic lives in tools/changelog-to-html.py rather
+# than inline here because bash's $( ... <<'PY' ... PY ) parses
+# backticks inside the heredoc body as legacy command substitution
+# even with a quoted delimiter, and the regex for `code` spans
+# needs literal backticks.
+RELEASE_NOTES_HTML="$(python3 tools/changelog-to-html.py "${VERSION}")"
+
 cat <<APPCAST_ITEM
 
 ==> Paste this into appcast.xml (under <channel>, newest at top):
@@ -66,7 +81,7 @@ cat <<APPCAST_ITEM
             <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>${MIN_OS}</sparkle:minimumSystemVersion>
             <description><![CDATA[
-                See CHANGELOG.md for what's new in ${VERSION}.
+${RELEASE_NOTES_HTML}
             ]]></description>
             <enclosure
                 url="${DOWNLOAD_URL}"
