@@ -5,7 +5,7 @@
 > the legacy SQLite database and UserDefaults. The old
 > `/Applications/CodexMonitor.app` can be removed manually.
 
-A macOS-only Swift menu-bar app for tracking **Codex CLI** and **Claude Code**
+A macOS-only Swift menu-bar app for tracking **Codex** and **Claude Code**
 usage — live quota meters, rolling spend, session-level drilldown, and
 forecast/burn-rate projections, all sourced from local rollouts plus the
 respective official APIs.
@@ -17,8 +17,7 @@ respective official APIs.
 ## Install
 
 1. Download the latest `QuotaMonitor-<version>.dmg` from the
-   **Releases page** (link will be updated after the first GitHub release is
-   tagged).
+   [Releases page](https://github.com/systemoutprintlnnnn/quota-monitor/releases).
 2. Open the DMG, drag **QuotaMonitor.app** onto the **Applications** alias
    shown in the installer window.
 3. **First launch only** — macOS will refuse to open the app directly. Pick
@@ -78,7 +77,7 @@ Codex CLI / Anthropic API quirks discovered along the way.
 | Subprocess | `Foundation.Process` + `Pipe` |
 | Logging | OSLog (subsystem `dev.tjzhou.QuotaMonitor`) |
 | Sandbox | **off** — required for `~/.codex` and `~/.claude` access |
-| Distribution | ad-hoc signed `.app`, packaged into DMG (no notarization yet) |
+| Distribution | ad-hoc signed `.app`, packaged into DMG, Sparkle appcast updates (no notarization yet) |
 
 ## Build & run (developers)
 
@@ -100,9 +99,34 @@ build time) and the DMG filename pick it up automatically.
 
 After launch the menu bar shows a live `5h XX% · 7d XX%` readout (or the
 gauge icon fallback if no data is available yet). Click it → "Refresh" to
-pull live Codex rate limits **and** rescan local jsonl in one go,
-"Open Dashboard" (⌘D) for the main window, "Settings…" (⌘,) for the
+pull live Codex rate limits, ask Claude for a fresh `/usage` sample when
+allowed by its cooldown, **and** rescan local jsonl in one go. "Open
+Dashboard" (⌘D) opens the main window, and "Settings…" (⌘,) opens the
 General / Advanced preferences.
+
+## Provider data sources
+
+- **Codex live quotas** use `codex app-server` and
+  `account/rateLimits/read`. QuotaMonitor resolves the binary in this order:
+  explicit `CODEX_BINARY`, the user's login-shell `codex`, common user bin
+  dirs, the bundled binary inside `Codex.app`, then Homebrew / `/usr/local`
+  fallbacks. Users who installed only the Codex desktop app are covered when
+  `/Applications/Codex.app/Contents/Resources/codex` exists.
+- **Codex local history** is scanned from `~/.codex/sessions` and
+  `~/.codex/archived_sessions`.
+- **Claude live quotas** use Anthropic's OAuth `/api/oauth/usage` endpoint
+  with Claude Code OAuth credentials. QuotaMonitor reads
+  `~/.claude/.credentials.json` first, then silently reads the macOS
+  `Claude Code-credentials` Keychain item when already authorized. If no
+  standalone `claude` binary is found, it can use Claude Desktop's bundled
+  native Claude Code helper under
+  `~/Library/Application Support/Claude/claude-code/<version>/claude.app`.
+- **Pure Claude Desktop auth is not reused directly.** Claude Desktop stores
+  `oauth:tokenCache` in Electron safeStorage under
+  `~/Library/Application Support/Claude/config.json`; QuotaMonitor does not
+  decrypt or depend on that separate cache.
+- **Claude local history** is scanned from `~/.claude/projects` and
+  `~/.config/claude/projects`.
 
 ## Layout
 
@@ -180,15 +204,20 @@ catalog idea.
 See `docs/findings.md`. Most important:
 
 - Current Codex CLI requires `account/rateLimits/read`, not `rateLimits/read`.
+- A standalone Codex CLI is not strictly required when the first-party
+  `Codex.app` bundle includes `Contents/Resources/codex`.
 - For accounts on `plan_type: "prolite"`, the CLI returns an error with the
   intact JSON body embedded after `body=`. `AppServerClient.readRateLimits()`
   salvages this transparently.
 - Anthropic's `/api/oauth/usage` is edge-rate-limited; QuotaMonitor polls it
   on a hard 2-hour cadence with a 429 back-off ladder.
 - Claude OAuth tokens rotate on every refresh. QuotaMonitor never refreshes
-  them itself — when the local token is stale it spawns `claude --version`
-  and lets the CLI write the new credentials to its Keychain item. See
-  `docs/progress.md` Day-26 for the postmortem.
+  them itself — when the local token is stale it spawns the official Claude
+  Code binary (`claude --version`) and lets it write the new credentials to
+  its Keychain item. See `docs/progress.md` Day-26 for the postmortem.
+- Keychain reads are non-interactive. If macOS would require UI to read
+  `Claude Code-credentials`, the source is treated as unavailable and the
+  menu falls back to local Claude usage history.
 
 ## Inspecting logs
 
@@ -217,7 +246,12 @@ contents and authorization headers are not logged.
 
 - **Not notarized.** Distribute only to people willing to trust an ad-hoc
   signature (the Install section above explains the one-time bypass).
-- **No auto-update.** New releases require downloading the DMG again.
+- **Sparkle updates require a signed appcast entry.** The update framework
+  is wired in, but each release still needs `tools/release-sparkle.sh` and
+  a GitHub release asset before installed copies can update automatically.
+- **Pure Claude Desktop auth is not a live-quota source.** The separate
+  Electron safeStorage cache is intentionally not decoded; Claude live
+  quotas require Claude Code credentials.
 - **macOS 14+ only.** No Linux / Windows / older macOS support planned.
 
 ## License

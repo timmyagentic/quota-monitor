@@ -1,4 +1,5 @@
 import Foundation
+import LocalAuthentication
 
 /// Fetches live quota usage from Anthropic's OAuth-protected
 /// `/api/oauth/usage` endpoint. The endpoint is undocumented but powers
@@ -19,13 +20,12 @@ import Foundation
 /// Credential lookup order:
 ///   1. `~/.claude/.credentials.json` (file written by Claude Code CLI
 ///      on every login). No keychain prompt — strongly preferred.
-///   2. macOS Keychain `Claude Code-credentials` service. May prompt the
-///      user the first time (or every time, depending on
-///      `SettingsStore.keychainPolicy`). Skipped entirely when policy is
-///      `.never`. When multiple items share that service name (e.g. a
-///      dev machine that ran an older CodexMonitor that wrote its own
-///      copy), we pick the one with the most recent
-///      `kSecAttrModificationDate`.
+///   2. macOS Keychain `Claude Code-credentials` service. The production
+///      path shells through `/usr/bin/security` with a short timeout so a
+///      background poller cannot hang inside Security.framework; if the
+///      keychain cannot be read non-interactively, we surface the
+///      credential as unavailable instead. Skipped entirely when policy
+///      is `.never`.
 ///
 /// Token requirement: scope must include `user:profile`. CLI-only tokens
 /// scoped to `user:inference` get a 403 — we surface that as
@@ -98,8 +98,8 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// successful 200 so a long-lived auth bounce doesn't accumulate.
     private var rejectedTokens: Set<String> = []
     /// Set to true when the user clicks "Deny" / cancels the prompt OR
-    /// the keychain query returns auth-class errors. Stops us from asking
-    /// again in this process.
+    /// the keychain query would require UI / returns auth-class errors.
+    /// Stops us from asking again in this process.
     private var keychainBlocked = false
 
     init(
@@ -296,7 +296,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         // has already 401'd. Consult the Keychain — the CLI writes
         // refreshes there, so it may hold a newer token even when the
         // file looks locally fresh.
-        let kcCreds = readKeychainCredsIfAllowed()
+        let kcCreds = await readKeychainCredsIfAllowed()
         if let k = kcCreds, isUsable(k) {
             cachedToken = k.accessToken
             return k.accessToken
@@ -324,7 +324,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
                     cachedToken = f.accessToken
                     return f.accessToken
                 }
-                if let k = readKeychainCredsIfAllowed(), isUsable(k) {
+                if let k = await readKeychainCredsIfAllowed(), isUsable(k) {
                     cachedToken = k.accessToken
                     return k.accessToken
                 }
@@ -352,13 +352,14 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         !Self.isExpired(creds) && !rejectedTokens.contains(creds.accessToken)
     }
 
-    /// Wraps `readKeychainTokenOutcome` in actor-state-aware error
-    /// handling. Sets `keychainBlocked` on user denial / no-such-item so
-    /// we don't keep re-prompting in the same process.
-    private func readKeychainCredsIfAllowed() -> StoredCredentials? {
+    /// Wraps the Keychain fallback in actor-state-aware error handling.
+    /// Sets `keychainBlocked` on no-such-item or reads that would
+    /// require Keychain UI so we don't keep retrying a path that cannot
+    /// complete from a background poller.
+    private func readKeychainCredsIfAllowed() async -> StoredCredentials? {
         let snap = SettingsStore.snapshot()
         guard snap.keychainPolicy != .never, !keychainBlocked else { return nil }
-        switch Self.readKeychainTokenOutcome() {
+        switch Self.readKeychainTokenOutcomeViaSecurityTool(timeout: 2) {
         case .ok(_, let raw):
             // Mirror to disk if the user has explicitly opted in. This
             // turns the next-launch behaviour from "Keychain prompt"
@@ -372,6 +373,11 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             return Self.parseCredentials(jsonData: raw)
         case .denied, .interactionNotAllowed, .notFound:
             keychainBlocked = true
+            DeveloperLog.eventRecord(
+                "claude_credentials.keychain.unavailable",
+                category: "poller",
+                provider: "claude",
+                result: "skipped")
             return nil
         case .otherError:
             return nil
@@ -505,7 +511,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
 
 
     /// Outcome of a keychain read.
-    enum KeychainOutcome {
+    enum KeychainOutcome: Sendable {
         case ok(token: String, raw: Data)
         case notFound
         case denied               // user clicked Deny, or item ACL refused us
@@ -513,8 +519,70 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         case otherError
     }
 
+    static func readKeychainTokenOutcomeViaSecurityTool(
+        timeout: TimeInterval
+    ) -> KeychainOutcome {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "find-generic-password",
+            "-s", "Claude Code-credentials",
+            "-w",
+        ]
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        do {
+            try process.run()
+        } catch {
+            return .otherError
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if process.isRunning {
+            process.terminate()
+            return .interactionNotAllowed
+        }
+
+        let out = stdout.fileHandleForReading.readDataToEndOfFile()
+        let err = stderr.fileHandleForReading.readDataToEndOfFile()
+        guard process.terminationStatus == 0 else {
+            let message = String(data: err, encoding: .utf8)?.lowercased() ?? ""
+            if message.contains("could not be found") || message.contains("not found") {
+                return .notFound
+            }
+            if message.contains("user interaction is not allowed") {
+                return .interactionNotAllowed
+            }
+            return .otherError
+        }
+        return decodeKeychainPasswordData(out)
+    }
+
+    static func decodeKeychainPasswordData(_ data: Data) -> KeychainOutcome {
+        guard let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty
+        else { return .otherError }
+        let bytes = Data(raw.utf8)
+        if let creds = parseCredentials(jsonData: bytes) {
+            return .ok(token: creds.accessToken, raw: bytes)
+        }
+        if (try? JSONSerialization.jsonObject(with: bytes)) != nil {
+            return .otherError
+        }
+        return .ok(token: raw, raw: bytes)
+    }
+
     /// Pull `Claude Code-credentials` (service name) generic password from
-    /// the login keychain.
+    /// the login keychain without allowing Security.framework to present
+    /// authentication UI. This runs from a background poller; an
+    /// interactive prompt can otherwise leave the poller permanently
+    /// suspended with no log output.
     ///
     /// **Multiple-item disambiguation.** Some dev machines (and previous
     /// CodexMonitor bugs) ended up with more than one item under this
@@ -525,13 +593,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// freshest persistent ref. CodexBar source:
     /// https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthCredentials.swift#L1485-L1517
     static func readKeychainTokenOutcome() -> KeychainOutcome {
-        let listQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecMatchLimit as String: kSecMatchLimitAll,
-            kSecReturnAttributes as String: true,
-            kSecReturnPersistentRef as String: true,
-        ]
+        let listQuery = keychainListQuery()
         var listResult: CFTypeRef?
         let listStatus = SecItemCopyMatching(listQuery as CFDictionary, &listResult)
         switch listStatus {
@@ -565,10 +627,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             return .otherError
         }
         // Re-fetch the data using the persistent ref of the freshest item.
-        let dataQuery: [String: Any] = [
-            kSecValuePersistentRef as String: ref,
-            kSecReturnData as String: true,
-        ]
+        let dataQuery = keychainDataQuery(persistentRef: ref)
         var dataResult: CFTypeRef?
         let dataStatus = SecItemCopyMatching(dataQuery as CFDictionary, &dataResult)
         switch dataStatus {
@@ -603,6 +662,40 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         default:
             return .otherError
         }
+    }
+
+    static func keychainListQuery() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+            kSecReturnPersistentRef as String: true,
+            kSecUseAuthenticationContext as String: nonInteractiveKeychainContext(),
+            keychainAuthenticationUIKey: keychainAuthenticationUIFailValue,
+        ]
+    }
+
+    static func keychainDataQuery(persistentRef: Data) -> [String: Any] {
+        [
+            kSecValuePersistentRef as String: persistentRef,
+            kSecReturnData as String: true,
+            kSecUseAuthenticationContext as String: nonInteractiveKeychainContext(),
+            keychainAuthenticationUIKey: keychainAuthenticationUIFailValue,
+        ]
+    }
+
+    // `kSecUseAuthenticationUIFail` is deprecated in favor of LAContext, but
+    // the older generic-password path can still ignore LAContext on macOS.
+    // Keep the public constant's raw value here so we get the old no-UI
+    // behavior without pulling a deprecation warning into every build.
+    static let keychainAuthenticationUIKey = kSecUseAuthenticationUI as String
+    static let keychainAuthenticationUIFailValue = "u_AuthUIF"
+
+    private static func nonInteractiveKeychainContext() -> LAContext {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return context
     }
 
     /// Persist `keychainPolicy = .never` on the main actor. Currently

@@ -46,31 +46,51 @@ actor AppServerClient {
     private static func resolveBinary() -> String? {
         let env = ProcessInfo.processInfo.environment
 
+        return resolveBinary(
+            explicitOverride: env["CODEX_BINARY"],
+            home: env["HOME"] ?? "",
+            loginShellPath: discoverViaLoginShell(),
+            isExecutable: FileManager.default.isExecutableFile(atPath:))
+    }
+
+    static func resolveBinary(
+        explicitOverride: String?,
+        home: String,
+        loginShellPath: String?,
+        isExecutable: (String) -> Bool
+    ) -> String? {
         // 1. Explicit override (set in launchctl or via env var).
-        if let override = env["CODEX_BINARY"],
-           !override.isEmpty,
-           FileManager.default.isExecutableFile(atPath: override) {
+        if let override = explicitOverride, !override.isEmpty, isExecutable(override) {
             return override
         }
 
-        // 2. Common install locations. GUI-launched apps inherit a minimal PATH,
-        // so we probe well-known bin dirs ourselves.
-        let home = env["HOME"] ?? ""
+        // 2. Match the user's terminal first. A hardcoded install path can be
+        // stale or half-uninstalled while the login shell points at the working
+        // version-manager install (nvm/asdf/bun/etc.).
+        if let shellPath = loginShellPath, !shellPath.isEmpty, isExecutable(shellPath) {
+            return shellPath
+        }
+
+        // 3. Common install locations. GUI-launched apps inherit a minimal PATH,
+        // so we probe well-known bin dirs ourselves when the login shell probe
+        // cannot find codex. Prefer the first-party desktop bundle before
+        // hardcoded package-manager paths: users may have Codex.app installed
+        // without a standalone CLI, and old Homebrew shims can be executable
+        // while pointing at a missing vendor binary.
         let candidates = [
             "\(home)/.npm-global/bin/codex",
             "\(home)/.local/bin/codex",
             "\(home)/.cargo/bin/codex",
             "\(home)/.bun/bin/codex",
+            "\(home)/Applications/Codex.app/Contents/Resources/codex",
+            "/Applications/Codex.app/Contents/Resources/codex",
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
         ]
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+        for path in candidates where isExecutable(path) {
             return path
         }
-
-        // 3. Fall back to a login shell so we pick up whatever the user's
-        // dotfiles add to PATH.
-        return discoverViaLoginShell()
+        return nil
     }
 
     private static func discoverViaLoginShell() -> String? {

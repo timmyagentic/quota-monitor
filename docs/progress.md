@@ -1,7 +1,7 @@
 # CodexMonitor → QuotaMonitor — 进度跟踪
 
 跨会话持久化的项目进度档案。每次完成一个里程碑就更新本文件。
-最近更新：2026-05-20（Day-28 Developer Mode + refresh fan-out）
+最近更新：2026-05-23（Day-29 配额进度条复查 + app-only fallback）
 
 ---
 
@@ -37,6 +37,7 @@
 | 26 | 0.2.0 修复打包 + Claude refresh 委派给 CLI | ✅ 已完成 |
 | 27 | 重命名 CodexMonitor → QuotaMonitor（bundle id + DB + UserDefaults 自动迁移） | ✅ 已完成 |
 | 28 | Developer Mode 持久化日志 + refresh fan-out 对齐 | ✅ 已完成 |
+| 29 | 配额进度条复查 + Codex/Claude app-only fallback + 发版文档 | ✅ 已完成 |
 
 ---
 
@@ -760,3 +761,42 @@ b) **Refresh token 轮换的本质冲突无解**。Anthropic 的 OAuth 每次 re
 - CHANGELOG：`[Unreleased]` 补 Developer Mode、refresh fan-out、popover-open hook、Reload 行为。
 - `docs/parity.md`：logging / settings 行补持久化 Developer Mode。
 - `docs/project-survey-2026-04-30.md`：追加当前状态，避免继续引用旧的 CodexMonitor 路径、旧测试数、旧 refresh 触发点。
+
+---
+
+## Day-29 — 配额进度条复查 + app-only fallback + 发版文档 ✅
+
+**触发**：用户反馈菜单栏 quota progress bar 一直不更新，并追问 Claude 是否也有类似问题、如果用户没有安装 CLI 只装桌面 App 能不能解决。修复过程分成三类：Codex 二进制解析、Claude 凭据/刷新路径、以及菜单栏/构建稳定性。
+
+**Codex 根因与修复**
+
+- 真实问题不是 progress bar UI 本身，而是 live quota poller 没拿到新样本。GUI 启动的 App 先选到了 `/opt/homebrew/bin/codex`，这个 shim 可执行但内部 vendor binary 已缺失；用户终端里的工作版本其实在 nvm 路径下。
+- `AppServerClient.resolveBinary` 现在顺序为：`CODEX_BINARY` → login shell 的 `command -v codex` → 用户目录常见 bin → `~/Applications/Codex.app/Contents/Resources/codex` → `/Applications/Codex.app/Contents/Resources/codex` → Homebrew / `/usr/local` fallback。
+- 本机额外验证了 Codex desktop app-only 路径：`/Applications/Codex.app/Contents/Resources/codex` 报 `codex-cli 0.133.0-alpha.1`，直接 `app-server` 调 `account/rateLimits/read` 成功，返回 `planType=pro`、5h/7d used percent。
+
+**Claude 根因与修复**
+
+- Claude CLI 本身不是坏 binary；问题在 Keychain 路径。直接用 Security.framework 读 `Claude Code-credentials` 的 data 时，后台 poller 可卡在 `SecItemCopyMatching`，表现就是 UI 一直等不到新 quota。
+- `ClaudeUsageClient` 的生产 Keychain fallback 改成 `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w`，带 2 秒 timeout；如果需要交互，就把 Keychain 视为 unavailable，而不是让 poller 挂死。
+- `ClaudeCLIRefreshTrigger` 现在和 Codex 一样优先用 login-shell `claude`，再看用户目录安装；如果没有独立 CLI，会查 Claude Desktop 下载的原生 Claude Code helper：
+  `~/Library/Application Support/Claude/claude-code/<version>/claude.app/Contents/MacOS/claude`。
+- 重要边界：纯 Claude Desktop 登录不等于 Claude Code OAuth 凭据。Claude Desktop 自己的 `oauth:tokenCache` 在 `~/Library/Application Support/Claude/config.json`，由 Electron safeStorage 加密并依赖 `"Claude Safe Storage"` Keychain item。当前 QuotaMonitor 不解这个 cache，也不把它算成 live quota 来源。
+
+**菜单栏与构建**
+
+- `MenuBarExtra(.window)` 加 `.windowResizability(.contentSize)`，`MenuBarContentView` 加 `.fixedSize(horizontal:false, vertical:true)`，避免 macOS 保留旧高度导致空白带。
+- `build.sh` 在有 Swiftly 时先 source `~/.swiftly/env.sh`，并给 SwiftPM 加 `--disable-keychain`，规避 CLT-only manifest/toolchain mismatch 和公开依赖解析时的 Keychain stall。
+
+**文档同步**
+
+- `CHANGELOG.md`：把 0.2.25 发版说明补全，包括 app-only fallback、非交互 Keychain、菜单栏尺寸、构建稳定性和 Claude Desktop auth 边界。
+- `README.md`：新增 Provider data sources，明确 Codex app-only 支持、Claude Code 凭据要求、纯 Claude Desktop safeStorage cache 不读取；Current limitations 里删掉过时的 "No auto-update"。
+- `docs/findings.md`：追加 2026-05-23 desktop app-only probes、Keychain hang 结论和新的风险项。
+- `docs/parity.md` / `docs/release.md` / `docs/project-survey-2026-04-30.md`：同步最新 resolver、Sparkle/release 流程和测试数量。
+
+**验证**
+
+- `swift test --disable-keychain`：160 tests / 22 suites passed。
+- `git diff --check`：通过。
+- `./build.sh debug`：通过，已重装并启动 `/Applications/QuotaMonitor.app`。
+- DB 验证：`rate_limit_samples` 有新的 Codex live 样本（北京时间 2026-05-23 15:01:32，5h=16%、7d=52%）；Claude latest oauth 样本保持 2 小时 cadence，符合设计。

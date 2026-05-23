@@ -591,15 +591,15 @@ enum L10n {
     }
 
     static var claudeOAuthExplanation: String {
-        t(en: "Anthropic's `/api/oauth/usage` endpoint requires the Claude Code OAuth token. We read `~/.claude/.credentials.json` first; the Keychain item is a fallback for macOS GUI apps (may prompt the first time).",
-          zh: "Anthropic 的 `/api/oauth/usage` 端点需要 Claude Code OAuth token。我们优先读取 `~/.claude/.credentials.json`；Keychain 项是 macOS GUI 应用的兜底（首次可能弹窗）。")
+        t(en: "Anthropic's `/api/oauth/usage` endpoint requires the Claude Code OAuth token. We read `~/.claude/.credentials.json` first; Keychain is a non-interactive fallback when macOS allows a silent read.",
+          zh: "Anthropic 的 `/api/oauth/usage` 端点需要 Claude Code OAuth token。我们优先读取 `~/.claude/.credentials.json`；Keychain 仅在 macOS 允许静默读取时作为非交互式兜底。")
     }
     static var keychainPolicyLabel: String { t(en: "Live quotas", zh: "实时配额") }
     static var keychainPolicyFallback: String {
-        t(en: "Use Keychain when needed", zh: "需要时使用 Keychain")
+        t(en: "Use allowed Keychain item", zh: "使用已授权 Keychain 项")
     }
     static var keychainPolicyNever: String {
-        t(en: "Never prompt (file only)", zh: "从不弹窗（仅文件）")
+        t(en: "File only", zh: "仅文件")
     }
 
     // polling

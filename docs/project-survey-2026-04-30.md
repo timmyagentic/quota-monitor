@@ -89,7 +89,7 @@ owns shared observable state and lifecycle wiring.
 | Site | Cadence | Op | UI surface |
 |---|---|---|---|
 | `RateLimitPoller` | 300s (settings-driven) | Codex `account/rateLimits/read` | yes |
-| `ClaudeUsagePoller` | 7200s hard-coded; 60s minGap; 1800s/300s back-off | POST `/api/oauth/usage` | 429 NOT surfaced; auth errors do |
+| `ClaudeUsagePoller` | 7200s hard-coded; 60s minGap; 1800s/300s back-off | GET `/api/oauth/usage` | 429 NOT surfaced; auth errors do |
 | `ClaudeUsageHydrator` | once at boot | DB read | warms `latestClaudeUsage` |
 | `LiteLLM pricing fetch` | once at boot if >24h stale + manual | HTTP | yes |
 | `QuotaMonitorApp` menu-bar scene `.task` | cold launch / scene creation | `refreshAll(throttle:false)` + `refreshDashboard` + `startBackgroundPolling` | yes |
@@ -125,9 +125,9 @@ owns shared observable state and lifecycle wiring.
 
 The original "next session" recommendations are no longer pending. The
 mechanical safety-net and split work below was executed first, and later
-releases added onboarding, Dock-icon, pricing, uninstall, scan-progress, and
-Developer Mode coverage. Current passing test count is 130 under
-`Tests/QuotaMonitorTests/`.
+releases added onboarding, Dock-icon, pricing, uninstall, scan-progress,
+Developer Mode, app-only binary resolver, and non-interactive Keychain
+coverage. Current passing test count is 160 under `Tests/QuotaMonitorTests/`.
 
 ---
 
@@ -142,7 +142,7 @@ User said "do it all", so this entire audit was executed in one sitting:
 - `Tests/QuotaMonitorTests/ClaudeUsageHydratorTests.swift` — round-trips all 4 windows, newest-sample-wins, opus/sonnet without plain secondary row, empty DB → nil, codex source_kind ignored.
 
 At that point, total test count went from **11 → 37**, all green. Current
-coverage has since grown to the 130-test count noted above.
+coverage has since grown to the 160-test count noted above.
 
 **P1 (deletion) — DONE**
 - L10n purge: ~50 dead entries removed (`L10n.swift` shrunk by ~150 LOC). Verified each via `grep` before deletion.
@@ -164,3 +164,28 @@ coverage has since grown to the 130-test count noted above.
 - App restarted, PID 52827 confirmed running. Menu bar headline still renders, Dashboard tabs still load.
 
 What's NOT done from the original survey: the deeper refactors in Section 4.5 (Notifier strategy, Pricing fetch retry/backoff) and the open product question about whether the Composition donut still earns its space — those are judgment calls, not mechanical wins, and warrant a separate conversation.
+
+---
+
+## Update — 2026-05-23 release-prep audit
+
+The quota-progress investigation added a new class of reliability coverage:
+binary resolution and credential-source behavior for GUI-launched apps.
+
+- `AppServerClientResolverTests.swift` covers `CODEX_BINARY`, login-shell
+  resolution, user-local bins, Codex.app bundled `Contents/Resources/codex`,
+  and package-manager fallbacks.
+- `ClaudeCLIRefreshTriggerTests.swift` now covers `CLAUDE_BINARY`,
+  login-shell resolution, user-local bins, Claude Desktop's bundled native
+  Claude Code helper, and newest-version selection under
+  `~/Library/Application Support/Claude/claude-code/`.
+- `ClaudeUsageClientKeychainTests.swift` covers non-interactive Keychain query
+  construction and decoding the password payload returned by the `security`
+  command path.
+- Real-machine probes confirmed the Codex.app bundled binary can answer
+  `account/rateLimits/read`, and the Claude Desktop bundled helper can run
+  `claude auth status` when Claude Code auth exists.
+
+Important boundary retained for release notes: pure Claude Desktop
+`oauth:tokenCache` is not a supported live-quota source. It is Electron
+safeStorage-encrypted and separate from Claude Code credentials.

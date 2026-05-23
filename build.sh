@@ -6,17 +6,29 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+# Prefer a user-installed Swiftly toolchain when present. On this macOS 26
+# machine the Command Line Tools SwiftPM manifest API is mismatched and cannot
+# compile Package.swift, while the Swiftly 6.3.2 toolchain works.
+if [[ -f "${HOME}/.swiftly/env.sh" ]]; then
+    # shellcheck disable=SC1090
+    . "${HOME}/.swiftly/env.sh"
+    hash -r 2>/dev/null || true
+fi
+
 # Config can come from $1 (positional) OR $CONFIG (env). Env wins so callers
 # like make-dmg.sh / release.sh can pipe a value through without juggling args.
 CONFIG="${CONFIG:-${1:-debug}}"
 APP_NAME="QuotaMonitor"
 APP_BUNDLE=".build/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
+# All package dependencies are public. Disabling SwiftPM's macOS keychain
+# credential lookup avoids securityd stalls during binary artifact downloads.
+SWIFT_BUILD_FLAGS=(--disable-keychain)
 
 echo "==> swift build -c ${CONFIG}"
-swift build -c "${CONFIG}"
+swift build -c "${CONFIG}" "${SWIFT_BUILD_FLAGS[@]}"
 
-BIN_DIR="$(swift build -c "${CONFIG}" --show-bin-path)"
+BIN_DIR="$(swift build -c "${CONFIG}" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
 BIN_PATH="${BIN_DIR}/${APP_NAME}"
 
 if [[ ! -x "${BIN_PATH}" ]]; then

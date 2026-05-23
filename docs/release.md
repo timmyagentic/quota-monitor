@@ -8,18 +8,25 @@ steps. **One-time setup** is at the bottom — do that first.
 
 ## Per-release checklist
 
-1. **Bump version**: edit `Resources/VERSION` to the new `X.Y.Z`.
-2. **Update CHANGELOG**: convert `[Unreleased]` to `[X.Y.Z] — YYYY-MM-DD`
-   and add a fresh empty `[Unreleased]` heading on top.
-3. **Commit + tag**:
+1. **Bump version**: edit `Resources/VERSION` to the new `X.Y.Z` unless the
+   version was already bumped during the release-prep patch.
+2. **Update docs**:
+   - `CHANGELOG.md` must contain a `## [X.Y.Z] — YYYY-MM-DD` section because
+     Sparkle release notes are extracted from that exact heading.
+   - `README.md`, `docs/findings.md`, and `docs/parity.md` should reflect any
+     changed user-visible behavior or important support boundaries.
+3. **Run the release pipeline**:
    ```sh
-   git add Resources/VERSION CHANGELOG.md
+   ./tools/release.sh           # use --force only to overwrite an existing local DMG
+   ```
+   This runs tests, builds the release bundle, verifies codesigning, creates
+   `dist/QuotaMonitor-X.Y.Z.dmg`, writes the `.sha256`, mounts the DMG, and
+   verifies the app inside it.
+4. **Commit + tag**:
+   ```sh
+   git add Resources/VERSION CHANGELOG.md README.md docs
    git commit -m "Release vX.Y.Z"
    git tag vX.Y.Z
-   ```
-4. **Build the signed DMG**:
-   ```sh
-   ./make-dmg.sh           # produces dist/QuotaMonitor-X.Y.Z.dmg
    ```
 5. **Generate the appcast entry** (signs the DMG with your Ed25519
    private key and prints a ready-to-paste `<item>` block):
@@ -41,9 +48,10 @@ steps. **One-time setup** is at the bottom — do that first.
    (default 24 h). The GitHub release page hosts the actual DMG
    download.
 
-That's it. No notarization, no Apple Developer cert, no PKG. The
-Ed25519 signature in the appcast item is what Sparkle verifies before
-swapping the bundle.
+That's it. No notarization, no Apple Developer cert, no PKG. The Ed25519
+signature in the appcast item is what Sparkle verifies before swapping the
+bundle. Users still need the first manual right-click → Open install because
+the app is ad-hoc signed.
 
 ---
 

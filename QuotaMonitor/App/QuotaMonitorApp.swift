@@ -110,6 +110,10 @@ struct QuotaMonitorApp: App {
                 .environment(settings)
         }
         .menuBarExtraStyle(.window)
+        // Keep the MenuBarExtra host pinned to its SwiftUI content height.
+        // Without this, macOS can preserve a taller panel when provider
+        // blocks are hidden, leaving blank bands above and below the card.
+        .windowResizability(.contentSize)
 
         // Standalone onboarding window, opened from MenuBarLabelView's
         // `.task` on launch when the user hasn't yet picked a language

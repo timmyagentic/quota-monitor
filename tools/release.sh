@@ -13,6 +13,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Prefer the same user-installed Swiftly toolchain that build.sh uses. On some
+# macOS CLT installs, the system SwiftPM manifest API can be out of sync with
+# the compiler and fail before tests even start.
+if [[ -f "${HOME}/.swiftly/env.sh" ]]; then
+    # shellcheck disable=SC1090
+    . "${HOME}/.swiftly/env.sh"
+    hash -r 2>/dev/null || true
+fi
+
 # -------- pre-flight --------------------------------------------------------
 
 if [[ "$(uname)" != "Darwin" ]]; then
@@ -57,7 +66,7 @@ echo "==> Releasing QuotaMonitor v${VERSION}"
 # -------- tests -------------------------------------------------------------
 
 echo "==> swift test"
-swift test
+swift test --disable-keychain
 
 # -------- build (release) ---------------------------------------------------
 

@@ -31,6 +31,7 @@ struct MenuBarContentView: View {
         }
         .padding(14)
         .frame(width: 360)
+        .fixedSize(horizontal: false, vertical: true)
         // Allow click-and-drag to select any number / label in the popover.
         // Buttons stay clickable — `.textSelection` only affects standalone
         // Text views, not text inside Button labels. Lets the user copy

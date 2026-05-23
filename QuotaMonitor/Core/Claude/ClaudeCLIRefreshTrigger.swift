@@ -188,7 +188,16 @@ actor ClaudeCLIRefreshTrigger {
         // PATH otherwise. Inlined rather than importing because the
         // augment helper is private to AppServerClient.
         let env = augmentedEnvironment()
-        guard let binary = resolveClaudeBinary(env: env) else {
+        guard let binary = resolveClaudeBinary(
+            explicitOverride: env["CLAUDE_BINARY"],
+            home: env["HOME"] ?? NSHomeDirectory(),
+            loginShellPath: discoverClaudeViaLoginShell(),
+            path: env["PATH"] ?? "",
+            desktopBundlePath: discoverClaudeDesktopBundle(
+                home: env["HOME"] ?? NSHomeDirectory(),
+                isExecutable: FileManager.default.isExecutableFile(atPath:)),
+            isExecutable: FileManager.default.isExecutableFile(atPath:))
+        else {
             Log.poller.error("claude CLI refresh: `claude` not found on PATH")
             DeveloperLog.eventRecord(
                 "claude_cli.binary.not_found",
@@ -287,7 +296,7 @@ actor ClaudeCLIRefreshTrigger {
         let loginParts = (loginShellPATH ?? "").split(separator: ":").map(String.init)
         let existing = env["PATH"] ?? ""
         let existingParts = existing.split(separator: ":").map(String.init)
-        let merged = (extras + loginParts + existingParts).reduce(into: [String]()) { acc, dir in
+        let merged = (loginParts + extras + existingParts).reduce(into: [String]()) { acc, dir in
             if !acc.contains(dir) { acc.append(dir) }
         }
         env["PATH"] = merged.joined(separator: ":")
@@ -320,16 +329,107 @@ actor ClaudeCLIRefreshTrigger {
         }
     }
 
-    /// Probe the augmented PATH for an executable named `claude`.
-    private static func resolveClaudeBinary(env: [String: String]) -> String? {
-        let path = env["PATH"] ?? ""
+    /// Exact `claude` binary the user's login shell would run. This is
+    /// stricter than scanning a synthetic PATH because stale global
+    /// installs can sit in common hardcoded directories while the
+    /// working CLI lives under a version manager.
+    private static func discoverClaudeViaLoginShell() -> String? {
+        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell)
+        process.arguments = ["-ilc", "command -v claude"]
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let path = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return path.isEmpty ? nil : path
+        } catch {
+            return nil
+        }
+    }
+
+    /// Probe for an executable `claude`, matching the user's terminal
+    /// before common hardcoded install directories.
+    static func resolveClaudeBinary(
+        explicitOverride: String?,
+        home: String,
+        loginShellPath: String?,
+        path: String,
+        desktopBundlePath: String? = nil,
+        isExecutable: (String) -> Bool
+    ) -> String? {
+        if let override = explicitOverride, !override.isEmpty, isExecutable(override) {
+            return override
+        }
+        if let shellPath = loginShellPath, !shellPath.isEmpty, isExecutable(shellPath) {
+            return shellPath
+        }
+        let userCandidates = [
+            "\(home)/.npm-global/bin/claude",
+            "\(home)/.local/bin/claude",
+            "\(home)/.cargo/bin/claude",
+            "\(home)/.bun/bin/claude",
+        ]
+        for candidate in userCandidates where isExecutable(candidate) {
+            return candidate
+        }
+        if let desktopBundlePath, isExecutable(desktopBundlePath) {
+            return desktopBundlePath
+        }
+        let packageManagerCandidates = [
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+        ]
+        for candidate in packageManagerCandidates where isExecutable(candidate) {
+            return candidate
+        }
         for dir in path.split(separator: ":") {
             let candidate = "\(dir)/claude"
-            if FileManager.default.isExecutableFile(atPath: candidate) {
+            if isExecutable(candidate) {
                 return candidate
             }
         }
         return nil
+    }
+
+    /// Claude Desktop can download a native Claude Code build into
+    /// `~/Library/Application Support/Claude/claude-code/<version>/claude.app`.
+    /// That covers users who installed the desktop app but never put a
+    /// standalone `claude` binary on PATH. The VM copy next to it is an ELF
+    /// Linux binary, so only the `.app/Contents/MacOS/claude` path is usable
+    /// from QuotaMonitor on macOS.
+    static func discoverClaudeDesktopBundle(
+        home: String,
+        isExecutable: (String) -> Bool
+    ) -> String? {
+        let root = URL(fileURLWithPath: home)
+            .appendingPathComponent("Library/Application Support/Claude/claude-code",
+                                    isDirectory: true)
+        guard let versions = try? FileManager.default.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles])
+        else { return nil }
+
+        let candidates = versions
+            .filter { $0.hasDirectoryPath }
+            .sorted {
+                $0.lastPathComponent.compare(
+                    $1.lastPathComponent,
+                    options: [.numeric, .caseInsensitive]) == .orderedDescending
+            }
+            .map {
+                $0.appendingPathComponent("claude.app/Contents/MacOS/claude",
+                                          isDirectory: false).path
+            }
+
+        return candidates.first(where: isExecutable)
     }
 
     // MARK: - Test inspection

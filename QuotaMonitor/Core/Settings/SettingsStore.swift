@@ -22,11 +22,11 @@ final class SettingsStore {
         didSet { defaults.set(pollIntervalSeconds, forKey: Keys.pollInterval) }
     }
     /// Controls whether `ClaudeUsageClient` is allowed to read the
-    /// `Claude Code-credentials` keychain entry. First read may prompt
-    /// the user; subsequent reads are silent unless the user clicked
-    /// "Deny" (which sticks for the app's bundle ID). The file source
-    /// (`~/.claude/.credentials.json`) is always tried first, so most
-    /// users won't notice this knob.
+    /// `Claude Code-credentials` keychain entry. Reads are
+    /// non-interactive: if macOS would need to show an authorization
+    /// prompt, the read is treated as unavailable instead of blocking a
+    /// background poller. The file source (`~/.claude/.credentials.json`)
+    /// is always tried first, so most users won't notice this knob.
     var keychainPolicy: KeychainPolicy {
         didSet { defaults.set(keychainPolicy.rawValue, forKey: Keys.keychainPolicy) }
     }

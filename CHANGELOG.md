@@ -7,13 +7,64 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
-## [0.2.24] — 2026-05-22
+## [0.2.25] — 2026-05-23
+
+### Added
+- **Codex desktop-app installs now work without a separate CLI on PATH.**
+  QuotaMonitor still prefers an explicit `CODEX_BINARY` override and the
+  user's login-shell `codex`, but now falls back to the first-party
+  `Codex.app` bundled binary at
+  `/Applications/Codex.app/Contents/Resources/codex` (and the matching
+  `~/Applications` path). This lets live Codex quota rows update for users
+  who installed only the Codex desktop app.
+- **Claude Desktop's bundled Claude Code build is discovered automatically.**
+  When no standalone `claude` binary is available, the refresh trigger now
+  probes
+  `~/Library/Application Support/Claude/claude-code/<version>/claude.app/Contents/MacOS/claude`
+  and chooses the newest executable bundle. This covers Claude Desktop
+  installs that have downloaded the native Claude Code helper, while leaving
+  the pure Claude Desktop web-session token cache untouched.
+- **Resolver tests now cover app-only installs.** New tests pin Codex
+  binary resolution, Claude binary resolution, Claude Desktop bundle
+  discovery, and non-interactive Claude Keychain query construction.
 
 ### Changed
 - **Menu-bar popover now only shows scan status while a scan is active.**
   The always-visible "Last scan / files / changed / events" summary is
   hidden again to keep the compact menu focused on quota state and the
   primary actions. Manual refresh still shows the live scan progress bar.
+- **Claude Keychain fallback is explicitly non-interactive.** Settings copy
+  now says Keychain is used only when macOS allows a silent read of an
+  already-authorized `Claude Code-credentials` item. QuotaMonitor no longer
+  describes this path as something that may pop a prompt from the background
+  poller.
+
+### Fixed
+- **Live quota progress bars recover from broken package-manager shims.**
+  The binary resolvers now prefer the user's login-shell path before
+  hardcoded Homebrew locations, so a stale executable shim no longer blocks
+  an otherwise working nvm/asdf/bun install.
+- **Claude live quota polling no longer hangs inside Security.framework.**
+  Production Keychain reads now shell through `/usr/bin/security` with a
+  short timeout and decode either the JSON credential wrapper or a legacy
+  bare token. If the item needs interaction, QuotaMonitor records the
+  credential source as unavailable instead of leaving the poller suspended.
+- **Menu-bar window height is pinned to content.** `MenuBarExtra(.window)`
+  now uses content-size window resizability plus a fixed vertical content
+  size, avoiding the blank bands macOS could preserve after provider blocks
+  were hidden.
+- **Local builds are more reliable on CLT-only machines.** `build.sh`
+  sources Swiftly when available and passes `--disable-keychain` to SwiftPM
+  so public dependency resolution does not stall in macOS Keychain access.
+
+### Known limitation
+- **Pure Claude Desktop auth is not read directly.** Claude Desktop stores
+  its own `oauth:tokenCache` in Electron safeStorage under
+  `~/Library/Application Support/Claude/config.json`. QuotaMonitor does not
+  decrypt or reuse that cache; live Claude quotas still require Claude Code
+  OAuth credentials from `~/.claude/.credentials.json`,
+  `Claude Code-credentials`, or the bundled Claude Code helper described
+  above.
 
 ## [0.2.23] — 2026-05-21
 

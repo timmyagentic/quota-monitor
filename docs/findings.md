@@ -1,7 +1,11 @@
-# Codex CLI v0.115 — Probe Findings
+# QuotaMonitor Probe Findings
 
-Captured against `codex app-server` on macOS 15.5 / arm64, CLI version `0.115.0`,
-user plan type `prolite` (upstream) / `plus` (per `account/read`).
+This document started as a Codex CLI v0.115 probe and now also records the
+small local integration facts that keep live quota polling working across
+desktop-app-only installs.
+
+Original Codex capture: `codex app-server` on macOS 15.5 / arm64, CLI version
+`0.115.0`, user plan type `prolite` (upstream) / `plus` (per `account/read`).
 
 ## Methods that work
 
@@ -91,6 +95,65 @@ That method **does not exist** in CLI 0.115. The current method is
 `account/rateLimits/read`. The original also expected a different response shape
 (camelCase `usedPercent`, `windowDurationMins`); the live shape is snake_case.
 
+## 2026-05-23 desktop app-only probes
+
+### Codex.app bundles a working app-server binary
+
+On this machine, `/Applications/Codex.app/Contents/Resources/codex` reports
+`codex-cli 0.133.0-alpha.1` and successfully serves `codex app-server` over
+stdio. A direct `account/rateLimits/read` probe returned the current
+camelCase result shape:
+
+```json
+{
+  "rateLimits": { "planType": "pro", "primary": { "usedPercent": 16 },
+                  "secondary": { "usedPercent": 52 } },
+  "rateLimitsByLimitId": { "...": "..." }
+}
+```
+
+Implication: QuotaMonitor should not require a separate `codex` package-manager
+install when the user already has the first-party desktop app. The resolver now
+checks:
+
+1. `CODEX_BINARY`
+2. the user's login-shell `command -v codex`
+3. common user install dirs (`~/.npm-global`, `~/.local`, `~/.cargo`, `~/.bun`)
+4. `~/Applications/Codex.app/Contents/Resources/codex`
+5. `/Applications/Codex.app/Contents/Resources/codex`
+6. Homebrew / `/usr/local` fallbacks
+
+The ordering matters because an executable Homebrew shim can still be broken if
+its vendored package was removed.
+
+### Claude Desktop may bundle Claude Code, but Desktop auth is separate
+
+Claude Desktop stores its own UI auth in
+`~/Library/Application Support/Claude/config.json` under `oauth:tokenCache`.
+That value is Electron safeStorage-encrypted and backed by the `"Claude Safe
+Storage"` Keychain item. QuotaMonitor does **not** decrypt or reuse this cache.
+
+Claude Desktop can also download a native Claude Code helper under:
+
+```text
+~/Library/Application Support/Claude/claude-code/<version>/claude.app/Contents/MacOS/claude
+```
+
+On this machine the newest helper is `2.1.149 (Claude Code)` and `claude auth
+status` reports a first-party Claude Code login. QuotaMonitor may use this
+helper for delegated OAuth refresh when no standalone `claude` binary is on
+PATH, but live Claude quotas still depend on Claude Code credentials
+(`~/.claude/.credentials.json` or `Claude Code-credentials`). A pure Claude
+Desktop web-session login is not enough.
+
+### Keychain reads must not block the poller
+
+Direct `SecItemCopyMatching` data reads for `Claude Code-credentials` can hang a
+background poller if macOS wants interaction. The production path now shells
+through `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w`
+with a short timeout and treats "interaction required" as unavailable. The older
+Security.framework helper remains only as a testable query-construction path.
+
 ## Rollout JSONL shape
 
 Each line is independently parseable JSON:
@@ -128,7 +191,7 @@ first when "the menu bar number is wrong."
 - **Why risky**: Anthropic ships A/B-test keys (`iguana_necktie`,
   `omelette_promotional`, …) and silently flipped utilization from
   0..1 ratio to 0..100 percent once already (Day 25 → Day 26 6000% bug).
-- **Coverage today**: 9 tests in `ClaudeUsageDecoderTests` pinned
+- **Coverage today**: 11 tests in `ClaudeUsageDecoderTests` pinned
   against real captured fixtures (`Tests/.../Fixtures/ClaudeUsage/*.json`).
 - **What to do if it drifts again**: capture the new response into
   `Fixtures/ClaudeUsage/`, add a fixture-driven test, **do not** widen
@@ -136,10 +199,10 @@ first when "the menu bar number is wrong."
 
 ### 2. `ClaudeUsagePoller` — 2-hour cadence + 429 backoff ladder
 - **Why risky**: Anthropic edge rate-limits the `/usage` endpoint
-  aggressively. Wiring `pollOnce()` to a click handler or NSWindow
-  appearance will silently be throttled by `minimumGap = 30 min`, or
-  earn HTTP 429s that compound the back-off.
-- **Coverage today**: 6 state-machine tests in `ClaudeUsagePollerTests`.
+  aggressively. Wiring `pollOnce()` to too many UI sites will silently be
+  throttled by `minimumGap = 60s`, or earn HTTP 429s that compound the
+  back-off.
+- **Coverage today**: 12 state-machine tests in `ClaudeUsagePollerTests`.
 - **Don't**: don't shorten `minimumGap`, don't share the Codex poll
   interval setting, don't add extra trigger sites.
 
@@ -162,6 +225,19 @@ first when "the menu bar number is wrong."
   from `body=` to something else, the tests + this code both die
   silently — regression must be caught by an end-to-end integration
   test someday, not just the unit tests.
+
+### 4b. Binary resolution for GUI-launched apps and app-only installs
+- **Why risky**: launchd gives GUI apps a minimal PATH, package-manager shims
+  can be stale, and first-party desktop apps may bundle the only working
+  binary. Picking the wrong executable makes the menu bar look frozen even
+  though the user's terminal works.
+- **Coverage today**: 8 tests in `AppServerClientResolverTests` and 6 resolver
+  tests inside `ClaudeCLIRefreshTriggerTests`, plus real-machine smoke probes
+  against `/Applications/Codex.app/Contents/Resources/codex` and the Claude
+  Desktop bundled Claude Code helper.
+- **Watch**: any new binary candidate must preserve the preference order:
+  explicit override, login shell, user-local installs, first-party app bundle,
+  then package-manager fallbacks.
 
 ### 5. `PricingService.backfillAllValues` — single SQL UPDATE that prices everything
 - **Why risky**: a typo in the JOIN, a wrong column name, or an `OR`
@@ -216,6 +292,17 @@ first when "the menu bar number is wrong."
 - **Watch**: any new `DeveloperLog.*` call around OAuth credentials,
   JSONL payload text, filesystem paths beyond expected app/session paths,
   or large collections. Keep entries short, structured, and supportable.
+
+### 9b. Claude Keychain read policy
+- **Why risky**: Keychain UI from a background poller looks like a frozen
+  progress bar and can leave worker threads parked in Security.framework.
+  It is also easy to accidentally log or mirror credential blobs while
+  debugging this path.
+- **Coverage today**: `ClaudeUsageClientKeychainTests` pins non-interactive
+  query construction and JSON password decoding from the `security` tool path.
+- **Watch**: do not switch production back to unbounded `SecItemCopyMatching`
+  data reads, and do not implement in-app OAuth refresh unless the refresh
+  token ownership model is redesigned.
 
 ### 10. Refresh fan-out entry points
 - **Why risky**: cold launch, menu-bar popover open, explicit Refresh,
