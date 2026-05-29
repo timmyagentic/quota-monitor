@@ -144,6 +144,18 @@ final class SettingsStore {
         didSet { defaults.set(firstRunHintDismissed,
                               forKey: Keys.firstRunHintDismissed) }
     }
+    /// How the menu-bar label text is rendered. Both styles are drawn
+    /// natively via `statusItem.button.attributedTitle` (see
+    /// `StatusItemController`); they differ only in font:
+    ///   - `.emphasis` — rounded design, `5h`/`7d` light + percent heavy
+    ///     (the app's original look). Default.
+    ///   - `.native`   — the standard menu-bar font, one weight, system
+    ///     spacing, `labelColor` (matches the OS menu bar).
+    /// Hot-applied: the controller re-renders on change, no relaunch.
+    var menuBarLabelStyle: MenuBarLabelStyle {
+        didSet { defaults.set(menuBarLabelStyle.rawValue,
+                              forKey: Keys.menuBarLabelStyle) }
+    }
     /// Which provider's quota fills the menu-bar icon (one row per
     /// window: 5h + 7d, "X% used"). Multi-select — the user can show
     /// one provider, both side-by-side, or neither (in which case the
@@ -228,6 +240,20 @@ final class SettingsStore {
         /// engineering convention.
         case english
         var id: String { rawValue }
+    }
+
+    enum MenuBarLabelStyle: String, CaseIterable, Sendable, Identifiable {
+        /// Rounded design, mixed weights — the app's original look.
+        case emphasis
+        /// Standard menu-bar font, single weight, system spacing.
+        case native
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .emphasis: return L10n.menuBarStyleEmphasis
+            case .native:   return L10n.menuBarStyleNative
+            }
+        }
     }
 
     enum QuotaDisplayMode: String, CaseIterable, Sendable, Identifiable {
@@ -335,6 +361,8 @@ final class SettingsStore {
             defaults.bool(forKey: Keys.firstRunPresentationShown)
         self.firstRunHintDismissed =
             defaults.bool(forKey: Keys.firstRunHintDismissed)
+        self.menuBarLabelStyle = (defaults.string(forKey: Keys.menuBarLabelStyle)
+            .flatMap(MenuBarLabelStyle.init(rawValue:))) ?? .emphasis
         // Enabled providers — defaults to the full set so an old build
         // upgrading to this binary keeps tracking both. We sanitise to
         // drop unknown tokens (future renames / deletions) and refuse
@@ -582,6 +610,7 @@ final class SettingsStore {
         static let developerModeEnabled = "settings.developerModeEnabled"
         static let firstRunPresentationShown = "discoverability.firstRunPresentationShown"
         static let firstRunHintDismissed = "discoverability.firstRunHintDismissed"
+        static let menuBarLabelStyle = "settings.menuBarLabelStyle"
         // Multi-select store (current). Persisted as `[String]`.
         static let menuBarIconProviders = "settings.menuBarIconProviders"
         // Legacy single-string key (pre-multi-select). Read-only — we

@@ -52,6 +52,16 @@ enum L10n {
     static var claudeCode: String { "Claude Code" }      // proper noun
     static var claude: String { "Claude" }               // proper noun
 
+    // MARK: - menu-bar label style
+
+    static var menuBarStyleLabel: String { t(en: "Menu bar style", zh: "菜单栏样式") }
+    static var menuBarStyleEmphasis: String { t(en: "Emphasis", zh: "强调") }
+    static var menuBarStyleNative: String { t(en: "Native", zh: "原生") }
+    static var menuBarStyleHelp: String {
+        t(en: "Emphasis uses a rounded, bold percentage; Native matches the system menu-bar font.",
+          zh: "“强调”用圆体加粗百分比；“原生”与系统菜单栏字体一致。")
+    }
+
     // MARK: - menu-bar discoverability hint
 
     static var menuBarHiddenHintTitle: String {
