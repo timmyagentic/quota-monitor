@@ -85,6 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     @objc private func onboardingCompleted() {
         NotificationCenter.default.removeObserver(
             self, name: .quotaMonitorOnboardingCompleted, object: nil)
