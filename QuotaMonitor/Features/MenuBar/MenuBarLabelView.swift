@@ -43,9 +43,7 @@ import SwiftUI
 /// `@Environment(AppEnvironment.self)` triggers it via Observation.
 struct MenuBarLabelView: View {
     @Environment(AppEnvironment.self) private var env
-    @Environment(LocalizationStore.self) private var loc
     @Environment(SettingsStore.self) private var settings
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let rows = pickRows()
@@ -69,18 +67,10 @@ struct MenuBarLabelView: View {
                     .fixedSize()
             }
         }
-        // First-launch onboarding lives in a standalone Window scene,
-        // not a sheet on the popover (the popover is too narrow to
-        // host the picker without it looking cramped). We use the
-        // label's `.task` because it runs on app launch even when the
-        // user hasn't clicked the menu-bar icon yet — the popover's
-        // own task fires only on first open, which would mean the
-        // window stays hidden until the user pokes the icon.
-        .task {
-            if loc.needsOnboarding || settings.needsProviderOnboarding {
-                openWindow(id: "onboarding")
-            }
-        }
+        // First-launch onboarding is now opened by `AppDelegate` on
+        // launch (via `WindowRouter`), not from this label. The label is
+        // hosted in an AppKit `NSStatusItem` button and no longer has a
+        // reliable `openWindow` action of its own.
     }
 
     // MARK: - styled rendering

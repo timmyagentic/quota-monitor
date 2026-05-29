@@ -37,28 +37,13 @@ struct MenuBarContentView: View {
         // Text views, not text inside Button labels. Lets the user copy
         // a USD figure or a token count without screenshotting.
         .textSelection(.enabled)
-        // Refresh whenever the popover opens so the user always sees
-        // current stats without clicking Refresh. `.onAppear` fires every
-        // time the popover is shown (MenuBarExtra `.window` style re-
-        // mounts the content view on each open). `.onChange(scenePhase)`
-        // used to live here but `scenePhase` is app-wide and doesn't
-        // change when the menu-bar popover toggles — that's why this
-        // hook silently did nothing unless the user had bounced to a
-        // different app and back.
-        //
-        // Routes through the same `refreshAll` as the Refresh button —
-        // the ONLY difference is `throttle: true`, which makes each step
-        // honour a minInterval so popping the popover open three times
-        // in a row doesn't trigger three back-to-back JSONL scans +
-        // three app-server `/rateLimits/read` calls.
-        .onAppear {
-            // Onboarding gate — skip the auto-refresh fan-out entirely
-            // while the wizard is up. AppEnvironment's per-method
-            // guards would catch this too, but bailing at the source
-            // also avoids touching `SettingsStore.snapshot()` for a no-op.
-            guard !settings.needsProviderOnboarding else { return }
-            env.refreshAll(throttle: true, trigger: "popover")
-        }
+        // Refresh-on-open is now owned by `StatusItemController`'s
+        // `popoverWillShow` delegate callback — the authoritative "popover
+        // opened" hook now that we drive an AppKit `NSPopover` rather than
+        // a SwiftUI `MenuBarExtra` (whose `.window` style re-mounted this
+        // view on each open, which this `.onAppear` used to rely on). The
+        // controller applies the same `refreshAll(throttle: true)` and the
+        // same onboarding gate.
     }
 
     @ViewBuilder

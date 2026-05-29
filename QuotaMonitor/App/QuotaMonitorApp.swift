@@ -2,6 +2,11 @@ import SwiftUI
 
 @main
 struct QuotaMonitorApp: App {
+    // The AppDelegate owns the AppKit NSStatusItem (which replaced the
+    // SwiftUI MenuBarExtra) and the launch-time discoverability
+    // orchestration. It references the same `.shared` singletons the
+    // scenes below use.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var environment: AppEnvironment
     // Single source of truth for language selection. Wired into the
     // SwiftUI environment so any view can switch language at runtime
@@ -31,7 +36,7 @@ struct QuotaMonitorApp: App {
         // those default expressions run before this init body and you
         // lose the migration on the first launch under the new id.
         UserDefaultsMigration.runIfNeeded()
-        _environment = State(wrappedValue: AppEnvironment())
+        _environment = State(wrappedValue: AppEnvironment.shared)
         _localization = State(wrappedValue: LocalizationStore.shared)
         _settings = State(wrappedValue: SettingsStore.shared)
         _updater = State(wrappedValue: UpdaterController())
@@ -59,68 +64,24 @@ struct QuotaMonitorApp: App {
     }
 
     var body: some Scene {
-        // Label-content MenuBarExtra so we can render a custom view in
-        // the menu bar slot itself — `MenuBarLabelView` shows live
-        // 5h/7d usage % for the user-chosen provider, falling back to
-        // the same gauge SF Symbol the app shipped with when there's
-        // no usable data.
-        //
-        // Onboarding intentionally does NOT live as a `.sheet` on the
-        // popover any more. The popover is a 360pt-wide menu-bar card
-        // and a sheet on top of it looked cramped + cropped — instead
-        // we have a dedicated `Window("Get started", id: "onboarding")`
-        // scene below, which `MenuBarLabelView` opens on launch when
-        // `needsOnboarding` is true.
-        MenuBarExtra {
-            MenuBarContentView()
-                .environment(environment)
-                .environment(localization)
-                .environment(settings)
-                .environment(\.locale, localization.locale)
-                // Re-evaluate body whenever language flips. `L10n.foo` is
-                // a static read SwiftUI can't track on its own, so we
-                // explicitly read `tickForceRedraw` to register a
-                // dependency.
-                .id(localization.tickForceRedraw)
-                .task {
-                    // Same fan-out as the popover-open hook (rateLimits +
-                    // claudeUsage + scan, with scan's tail refreshing the
-                    // menu bar) so old users see freshly-scanned JSONL data
-                    // on launch without having to click the popover first.
-                    // No throttle: this is the cold-boot path, never repeated.
-                    environment.refreshAll(throttle: false, trigger: "launch")
-                    // Warm the Dashboard cache so first-open is instant.
-                    // refreshAll already covers menu bar + scan; this only
-                    // adds the heavier aggregator query.
-                    environment.refreshDashboard()
-                    // Eagerly hydrate the menu-bar snapshot from the DB so
-                    // popping open the popover during the cold-launch scan
-                    // shows last-known data instead of the "Loading…"
-                    // placeholder. refreshAll's scan-tail will overwrite
-                    // this with fresh data once the scan finishes;
-                    // refreshMenuBar coalesces internally so the two calls
-                    // can't race.
-                    environment.refreshMenuBar(trigger: "launch")
-                    environment.startBackgroundPolling()
-                }
-        } label: {
-            MenuBarLabelView()
-                .environment(environment)
-                .environment(localization)
-                .environment(settings)
-        }
-        .menuBarExtraStyle(.window)
-        // Keep the MenuBarExtra host pinned to its SwiftUI content height.
-        // Without this, macOS can preserve a taller panel when provider
-        // blocks are hidden, leaving blank bands above and below the card.
-        .windowResizability(.contentSize)
+        // The menu-bar presence is now an AppKit `NSStatusItem` owned by
+        // `AppDelegate` / `StatusItemController` (SwiftUI's `MenuBarExtra`
+        // can neither open its popover programmatically nor expose its
+        // on-screen geometry — both of which the clip-detection feature
+        // needs). The launch fan-out that used to live on the
+        // `MenuBarExtra` content `.task` now runs in
+        // `AppDelegate.applicationDidFinishLaunching`.
 
-        // Standalone onboarding window, opened from MenuBarLabelView's
-        // `.task` on launch when the user hasn't yet picked a language
-        // or a tracked-tools set. `OnboardingView` dismisses this
-        // window on Continue; if the user closes it early via the red
-        // titlebar button, OnboardingView re-opens it from onDisappear
-        // so they can't slip past the gate.
+        // Standalone onboarding window, opened on launch by `AppDelegate`
+        // (via `WindowRouter`) when the user hasn't yet picked a language
+        // or a tracked-tools set. `OnboardingView` dismisses this window
+        // on Continue; if the user closes it early via the red titlebar
+        // button, OnboardingView re-opens it from onDisappear so they
+        // can't slip past the gate.
+        //
+        // `.handlesExternalEvents(matching: ["onboarding"])` lets
+        // `WindowRouter` open this window from AppKit via the
+        // `quotamonitor://onboarding` URL (AppKit has no `openWindow`).
         Window(L10n.onboardingWindowTitle, id: "onboarding") {
             OnboardingView()
                 .environment(localization)
@@ -129,6 +90,7 @@ struct QuotaMonitorApp: App {
                 .environment(\.locale, localization.locale)
                 .id(localization.tickForceRedraw)
         }
+        .handlesExternalEvents(matching: ["onboarding"])
         // Pin the window size so the layout doesn't reflow when the
         // user resizes mid-onboarding (the design assumes ~340pt wide).
         .windowResizability(.contentSize)
@@ -143,6 +105,9 @@ struct QuotaMonitorApp: App {
                 .id(localization.tickForceRedraw)
         }
         .defaultSize(width: 980, height: 680)
+        // Opened from AppKit (the clipped-icon fallback) via
+        // `quotamonitor://dashboard`.
+        .handlesExternalEvents(matching: ["dashboard"])
 
         // Settings is a regular `Window` scene rather than SwiftUI's
         // special-purpose `Settings { }` scene. The latter closes
@@ -168,5 +133,7 @@ struct QuotaMonitorApp: App {
         // can clamp the window to its first measurement and ignore drag.
         .windowResizability(.contentMinSize)
         .defaultPosition(.center)
+        // Opened from the popover / AppKit via `quotamonitor://settings`.
+        .handlesExternalEvents(matching: ["settings"])
     }
 }

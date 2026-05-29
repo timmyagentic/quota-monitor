@@ -28,6 +28,24 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <!--
+      Custom URL scheme used internally to open SwiftUI Window scenes
+      (onboarding / dashboard / settings) from AppKit code that has no
+      `openWindow` action of its own (`AppDelegate` / `StatusItemController`).
+      `WindowRouter.request(_:)` opens `quotamonitor://<window-id>`; each
+      Window scene claims its id via `.handlesExternalEvents(matching:)`.
+    -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>dev.tjzhou.QuotaMonitor</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>quotamonitor</string>
+            </array>
+        </dict>
+    </array>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>NSHighResolutionCapable</key>
