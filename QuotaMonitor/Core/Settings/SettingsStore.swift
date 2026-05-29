@@ -11,6 +11,14 @@ import Observation
 //     take effect on next launch — we surface that in the UI so users aren't
 //     surprised.
 
+extension Notification.Name {
+    /// Posted once the provider step of onboarding is marked done. The
+    /// AppKit `AppDelegate` listens for this to run the menu-bar
+    /// discoverability check after a fresh user finishes the wizard.
+    static let quotaMonitorOnboardingCompleted =
+        Notification.Name("dev.tjzhou.QuotaMonitor.onboardingCompleted")
+}
+
 @Observable
 @MainActor
 final class SettingsStore {
@@ -500,6 +508,8 @@ final class SettingsStore {
         if let appVersion {
             defaults.set(appVersion, forKey: Keys.lastOnboardedVersion)
         }
+        NotificationCenter.default.post(
+            name: .quotaMonitorOnboardingCompleted, object: nil)
     }
 
     /// Replace the enabled set wholesale (e.g. from the onboarding
