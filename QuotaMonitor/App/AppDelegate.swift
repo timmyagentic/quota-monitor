@@ -147,9 +147,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Per-launch / on-screen-change enforcement of the Dock fallback,
     /// without the one-time presentation.
-    private func enforceClipFallback() {
+    private func enforceClipFallback(attempt: Int = 1) {
         guard let controller = statusItemController else { return }
-        applyUnreachableState(clipped: controller.currentVisibility() == .clipped)
+        let visibility = controller.currentVisibility()
+        switch MenuBarVisibilityEnforcement.decide(
+            visibility: visibility, attempt: attempt) {
+        case .retry:
+            Log.discover.info("screen-change clipped on attempt \(attempt, privacy: .public); re-checking once")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+                self?.enforceClipFallback(attempt: attempt + 1)
+            }
+        case .applyUnreachable(let clipped):
+            applyUnreachableState(clipped: clipped)
+        }
     }
 
     /// "Re-check" in the recovery guide: re-evaluate visibility (which
