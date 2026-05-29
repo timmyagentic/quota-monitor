@@ -48,6 +48,6 @@ struct SettingsView: View {
         // `demoteToAccessory()` itself checks for any visible non-popover
         // window before flipping the policy, so this is safe to call
         // unconditionally.
-        .onDisappear { env.demoteToAccessory() }
+        .onDisappear { env.demoteToAccessory(excludingWindowIDs: ["settings"]) }
     }
 }

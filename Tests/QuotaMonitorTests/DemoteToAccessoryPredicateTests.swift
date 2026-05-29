@@ -29,6 +29,14 @@ struct DemoteToAccessoryPredicateTests {
     }
 
     @Test
+    func doesNotDemoteWhileAnotherAppWindowIsVisible() {
+        #expect(AppEnvironment.shouldDemoteToAccessory(
+            currentlyRegular: true,
+            menuBarUnreachable: false,
+            hasVisibleAppWindow: true) == false)
+    }
+
+    @Test
     func clippedMenuBarRequiresRegularActivationPolicy() {
         #expect(AppEnvironment.activationPolicyForMenuBarReachability(
             clipped: true,

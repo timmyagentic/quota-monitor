@@ -81,7 +81,7 @@ struct MainWindowView: View {
         .onDisappear {
             // When user closes the window, drop back to menu-bar-only mode so
             // the Dock icon doesn't linger.
-            env.demoteToAccessory()
+            env.demoteToAccessory(excludingWindowIDs: ["dashboard"])
         }
     }
 

@@ -752,17 +752,22 @@ final class AppEnvironment {
     /// is also `.regular`, so this still fires. With the setting OFF
     /// the whole time we never promoted, the policy is already
     /// `.accessory`, and we no-op.
-    func demoteToAccessory() {
+    func demoteToAccessory(excludingWindowIDs: Set<String> = []) {
         guard Self.shouldDemoteToAccessory(
             currentlyRegular: NSApp.activationPolicy() == .regular,
-            menuBarUnreachable: menuBarUnreachable) else { return }
+            menuBarUnreachable: menuBarUnreachable,
+            hasVisibleAppWindow: Self.hasVisibleAppWindow(
+                excludingWindowIDs: excludingWindowIDs)) else { return }
         DeveloperLog.eventRecord("window.demote_to_accessory", category: "ui")
         NSApp.setActivationPolicy(.accessory)
     }
 
-    static func hasVisibleAppWindow() -> Bool {
+    static func hasVisibleAppWindow(excludingWindowIDs: Set<String> = []) -> Bool {
         NSApp.windows.contains { win in
             guard win.isVisible else { return false }
+            if let id = win.identifier?.rawValue, excludingWindowIDs.contains(id) {
+                return false
+            }
             // Reject `NSPanel` subclasses — the menu-bar popover
             // host, status-bar window, and any future SwiftUI
             // transient panel are NSPanel-derived, while the
@@ -827,10 +832,13 @@ final class AppEnvironment {
     // MARK: - dock policy predicate
 
     /// Pure decision for `demoteToAccessory()`. Only demote when we are
-    /// currently `.regular` AND the menu-bar icon is reachable.
+    /// currently `.regular`, the menu-bar icon is reachable, and no other
+    /// app window still needs the Dock/Cmd-Tab presence.
     nonisolated static func shouldDemoteToAccessory(
-        currentlyRegular: Bool, menuBarUnreachable: Bool) -> Bool {
-        currentlyRegular && !menuBarUnreachable
+        currentlyRegular: Bool,
+        menuBarUnreachable: Bool,
+        hasVisibleAppWindow: Bool = false) -> Bool {
+        currentlyRegular && !menuBarUnreachable && !hasVisibleAppWindow
     }
 
     nonisolated static func activationPolicyForMenuBarReachability(

@@ -7,7 +7,9 @@ struct MenuBarHelpLifecycleActions {
     @MainActor
     static func live(env: AppEnvironment) -> MenuBarHelpLifecycleActions {
         MenuBarHelpLifecycleActions(
-            demoteToAccessory: { env.demoteToAccessory() })
+            demoteToAccessory: {
+                env.demoteToAccessory(excludingWindowIDs: ["menubar-help"])
+            })
     }
 
     @MainActor
