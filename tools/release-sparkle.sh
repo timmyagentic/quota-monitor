@@ -55,7 +55,7 @@ DOWNLOAD_URL="https://github.com/systemoutprintlnnnn/quota-monitor/releases/down
 PUBDATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
 MIN_OS="14.0"
 
-# Pull the [X.Y.Z] section out of CHANGELOG.md and convert its
+# Pull the [X.Y.Z] section out of each changelog and convert its
 # markdown to inline HTML for Sparkle's release-notes WebView.
 # Sparkle renders the <description> CDATA block as HTML, so giving
 # it bullet lists + headings + bold makes the "What's new" dialog
@@ -63,12 +63,33 @@ MIN_OS="14.0"
 # the user can't actually click on — Sparkle's WebView doesn't run
 # JS or open file:// links inside an app-bundled dialog).
 #
+# Bilingual notes: we emit two <description xml:lang="…"> nodes — en
+# from CHANGELOG.md, zh-Hans from CHANGELOG.zh-Hans.md. Sparkle picks
+# the one matching the user's system language at appcast parse time
+# (SUAppcast.m bestNodeInNodes → +[NSBundle preferredLocalizations-
+# FromArray:]). Both nodes MUST carry an explicit xml:lang or Sparkle
+# logs an error and defaults to "en".
+#
 # The conversion logic lives in tools/changelog-to-html.py rather
 # than inline here because bash's $( ... <<'PY' ... PY ) parses
 # backticks inside the heredoc body as legacy command substitution
 # even with a quoted delimiter, and the regex for `code` spans
 # needs literal backticks.
-RELEASE_NOTES_HTML="$(python3 tools/changelog-to-html.py "${VERSION}")"
+EN_NOTES_HTML="$(python3 tools/changelog-to-html.py "${VERSION}" CHANGELOG.md)"
+
+# Hard-require the Simplified-Chinese section so a release can't
+# silently ship English-only notes — fixed bilingual notes are the
+# project standard. changelog-to-html.py prints a "See …" fallback
+# (exit 0) when a section is missing, so detect the heading ourselves.
+ZH_CHANGELOG="CHANGELOG.zh-Hans.md"
+if [[ ! -f "${ZH_CHANGELOG}" ]] || \
+   ! grep -qE "^##[[:space:]]+\[${VERSION//./\\.}\]" "${ZH_CHANGELOG}"; then
+    echo "error: ${ZH_CHANGELOG} is missing a '## [${VERSION}]' section." >&2
+    echo "       Add the Simplified-Chinese notes for ${VERSION} (parallel" >&2
+    echo "       to CHANGELOG.md) before generating the appcast item." >&2
+    exit 1
+fi
+ZH_NOTES_HTML="$(python3 tools/changelog-to-html.py "${VERSION}" "${ZH_CHANGELOG}")"
 
 cat <<APPCAST_ITEM
 
@@ -80,8 +101,11 @@ cat <<APPCAST_ITEM
             <sparkle:version>${VERSION}</sparkle:version>
             <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>${MIN_OS}</sparkle:minimumSystemVersion>
-            <description><![CDATA[
-${RELEASE_NOTES_HTML}
+            <description xml:lang="en"><![CDATA[
+${EN_NOTES_HTML}
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+${ZH_NOTES_HTML}
             ]]></description>
             <enclosure
                 url="${DOWNLOAD_URL}"

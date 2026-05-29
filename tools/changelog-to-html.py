@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Extract one version's section from CHANGELOG.md and emit it as
+"""Extract one version's section from a changelog and emit it as
 inline HTML suitable for Sparkle's release-notes WebView (the
 <description> CDATA block in an appcast item).
 
-Usage: ./changelog-to-html.py 0.2.21
+Usage: ./changelog-to-html.py 0.2.21 [CHANGELOG.md]
+
+The second argument is the changelog file to read from; it defaults to
+CHANGELOG.md. Pass CHANGELOG.zh-Hans.md to render the Simplified-Chinese
+release notes — release-sparkle.sh calls this twice (once per language)
+to emit the bilingual <description xml:lang="…"> nodes Sparkle selects
+between at parse time.
+
+CJK authoring note: changelog bullets in CHANGELOG.zh-Hans.md must each
+sit on a SINGLE physical line. The wrapped-line joiner below glues
+continuation lines with a space, which would inject stray spaces between
+Chinese characters. English bullets stay hard-wrapped as before.
 
 Lives as a standalone file rather than inline in release-sparkle.sh
 because bash's $( ... <<'EOF' ... EOF ) command substitution still
@@ -31,22 +42,24 @@ def inline_md(s: str) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: changelog-to-html.py <version>", file=sys.stderr)
+    if len(sys.argv) not in (2, 3):
+        print("usage: changelog-to-html.py <version> [changelog-path]",
+              file=sys.stderr)
         return 2
     version = sys.argv[1]
+    changelog = sys.argv[2] if len(sys.argv) == 3 else 'CHANGELOG.md'
     try:
-        with open('CHANGELOG.md', encoding='utf-8') as f:
+        with open(changelog, encoding='utf-8') as f:
             text = f.read()
     except FileNotFoundError:
-        print(f"See CHANGELOG.md for what's new in {version}.")
+        print(f"See {changelog} for what's new in {version}.")
         return 0
 
     m = re.search(
         r'^##\s+\[' + re.escape(version) + r'\][^\n]*\n(.*?)(?=^##\s+\[|\Z)',
         text, re.S | re.M)
     if not m:
-        print(f"See CHANGELOG.md for what's new in {version}.")
+        print(f"See {changelog} for what's new in {version}.")
         return 0
 
     section = m.group(1).strip()

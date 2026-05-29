@@ -12,7 +12,14 @@ steps. **One-time setup** is at the bottom — do that first.
    version was already bumped during the release-prep patch.
 2. **Update docs**:
    - `CHANGELOG.md` must contain a `## [X.Y.Z] — YYYY-MM-DD` section because
-     Sparkle release notes are extracted from that exact heading.
+     the English Sparkle release notes are extracted from that exact heading.
+   - `CHANGELOG.zh-Hans.md` must contain a matching `## [X.Y.Z]` section — the
+     Simplified-Chinese release notes come from there. Release notes are
+     **fixed bilingual**: `release-sparkle.sh` aborts if this section is
+     missing, so don't skip it. Keep each `- ` bullet on a single physical
+     line in the Chinese file (the markdown→HTML joiner glues wrapped lines
+     with a space, which would inject stray spaces between Chinese
+     characters).
    - `README.md`, `docs/findings.md`, and `docs/parity.md` should reflect any
      changed user-visible behavior or important support boundaries.
 3. **Run the release pipeline**:
@@ -24,7 +31,7 @@ steps. **One-time setup** is at the bottom — do that first.
    verifies the app inside it.
 4. **Commit + tag**:
    ```sh
-   git add Resources/VERSION CHANGELOG.md README.md docs
+   git add Resources/VERSION CHANGELOG.md CHANGELOG.zh-Hans.md README.md docs
    git commit -m "Release vX.Y.Z"
    git tag vX.Y.Z
    ```
@@ -34,7 +41,10 @@ steps. **One-time setup** is at the bottom — do that first.
    ./tools/release-sparkle.sh
    ```
    Paste the printed block at the top of `appcast.xml` under
-   `<channel>`.
+   `<channel>`. The block carries two `<description xml:lang="en">` /
+   `<description xml:lang="zh-Hans">` nodes; Sparkle shows whichever
+   matches the user's macOS system language (falling back to English),
+   so leave both in place.
 6. **Publish**:
    ```sh
    git add appcast.xml
@@ -152,6 +162,20 @@ open .build/QuotaMonitor.app
 
 Open Settings → Advanced → Updates → "Check Now". Sparkle should show
 the most recent appcast item.
+
+To check the **Chinese** release notes without changing your whole Mac to
+Chinese, run the app once with `AppleLanguages` forced — Sparkle selects
+`<description xml:lang="…">` from the process's preferred languages:
+
+```sh
+defaults write dev.tjzhou.QuotaMonitor AppleLanguages '("zh-Hans")'
+open .build/QuotaMonitor.app   # Check Now → notes render in Chinese
+defaults delete dev.tjzhou.QuotaMonitor AppleLanguages
+```
+
+(The shipping app never writes `AppleLanguages` itself — this is a
+test-only override. The release-notes language tracks the macOS system
+language, independent of the in-app language picker.)
 
 Reset with:
 
