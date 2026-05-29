@@ -15,6 +15,14 @@ import GRDB
 @Observable
 @MainActor
 final class AppEnvironment {
+    /// Process-wide shared instance. The AppKit `AppDelegate` (which owns
+    /// the status item) and the SwiftUI `Window` scenes must reference the
+    /// same `@Observable` state. Matches the `SettingsStore.shared` /
+    /// `LocalizationStore.shared` pattern. `UserDefaultsMigration` still
+    /// runs first because `QuotaMonitorApp.init` triggers the first access
+    /// only after calling it.
+    static let shared = AppEnvironment()
+
     let appServer: AppServerClient
 
     var latestRateLimits: RateLimitSnapshot?
@@ -63,6 +71,13 @@ final class AppEnvironment {
     @ObservationIgnored
     var isRefreshingPricing = false
     var lastError: String?
+
+    /// True when the status item has been detected as clipped/hidden and
+    /// we have promoted to a permanent Dock icon as the fallback entry.
+    /// Consulted by `demoteToAccessory()` / `applyDockIconPolicy()` so
+    /// closing the last window does NOT drop the Dock icon while the menu
+    /// bar remains unreachable.
+    var menuBarUnreachable = false
 
     /// Timestamps that drive the auto-refresh-on-popover-open time gates.
     /// The Refresh **button** never honours these — the user clicking
@@ -738,7 +753,9 @@ final class AppEnvironment {
     /// the whole time we never promoted, the policy is already
     /// `.accessory`, and we no-op.
     func demoteToAccessory() {
-        guard NSApp.activationPolicy() == .regular else { return }
+        guard Self.shouldDemoteToAccessory(
+            currentlyRegular: NSApp.activationPolicy() == .regular,
+            menuBarUnreachable: menuBarUnreachable) else { return }
         DeveloperLog.eventRecord("window.demote_to_accessory", category: "ui")
         NSApp.setActivationPolicy(.accessory)
     }
@@ -791,13 +808,25 @@ final class AppEnvironment {
             ])
         if SettingsStore.shared.showDockIconForWindows {
             NSApp.setActivationPolicy(.regular)
-        } else {
+        } else if !menuBarUnreachable {
             // Toggle OFF with a window still open: drop the Dock icon
             // right now. The Settings window stays put because it's a
             // `Window(id:)` scene, not the auto-closing `Settings { }`
             // scene the old code had to dance around.
+            //
+            // EXCEPT when the menu-bar icon is unreachable — then the
+            // Dock icon is the user's only visible entry and we keep it.
             NSApp.setActivationPolicy(.accessory)
         }
+    }
+
+    // MARK: - dock policy predicate
+
+    /// Pure decision for `demoteToAccessory()`. Only demote when we are
+    /// currently `.regular` AND the menu-bar icon is reachable.
+    nonisolated static func shouldDemoteToAccessory(
+        currentlyRegular: Bool, menuBarUnreachable: Bool) -> Bool {
+        currentlyRegular && !menuBarUnreachable
     }
 
     // MARK: - timeout helper
