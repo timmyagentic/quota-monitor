@@ -70,6 +70,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Dock-icon click (the Dock icon is our clipped-menu-bar fallback).
+    /// AppKit's default reopen-with-no-windows opens the *first* `Window`
+    /// scene — which is onboarding — so a fully-onboarded user clicking the
+    /// Dock icon would wrongly get the wizard. Open the right window
+    /// ourselves and suppress the default.
+    func applicationShouldHandleReopen(_ sender: NSApplication,
+                                       hasVisibleWindows: Bool) -> Bool {
+        if hasVisibleWindows { return true }   // bring the existing window forward
+        let needsOnboarding = LocalizationStore.shared.needsOnboarding
+            || SettingsStore.shared.needsProviderOnboarding
+        AppEnvironment.shared.activateForWindow()
+        WindowRouter.shared.request(needsOnboarding ? "onboarding" : "dashboard")
+        return false
+    }
+
     @objc private func onboardingCompleted() {
         NotificationCenter.default.removeObserver(
             self, name: .quotaMonitorOnboardingCompleted, object: nil)
