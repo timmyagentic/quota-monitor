@@ -760,21 +760,8 @@ final class AppEnvironment {
         NSApp.setActivationPolicy(.accessory)
     }
 
-    /// Re-apply the activation policy based on the current setting.
-    /// Called from the Settings toggle's binding so a flip takes
-    /// effect immediately. Looks at `NSApp.windows` to decide whether
-    /// any app-owned window is currently on screen.
-    ///
-    /// Bidirectional now that Settings is a plain `Window(id:)` scene
-    /// rather than `Settings { }`. The previous implementation only
-    /// promoted because demoting under `Settings { }` made macOS
-    /// deactivate the app, which SwiftUI took as a cue to close the
-    /// very Settings window the user was toggling — yanking the
-    /// window out from under their cursor. Regular `Window` scenes
-    /// survive that deactivation, so demoting on toggle OFF is safe
-    /// and matches the "immediate effect" UX users expect.
-    func applyDockIconPolicy() {
-        let anyWindowOpen = NSApp.windows.contains { win in
+    static func hasVisibleAppWindow() -> Bool {
+        NSApp.windows.contains { win in
             guard win.isVisible else { return false }
             // Reject `NSPanel` subclasses — the menu-bar popover
             // host, status-bar window, and any future SwiftUI
@@ -797,6 +784,23 @@ final class AppEnvironment {
             }
             return true
         }
+    }
+
+    /// Re-apply the activation policy based on the current setting.
+    /// Called from the Settings toggle's binding so a flip takes
+    /// effect immediately. Looks at `NSApp.windows` to decide whether
+    /// any app-owned window is currently on screen.
+    ///
+    /// Bidirectional now that Settings is a plain `Window(id:)` scene
+    /// rather than `Settings { }`. The previous implementation only
+    /// promoted because demoting under `Settings { }` made macOS
+    /// deactivate the app, which SwiftUI took as a cue to close the
+    /// very Settings window the user was toggling — yanking the
+    /// window out from under their cursor. Regular `Window` scenes
+    /// survive that deactivation, so demoting on toggle OFF is safe
+    /// and matches the "immediate effect" UX users expect.
+    func applyDockIconPolicy() {
+        let anyWindowOpen = Self.hasVisibleAppWindow()
         guard anyWindowOpen else { return }
         DeveloperLog.eventRecord(
             "settings.dock_icon_policy.apply",
@@ -827,6 +831,15 @@ final class AppEnvironment {
     nonisolated static func shouldDemoteToAccessory(
         currentlyRegular: Bool, menuBarUnreachable: Bool) -> Bool {
         currentlyRegular && !menuBarUnreachable
+    }
+
+    nonisolated static func activationPolicyForMenuBarReachability(
+        clipped: Bool,
+        showDockIconForWindows: Bool,
+        hasVisibleAppWindow: Bool) -> NSApplication.ActivationPolicy {
+        if clipped { return .regular }
+        if showDockIconForWindows && hasVisibleAppWindow { return .regular }
+        return .accessory
     }
 
     // MARK: - timeout helper

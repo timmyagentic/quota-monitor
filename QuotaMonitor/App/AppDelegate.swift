@@ -163,11 +163,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyUnreachableState(clipped: Bool) {
         let env = AppEnvironment.shared
         env.menuBarUnreachable = clipped
-        if clipped {
-            NSApp.setActivationPolicy(.regular)
+        let policy = AppEnvironment.activationPolicyForMenuBarReachability(
+            clipped: clipped,
+            showDockIconForWindows: SettingsStore.shared.showDockIconForWindows,
+            hasVisibleAppWindow: AppEnvironment.hasVisibleAppWindow())
+        if NSApp.activationPolicy() != policy {
+            NSApp.setActivationPolicy(policy)
         }
-        // When reachable we leave the activation policy to the existing
-        // Dock-icon-for-windows logic; we never force `.accessory` here
-        // (a window may legitimately be holding `.regular`).
     }
 }

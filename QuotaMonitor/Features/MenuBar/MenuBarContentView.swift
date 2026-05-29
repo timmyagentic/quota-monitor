@@ -10,7 +10,11 @@ import AppKit
 struct MenuBarContentView: View {
     @Environment(AppEnvironment.self) var env
     @Environment(SettingsStore.self) var settings
-    @Environment(\.openWindow) private var openWindow
+    private let windowActions: @MainActor (AppEnvironment) -> MenuBarWindowActions
+
+    init(windowActions: @escaping @MainActor (AppEnvironment) -> MenuBarWindowActions = MenuBarWindowActions.live) {
+        self.windowActions = windowActions
+    }
 
     var body: some View {
         Group {
@@ -115,9 +119,7 @@ struct MenuBarContentView: View {
             }
 
             Button {
-                env.activateForWindow()
-                openWindow(id: "dashboard")
-                env.refreshDashboard()
+                windowActions(env).openDashboard()
             } label: {
                 Label(L10n.openDashboard, systemImage: "chart.bar.xaxis")
                     .frame(maxWidth: .infinity)
@@ -132,8 +134,7 @@ struct MenuBarContentView: View {
             // explicitly don't have. activateForWindow() runs first so
             // the Settings window comes forward over the menu popover.
             Button {
-                env.activateForWindow()
-                openWindow(id: "settings")
+                windowActions(env).openSettings()
             } label: {
                 Label(L10n.settingsMenuItem, systemImage: "gearshape")
                     .frame(maxWidth: .infinity)
@@ -145,7 +146,7 @@ struct MenuBarContentView: View {
 
     /// Placeholder content shown while `settings.needsProviderOnboarding`
     /// is true. The onboarding Window is auto-opened by
-    /// `MenuBarLabelView.task`, but it can be dismissed via the title
+    /// `AppDelegate`, but it can be dismissed via the title
     /// bar close button — when that happens we still re-open it from
     /// `onDisappear`, but the user might land here in the brief gap.
     /// "Open setup" is the explicit escape hatch.
@@ -163,8 +164,7 @@ struct MenuBarContentView: View {
             }
             .padding(.vertical, 4)
             Button {
-                env.activateForWindow()
-                openWindow(id: "onboarding")
+                windowActions(env).openOnboarding()
             } label: {
                 Label(L10n.openSetup, systemImage: "checklist")
                     .frame(maxWidth: .infinity)
