@@ -196,6 +196,38 @@ struct AggregatorActivityTests {
         #expect(activity.longestStreakDays >= 3)
     }
 
+    @Test("fetchActivity: day bucketing is correct across a DST boundary")
+    func fetchActivity_dstCorrectBucketing() throws {
+        // Use America/New_York: EST (UTC-5) in winter, EDT (UTC-4) in summer.
+        // DST spring-forward in 2025: March 9 at 02:00 local → 03:00 local.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+
+        // Event A: Jan 15 at 04:30 UTC = Jan 14 23:30 EST (local).
+        // Should land on Jan 14 local day.
+        // Event B: Jun 15 at 03:30 UTC = Jun 14 23:30 EDT (local).
+        // Should land on Jun 14 local day.
+        // A single-offset approach using the summer offset (-4h) would
+        // incorrectly place event A on Jan 15 (04:30 − 4h = Jan 15 00:30).
+        let db = try makeDatabase()
+        try seed(in: db, sessionId: "winter",
+                 timestamp: "2025-01-15T04:30:00Z", tokens: 2000)
+        try seed(in: db, sessionId: "summer",
+                 timestamp: "2025-06-15T03:30:00Z", tokens: 1000)
+
+        let activity = try db.pool.read { conn in
+            try Aggregator.fetchActivity(db: conn, calendar: cal)
+        }
+
+        // Both events are near midnight in their respective local days but
+        // should each stay on the *previous* local day. Peak tokens should
+        // be 2000 (the winter event alone on Jan 14), not 3000 (both on
+        // the same mis-bucketed day).
+        #expect(activity.peakDayTokens == 2000,
+                "winter event should be on its own local day, not grouped with summer")
+        #expect(activity.lifetimeTokens == 3000)
+    }
+
     @Test("fetchActivity: empty database returns the zero snapshot")
     func fetchActivity_empty() throws {
         let db = try makeDatabase()

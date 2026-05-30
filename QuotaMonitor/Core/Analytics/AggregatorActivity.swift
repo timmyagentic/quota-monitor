@@ -8,10 +8,10 @@ import GRDB
 // heatmap.
 //
 // Everything is derived from the existing `usage_events` table — no schema
-// change, no new ingestion. Day bucketing reuses the same local-calendar
-// offset trick as `fetchDaily` / `fetchDays` so day boundaries line up with
-// the rest of the app (and dodge the UTC-vs-local off-by-hours bug fixed on
-// Day-30).
+// change, no new ingestion. Day bucketing is done client-side via
+// `Calendar.startOfDay(for:)` so each historical event is grouped into the
+// correct local day even across DST transitions (a single current-offset
+// would mis-group events from the other DST half of the year).
 
 struct ActivitySnapshot: Sendable, Equatable {
     /// All-time `SUM(total_tokens)`. Includes cached-read tokens, matching
@@ -55,40 +55,39 @@ extension Aggregator {
         now: Date = Date(),
         calendar: Calendar = .current
     ) throws -> ActivitySnapshot {
-        let offsetClause = String(format: "%+d seconds",
-                                  TimeZone.current.secondsFromGMT())
-
-        // All-time daily token totals (only days that had usage), local day.
+        // Fetch raw events; day bucketing happens client-side via Calendar
+        // so each timestamp uses the correct DST offset for its own instant,
+        // rather than today's offset applied uniformly to all history.
         let rows = try Row.fetchAll(db, sql: """
-            SELECT date(timestamp, ?) AS day, SUM(total_tokens) AS tokens
+            SELECT timestamp, total_tokens
             FROM usage_events
             \(provider.whereClause(table: "usage_events"))
-            GROUP BY day
-            HAVING SUM(total_tokens) > 0
-            ORDER BY day
-            """, arguments: [offsetClause])
+            """)
 
-        let dayFormatter = DateFormatter()
-        dayFormatter.calendar = calendar
-        dayFormatter.timeZone = TimeZone.current
-        dayFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dayFormatter.dateFormat = "yyyy-MM-dd"
-
+        // Group by local calendar day — Calendar.startOfDay(for:) accounts
+        // for the DST offset that was in effect at each specific timestamp.
+        var dayTokens: [Date: Int64] = [:]
         var lifetime: Int64 = 0
+        for row in rows {
+            let ts: String = row["timestamp"] ?? ""
+            let tokens: Int64 = row["total_tokens"] ?? 0
+            guard let date = parseTimestamp(ts) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            dayTokens[dayStart, default: 0] += tokens
+            lifetime += tokens
+        }
+
         var peakTokens: Int64 = 0
         var peakDay: Date?
         var activeDays: [Date] = []
-        for row in rows {
-            let dayStr: String = row["day"] ?? ""
-            let tokens: Int64 = row["tokens"] ?? 0
-            guard let date = dayFormatter.date(from: dayStr) else { continue }
-            lifetime += tokens
+        for (day, tokens) in dayTokens where tokens > 0 {
             if tokens > peakTokens {
                 peakTokens = tokens
-                peakDay = date
+                peakDay = day
             }
-            activeDays.append(date)
+            activeDays.append(day)
         }
+        activeDays.sort()
 
         let (current, longest) = streaks(
             activeDays: activeDays, now: now, calendar: calendar)
