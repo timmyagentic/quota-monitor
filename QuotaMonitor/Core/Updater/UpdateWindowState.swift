@@ -84,6 +84,34 @@ final class UpdateWindowState {
 
     // MARK: - Helpers
 
+    /// Translate a user-initiated window close (the title-bar close button)
+    /// into the same reply the on-screen button for the current phase would
+    /// send. Sparkle blocks waiting on the reply from `showUpdateFound` /
+    /// `showReady(toInstallAndRelaunch:)` (and on the acknowledgement for
+    /// error / up-to-date), so without this a plain window close leaves the
+    /// updater stuck in an active interaction (e.g. "Check Now" stays
+    /// disabled) until the app restarts.
+    ///
+    /// Closures are cleared afterwards so a subsequent programmatic `close()`
+    /// can't fire a second, conflicting reply.
+    func handleWindowClose() {
+        switch phase {
+        case .checking, .downloading, .extracting:
+            onCancel?()
+        case .updateAvailable, .readyToInstall:
+            onDismiss?()
+        case .error, .upToDate:
+            onAcknowledge?()
+        case .idle, .installing, .done:
+            break   // no reply is owed to Sparkle in these phases
+        }
+        onInstall = nil
+        onSkip = nil
+        onDismiss = nil
+        onCancel = nil
+        onAcknowledge = nil
+    }
+
     /// Reset all mutable state back to defaults. Called before showing a
     /// new update and on `dismissUpdateInstallation`.
     func reset() {

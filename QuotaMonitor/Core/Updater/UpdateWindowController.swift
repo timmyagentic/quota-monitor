@@ -6,13 +6,14 @@ import SwiftUI
 /// must call `NSApp.activate(ignoringOtherApps:)` to bring the window
 /// to the front.
 @MainActor
-final class UpdateWindowController {
+final class UpdateWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private let state: UpdateWindowState
 
     init(state: UpdateWindowState) {
         self.state = state
+        super.init()
     }
 
     // MARK: - Public
@@ -29,6 +30,7 @@ final class UpdateWindowController {
             newWindow.title = L10n.updateWindowTitle
             newWindow.isReleasedWhenClosed = false
             newWindow.center()
+            newWindow.delegate = self
             newWindow.contentView = NSHostingView(
                 rootView: UpdateWindowView(state: state))
 
@@ -49,6 +51,25 @@ final class UpdateWindowController {
     /// Closes and releases the window.
     func close() {
         window?.close()
+        window = nil
+    }
+
+    // MARK: - NSWindowDelegate
+
+    /// The user clicked the title-bar close button. Map it to the
+    /// phase-appropriate Sparkle reply before the window goes away so the
+    /// updater isn't left blocked. `windowShouldClose(_:)` fires only on a
+    /// user-driven close — programmatic `close()` does not call it — so a
+    /// `dismissUpdateInstallation` → `close()` from Sparkle can't re-fire a
+    /// reply here.
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        state.handleWindowClose()
+        return true
+    }
+
+    /// Drop our reference once the window actually closes (whether the user
+    /// closed it or we did) so the next `show()` builds a fresh window.
+    func windowWillClose(_ notification: Notification) {
         window = nil
     }
 }
