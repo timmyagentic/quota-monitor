@@ -33,10 +33,6 @@ if [[ ! -d "${APP_BUNDLE}" ]]; then
     echo "error: ${APP_BUNDLE} not found — run ./build.sh release first" >&2
     exit 1
 fi
-if [[ ! -f "${BG_SRC}" ]]; then
-    echo "error: ${BG_SRC} missing — run scripts/make-dmg-bg.py" >&2
-    exit 1
-fi
 
 VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
 VOL_NAME="${BRAND_DISPLAY} ${VERSION}"
@@ -61,7 +57,21 @@ trap cleanup EXIT
 cp -R "${APP_BUNDLE}" "${STAGE_DIR}/"
 ln -s /Applications "${STAGE_DIR}/Applications"
 mkdir "${STAGE_DIR}/.background"
-cp "${BG_SRC}" "${STAGE_DIR}/.background/background.png"
+
+# Regenerate the backdrop from the CURRENT branding so the "Drag <name>…"
+# title matches a rebranded DMG. Needs Pillow; fall back to the committed
+# PNG when it's unavailable, and only fail if we have neither.
+STAGED_BG="${STAGE_DIR}/.background/background.png"
+if python3 -c 'import PIL' >/dev/null 2>&1; then
+    echo "==> Generating DMG background for \"${BRAND_DISPLAY}\""
+    python3 scripts/make-dmg-bg.py "${BRAND_DISPLAY}" "${STAGED_BG}"
+elif [[ -f "${BG_SRC}" ]]; then
+    echo "==> Pillow unavailable; using committed ${BG_SRC}"
+    cp "${BG_SRC}" "${STAGED_BG}"
+else
+    echo "error: cannot generate background (no Pillow) and ${BG_SRC} missing" >&2
+    exit 1
+fi
 
 # Writable DMG → mount → style via AppleScript → detach → compress.
 # UDRW is required because UDZO mounts read-only and Finder can't

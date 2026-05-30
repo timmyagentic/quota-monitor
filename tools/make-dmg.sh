@@ -80,11 +80,6 @@ if [[ ! -d "$APP" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${BG_PATH}" ]]; then
-    echo "error: ${BG_PATH} missing — run swift tools/make-dmg-bg.swift ${BG_PATH}" >&2
-    exit 1
-fi
-
 mkdir -p "$DIST"
 rm -f "${DIST}/${NAME}"
 
@@ -93,7 +88,22 @@ echo "==> Staging in ${STAGING}"
 cp -R "$APP" "${STAGING}/"
 ln -s /Applications "${STAGING}/Applications"
 mkdir "${STAGING}/.background"
-cp "${BG_PATH}" "${STAGING}/.background/background.png"
+
+# Regenerate the installer background from the CURRENT branding so a rebrand
+# (changing Branding.swift) flows through to the "Drag <name>…" title without
+# a stale committed PNG. Fall back to the committed image when `swift` is
+# unavailable; only fail if we have neither.
+STAGED_BG="${STAGING}/.background/background.png"
+if command -v swift >/dev/null 2>&1; then
+    echo "==> Generating DMG background for \"${BRAND_DISPLAY}\""
+    swift tools/make-dmg-bg.swift "${STAGED_BG}" "${BRAND_DISPLAY}"
+elif [[ -f "${BG_PATH}" ]]; then
+    echo "==> swift unavailable; using committed ${BG_PATH}"
+    cp "${BG_PATH}" "${STAGED_BG}"
+else
+    echo "error: cannot generate background (no swift) and ${BG_PATH} missing" >&2
+    exit 1
+fi
 
 # 3. Build a writable DMG so we can configure Finder window state.
 #    Size = staging size + 20 % slack, min 32M (Apple gets cranky on tiny RW images).

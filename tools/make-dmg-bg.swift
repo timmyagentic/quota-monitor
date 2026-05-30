@@ -1,16 +1,21 @@
 #!/usr/bin/env swift
 // Render the DMG installer background.
 //
-// Usage: tools/make-dmg-bg.swift <output-png-path>
+// Usage: tools/make-dmg-bg.swift <output-png-path> [brand-display-name]
+//
+// The optional brand display name fills the "Drag <name> into your
+// Applications folder" title. When omitted it is read from the single source
+// of truth in QuotaMonitor/Core/Branding.swift (falling back to
+// "Quota Monitor"), so renaming the app there flows through to the installer
+// window automatically. make-dmg.sh regenerates this PNG from the current
+// branding on every build; the committed Resources/dmg-background.png is just
+// a fallback for environments without `swift`.
 //
 // Output is a 540×380 PNG showing:
 //   - Drop-shadow placeholder for the app icon (left)
 //   - Big arrow pointing right
 //   - Drop-shadow placeholder for the /Applications folder (right)
 //   - One-line instruction at the top
-//
-// Re-run if you change wording or layout. The generated PNG is committed to
-// Resources/dmg-background.png; we don't regenerate it during every release.
 
 import AppKit
 import CoreGraphics
@@ -22,6 +27,33 @@ guard CommandLine.arguments.count >= 2 else {
     exit(2)
 }
 let outPath = CommandLine.arguments[1]
+
+/// Resolve the brand display name used in the installer title.
+/// Precedence: explicit CLI arg → `appDisplayName` in Branding.swift →
+/// the "Quota Monitor" default. Keeps this generator in lockstep with the
+/// rest of the build, which reads the same source of truth.
+func resolveBrandDisplayName() -> String {
+    if CommandLine.arguments.count >= 3 {
+        let arg = CommandLine.arguments[2].trimmingCharacters(in: .whitespaces)
+        if !arg.isEmpty { return arg }
+    }
+    // Branding.swift lives two levels up from this script (tools/ → repo root).
+    let brandingURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // tools/
+        .deletingLastPathComponent()   // repo root
+        .appendingPathComponent("QuotaMonitor/Core/Branding.swift")
+    if let text = try? String(contentsOf: brandingURL, encoding: .utf8),
+       let r = text.range(of: #"appDisplayName\s*=\s*""#,
+                          options: .regularExpression) {
+        let after = text[r.upperBound...]
+        if let end = after.firstIndex(of: "\"") {
+            let name = String(after[..<end]).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { return name }
+        }
+    }
+    return "Quota Monitor"
+}
+let brandDisplayName = resolveBrandDisplayName()
 
 let width: CGFloat = 540
 let height: CGFloat = 380
@@ -49,9 +81,9 @@ ctx.drawLinearGradient(gradient,
 
 // ---- title text (top) -----------------------------------------------------
 
-// NOTE: when changing the app brand (QuotaMonitor/Core/Branding.swift),
-// update this title string and re-run this script to regenerate the PNG.
-let title = "Drag QuotaMonitor into your Applications folder"
+// Driven by Branding.swift (or the optional CLI arg) so the installer
+// instruction matches a rebranded DMG filename / volume title.
+let title = "Drag \(brandDisplayName) into your Applications folder"
 let titleAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 16, weight: .medium),
     .foregroundColor: NSColor(white: 0.18, alpha: 1.0)
