@@ -61,20 +61,23 @@ steps. **One-time setup** is at the bottom — do that first.
    gh pr create --base main --title "Release vX.Y.Z" --fill
    gh pr merge --squash --delete-branch    # or --merge
    ```
-7. **Tag + publish** (run from `main` after the merge so the tag points at
-   the released commit):
+7. **Tag** (run from `main` after the merge so the tag points at the
+   released commit):
    ```sh
    git switch main && git pull
    git tag vX.Y.Z
    git push origin vX.Y.Z
-   gh release create vX.Y.Z \
-       dist/QuotaMonitor-X.Y.Z.dmg dist/QuotaMonitor-X.Y.Z.dmg.sha256 \
-       --title "QuotaMonitor X.Y.Z" --notes-from-tag
    ```
-   The tag push triggers `.github/workflows/release.yml`. The instant the
-   merged `appcast.xml` is on `main`, every running copy of QuotaMonitor
-   sees the new version on its next scheduled check (default 24 h). The
-   GitHub release page hosts the actual DMG download.
+   The tag push triggers `.github/workflows/release.yml`, which rebuilds the
+   DMG from the tagged commit and publishes the GitHub Release itself —
+   attaching the DMG + `.sha256` and slicing the release notes from
+   `CHANGELOG.md`. **Don't run `gh release create` locally**: it would race
+   the workflow's own release-create step and either fail on the
+   already-existing release or publish competing assets before CI has
+   validated the tag. The instant the merged `appcast.xml` is on `main`,
+   every running copy of QuotaMonitor sees the new version on its next
+   scheduled check (default 24 h). The GitHub release page hosts the actual
+   DMG download.
 
 That's it. No notarization, no Apple Developer cert, no PKG. The Ed25519
 signature in the appcast item is what Sparkle verifies before swapping the
@@ -209,5 +212,5 @@ defaults delete dev.tjzhou.QuotaMonitor SUFeedURL
 |---|---|
 | "Update is improperly signed" alert | Public key in Info.plist doesn't match the private key you signed with. Either regenerate Info.plist or re-sign the DMG. |
 | Sparkle never fires a check | `SUEnableAutomaticChecks` is off, or the user has never opened the app long enough for the schedule to land. Check `defaults read dev.tjzhou.QuotaMonitor` for the keys Sparkle persists. |
-| "Update is missing" / 404 on download | `enclosure url` in the appcast item points at a release asset that hasn't been uploaded yet. The `gh release create` step must include the DMG. |
+| "Update is missing" / 404 on download | `enclosure url` in the appcast item points at a release asset that hasn't been uploaded yet. Check the `release.yml` Actions run succeeded and attached the DMG to the release. |
 | Sparkle crashes on first "Install Update" click | `Sparkle.framework` is missing from `.app/Contents/Frameworks/`. Re-run `./build.sh release` (it copies the framework from `.build/artifacts/`). |
