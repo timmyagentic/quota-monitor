@@ -1,0 +1,35 @@
+<!--
+  HTML release notes for Sparkle's update dialog (English).
+  This file is read by tools/release-sparkle.sh and embedded in the
+  appcast <description> CDATA block.  ReleaseNotesCSS.wrapHTML()
+  (in the running app) wraps it with a full HTML document, CSS
+  variables (--qm-text, --qm-accent, etc.), and animation JS.
+
+  Available CSS classes (defined by the app):
+    .release-summary   — summary section (always visible)
+    .release-details   — detail section (hidden by default)
+    .details-toggle    — expand/collapse button
+
+  The app's animation JS automatically fades in <li> items inside
+  .release-summary and .release-details using IntersectionObserver.
+
+  For future releases you can add:
+    <img src="https://absolute-url/to/screenshot.png">
+    <style>.custom-class { ... }</style>
+    Any valid HTML/CSS — the WKWebView renders it all.
+-->
+<div class="release-summary">
+<ul>
+<li><b>Dashboard Activity section</b> — lifetime tokens, peak day, active-day streaks, and a GitHub-style token heatmap.</li>
+<li><b>Beautiful update experience</b> — animated release notes with dark mode support.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Added</h3>
+<ul>
+<li><b>Dashboard "Activity" section.</b> A usage profile with a four-up stat strip (lifetime tokens, peak-day tokens, current streak, longest streak) above a GitHub-style token-activity heatmap. Every figure follows the active provider filter and is derived entirely from the existing local history — no new data collection or schema change.</li>
+<li><b>Custom Sparkle update UI.</b> Replaces Sparkle's standard system-style update alert with a SwiftUI window presenting a <code>WKWebView</code> for animated, visually polished release notes. Supports dark mode, <code>prefers-reduced-motion</code> accessibility, and bilingual release notes (en + zh-Hans).</li>
+<li><b>HTML release notes pipeline.</b> Release notes are now authored as HTML for full visual control — images, CSS animations, and rich layouts are all possible in the update dialog.</li>
+</ul>
+</div>
