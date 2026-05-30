@@ -16,6 +16,51 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
+            <title>QuotaMonitor 0.2.26</title>
+            <pubDate>Sat, 30 May 2026 16:07:01 +0000</pubDate>
+            <sparkle:version>0.2.26</sparkle:version>
+            <sparkle:shortVersionString>0.2.26</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description xml:lang="en"><![CDATA[
+<div class="release-summary">
+<ul>
+<li><b>Dashboard Activity section</b> — lifetime tokens, peak day, active-day streaks, and a GitHub-style token heatmap.</li>
+<li><b>Beautiful update experience</b> — animated release notes with dark mode support.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Added</h3>
+<ul>
+<li><b>Dashboard "Activity" section.</b> A usage profile with a four-up stat strip (lifetime tokens, peak-day tokens, current streak, longest streak) above a GitHub-style token-activity heatmap. Every figure follows the active provider filter and is derived entirely from the existing local history — no new data collection or schema change.</li>
+<li><b>Custom Sparkle update UI.</b> Replaces Sparkle's standard system-style update alert with a SwiftUI window presenting a <code>WKWebView</code> for animated, visually polished release notes. Supports dark mode, <code>prefers-reduced-motion</code> accessibility, and bilingual release notes (en + zh-Hans).</li>
+<li><b>HTML release notes pipeline.</b> Release notes are now authored as HTML for full visual control — images, CSS animations, and rich layouts are all possible in the update dialog.</li>
+</ul>
+</div>
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+<div class="release-summary">
+<ul>
+<li><b>仪表盘「使用画像」</b> — 累计 Tokens、单日峰值、连续活跃天数、GitHub 风格热力图。</li>
+<li><b>全新更新体验</b> — 动画发布说明，支持深色模式。</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>新增</h3>
+<ul>
+<li><b>仪表盘「使用画像」一节。</b> 四格统计条（累计 Tokens、单日峰值、当前连续、最长连续）+ GitHub 风格的 Token 活跃度热力图。所有数字跟随当前 Provider 过滤，完全由本地历史推导，不额外采集数据、不改数据库结构。</li>
+<li><b>自定义 Sparkle 更新界面。</b> 替换系统默认更新弹窗，使用 SwiftUI 窗口 + <code>WKWebView</code> 展示带动画的发布说明，支持深色模式和 <code>prefers-reduced-motion</code> 无障碍。</li>
+<li><b>HTML 发布说明流水线。</b> 发布说明现在以 HTML 编写，支持图片、CSS 动画等富媒体内容。</li>
+</ul>
+</div>
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.26/QuotaMonitor-0.2.26.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="TJFykefTay0kXfcHGZdrKm3L6wcbxrImz1ybT908RO/vhACe2eX5iMQgLdUbimenEa2lUB8qbiBbicKAdJ7xAA==" length="4726546" />
+        </item>
+        <item>
             <title>QuotaMonitor 0.2.25</title>
             <pubDate>Sat, 23 May 2026 10:31:12 +0000</pubDate>
             <sparkle:version>0.2.25</sparkle:version>
