@@ -17,7 +17,7 @@
         -->
         <item>
             <title>QuotaMonitor 0.2.26</title>
-            <pubDate>Sat, 30 May 2026 16:07:01 +0000</pubDate>
+            <pubDate>Sat, 30 May 2026 16:10:29 +0000</pubDate>
             <sparkle:version>0.2.26</sparkle:version>
             <sparkle:shortVersionString>0.2.26</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
@@ -58,7 +58,7 @@
             <enclosure
                 url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.26/QuotaMonitor-0.2.26.dmg"
                 type="application/octet-stream"
-                sparkle:edSignature="TJFykefTay0kXfcHGZdrKm3L6wcbxrImz1ybT908RO/vhACe2eX5iMQgLdUbimenEa2lUB8qbiBbicKAdJ7xAA==" length="4726546" />
+                sparkle:edSignature="iuY6xYp0JeSqbRuZvUOf+TspHDzhirHA6agfO22EEmNmA0TTSmKmevalr2CMs6CCOK3Pn+r2z8R5O8MioO4tCA==" length="4726546" />
         </item>
         <item>
             <title>QuotaMonitor 0.2.25</title>
