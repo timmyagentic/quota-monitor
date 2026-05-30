@@ -99,19 +99,19 @@ struct OnboardingView: View {
                 Image(systemName: "globe")
                     .font(.system(size: 36))
                     .foregroundStyle(.tint)
-                Text("Welcome to Quota Monitor")
+                Text(L10n.onboardingWelcomeEn)
                     .font(.title3.weight(.semibold))
-                Text("欢迎使用 Quota Monitor")
+                Text(L10n.onboardingWelcomeZh)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
             .padding(.top, 12)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text("Pick your language. You can change it later in Settings.")
+                Text(L10n.onboardingLanguagePickEn)
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Text("请选择语言，稍后可在设置中更改。")
+                Text(L10n.onboardingLanguagePickZh)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

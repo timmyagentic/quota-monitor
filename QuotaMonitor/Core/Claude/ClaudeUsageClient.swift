@@ -130,7 +130,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         // Required header per Anthropic's beta gating. Matches CodexBar.
         req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("QuotaMonitor/0.2", forHTTPHeaderField: "User-Agent")
+        req.setValue("\(Branding.appCodeName)/\(Branding.versionString)", forHTTPHeaderField: "User-Agent")
 
         let data: Data
         let response: URLResponse

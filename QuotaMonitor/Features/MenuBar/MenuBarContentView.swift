@@ -180,7 +180,7 @@ struct MenuBarContentView: View {
     private var header: some View {
         HStack {
             // Product name — intentionally not localized (see L10n proper-noun policy).
-            Text("Quota Monitor")
+            Text(Branding.appDisplayName)
                 .font(.headline)
             Spacer()
             if env.isLoadingMenuBar {

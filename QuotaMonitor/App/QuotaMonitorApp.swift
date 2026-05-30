@@ -96,7 +96,7 @@ struct QuotaMonitorApp: App {
         .windowResizability(.contentSize)
         .defaultPosition(.center)
 
-        Window("Quota Monitor", id: "dashboard") {
+        Window(Branding.appDisplayName, id: "dashboard") {
             MainWindowView()
                 .environment(environment)
                 .environment(localization)

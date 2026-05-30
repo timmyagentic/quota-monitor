@@ -95,8 +95,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
+          BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+            | sed 's/.*= "//;s/".*//')"
+          if [[ -z "${BRAND_CODE}" ]]; then
+            echo "error: could not extract branding" >&2; exit 1
+          fi
           gh release create "${GITHUB_REF_NAME}" \
-            "dist/QuotaMonitor-${VERSION}.dmg" \
-            "dist/QuotaMonitor-${VERSION}.dmg.sha256" \
-            --title "QuotaMonitor ${VERSION}" \
+            "dist/${BRAND_CODE}-${VERSION}.dmg" \
+            "dist/${BRAND_CODE}-${VERSION}.dmg.sha256" \
+            --title "${BRAND_CODE} ${VERSION}" \
             --notes-file "${{ steps.notes.outputs.path }}"

@@ -15,6 +15,16 @@ APP_BUNDLE=".build/${APP_NAME}.app"
 DIST_DIR="dist"
 BG_SRC="Resources/dmg-background.png"
 
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
+
 if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
     CONFIG=release ./build.sh
 fi
@@ -29,8 +39,8 @@ if [[ ! -f "${BG_SRC}" ]]; then
 fi
 
 VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
-VOL_NAME="${APP_NAME} ${VERSION}"
-DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+VOL_NAME="${BRAND_DISPLAY} ${VERSION}"
+DMG_NAME="${BRAND_CODE}-${VERSION}.dmg"
 DMG_PATH="${DIST_DIR}/${DMG_NAME}"
 TMP_DMG="$(mktemp -t qm-dmg-XXXXXX).dmg"
 

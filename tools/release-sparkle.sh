@@ -32,7 +32,16 @@ if [[ ! -x "${SIGN_UPDATE_BIN}" ]]; then
 fi
 
 VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
-DMG_PATH="${1:-dist/QuotaMonitor-${VERSION}.dmg}"
+
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
+
+DMG_PATH="${1:-dist/${BRAND_CODE}-${VERSION}.dmg}"
 
 if [[ ! -f "${DMG_PATH}" ]]; then
     echo "error: ${DMG_PATH} not found — run ./make-dmg.sh first." >&2
@@ -96,7 +105,7 @@ cat <<APPCAST_ITEM
 ==> Paste this into appcast.xml (under <channel>, newest at top):
 ---------------------------------------------------------------
         <item>
-            <title>QuotaMonitor ${VERSION}</title>
+            <title>${BRAND_CODE} ${VERSION}</title>
             <pubDate>${PUBDATE}</pubDate>
             <sparkle:version>${VERSION}</sparkle:version>
             <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>

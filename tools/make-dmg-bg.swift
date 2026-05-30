@@ -49,6 +49,8 @@ ctx.drawLinearGradient(gradient,
 
 // ---- title text (top) -----------------------------------------------------
 
+// NOTE: when changing the app brand (QuotaMonitor/Core/Branding.swift),
+// update this title string and re-run this script to regenerate the PNG.
 let title = "Drag QuotaMonitor into your Applications folder"
 let titleAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 16, weight: .medium),

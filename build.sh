@@ -21,6 +21,16 @@ CONFIG="${CONFIG:-${1:-debug}}"
 APP_NAME="QuotaMonitor"
 APP_BUNDLE=".build/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
+
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
 # All package dependencies are public. Disabling SwiftPM's macOS keychain
 # credential lookup avoids securityd stalls during binary artifact downloads.
 SWIFT_BUILD_FLAGS=(--disable-keychain)
@@ -81,6 +91,15 @@ BUILD_TAG="$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)
   || /usr/libexec/PlistBuddy -c "Set :BuildCommit ${BUILD_TAG}" \
     "${CONTENTS}/Info.plist"
 echo "    version=${VERSION} commit=${BUILD_TAG}"
+
+# Inject branding display name and code name from Branding.swift.
+# Mirrors the version injection pattern above — the source Info.plist
+# ships placeholders that are obviously wrong if this step is skipped.
+/usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${BRAND_DISPLAY}" \
+    "${CONTENTS}/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleName ${BRAND_CODE}" \
+    "${CONTENTS}/Info.plist"
+echo "    brand=${BRAND_DISPLAY} (${BRAND_CODE})"
 
 if [[ -f Resources/AppIcon.icns ]]; then
     cp Resources/AppIcon.icns "${CONTENTS}/Resources/AppIcon.icns"

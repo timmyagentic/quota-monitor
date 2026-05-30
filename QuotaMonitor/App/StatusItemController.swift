@@ -106,7 +106,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private static let gaugeImage: NSImage? = {
         let img = NSImage(systemSymbolName: "gauge.with.dots.needle.50percent",
-                          accessibilityDescription: "Quota Monitor")
+                          accessibilityDescription: Branding.appDisplayName)
         img?.isTemplate = true
         return img
     }()

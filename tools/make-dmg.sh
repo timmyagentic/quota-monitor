@@ -28,6 +28,16 @@ CONFIG=${CONFIG:-release}
 APP=".build/QuotaMonitor.app"
 DIST="dist"
 
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
+
 # Version: caller may override via VER=..., otherwise read Resources/VERSION.
 # We deliberately do NOT fall back to a fake "0.0.0" — that path silently
 # shipped mismatched DMGs in the past. If VERSION is missing/empty, fail loud.
@@ -44,8 +54,8 @@ else
     exit 1
 fi
 
-NAME="QuotaMonitor-${VER}.dmg"
-VOLNAME="Install QuotaMonitor ${VER}"
+NAME="${BRAND_CODE}-${VER}.dmg"
+VOLNAME="Install ${BRAND_DISPLAY} ${VER}"
 BG_PATH="Resources/dmg-background.png"
 
 STAGING=$(mktemp -d)

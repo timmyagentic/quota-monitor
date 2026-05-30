@@ -52,7 +52,17 @@ if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     exit 1
 fi
 
-DMG_PATH="dist/QuotaMonitor-${VERSION}.dmg"
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
+
+DMG_PATH="dist/${BRAND_CODE}-${VERSION}.dmg"
 SHA_PATH="${DMG_PATH}.sha256"
 
 if [[ -f "${DMG_PATH}" && "${FORCE}" -eq 0 ]]; then
@@ -61,7 +71,7 @@ if [[ -f "${DMG_PATH}" && "${FORCE}" -eq 0 ]]; then
     exit 1
 fi
 
-echo "==> Releasing QuotaMonitor v${VERSION}"
+echo "==> Releasing ${BRAND_CODE} v${VERSION}"
 
 # -------- tests -------------------------------------------------------------
 
@@ -109,7 +119,7 @@ fi
 # -------- SHA-256 -----------------------------------------------------------
 
 echo "==> shasum -a 256 ${DMG_PATH}"
-( cd dist && shasum -a 256 "QuotaMonitor-${VERSION}.dmg" > "QuotaMonitor-${VERSION}.dmg.sha256" )
+( cd dist && shasum -a 256 "${BRAND_CODE}-${VERSION}.dmg" > "${BRAND_CODE}-${VERSION}.dmg.sha256" )
 echo "    $(cat "${SHA_PATH}")"
 
 # -------- self-check: mount + verify ---------------------------------------
@@ -162,7 +172,7 @@ Next steps (manual):
   2. gh release create v${VERSION} \\
         ${DMG_PATH} \\
         ${SHA_PATH} \\
-        --title "QuotaMonitor ${VERSION}" \\
+        --title "${BRAND_CODE} ${VERSION}" \\
         --notes-file CHANGELOG.md   # or hand-pick the v${VERSION} block
 
 Reminder: this is ad-hoc-signed. Users must right-click → Open
