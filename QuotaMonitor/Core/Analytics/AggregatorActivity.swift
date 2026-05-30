@@ -38,10 +38,11 @@ struct ActivitySnapshot: Sendable, Equatable {
 
 extension Aggregator {
 
-    /// Build the full activity profile for one provider filter. Two cheap
-    /// queries: an all-time per-day token rollup (peak + streaks + lifetime)
-    /// and the trailing daily series (heatmap). All bucket by local calendar
-    /// day.
+    /// Build the full activity profile for one provider filter from a single
+    /// all-time query. Every derived number — lifetime tokens, peak day,
+    /// streaks, AND the trailing daily series (heatmap) — buckets events by
+    /// local calendar day client-side, so they stay mutually consistent and
+    /// DST-correct.
     static func fetchActivity(
         db: Database,
         provider: ProviderFilter = .all,
@@ -53,7 +54,7 @@ extension Aggregator {
         // so each timestamp uses the correct DST offset for its own instant,
         // rather than today's offset applied uniformly to all history.
         let rows = try Row.fetchAll(db, sql: """
-            SELECT timestamp, total_tokens
+            SELECT timestamp, value_usd, total_tokens
             FROM usage_events
             \(provider.whereClause(table: "usage_events"))
             """)
@@ -61,13 +62,16 @@ extension Aggregator {
         // Group by local calendar day — Calendar.startOfDay(for:) accounts
         // for the DST offset that was in effect at each specific timestamp.
         var dayTokens: [Date: Int64] = [:]
+        var dayValue: [Date: Double] = [:]
         var lifetime: Int64 = 0
         for row in rows {
             let ts: String = row["timestamp"] ?? ""
             let tokens: Int64 = row["total_tokens"] ?? 0
+            let value: Double = row["value_usd"] ?? 0
             guard let date = parseTimestamp(ts) else { continue }
             let dayStart = calendar.startOfDay(for: date)
             dayTokens[dayStart, default: 0] += tokens
+            dayValue[dayStart, default: 0] += value
             lifetime += tokens
         }
 
@@ -85,7 +89,9 @@ extension Aggregator {
 
         let (current, longest) = streaks(
             activeDays: activeDays, now: now, calendar: calendar)
-        let daily = try fetchDaily(db: db, days: heatmapDays, provider: provider)
+        let daily = dailySeries(
+            dayTokens: dayTokens, dayValue: dayValue,
+            days: heatmapDays, now: now, calendar: calendar)
 
         return ActivitySnapshot(
             lifetimeTokens: lifetime,
@@ -142,5 +148,34 @@ extension Aggregator {
             cursor = previous
         }
         return (currentStreak, longest)
+    }
+
+    /// Zero-filled trailing `days`-day series ending today (oldest first),
+    /// built from the same per-event local-day maps as the stats above. Keys
+    /// in `dayTokens` / `dayValue` are `Calendar.startOfDay(for:)` of each
+    /// event's own instant, so the heatmap is DST-correct — unlike the
+    /// single-`secondsFromGMT()` SQL bucketing in `fetchDaily`, which would
+    /// mis-assign near-midnight events from the opposite DST half of the year.
+    /// `nonisolated` with injectable `now` / `calendar` so it's unit-testable.
+    nonisolated static func dailySeries(
+        dayTokens: [Date: Int64],
+        dayValue: [Date: Double],
+        days: Int,
+        now: Date,
+        calendar: Calendar
+    ) -> [DailyPoint] {
+        guard days > 0 else { return [] }
+        let today = calendar.startOfDay(for: now)
+        var points: [DailyPoint] = []
+        points.reserveCapacity(days)
+        for offset in (0..<days).reversed() {
+            guard let date = calendar.date(
+                byAdding: .day, value: -offset, to: today) else { continue }
+            points.append(DailyPoint(
+                date: date,
+                valueUSD: dayValue[date] ?? 0,
+                tokens: dayTokens[date] ?? 0))
+        }
+        return points
     }
 }

@@ -226,6 +226,50 @@ struct AggregatorActivityTests {
         #expect(activity.lifetimeTokens == 3000)
     }
 
+    @Test("fetchActivity: heatmap daily series buckets days DST-correctly")
+    func fetchActivity_dstCorrectHeatmap() throws {
+        // Same America/New_York DST setup as fetchActivity_dstCorrectBucketing,
+        // but asserting the heatmap `daily` series — which previously came
+        // from the single-offset SQL `fetchDaily` and so mis-bucketed
+        // near-midnight events from the opposite DST half of the year.
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+
+        let db = try makeDatabase()
+        // Jan 15 04:30 UTC = Jan 14 23:30 EST → local Jan 14.
+        try seed(in: db, sessionId: "winter",
+                 timestamp: "2025-01-15T04:30:00Z", tokens: 2000)
+        // Jun 15 03:30 UTC = Jun 14 23:30 EDT → local Jun 14.
+        try seed(in: db, sessionId: "summer",
+                 timestamp: "2025-06-15T03:30:00Z", tokens: 1000)
+
+        // Pin `now` to mid-2025 so both events fall inside the trailing
+        // 365-day heatmap window.
+        let now = cal.date(from: DateComponents(
+            year: 2025, month: 6, day: 20, hour: 12))!
+        let activity = try db.pool.read { conn in
+            try Aggregator.fetchActivity(
+                db: conn, heatmapDays: 365, now: now, calendar: cal)
+        }
+
+        // Tokens recorded on a given LOCAL calendar day in the heatmap series
+        // (−1 if that day isn't in the window at all, which shouldn't happen).
+        func heatmapTokens(localYear y: Int, _ m: Int, _ d: Int) -> Int64 {
+            let target = cal.date(from: DateComponents(
+                year: y, month: m, day: d, hour: 12))!
+            return activity.daily
+                .first { cal.isDate($0.date, inSameDayAs: target) }?.tokens ?? -1
+        }
+
+        // Each near-midnight event lands on its own correct local day…
+        #expect(heatmapTokens(localYear: 2025, 1, 14) == 2000)
+        #expect(heatmapTokens(localYear: 2025, 6, 14) == 1000)
+        // …and NOT on the UTC-date day a uniform summer offset would pick.
+        #expect(heatmapTokens(localYear: 2025, 1, 15) == 0,
+                "winter event must not leak onto Jan 15 via a single offset")
+        #expect(heatmapTokens(localYear: 2025, 6, 15) == 0)
+    }
+
     @Test("fetchActivity: empty database returns the zero snapshot")
     func fetchActivity_empty() throws {
         let db = try makeDatabase()
