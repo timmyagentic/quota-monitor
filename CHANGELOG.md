@@ -7,6 +7,10 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Dashboard "Activity" section.** A CodeX-style usage profile: a five-up stat strip (lifetime tokens, peak-day tokens, longest task, current streak, longest streak) above a GitHub-style token-activity heatmap with Daily / Weekly / Cumulative views. Every figure follows the active provider filter and is derived entirely from the existing local history — no new data collection or schema change.
+
 ## [0.2.25] — 2026-05-23
 
 ### Added
