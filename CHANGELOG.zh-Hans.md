@@ -13,6 +13,11 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+## [0.2.27] — 2026-05-31
+
+### 修复
+- **Sparkle 现在会在中文 macOS 上选择中文更新说明。** 在 Info.plist 中添加了 `CFBundleLocalizations`（en + zh-Hans），使 Sparkle 的 appcast 解析器知道应用支持简体中文，从而正确选择 `<description xml:lang="zh-Hans">`。
+
 ## [0.2.26] — 2026-05-30
 
 #### Summary

@@ -7,6 +7,11 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.27] — 2026-05-31
+
+### Fixed
+- **Sparkle now selects Chinese release notes on Chinese macOS.** Added `CFBundleLocalizations` (en + zh-Hans) to Info.plist so Sparkle's appcast parser knows the app supports Simplified Chinese and picks `<description xml:lang="zh-Hans">` accordingly.
+
 ## [0.2.26] — 2026-05-30
 
 #### Summary

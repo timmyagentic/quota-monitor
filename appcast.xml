@@ -16,6 +16,29 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
+            <title>QuotaMonitor 0.2.27</title>
+            <pubDate>Sun, 31 May 2026 02:21:13 +0000</pubDate>
+            <sparkle:version>0.2.27</sparkle:version>
+            <sparkle:shortVersionString>0.2.27</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description xml:lang="en"><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li><b>Sparkle now selects Chinese release notes on Chinese macOS.</b> Added <code>CFBundleLocalizations</code> (en + zh-Hans) to Info.plist so Sparkle's appcast parser knows the app supports Simplified Chinese and picks <code>&lt;description xml:lang="zh-Hans"&gt;</code> accordingly.</li>
+</ul>
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+<h3>修复</h3>
+<ul>
+<li><b>Sparkle 现在会在中文 macOS 上选择中文更新说明。</b> 在 Info.plist 中添加了 <code>CFBundleLocalizations</code>（en + zh-Hans），使 Sparkle 的 appcast 解析器知道应用支持简体中文，从而正确选择 <code>&lt;description xml:lang="zh-Hans"&gt;</code>。</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.27/QuotaMonitor-0.2.27.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="rzHTYthfyftUKPfF/UvNsQvUsl08JWvIuwtymh1OQ5w+AFGz0Bg/nDW5WI1gTUCE8YduQjzirDW/jdaFarhWCQ==" length="4726581" />
+        </item>
+        <item>
             <title>QuotaMonitor 0.2.26</title>
             <pubDate>Sat, 30 May 2026 16:10:29 +0000</pubDate>
             <sparkle:version>0.2.26</sparkle:version>
