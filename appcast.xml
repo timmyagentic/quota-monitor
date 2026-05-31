@@ -16,12 +16,80 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
+            <title>QuotaMonitor 0.2.27</title>
+            <pubDate>Sun, 31 May 2026 02:21:13 +0000</pubDate>
+            <sparkle:version>0.2.27</sparkle:version>
+            <sparkle:shortVersionString>0.2.27</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description xml:lang="en"><![CDATA[
+<h3>Fixed</h3>
+<ul>
+<li><b>Sparkle now selects Chinese release notes on Chinese macOS.</b> Added <code>CFBundleLocalizations</code> (en + zh-Hans) to Info.plist so Sparkle's appcast parser knows the app supports Simplified Chinese and picks <code>&lt;description xml:lang="zh-Hans"&gt;</code> accordingly.</li>
+</ul>
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+<h3>修复</h3>
+<ul>
+<li><b>Sparkle 现在会在中文 macOS 上选择中文更新说明。</b> 在 Info.plist 中添加了 <code>CFBundleLocalizations</code>（en + zh-Hans），使 Sparkle 的 appcast 解析器知道应用支持简体中文，从而正确选择 <code>&lt;description xml:lang="zh-Hans"&gt;</code>。</li>
+</ul>
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.27/QuotaMonitor-0.2.27.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="GM45Ld4HajxVaiSR0DwHOnnIxmiH3v/5flgoRp2PlbLygxIYH07CqkZh7Nllbw3KWt9lxZjuHKYrbYxm+S5OAQ==" length="4882250" />
+        </item>
+        <item>
+            <title>QuotaMonitor 0.2.26</title>
+            <pubDate>Sat, 30 May 2026 16:10:29 +0000</pubDate>
+            <sparkle:version>0.2.26</sparkle:version>
+            <sparkle:shortVersionString>0.2.26</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description xml:lang="en"><![CDATA[
+<div class="release-summary">
+<ul>
+<li><b>Dashboard Activity section</b> — lifetime tokens, peak day, active-day streaks, and a GitHub-style token heatmap.</li>
+<li><b>Beautiful update experience</b> — animated release notes with dark mode support.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Added</h3>
+<ul>
+<li><b>Dashboard "Activity" section.</b> A usage profile with a four-up stat strip (lifetime tokens, peak-day tokens, current streak, longest streak) above a GitHub-style token-activity heatmap. Every figure follows the active provider filter and is derived entirely from the existing local history — no new data collection or schema change.</li>
+<li><b>Custom Sparkle update UI.</b> Replaces Sparkle's standard system-style update alert with a SwiftUI window presenting a <code>WKWebView</code> for animated, visually polished release notes. Supports dark mode, <code>prefers-reduced-motion</code> accessibility, and bilingual release notes (en + zh-Hans).</li>
+<li><b>HTML release notes pipeline.</b> Release notes are now authored as HTML for full visual control — images, CSS animations, and rich layouts are all possible in the update dialog.</li>
+</ul>
+</div>
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+<div class="release-summary">
+<ul>
+<li><b>仪表盘「使用画像」</b> — 累计 Tokens、单日峰值、连续活跃天数、GitHub 风格热力图。</li>
+<li><b>全新更新体验</b> — 动画发布说明，支持深色模式。</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>新增</h3>
+<ul>
+<li><b>仪表盘「使用画像」一节。</b> 四格统计条（累计 Tokens、单日峰值、当前连续、最长连续）+ GitHub 风格的 Token 活跃度热力图。所有数字跟随当前 Provider 过滤，完全由本地历史推导，不额外采集数据、不改数据库结构。</li>
+<li><b>自定义 Sparkle 更新界面。</b> 替换系统默认更新弹窗，使用 SwiftUI 窗口 + <code>WKWebView</code> 展示带动画的发布说明，支持深色模式和 <code>prefers-reduced-motion</code> 无障碍。</li>
+<li><b>HTML 发布说明流水线。</b> 发布说明现在以 HTML 编写，支持图片、CSS 动画等富媒体内容。</li>
+</ul>
+</div>
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.26/QuotaMonitor-0.2.26.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="VU1KEid29sb7l96SBm2utRVzS2mf/HFSHGVBLhiCEaBMhHij4RvMobDOCQUdkNDgftJB4yus7hH+E9gXCUOMBA==" length="4882253" />
+        </item>
+        <item>
             <title>QuotaMonitor 0.2.25</title>
             <pubDate>Sat, 23 May 2026 10:31:12 +0000</pubDate>
             <sparkle:version>0.2.25</sparkle:version>
             <sparkle:shortVersionString>0.2.25</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[
+            <description xml:lang="en"><![CDATA[
 <h3>Added</h3>
 <ul>
 <li><b>Codex desktop-app installs now work without a separate CLI on PATH.</b> QuotaMonitor still prefers an explicit <code>CODEX_BINARY</code> override and the user's login-shell <code>codex</code>, but now falls back to the first-party <code>Codex.app</code> bundled binary at <code>/Applications/Codex.app/Contents/Resources/codex</code> (and the matching <code>~/Applications</code> path). This lets live Codex quota rows update for users who installed only the Codex desktop app.</li>
@@ -43,6 +111,30 @@
 <h3>Known limitation</h3>
 <ul>
 <li><b>Pure Claude Desktop auth is not read directly.</b> Claude Desktop stores its own <code>oauth:tokenCache</code> in Electron safeStorage under <code>~/Library/Application Support/Claude/config.json</code>. QuotaMonitor does not decrypt or reuse that cache; live Claude quotas still require Claude Code OAuth credentials from <code>~/.claude/.credentials.json</code>, <code>Claude Code-credentials</code>, or the bundled Claude Code helper described above.</li>
+</ul>
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+<h3>新增</h3>
+<ul>
+<li><b>Codex 桌面应用安装现在无需在 PATH 中单独提供 CLI 即可工作。</b> QuotaMonitor 仍优先使用显式的 <code>CODEX_BINARY</code> 覆盖项以及用户登录 shell 中的 <code>codex</code>，但现在会回退到第一方 <code>Codex.app</code> 内置的二进制文件 <code>/Applications/Codex.app/Contents/Resources/codex</code>（以及对应的 <code>~/Applications</code> 路径）。这让仅安装了 Codex 桌面应用的用户也能更新实时 Codex 配额行。</li>
+<li><b>自动发现 Claude Desktop 内置的 Claude Code 构建。</b> 当没有独立的 <code>claude</code> 二进制可用时，刷新触发器现在会探测 <code>~/Library/Application Support/Claude/claude-code/&lt;version&gt;/claude.app/Contents/MacOS/claude</code> 并选择最新的可执行 bundle。这覆盖了已下载原生 Claude Code 助手的 Claude Desktop 安装，同时不触碰纯 Claude Desktop 的 Web 会话 token 缓存。</li>
+<li><b>解析器测试现在覆盖仅安装应用的场景。</b> 新增测试固定了 Codex 二进制解析、Claude 二进制解析、Claude Desktop bundle 发现，以及非交互式 Claude Keychain 查询的构造。</li>
+</ul>
+<h3>变更</h3>
+<ul>
+<li><b>菜单栏弹窗现在仅在扫描进行时显示扫描状态。</b> 一直可见的“上次扫描 / 文件 / 变更 / 事件”摘要再次被隐藏，让紧凑菜单聚焦于配额状态与主要操作。手动刷新时仍会显示实时扫描进度条。</li>
+<li><b>Claude Keychain 回退明确为非交互式。</b> 设置文案现在说明：仅当 macOS 允许静默读取一个已授权的 <code>Claude Code-credentials</code> 项时才使用 Keychain。QuotaMonitor 不再把这条路径描述为可能从后台轮询弹出系统提示。</li>
+</ul>
+<h3>修复</h3>
+<ul>
+<li><b>实时配额进度条可从损坏的包管理器 shim 中恢复。</b> 二进制解析器现在会在硬编码的 Homebrew 位置之前优先使用用户登录 shell 的路径，因此一个过期的可执行 shim 不再阻塞本可正常工作的 nvm/asdf/bun 安装。</li>
+<li><b>Claude 实时配额轮询不再卡死在 Security.framework 内部。</b> 生产环境的 Keychain 读取现在通过 <code>/usr/bin/security</code> 以较短超时执行，并可解码 JSON 凭据封装或旧式裸 token。如果该项需要交互，QuotaMonitor 会将凭据来源记录为不可用，而不是让轮询一直挂起。</li>
+<li><b>菜单栏窗口高度固定为内容高度。</b> <code>MenuBarExtra(.window)</code> 现在采用内容尺寸的窗口可调整性，加上固定的垂直内容尺寸，避免在隐藏 provider 区块后 macOS 可能保留的空白条带。</li>
+<li><b>在仅装有命令行工具（CLT）的机器上本地构建更可靠。</b> <code>build.sh</code> 在可用时会 source Swiftly，并向 SwiftPM 传入 <code>--disable-keychain</code>，使公共依赖解析不会卡在 macOS Keychain 访问上。</li>
+</ul>
+<h3>已知限制</h3>
+<ul>
+<li><b>不直接读取纯 Claude Desktop 的认证。</b> Claude Desktop 把自己的 <code>oauth:tokenCache</code> 存储在 <code>~/Library/Application Support/Claude/config.json</code> 下的 Electron safeStorage 中。QuotaMonitor 不会解密或复用该缓存；实时 Claude 配额仍需来自 <code>~/.claude/.credentials.json</code>、<code>Claude Code-credentials</code> 或上文所述内置 Claude Code 助手的 Claude Code OAuth 凭据。</li>
 </ul>
             ]]></description>
             <enclosure
