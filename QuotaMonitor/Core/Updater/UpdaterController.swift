@@ -2,11 +2,12 @@ import Foundation
 import Sparkle
 import Combine
 
-/// Thin SwiftUI-friendly wrapper around Sparkle's `SPUStandardUpdater-
-/// Controller`. Owned for the lifetime of the app by `QuotaMonitorApp`
-/// (single instance) and exposed to views via the SwiftUI Environment so
-/// the Settings tab can render a "Check Now" button bound to live
-/// availability state and a toggle bound to the scheduled-checks flag.
+/// Thin SwiftUI-friendly wrapper around Sparkle's `SPUUpdater` using a
+/// custom `SPUUserDriver`.  Owned for the lifetime of the app by
+/// `QuotaMonitorApp` (single instance) and exposed to views via the
+/// SwiftUI Environment so the Settings tab can render a "Check Now"
+/// button bound to live availability state and a toggle bound to the
+/// scheduled-checks flag.
 ///
 /// **Why a wrapper instead of binding views directly to Sparkle's
 /// types.** `SPUUpdater` exposes its mutable state as KVO-observable
@@ -18,13 +19,12 @@ import Combine
 /// Combine's `publisher(for:)` so view bodies stay reactive without
 /// every call site needing to import Combine.
 ///
-/// **Why init starts the updater immediately.** `startingUpdater: true`
-/// kicks off Sparkle's scheduled-check timer right away, honouring the
-/// `SUEnableAutomaticChecks` flag in Info.plist + UserDefaults. Without
-/// it the menu-bar app would never auto-check (the user never sees a
-/// "Check Now" UI on launch — only after opening Settings). Sparkle
-/// no-ops the schedule when the flag is off, so this is safe even for
-/// users who've opted out.
+/// **Why we replaced `SPUStandardUpdaterController`.** The standard
+/// controller uses Sparkle's built-in system-style update alert, which
+/// renders release notes as plain HTML in a fixed WebView.  We swap it
+/// for a direct `SPUUpdater` + custom `CustomUserDriver` so the update
+/// window can show animated, concise release notes in a WKWebView with
+/// our own CSS.
 @MainActor
 @Observable
 final class UpdaterController {
@@ -48,21 +48,28 @@ final class UpdaterController {
     var automaticallyChecksForUpdates: Bool = true
 
     @ObservationIgnored
-    private let controller: SPUStandardUpdaterController
+    private let updater: SPUUpdater
+
+    @ObservationIgnored
+    private let userDriver: CustomUserDriver
 
     @ObservationIgnored
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
-        controller = SPUStandardUpdaterController(
-            startingUpdater: true,
-            updaterDelegate: nil,
-            userDriverDelegate: nil)
+        let driver = CustomUserDriver()
+        self.userDriver = driver
+
+        let bundle = Bundle.main
+        self.updater = SPUUpdater(
+            hostBundle: bundle,
+            applicationBundle: bundle,
+            userDriver: driver,
+            delegate: nil)
 
         // Seed @Observable mirrors from current state so the first
         // render after init doesn't briefly show the default-init
         // values before the KVO publishers fire.
-        let updater = controller.updater
         canCheckForUpdates = updater.canCheckForUpdates
         lastUpdateCheckDate = updater.lastUpdateCheckDate
         automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
@@ -86,14 +93,22 @@ final class UpdaterController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.automaticallyChecksForUpdates = $0 }
             .store(in: &cancellables)
+
+        // Start the updater (equivalent to the old
+        // `SPUStandardUpdaterController(startingUpdater: true, …)`).
+        do {
+            try updater.start()
+        } catch {
+            Log.ui.error("Failed to start Sparkle updater: \(error)")
+        }
     }
 
-    /// User-triggered check. Routes through Sparkle's standard user
-    /// driver, which surfaces the system-style "Update available"
-    /// alert + download/install progress. Safe to call repeatedly —
+    /// User-triggered check. Routes through the custom user driver,
+    /// which surfaces the SwiftUI update window with animated release
+    /// notes + download/install progress. Safe to call repeatedly —
     /// Sparkle dedups internally.
     func checkNow() {
-        controller.checkForUpdates(nil)
+        updater.checkForUpdates()
     }
 
     /// Persist the user's automatic-check preference. Writes through
@@ -101,6 +116,6 @@ final class UpdaterController {
     /// Sparkle's schedule timer. The KVO publisher then mirrors the
     /// new value back into our `@Observable` property.
     func setAutomaticallyChecks(_ enabled: Bool) {
-        controller.updater.automaticallyChecksForUpdates = enabled
+        updater.automaticallyChecksForUpdates = enabled
     }
 }

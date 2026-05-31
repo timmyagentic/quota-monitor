@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Dashboard window — a slim composition of three semantic sections that
+/// Dashboard window — a slim composition of four semantic sections that
 /// each answer one question:
 ///
 /// 1. `ForecastSection` — am I about to blow a quota?
 /// 2. `TrendsSection`   — is my usage trending up or down?
-/// 3. `CompositionSection` — where is the spend going?
+/// 3. `ActivitySection` — what does my usage profile look like?
+/// 4. `CompositionSection` — where is the spend going?
 ///
 /// All three read from `AppEnvironment.dashboardSnapshot` /
 /// `billingBlocks` / `menuBarSnapshot`. The provider filter picker lives
@@ -34,6 +35,7 @@ struct DashboardView: View {
                         enabledProviders: settings.enabledProviders)
                     TrendsSection(
                         dailyExtended: snapshot.dailyExtended)
+                    ActivitySection(activity: snapshot.activity)
                     CompositionSection(
                         modelShares30d: snapshot.modelShares30d,
                         modelSharesPrior30d: snapshot.modelSharesPrior30d,

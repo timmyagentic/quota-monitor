@@ -666,6 +666,58 @@ enum L10n {
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
 
+    // MARK: - update window (custom Sparkle UI)
+
+    static var updateWindowTitle: String {
+        t(en: "Update Available", zh: "发现新版本")
+    }
+    static func updateVersionAvailable(_ version: String) -> String {
+        t(en: "QuotaMonitor \(version) is available",
+          zh: "QuotaMonitor \(version) 可供更新")
+    }
+    static func updateCurrentVersion(_ version: String) -> String {
+        t(en: "Current version: \(version)", zh: "当前版本：\(version)")
+    }
+    static var updateCriticalBadge: String {
+        t(en: "Critical Update", zh: "重要更新")
+    }
+    static var updateInstallButton: String {
+        t(en: "Install Update", zh: "安装更新")
+    }
+    static var updateInstallAndRelaunch: String {
+        t(en: "Install & Relaunch", zh: "安装并重新启动")
+    }
+    static var updateSkipButton: String {
+        t(en: "Skip This Version", zh: "跳过此版本")
+    }
+    static var updateLaterButton: String {
+        t(en: "Later", zh: "稍后提醒")
+    }
+    static var updateChecking: String {
+        t(en: "Checking for updates\u{2026}", zh: "正在检查更新\u{2026}")
+    }
+    static var updateDownloading: String {
+        t(en: "Downloading update\u{2026}", zh: "正在下载更新\u{2026}")
+    }
+    static var updateExtracting: String {
+        t(en: "Extracting update\u{2026}", zh: "正在解压更新\u{2026}")
+    }
+    static var updateInstalling: String {
+        t(en: "Installing update\u{2026}", zh: "正在安装更新\u{2026}")
+    }
+    static var updateUpToDate: String {
+        t(en: "You're up to date!", zh: "已是最新版本！")
+    }
+    static var updateReadyToInstall: String {
+        t(en: "Ready to install", zh: "准备安装")
+    }
+    static var updateShowDetails: String {
+        t(en: "Show full details", zh: "查看完整变更")
+    }
+    static var updateHideDetails: String {
+        t(en: "Hide details", zh: "收起详情")
+    }
+
     // language
     static var languagePickerLabel: String { t(en: "Display language", zh: "显示语言") }
     static var languagePickerHelp: String {

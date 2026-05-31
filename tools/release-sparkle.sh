@@ -48,13 +48,31 @@ if [[ ! -f "${DMG_PATH}" ]]; then
     exit 1
 fi
 
-# sign_update reads the private key from the login Keychain under the
-# account name passed via --account. macOS may pop a one-time access
-# dialog the first time `sign_update` (vs. `generate_keys`) touches it;
-# click "Always Allow" so subsequent releases don't prompt. Output:
+# Two signing backends, picked by environment:
+#
+#   1. CI / headless (SPARKLE_PRIVATE_KEY set): there is no login
+#      Keychain on a GitHub Actions runner, so the private key arrives
+#      as a repo secret. We write it to a temp file and sign via
+#      --ed-key-file (the exact file format `generate_keys -x` exports,
+#      so the secret is just that export pasted verbatim). The temp
+#      file is removed on exit so the key never lingers on disk.
+#   2. Local maintainer (default): the key lives in the login Keychain
+#      under --account. macOS may pop a one-time access dialog the first
+#      time `sign_update` (vs. `generate_keys`) touches it; click
+#      "Always Allow" so subsequent releases don't prompt.
+#
+# Either way the output is the appcast enclosure attributes:
 #   sparkle:edSignature="…base64…" length="3785729"
-echo "==> Signing ${DMG_PATH} using Keychain account '${ACCOUNT}'"
-SIG_LINE="$("${SIGN_UPDATE_BIN}" --account "${ACCOUNT}" "${DMG_PATH}")"
+if [[ -n "${SPARKLE_PRIVATE_KEY:-}" ]]; then
+    echo "==> Signing ${DMG_PATH} using SPARKLE_PRIVATE_KEY from environment"
+    KEYFILE="$(mktemp)"
+    trap 'rm -f "${KEYFILE}"' EXIT
+    printf '%s' "${SPARKLE_PRIVATE_KEY}" > "${KEYFILE}"
+    SIG_LINE="$("${SIGN_UPDATE_BIN}" --ed-key-file "${KEYFILE}" "${DMG_PATH}")"
+else
+    echo "==> Signing ${DMG_PATH} using Keychain account '${ACCOUNT}'"
+    SIG_LINE="$("${SIGN_UPDATE_BIN}" --account "${ACCOUNT}" "${DMG_PATH}")"
+fi
 
 DMG_FILE="$(basename "${DMG_PATH}")"
 DOWNLOAD_URL="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v${VERSION}/${DMG_FILE}"
@@ -64,46 +82,55 @@ DOWNLOAD_URL="https://github.com/systemoutprintlnnnn/quota-monitor/releases/down
 PUBDATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
 MIN_OS="14.0"
 
-# Pull the [X.Y.Z] section out of each changelog and convert its
-# markdown to inline HTML for Sparkle's release-notes WebView.
-# Sparkle renders the <description> CDATA block as HTML, so giving
-# it bullet lists + headings + bold makes the "What's new" dialog
-# usable instead of showing "See CHANGELOG.md for what's new" (which
-# the user can't actually click on — Sparkle's WebView doesn't run
-# JS or open file:// links inside an app-bundled dialog).
+# Pull release notes for the appcast <description> CDATA block.
+#
+# Two sources, tried in order:
+#   1. ReleaseNotes/<version>.{en,zh-Hans}.html — raw HTML, full
+#      visual control (images, CSS animations, rich layouts).
+#   2. Fallback: tools/changelog-to-html.py extracts the [X.Y.Z]
+#      section from CHANGELOG.md / CHANGELOG.zh-Hans.md and converts
+#      markdown to inline HTML.
 #
 # Bilingual notes: we emit two <description xml:lang="…"> nodes — en
-# from CHANGELOG.md, zh-Hans from CHANGELOG.zh-Hans.md. Sparkle picks
-# the one matching the user's system language at appcast parse time
-# (SUAppcast.m bestNodeInNodes → +[NSBundle preferredLocalizations-
-# FromArray:]). Both nodes MUST carry an explicit xml:lang or Sparkle
-# logs an error and defaults to "en".
-#
-# The conversion logic lives in tools/changelog-to-html.py rather
-# than inline here because bash's $( ... <<'PY' ... PY ) parses
-# backticks inside the heredoc body as legacy command substitution
-# even with a quoted delimiter, and the regex for `code` spans
-# needs literal backticks.
-EN_NOTES_HTML="$(python3 tools/changelog-to-html.py "${VERSION}" CHANGELOG.md)"
+# and zh-Hans. Sparkle picks the one matching the user's system
+# language at appcast parse time. Both nodes MUST carry an explicit
+# xml:lang or Sparkle logs an error and defaults to "en".
 
-# Hard-require the Simplified-Chinese section so a release can't
-# silently ship English-only notes — fixed bilingual notes are the
-# project standard. changelog-to-html.py prints a "See …" fallback
-# (exit 0) when a section is missing, so detect the heading ourselves.
-ZH_CHANGELOG="CHANGELOG.zh-Hans.md"
-if [[ ! -f "${ZH_CHANGELOG}" ]] || \
-   ! grep -qE "^##[[:space:]]+\[${VERSION//./\\.}\]" "${ZH_CHANGELOG}"; then
-    echo "error: ${ZH_CHANGELOG} is missing a '## [${VERSION}]' section." >&2
-    echo "       Add the Simplified-Chinese notes for ${VERSION} (parallel" >&2
-    echo "       to CHANGELOG.md) before generating the appcast item." >&2
-    exit 1
+EN_HTML_FILE="ReleaseNotes/${VERSION}.en.html"
+ZH_HTML_FILE="ReleaseNotes/${VERSION}.zh-Hans.html"
+
+if [[ -f "${EN_HTML_FILE}" ]]; then
+    echo "==> Using ${EN_HTML_FILE} for English release notes"
+    EN_NOTES_HTML="$(cat "${EN_HTML_FILE}")"
+else
+    echo "==> No ${EN_HTML_FILE}, falling back to changelog-to-html.py"
+    EN_NOTES_HTML="$(python3 tools/changelog-to-html.py --lang en "${VERSION}" CHANGELOG.md)"
 fi
-ZH_NOTES_HTML="$(python3 tools/changelog-to-html.py "${VERSION}" "${ZH_CHANGELOG}")"
 
-cat <<APPCAST_ITEM
+if [[ -f "${ZH_HTML_FILE}" ]]; then
+    echo "==> Using ${ZH_HTML_FILE} for Chinese release notes"
+    ZH_NOTES_HTML="$(cat "${ZH_HTML_FILE}")"
+else
+    # Hard-require the Simplified-Chinese section so a release can't
+    # silently ship English-only notes — fixed bilingual notes are the
+    # project standard. changelog-to-html.py prints a "See …" fallback
+    # (exit 0) when a section is missing, so detect the heading ourselves.
+    ZH_CHANGELOG="CHANGELOG.zh-Hans.md"
+    if [[ ! -f "${ZH_CHANGELOG}" ]] || \
+       ! grep -qE "^##[[:space:]]+\[${VERSION//./\\.}\]" "${ZH_CHANGELOG}"; then
+        echo "error: ${ZH_CHANGELOG} is missing a '## [${VERSION}]' section," >&2
+        echo "       and ${ZH_HTML_FILE} does not exist." >&2
+        echo "       Provide one of the two before generating the appcast item." >&2
+        exit 1
+    fi
+    ZH_NOTES_HTML="$(python3 tools/changelog-to-html.py --lang zh-Hans "${VERSION}" "${ZH_CHANGELOG}")"
+fi
 
-==> Paste this into appcast.xml (under <channel>, newest at top):
----------------------------------------------------------------
+# Build the <item> block once, then both (a) write a clean, banner-free
+# copy that automation (release.yml) can splice straight into
+# appcast.xml, and (b) print it with a human banner for the local paste
+# workflow.
+ITEM_BLOCK="$(cat <<APPCAST_ITEM
         <item>
             <title>${BRAND_CODE} ${VERSION}</title>
             <pubDate>${PUBDATE}</pubDate>
@@ -121,5 +148,17 @@ ${ZH_NOTES_HTML}
                 type="application/octet-stream"
                 ${SIG_LINE} />
         </item>
----------------------------------------------------------------
 APPCAST_ITEM
+)"
+
+ITEM_FILE="dist/appcast-item-${VERSION}.xml"
+printf '%s\n' "${ITEM_BLOCK}" > "${ITEM_FILE}"
+echo "==> Wrote ${ITEM_FILE}"
+
+cat <<APPCAST_BANNER
+
+==> Paste this into appcast.xml (under <channel>, newest at top):
+---------------------------------------------------------------
+${ITEM_BLOCK}
+---------------------------------------------------------------
+APPCAST_BANNER

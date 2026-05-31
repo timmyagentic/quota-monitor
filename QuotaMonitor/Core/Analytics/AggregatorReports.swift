@@ -32,6 +32,7 @@ extension Aggregator {
             let quota = provider == .claude
                 ? nil
                 : try fetchCodexQuota(db: db)
+            let activity = try fetchActivity(db: db, provider: provider)
             return DashboardSnapshot(
                 overview: overview,
                 daily: daily,
@@ -42,7 +43,8 @@ extension Aggregator {
                 modelSharesPrior30d: sharesPrior30d,
                 providerShares30d: providerShares30d,
                 recentRateLimits: history,
-                codexQuota: quota)
+                codexQuota: quota,
+                activity: activity)
         }
     }
 

@@ -7,6 +7,22 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.27] — 2026-05-31
+
+### Fixed
+- **Sparkle now selects Chinese release notes on Chinese macOS.** Added `CFBundleLocalizations` (en + zh-Hans) to Info.plist so Sparkle's appcast parser knows the app supports Simplified Chinese and picks `<description xml:lang="zh-Hans">` accordingly.
+
+## [0.2.26] — 2026-05-30
+
+#### Summary
+- Dashboard now shows a usage profile: lifetime tokens, peak day, active-day streaks, and a GitHub-style heatmap
+- Update notifications have a fresh new look with animated release notes and dark mode support
+
+### Added
+- **Dashboard "Activity" section.** A usage profile: a four-up stat strip (lifetime tokens, peak-day tokens, current streak, longest streak) above a GitHub-style token-activity heatmap. Every figure follows the active provider filter and is derived entirely from the existing local history — no new data collection or schema change.
+- **Custom Sparkle update UI.** Replaces Sparkle's standard system-style update alert with a SwiftUI window presenting a `WKWebView` for animated, visually polished release notes. Supports dark mode, `prefers-reduced-motion` accessibility, and bilingual release notes (en + zh-Hans). Release notes are now authored as HTML for full visual control — images, CSS animations, and rich layouts are all possible.
+- **HTML release notes pipeline.** `tools/release-sparkle.sh` now reads from `ReleaseNotes/<version>.{en,zh-Hans}.html` when present, giving full HTML control over the update dialog content. Falls back to `changelog-to-html.py` conversion when HTML files are absent.
+
 ## [0.2.25] — 2026-05-23
 
 ### Added

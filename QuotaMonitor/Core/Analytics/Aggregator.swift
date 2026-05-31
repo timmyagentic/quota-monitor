@@ -80,6 +80,11 @@ struct DashboardSnapshot: Sendable, Equatable {
     /// when no rate-limit samples have ever been recorded. Mirrors pacer's
     /// quota5h / quota7d cards (`MenuBarPopup.tsx:247`).
     let codexQuota: CodexQuotaSnapshot?
+    /// Lifetime / engagement profile (lifetime tokens, peak day, longest
+    /// task, active-day streaks) plus the trailing ~1-year daily series
+    /// behind the ActivitySection heatmap. Provider-aware via
+    /// `loadDashboard`. See `AggregatorActivity.swift`.
+    let activity: ActivitySnapshot
 }
 
 /// Compact provider-level slice, currently scoped to "last 30 days" for
