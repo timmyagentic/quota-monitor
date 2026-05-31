@@ -7,6 +7,15 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.28] — 2026-05-31
+
+### Added
+- **Pricing seeds for newly observed Claude and GLM models.** QuotaMonitor now ships bundled catalog rows for `claude-opus-4-8`, `claude-sonnet-4-5-20250929`, `glm-4.7`, and `glm-5.1`, so imported usage for those model IDs is priced on first launch instead of staying at `$0`.
+
+### Fixed
+- **Sparkle update signatures now match the published DMG bytes.** The release workflow signs the DMG produced by GitHub Actions and opens the appcast PR automatically, avoiding the previous failure mode where a locally signed DMG differed from the file Sparkle downloaded.
+- **Existing 0.2.26 and 0.2.27 appcast entries were repaired.** Their signatures and lengths were regenerated from the CI-built release assets, so Sparkle can validate those updates correctly.
+
 ## [0.2.27] — 2026-05-31
 
 ### Fixed
