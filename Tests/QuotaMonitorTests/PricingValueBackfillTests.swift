@@ -216,6 +216,101 @@ struct PricingValueBackfillTests {
         #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 25.00) < 1e-6)
     }
 
+    @Test("database initialization seeds recent Claude and GLM models")
+    func databaseInitializationSeedsRecentClaudeAndGLMModels() throws {
+        let db = try makeDatabase()
+
+        let rows = try db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT model_id,
+                       input_price_per_million,
+                       cached_input_price_per_million,
+                       cache_creation_price_per_million,
+                       output_price_per_million,
+                       is_official
+                FROM pricing_catalog
+                WHERE model_id IN (
+                  'claude-opus-4-8',
+                  'claude-sonnet-4-5-20250929',
+                  'glm-4.7',
+                  'glm-5.1'
+                )
+                ORDER BY model_id
+                """)
+        }
+        let byId = Dictionary(uniqueKeysWithValues: rows.map { row in
+            (row["model_id"] as String, row)
+        })
+
+        let opus = byId["claude-opus-4-8"]
+        #expect(abs((opus?["input_price_per_million"] as Double? ?? 0) - 5.00) < 1e-6)
+        #expect(abs((opus?["cached_input_price_per_million"] as Double? ?? 0) - 0.50) < 1e-6)
+        #expect(abs((opus?["cache_creation_price_per_million"] as Double? ?? 0) - 6.25) < 1e-6)
+        #expect(abs((opus?["output_price_per_million"] as Double? ?? 0) - 25.00) < 1e-6)
+
+        let sonnet = byId["claude-sonnet-4-5-20250929"]
+        #expect(abs((sonnet?["input_price_per_million"] as Double? ?? 0) - 3.00) < 1e-6)
+        #expect(abs((sonnet?["cached_input_price_per_million"] as Double? ?? 0) - 0.30) < 1e-6)
+        #expect(abs((sonnet?["cache_creation_price_per_million"] as Double? ?? 0) - 3.75) < 1e-6)
+        #expect(abs((sonnet?["output_price_per_million"] as Double? ?? 0) - 15.00) < 1e-6)
+
+        let glm47 = byId["glm-4.7"]
+        #expect(abs((glm47?["input_price_per_million"] as Double? ?? 0) - 0.60) < 1e-6)
+        #expect(abs((glm47?["cached_input_price_per_million"] as Double? ?? 0) - 0.11) < 1e-6)
+        #expect(abs((glm47?["cache_creation_price_per_million"] as Double? ?? 0) - 0.00) < 1e-6)
+        #expect(abs((glm47?["output_price_per_million"] as Double? ?? 0) - 2.20) < 1e-6)
+        #expect((glm47?["is_official"] as Bool?) == true)
+
+        let glm51 = byId["glm-5.1"]
+        #expect(abs((glm51?["input_price_per_million"] as Double? ?? 0) - 1.40) < 1e-6)
+        #expect(abs((glm51?["cached_input_price_per_million"] as Double? ?? 0) - 0.26) < 1e-6)
+        #expect(abs((glm51?["cache_creation_price_per_million"] as Double? ?? 0) - 0.00) < 1e-6)
+        #expect(abs((glm51?["output_price_per_million"] as Double? ?? 0) - 4.40) < 1e-6)
+        #expect((glm51?["is_official"] as Bool?) == true)
+    }
+
+    @Test("LiteLLM provider-prefixed GLM entry refreshes bare seeded model id")
+    func liteLLMProviderPrefixedGLMEntryRefreshesBareSeededModelId() throws {
+        let db = try makeDatabase()
+        let entry = LiteLLMEntry(
+            modelId: "zai/glm-4.7",
+            provider: "zai",
+            inputCostPerToken: 0.00000061,
+            outputCostPerToken: 0.00000221,
+            cacheReadInputTokenCost: 0.00000012,
+            cacheCreationInputTokenCost: 0,
+            inputCostAbove200kTokens: nil,
+            outputCostAbove200kTokens: nil,
+            maxInputTokens: 200_000,
+            maxOutputTokens: 128_000)
+
+        let updated = try db.pool.write { conn in
+            try PricingService.applyLiteLLMUpdate(entries: [entry], in: conn)
+        }
+
+        let row = try db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT input_price_per_million,
+                       cached_input_price_per_million,
+                       output_price_per_million,
+                       cache_creation_price_per_million,
+                       max_input_tokens,
+                       max_output_tokens,
+                       price_source
+                FROM pricing_catalog
+                WHERE model_id = 'glm-4.7'
+                """)
+        }
+        #expect(updated == 1)
+        #expect(abs((row?["input_price_per_million"] as Double? ?? 0) - 0.61) < 1e-6)
+        #expect(abs((row?["cached_input_price_per_million"] as Double? ?? 0) - 0.12) < 1e-6)
+        #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 2.21) < 1e-6)
+        #expect(abs((row?["cache_creation_price_per_million"] as Double? ?? 1) - 0.00) < 1e-6)
+        #expect((row?["max_input_tokens"] as Int?) == 200_000)
+        #expect((row?["max_output_tokens"] as Int?) == 128_000)
+        #expect((row?["price_source"] as String?) == "litellm")
+    }
+
     // MARK: - rows without a matching catalog row are left alone
 
     @Test("rows whose model_id has no pricing_catalog match keep their prior value_usd untouched")
