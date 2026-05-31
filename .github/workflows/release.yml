@@ -122,6 +122,12 @@ jobs:
             echo "skip=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
+          # Guard: the secret must be the key whose public half is
+          # embedded as SUPublicEDKey. A mis-pasted or rotated secret
+          # would otherwise produce an appcast Sparkle rejects as
+          # "improperly signed" — fail the release here instead of
+          # shipping it.
+          ./tools/verify-signing-key.sh
           VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
           # release-sparkle.sh signs dist/QuotaMonitor-<VERSION>.dmg with
           # SPARKLE_PRIVATE_KEY (no Keychain on the runner) and writes the

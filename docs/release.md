@@ -182,6 +182,20 @@ the appcast PR. The same private key signs both locally (Keychain) and
 in CI (secret); they must correspond to the `SUPublicEDKey` in
 `Resources/Info.plist`.
 
+**Confirm the secret is the right key** (you can't read a secret's value
+back, so verify its *derived* public key instead). Run the on-demand
+check after setting or rotating it:
+
+```sh
+gh workflow run verify-signing-secret      # then: gh run watch
+```
+
+It imports the secret's key into a throwaway Keychain account, prints
+the derived public key, and fails if it doesn't equal `SUPublicEDKey`.
+`release.yml` runs the same `tools/verify-signing-key.sh` guard before
+signing, so a wrong key fails the release loudly instead of shipping an
+appcast Sparkle rejects.
+
 ### 4. Restoring on a fresh machine
 
 If you ever import the backed-up private key onto a new Mac:

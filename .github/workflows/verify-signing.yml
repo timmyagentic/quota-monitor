@@ -1,0 +1,39 @@
+# On-demand check that the SPARKLE_PRIVATE_KEY repo secret is the key
+# whose public half is embedded as SUPublicEDKey in Resources/Info.plist.
+#
+# Run it from the Actions tab → "verify-signing-secret" → Run workflow,
+# or `gh workflow run verify-signing-secret`. Use it after setting or
+# rotating the secret to confirm "did I paste the right key?" without
+# having to cut a release. A green run means CI will sign updates that
+# Sparkle accepts; a red run means the secret is wrong.
+name: verify-signing-secret
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Sparkle tools
+        # generate_keys ships in Sparkle's artifact bundle, pulled during
+        # resolution. Fall back to a build if resolve didn't extract it.
+        run: |
+          swift package resolve
+          test -x .build/artifacts/sparkle/Sparkle/bin/generate_keys || swift build
+
+      - name: Check secret matches SUPublicEDKey
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
+            echo "::error::SPARKLE_PRIVATE_KEY is not set as a repository secret."
+            exit 1
+          fi
+          ./tools/verify-signing-key.sh
