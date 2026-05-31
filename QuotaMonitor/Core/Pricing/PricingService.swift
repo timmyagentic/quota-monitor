@@ -152,7 +152,7 @@ enum PricingSeed {
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "claude-opus-4-8", isOfficial: false,
-              note: "Same list price as Claude Opus 4.7; refresh from LiteLLM for authoritative values.",
+              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-opus-4-7", displayName: "Claude Opus 4.7",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
@@ -182,7 +182,7 @@ enum PricingSeed {
               inputPricePerMillion: 3.00, cachedInputPricePerMillion: 0.30, outputPricePerMillion: 15.00,
               cacheCreationPricePerMillion: 3.75,
               effectiveModelId: "claude-sonnet-4-5-20250929", isOfficial: false,
-              note: "Same list price as Claude Sonnet 4.6 ($3/$15); refresh from LiteLLM for authoritative values.",
+              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-haiku-4-5-20251001", displayName: "Claude Haiku 4.5",
               inputPricePerMillion: 1.00, cachedInputPricePerMillion: 0.10, outputPricePerMillion: 5.00,
@@ -192,17 +192,8 @@ enum PricingSeed {
               sourceUrl: "https://www.anthropic.com/pricing"),
 
         // --- Zhipu GLM (Z.AI Anthropic-compatible endpoint) ---
-        // Official Z.AI USD list prices. These run through Codex/Claude-style
-        // clients pointed at the GLM endpoint, so they land with provider
-        // 'claude' and are priced uncached-input + cache-read + output. GLM
-        // bills no separate cache-write premium (cache_creation = 0); observed
-        // events carry no cache_creation tokens anyway.
-        //
-        // LiteLLM coverage differs by id: glm-4.7 IS in the catalog (as
-        // `zai/glm-4.7`, identical prices) so a refresh will adopt it once
-        // this seed row exists — applyLiteLLMUpdate only touches rows already
-        // present, hence the seed must go first. glm-5.1 is NOT in LiteLLM
-        // (only glm-5 / glm-5p1), so for it this seed is the sole authority.
+        // Official Z.AI USD list prices for GLM models observed through the
+        // Claude-style import path. No separate cache-write premium is seeded.
         .init(modelId: "glm-5.1", displayName: "GLM-5.1",
               inputPricePerMillion: 1.40, cachedInputPricePerMillion: 0.26, outputPricePerMillion: 4.40,
               effectiveModelId: "glm-5.1", isOfficial: true, note: nil,
