@@ -16,6 +16,49 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
+            <title>QuotaMonitor 0.2.30</title>
+            <pubDate>Mon, 01 Jun 2026 06:32:23 +0000</pubDate>
+            <sparkle:version>0.2.30</sparkle:version>
+            <sparkle:shortVersionString>0.2.30</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description xml:lang="en"><![CDATA[
+<div class="release-summary">
+<ul>
+<li>Dashboard and Settings now link to each other from their top-right toolbar buttons</li>
+<li>Icon-only navigation buttons now show quicker hover help so users can identify them without waiting</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Added</h3>
+<ul>
+<li><b>Dashboard and Settings cross-links.</b> Dashboard now includes a top-right Settings shortcut, and Settings includes a matching Dashboard shortcut, so users can move between the two windows without returning to the menu bar.</li>
+<li><b>Fast hover help for the new navigation icons.</b> The toolbar shortcuts use a shorter hover delay than the system default tooltip timing, making icon-only actions easier to understand.</li>
+</ul>
+</div>
+            ]]></description>
+            <description xml:lang="zh-Hans"><![CDATA[
+<div class="release-summary">
+<ul>
+<li>Dashboard 和 Settings 现在可以通过右上角工具栏按钮互相跳转</li>
+<li>纯图标导航按钮现在会更快显示悬浮提示，让用户不用等待太久就能理解图标含义</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>新增</h3>
+<ul>
+<li><b>Dashboard 和 Settings 互相跳转入口。</b> Dashboard 右上角现在提供 Settings 快捷入口，Settings 右上角也提供 Dashboard 快捷入口，用户无需回到菜单栏即可在两个窗口之间切换。</li>
+<li><b>新导航图标的快速悬浮提示。</b> 这些工具栏快捷入口使用比系统默认 tooltip 更短的悬浮延迟，让纯图标操作更容易被理解。</li>
+</ul>
+</div>
+            ]]></description>
+            <enclosure
+                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.30/QuotaMonitor-0.2.30.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="Via3Psd+x/F57RwPzmOEH2YPQ+3/Kmrx1Al4soY0JKHF1itwjzfJ8QrSB8Z3lmRATYR2P01s/hrIaQABcF2lAg==" length="4895388" />
+        </item>
+        <item>
             <title>QuotaMonitor 0.2.29</title>
             <pubDate>Sun, 31 May 2026 16:08:50 +0000</pubDate>
             <sparkle:version>0.2.29</sparkle:version>

@@ -76,6 +76,18 @@ struct MainWindowView: View {
                 }
                 .help(L10n.reload)
             }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    WindowCrossLinkActions.scene(
+                        env: env,
+                        openWindow: { WindowManager.shared.show($0) }
+                    ).openSettingsFromDashboard()
+                } label: {
+                    Label(L10n.openSettings, systemImage: "gearshape")
+                }
+                .quickHoverHelp(L10n.openSettingsTooltip)
+            }
         }
         // Demote-on-close is owned by `AppWindowController.windowWillClose`
         // now that this is an AppKit-hosted window.

@@ -28,6 +28,15 @@ enum L10n {
     static var refreshing: String { t(en: "Refreshing…", zh: "刷新中…") }
     static var reload: String { t(en: "Reload", zh: "重新加载") }
     static var openDashboard: String { t(en: "Open Dashboard", zh: "打开仪表盘") }
+    static var openDashboardTooltip: String {
+        t(en: "Open Dashboard to review usage, trends, and quota status.",
+          zh: "打开仪表盘，查看用量、趋势和配额状态。")
+    }
+    static var openSettings: String { t(en: "Open Settings", zh: "打开设置") }
+    static var openSettingsTooltip: String {
+        t(en: "Open Settings to adjust tracking, display, and advanced options.",
+          zh: "打开设置，调整追踪、显示和高级选项。")
+    }
     static var settingsMenuItem: String { t(en: "Settings…", zh: "设置…") }
     /// Window title for the Settings scene. Distinct from `settingsMenuItem`
     /// because window titles don't take the trailing ellipsis (which is a

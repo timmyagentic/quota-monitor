@@ -42,6 +42,19 @@ struct SettingsView: View {
         // Form controls (Toggle / Picker / Stepper labels) are unaffected
         // because they render as control text, not Text.
         .textSelection(.enabled)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    WindowCrossLinkActions.scene(
+                        env: env,
+                        openWindow: { WindowManager.shared.show($0) }
+                    ).openDashboardFromSettings()
+                } label: {
+                    Label(L10n.openDashboard, systemImage: "chart.bar.xaxis")
+                }
+                .quickHoverHelp(L10n.openDashboardTooltip)
+            }
+        }
         // Demote-on-close is owned by `AppWindowController.windowWillClose`
         // now that this is an AppKit-hosted window.
     }
