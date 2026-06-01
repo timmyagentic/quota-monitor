@@ -58,8 +58,18 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - uses: actions/checkout@v6.0.2
+        with:
+          # CHANGELOG.md is committed so depth=1 would suffice, but full
+          # history costs little on a single-job workflow and keeps `git`
+          # invocations inside release.sh well-behaved.
+          fetch-depth: 0
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version || true
+
       - name: Verify tag matches Resources/VERSION
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
@@ -79,7 +89,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           # Full history keeps `git` invocations inside release.sh and the
           # appcast PR step well-behaved.
@@ -202,7 +212,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with: { fetch-depth: 0 }
 
       - name: Show toolchain

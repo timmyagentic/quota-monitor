@@ -13,6 +13,23 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+## [0.2.29] — 2026-05-31
+
+#### Summary
+- 更新窗口现在会显示内嵌 HTML 更新日志，不再是空白面板
+
+### 修复
+- **自定义 Sparkle 更新窗口现在能正常加载发布说明 HTML。** 当前 macOS 的 WebKit 会把 `loadHTMLString(..., baseURL: nil)` 识别为一次初始 `about:blank` 导航，因此更新器现在允许这次初始文档加载，同时继续阻止外部导航。
+
+## [0.2.28] — 2026-05-31
+
+### 新增
+- **为新出现的 Claude 和 GLM 模型补充内置价格种子。** QuotaMonitor 现在内置 `claude-opus-4-8`、`claude-sonnet-4-5-20250929`、`glm-4.7`、`glm-5.1` 的价格目录行，因此这些 model ID 的历史使用记录在首次启动时即可计价，不会继续显示为 `$0`。
+
+### 修复
+- **Sparkle 更新签名现在与实际发布的 DMG 字节一致。** 发布 workflow 会对 GitHub Actions 构建并发布的 DMG 直接签名，然后自动打开 appcast PR，避免之前“本地签名的 DMG 与 Sparkle 下载的文件不同”导致更新被判定为签名错误的问题。
+- **修复已有 0.2.26 和 0.2.27 appcast 条目。** 这些条目的签名和长度已基于 CI 构建出的 release 资产重新生成，Sparkle 可以正确校验这些更新。
+
 ## [0.2.27] — 2026-05-31
 
 ### 修复

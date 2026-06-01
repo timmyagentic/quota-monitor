@@ -19,7 +19,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Resolve Sparkle tools
         # generate_keys ships in Sparkle's artifact bundle, pulled during

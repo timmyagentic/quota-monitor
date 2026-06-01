@@ -1,6 +1,16 @@
 import SwiftUI
 import WebKit
 
+enum ReleaseNotesNavigationPolicy {
+    static func shouldAllow(
+        navigationType: WKNavigationType,
+        url: URL?
+    ) -> Bool {
+        guard navigationType == .other else { return false }
+        return url == nil || url?.absoluteString == "about:blank"
+    }
+}
+
 /// An `NSViewRepresentable` that wraps a `WKWebView` for rendering the
 /// animated release-notes HTML.  All CSS + JS is injected inline — no
 /// external resources are loaded.  Navigation is blocked for security
@@ -50,9 +60,12 @@ struct AnimatedReleaseNotesView: NSViewRepresentable {
             decidePolicyFor navigationAction: WKNavigationAction,
             decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void
         ) {
-            if navigationAction.navigationType == .other,
-               navigationAction.request.url == nil {
-                // Initial loadHTMLString call — allow.
+            if ReleaseNotesNavigationPolicy.shouldAllow(
+                navigationType: navigationAction.navigationType,
+                url: navigationAction.request.url) {
+                // Initial loadHTMLString call. WebKit reports it as
+                // about:blank on current macOS, and older behaviour may
+                // surface it as a nil URL.
                 decisionHandler(.allow)
             } else {
                 decisionHandler(.cancel)

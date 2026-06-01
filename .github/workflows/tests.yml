@@ -37,7 +37,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
 
       - name: Show toolchain
         # Surface swift / xcode versions in the log so a future Swift-7

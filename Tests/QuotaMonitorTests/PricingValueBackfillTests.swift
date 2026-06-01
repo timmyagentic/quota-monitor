@@ -216,6 +216,65 @@ struct PricingValueBackfillTests {
         #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 25.00) < 1e-6)
     }
 
+    @Test("database initialization seeds recent Claude and GLM models")
+    func databaseInitializationSeedsRecentClaudeAndGLMModels() throws {
+        let db = try makeDatabase()
+        struct ExpectedSeed {
+            let modelId: String
+            let input: Double
+            let cached: Double
+            let cacheCreation: Double
+            let output: Double
+            let isOfficial: Bool
+        }
+        let expected: [ExpectedSeed] = [
+            .init(modelId: "claude-opus-4-8",
+                  input: 5.00, cached: 0.50, cacheCreation: 6.25,
+                  output: 25.00, isOfficial: false),
+            .init(modelId: "claude-sonnet-4-5-20250929",
+                  input: 3.00, cached: 0.30, cacheCreation: 3.75,
+                  output: 15.00, isOfficial: false),
+            .init(modelId: "glm-4.7",
+                  input: 0.60, cached: 0.11, cacheCreation: 0,
+                  output: 2.20, isOfficial: true),
+            .init(modelId: "glm-5.1",
+                  input: 1.40, cached: 0.26, cacheCreation: 0,
+                  output: 4.40, isOfficial: true),
+        ]
+
+        let rows = try db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT model_id,
+                       input_price_per_million,
+                       cached_input_price_per_million,
+                       cache_creation_price_per_million,
+                       output_price_per_million,
+                       is_official
+                FROM pricing_catalog
+                WHERE model_id IN (
+                  'claude-opus-4-8',
+                  'claude-sonnet-4-5-20250929',
+                  'glm-4.7',
+                  'glm-5.1'
+                )
+                ORDER BY model_id
+                """)
+        }
+        let byId = Dictionary(uniqueKeysWithValues: rows.map { row in
+            (row["model_id"] as String, row)
+        })
+
+        for item in expected {
+            let row = byId[item.modelId]
+            #expect(row != nil, "\(item.modelId) should be seeded")
+            #expect(abs((row?["input_price_per_million"] as Double? ?? 0) - item.input) < 1e-6)
+            #expect(abs((row?["cached_input_price_per_million"] as Double? ?? 0) - item.cached) < 1e-6)
+            #expect(abs((row?["cache_creation_price_per_million"] as Double? ?? 0) - item.cacheCreation) < 1e-6)
+            #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - item.output) < 1e-6)
+            #expect((row?["is_official"] as Bool?) == item.isOfficial)
+        }
+    }
+
     // MARK: - rows without a matching catalog row are left alone
 
     @Test("rows whose model_id has no pricing_catalog match keep their prior value_usd untouched")
