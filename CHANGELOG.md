@@ -7,6 +7,16 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.2.30] — 2026-06-01
+
+#### Summary
+- Dashboard and Settings now link to each other from their top-right toolbar buttons
+- Icon-only navigation buttons now show quicker hover help so users can identify them without waiting
+
+### Added
+- **Dashboard and Settings cross-links.** Dashboard now includes a top-right Settings shortcut, and Settings includes a matching Dashboard shortcut, so users can move between the two windows without returning to the menu bar.
+- **Fast hover help for the new navigation icons.** The toolbar shortcuts use a shorter hover delay than the system default tooltip timing, making icon-only actions easier to understand.
+
 ## [0.2.29] — 2026-05-31
 
 #### Summary
