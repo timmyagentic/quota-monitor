@@ -672,8 +672,8 @@ enum L10n {
         t(en: "Update Available", zh: "发现新版本")
     }
     static func updateVersionAvailable(_ version: String) -> String {
-        t(en: "QuotaMonitor \(version) is available",
-          zh: "QuotaMonitor \(version) 可供更新")
+        t(en: "\(Branding.appCodeName) \(version) is available",
+          zh: "\(Branding.appCodeName) \(version) 可供更新")
     }
     static func updateCurrentVersion(_ version: String) -> String {
         t(en: "Current version: \(version)", zh: "当前版本：\(version)")
