@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 /// General preferences. Deliberately kept short — only the two knobs
 /// regular users actually touch:

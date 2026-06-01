@@ -2,38 +2,22 @@ import SwiftUI
 
 @main
 struct QuotaMonitorApp: App {
-    // The AppDelegate owns the AppKit NSStatusItem (which replaced the
-    // SwiftUI MenuBarExtra) and the launch-time discoverability
-    // orchestration. It references the same `.shared` singletons the
-    // scenes below use.
+    // The AppDelegate owns the whole AppKit shell: the NSStatusItem (which
+    // replaced MenuBarExtra), the four app windows (via WindowManager), and the
+    // launch-time discoverability orchestration. Shared state is reached through
+    // the `.shared` singletons directly (AppEnvironment / LocalizationStore /
+    // SettingsStore) — WindowManager injects them into each window's
+    // NSHostingController. This App struct exists only to run the UserDefaults
+    // migration first and host the one required (inert) Scene.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var environment: AppEnvironment
-    // Single source of truth for language selection. Wired into the
-    // SwiftUI environment so any view can switch language at runtime
-    // via `@Environment(LocalizationStore.self)`. We pass the same
-    // instance into all three Scenes so the menu bar, dashboard, and
-    // Settings windows stay in sync — switching language in Settings
-    // updates the menu bar popover instantly.
-    @State private var localization: LocalizationStore
-    // SettingsStore drives non-language preferences (menu bar headline
-    // window, poll cadence, paths, keychain policy). Same lifetime as
-    // localization — exposed in every Scene so any view can flip a
-    // setting and have it reflected app-wide on the next render.
-    @State private var settings: SettingsStore
 
     init() {
-        // Migrate UserDefaults from the legacy `dev.tjzhou.CodexMonitor`
-        // bundle id BEFORE the @Observable singletons below read their
-        // persisted values. The State wrappers below are assigned in
-        // this init body (NOT via `=` defaults at declaration), so we
-        // can guarantee the migration runs first. If you switch back
-        // to inline defaults like `@State private var foo = X.shared`,
-        // those default expressions run before this init body and you
-        // lose the migration on the first launch under the new id.
+        // Migrate UserDefaults from the legacy `dev.tjzhou.CodexMonitor` bundle
+        // id BEFORE anything reads the singletons' persisted values. This init
+        // body runs before `applicationDidFinishLaunching` and before the
+        // `SettingsStore.snapshot()` read below, so the migration always
+        // precedes the first `.shared` access.
         UserDefaultsMigration.runIfNeeded()
-        _environment = State(wrappedValue: AppEnvironment.shared)
-        _localization = State(wrappedValue: LocalizationStore.shared)
-        _settings = State(wrappedValue: SettingsStore.shared)
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
             ?? "unknown"
         let bundleID = Bundle.main.bundleIdentifier ?? "unknown"

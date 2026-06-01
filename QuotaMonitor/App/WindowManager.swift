@@ -40,11 +40,22 @@ final class WindowManager {
         // policy → activate, BEFORE makeKeyAndOrderFront (correct order for an
         // `.accessory` app). `activateForWindow` already does policy+activate.
         AppEnvironment.shared.activateForWindow()
-        if let existing = controllers[id], existing.window?.isVisible == true {
-            existing.window?.makeKeyAndOrderFront(nil)
+        // Reuse the existing window when it's on screen OR just miniaturized in
+        // the Dock. `isVisible` is false while miniaturized, so without the
+        // `isMiniaturized` check a minimized window would be orphaned and a
+        // duplicate built in its place.
+        if let existing = controllers[id], let win = existing.window,
+           win.isVisible || win.isMiniaturized {
+            if win.isMiniaturized { win.deminiaturize(nil) }
+            win.makeKeyAndOrderFront(nil)
             return
         }
-        let controller = makeController(id: id)   // replaces any stale (closed) one
+        // Truly closed (or never created). Drop any stale closed controller
+        // first so its window releases its frame-autosave name before the
+        // replacement claims it — otherwise AppKit logs a duplicate-name
+        // warning and ignores the new window's autosave name.
+        controllers[id] = nil
+        let controller = makeController(id: id)
         controllers[id] = controller
         controller.window?.makeKeyAndOrderFront(nil)
     }
@@ -98,7 +109,7 @@ final class WindowManager {
                 title: "Quota Monitor", resizable: true,
                 initialContentSize: NSSize(width: 980, height: 680),
                 minContentSize: NSSize(width: 820, height: 560),
-                autosaveName: "QuotaMonitor.dashboard")
+                autosaveName: "QuotaMonitor.dashboard", centerOnOpen: false)
         case "settings":
             root = AnyView(HostedWindow(content: SettingsView())
                 .environment(env).environment(loc).environment(settings)
@@ -107,26 +118,30 @@ final class WindowManager {
                 title: L10n.settingsWindowTitle, resizable: true,
                 initialContentSize: NSSize(width: 620, height: 520),
                 minContentSize: NSSize(width: 480, height: 380),
-                autosaveName: nil)   // centred each open, matching defaultPosition(.center)
+                // Autosave so the user's resized/moved frame survives reopen;
+                // centre only on the very first open (before a frame is saved).
+                autosaveName: "QuotaMonitor.settings", centerOnOpen: true)
         case "onboarding":
             root = AnyView(HostedWindow(content: OnboardingView())
                 .environment(env).environment(loc).environment(settings))
             config = WindowConfig(
                 title: L10n.onboardingWindowTitle, resizable: false,
-                initialContentSize: nil, minContentSize: nil, autosaveName: nil)
+                initialContentSize: nil, minContentSize: nil,
+                autosaveName: nil, centerOnOpen: true)
         case "menubar-help":
             root = AnyView(HostedWindow(content: MenuBarHelpView())
                 .environment(env).environment(loc).environment(settings))
             config = WindowConfig(
                 title: L10n.menuBarHelpWindowTitle, resizable: false,
-                initialContentSize: nil, minContentSize: nil, autosaveName: nil)
+                initialContentSize: nil, minContentSize: nil,
+                autosaveName: nil, centerOnOpen: true)
         default:
             // Unknown id — should never happen. Build an empty window so a
             // routing bug surfaces visibly rather than crashing.
             root = AnyView(EmptyView())
             config = WindowConfig(title: "", resizable: false,
                                   initialContentSize: nil, minContentSize: nil,
-                                  autosaveName: nil)
+                                  autosaveName: nil, centerOnOpen: true)
         }
 
         let hosting = NSHostingController(rootView: root)
@@ -145,11 +160,11 @@ final class WindowManager {
         window.isReleasedWhenClosed = false   // the controller owns the window
         if let minSize = config.minContentSize { window.contentMinSize = minSize }
         if let size = config.initialContentSize { window.setContentSize(size) }
-        if let autosave = config.autosaveName {
-            window.setFrameAutosaveName(autosave)   // restores a saved frame if present
-        } else {
-            window.center()
-        }
+        if config.centerOnOpen { window.center() }
+        // Assigning the autosave name restores a saved frame if one exists
+        // (overriding the size/center above); otherwise the centered/default
+        // frame stands and is what gets saved. MUST come after setContentSize.
+        if let autosave = config.autosaveName { window.setFrameAutosaveName(autosave) }
 
         let controller = AppWindowController(window: window, id: id)
         window.delegate = controller   // weak ref; `controllers` retains the controller
@@ -162,6 +177,7 @@ final class WindowManager {
         let initialContentSize: NSSize?
         let minContentSize: NSSize?
         let autosaveName: String?
+        let centerOnOpen: Bool
     }
 }
 

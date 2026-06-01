@@ -7,19 +7,23 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
-    /// Sparkle updater. Owned here (it was previously a `@State` on
-    /// `QuotaMonitorApp`, which injected it into the Settings scene) so
-    /// `WindowManager` can hand it to the Settings window and the scheduled
-    /// background checks start at launch.
-    let updater = UpdaterController()
+    /// Sparkle updater. Constructed in `applicationDidFinishLaunching`, NOT as a
+    /// stored-property initializer: `@NSApplicationDelegateAdaptor` builds this
+    /// delegate during `QuotaMonitorApp.init`'s prologue, *before* the init body
+    /// runs `UserDefaultsMigration.runIfNeeded()`. `UpdaterController.init` reads
+    /// UserDefaults via Sparkle, so it must run *after* the migration — which is
+    /// guaranteed by the time `applicationDidFinishLaunching` fires.
+    private var updater: UpdaterController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
         let loc = LocalizationStore.shared
         let settings = SettingsStore.shared
 
-        // AppKit now owns the four app windows (see WindowManager). Hand it the
-        // updater so the Settings window can wire "Check Now" / auto-check.
+        // Now that the migration has run (in QuotaMonitorApp.init), it's safe to
+        // let Sparkle read UserDefaults. AppKit owns the four app windows (see
+        // WindowManager); hand it the updater so Settings can wire "Check Now".
+        updater = UpdaterController()
         WindowManager.shared.configure(updater: updater)
 
         let controller = StatusItemController(
@@ -42,6 +46,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.refreshMenuBar(trigger: "launch")
         env.startBackgroundPolling()
 
+        // Close the inert placeholder `Window` SwiftUI auto-opens at launch.
+        // Unconditional: on a fresh install (onboarding path) it must still be
+        // closed, or the tiny `__inert__` window lingers under the onboarding
+        // window for the whole wizard.
+        closeStrayWindows()
+
         // Onboarding window on launch (previously MenuBarLabelView.task).
         let onboardingNeeded = loc.needsOnboarding || settings.needsProviderOnboarding
         Log.discover.info("launch onboardingNeeded=\(onboardingNeeded, privacy: .public)")
@@ -55,12 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 name: .quotaMonitorOnboardingCompleted,
                 object: nil)
         } else {
-            // This is a pure menu-bar agent: windows open on demand only.
-            // After removing `MenuBarExtra` (which was the non-opening
-            // primary scene), SwiftUI auto-opens the FIRST `Window` scene
-            // at launch — close any such stray window so an existing user
-            // doesn't get the onboarding/dashboard window every launch.
-            closeStrayWindows()
+            // Pure menu-bar agent: windows open on demand only.
             scheduleDiscoverabilityCheck()
         }
     }

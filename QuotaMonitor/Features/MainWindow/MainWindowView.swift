@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 struct MainWindowView: View {
     @Environment(AppEnvironment.self) private var env
