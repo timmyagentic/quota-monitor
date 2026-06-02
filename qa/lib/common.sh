@@ -55,6 +55,65 @@ qm_seed_fixtures() {
         "$claude_config_dir/qa-claude-config-session.jsonl"
 }
 
+qm_json_string() {
+    local value="$1"
+    value="${value//\\/\\\\}"
+    value="${value//\"/\\\"}"
+    value="${value//$'\n'/\\n}"
+    value="${value//$'\r'/\\r}"
+    value="${value//$'\t'/\\t}"
+    printf '"%s"' "$value"
+}
+
+qm_write_launch_config() {
+    local config_path="$1"
+    local home="$2"
+    local defaults_suite="$3"
+    local output_dir="$4"
+    local steps="$5"
+    local codex_home="$6"
+
+    mkdir -p "$(dirname "$config_path")"
+    {
+        printf '{\n'
+        printf '  "mode": true,\n'
+        printf '  "home": '
+        qm_json_string "$home"
+        printf ',\n'
+        printf '  "defaultsSuite": '
+        qm_json_string "$defaults_suite"
+        printf ',\n'
+        printf '  "outputDirectory": '
+        qm_json_string "$output_dir"
+        printf ',\n'
+        printf '  "codexHome": '
+        qm_json_string "$codex_home"
+        printf ',\n'
+        printf '  "steps": ['
+
+        local first=1
+        local -a raw_steps
+        local raw_step step
+        IFS=',' read -r -a raw_steps <<<"$steps"
+        for raw_step in "${raw_steps[@]}"; do
+            step="$(printf '%s' "$raw_step" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [[ -n "$step" ]] || continue
+            if [[ "$first" == "1" ]]; then
+                first=0
+            else
+                printf ','
+            fi
+            printf '\n    '
+            qm_json_string "$step"
+        done
+        if [[ "$first" == "0" ]]; then
+            printf '\n  '
+        fi
+        printf ']\n'
+        printf '}\n'
+    } >"$config_path"
+}
+
 qm_retry_until() {
     local attempts="$1"
     local sleep_seconds="$2"

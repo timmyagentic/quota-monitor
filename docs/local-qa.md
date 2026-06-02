@@ -48,19 +48,28 @@ The Codex desktop Run action is wired to `./script/build_and_run.sh` through
 
 ## What `qa/run-local.sh` Verifies
 
-The harness creates a temporary profile and passes these environment variables
-to the launched app:
+The harness creates a temporary profile and writes `qa-config.json` into the
+artifact directory. `script/build_and_run.sh --qa` launches the app with:
 
-- `QUOTAMONITOR_QA_MODE=1`
-- `QUOTAMONITOR_QA_HOME=<temp profile>`
-- `QUOTAMONITOR_QA_DEFAULTS_SUITE=<unique suite>`
-- `CODEX_HOME=<temp profile>/.codex`
-- `QUOTAMONITOR_QA_OUTPUT_DIR=<artifact directory>`
+```sh
+open .build/QuotaMonitor.app --args --quotamonitor-qa-config <artifact-dir>/qa-config.json
+```
 
-The app uses `QUOTAMONITOR_QA_HOME` for its SQLite database and Developer Mode
-log. It uses `QUOTAMONITOR_QA_DEFAULTS_SUITE` for settings and localization, so
-the harness does not read or overwrite the normal `dev.tjzhou.QuotaMonitor`
-preferences domain.
+The config includes:
+
+- `mode=true`
+- `home=<temp profile>`
+- `defaultsSuite=<unique suite>`
+- `codexHome=<temp profile>/.codex`
+- `outputDirectory=<artifact directory>`
+- `steps=[...]`
+
+The app uses the config `home` for its SQLite database and Developer Mode log.
+It uses `defaultsSuite` for settings and localization, so the harness does not
+read or overwrite the normal `dev.tjzhou.QuotaMonitor` preferences domain. The
+older `QUOTAMONITOR_QA_*` environment variables still work for focused unit
+tests, but the end-to-end launch path uses command-line config because
+LaunchServices environment propagation is not reliable for GUI app launches.
 
 The default QA steps are:
 
@@ -80,6 +89,7 @@ Each `qa/run-local.sh` run prints an artifact directory under
   windows, status-item visibility, and menu-bar totals.
 - `db-counts.txt` — provider/session/event/rate-limit counts read from the
   isolated SQLite database.
+- `qa-config.json` — launch config passed to the app.
 - `quotamonitor-dev.log` — Developer Mode JSONL log for the QA run.
 - `screen.png` — full-screen screenshot when macOS allows `screencapture`.
 - `ax-tree.txt` — Accessibility tree dump for open QuotaMonitor windows.

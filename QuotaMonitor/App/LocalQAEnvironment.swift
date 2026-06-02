@@ -1,25 +1,75 @@
 import Foundation
 
+struct LocalQAResolvedConfiguration: Equatable {
+    let isActive: Bool
+    let homeDirectory: URL?
+    let defaultsSuite: String?
+    let outputDirectory: URL?
+    let codexHomeDirectory: URL?
+    let steps: [String]?
+}
+
 enum LocalQAEnvironment {
+    static let modeKey = "QUOTAMONITOR_QA_MODE"
     static let homeKey = "QUOTAMONITOR_QA_HOME"
     static let defaultsSuiteKey = "QUOTAMONITOR_QA_DEFAULTS_SUITE"
+    static let outputDirectoryKey = "QUOTAMONITOR_QA_OUTPUT_DIR"
+    static let stepsKey = "QUOTAMONITOR_QA_STEPS"
+    static let codexHomeKey = "CODEX_HOME"
+    static let configArgument = "--quotamonitor-qa-config"
 
-    static func isActive(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment["QUOTAMONITOR_QA_MODE"] == "1"
+    static func resolvedConfiguration(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> LocalQAResolvedConfiguration? {
+        if let fileConfiguration = launchConfiguration(arguments: arguments) {
+            return fileConfiguration
+        }
+
+        guard environment[modeKey] == "1" else { return nil }
+        return LocalQAResolvedConfiguration(
+            isActive: true,
+            homeDirectory: directoryURL(environment[homeKey]),
+            defaultsSuite: nonEmpty(environment[defaultsSuiteKey]),
+            outputDirectory: directoryURL(environment[outputDirectoryKey]),
+            codexHomeDirectory: directoryURL(environment[codexHomeKey]),
+            steps: stepNames(environment[stepsKey]))
     }
 
-    static func homeDirectory(environment: [String: String] = ProcessInfo.processInfo.environment) -> URL {
-        if let raw = environment[homeKey], !raw.isEmpty {
-            return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+    static func isActive(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
+        activeConfiguration(environment: environment, arguments: arguments) != nil
+    }
+
+    static func homeDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> URL {
+        if let home = activeConfiguration(
+            environment: environment,
+            arguments: arguments)?.homeDirectory {
+            return home
+        }
+        if let home = directoryURL(environment[homeKey]) {
+            return home
         }
         return FileManager.default.homeDirectoryForCurrentUser
     }
 
     static func applicationSupportDirectory(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> URL {
-        if let raw = environment[homeKey], !raw.isEmpty {
-            return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
+        if let home = activeConfiguration(
+            environment: environment,
+            arguments: arguments)?.homeDirectory {
+            return home
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        }
+        if let home = directoryURL(environment[homeKey]) {
+            return home
                 .appendingPathComponent("Library/Application Support", isDirectory: true)
         }
         return FileManager.default.urls(
@@ -29,11 +79,105 @@ enum LocalQAEnvironment {
     }
 
     static func userDefaults(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> UserDefaults? {
-        guard let suite = environment[defaultsSuiteKey], !suite.isEmpty else {
+        guard let suite = activeConfiguration(
+            environment: environment,
+            arguments: arguments)?.defaultsSuite
+            ?? nonEmpty(environment[defaultsSuiteKey]) else {
             return .standard
         }
         return UserDefaults(suiteName: suite)
+    }
+
+    static func codexHomeDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> URL? {
+        guard let configuration = activeConfiguration(
+            environment: environment,
+            arguments: arguments) else { return nil }
+        if let codexHome = configuration.codexHomeDirectory {
+            return codexHome
+        }
+        return configuration.homeDirectory?
+            .appendingPathComponent(".codex", isDirectory: true)
+    }
+
+    private static func activeConfiguration(
+        environment: [String: String],
+        arguments: [String]
+    ) -> LocalQAResolvedConfiguration? {
+        guard let configuration = resolvedConfiguration(
+            environment: environment,
+            arguments: arguments),
+              configuration.isActive else { return nil }
+        return configuration
+    }
+
+    private static func launchConfiguration(
+        arguments: [String]
+    ) -> LocalQAResolvedConfiguration? {
+        guard let rawPath = launchConfigurationPath(arguments: arguments) else {
+            return nil
+        }
+        let url = URL(
+            fileURLWithPath: (rawPath as NSString).expandingTildeInPath,
+            isDirectory: false)
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(LaunchConfigurationFile.self, from: data)
+        else { return nil }
+
+        return LocalQAResolvedConfiguration(
+            isActive: decoded.mode ?? true,
+            homeDirectory: directoryURL(decoded.home),
+            defaultsSuite: nonEmpty(decoded.defaultsSuite),
+            outputDirectory: directoryURL(decoded.outputDirectory),
+            codexHomeDirectory: directoryURL(decoded.codexHome),
+            steps: decoded.steps?.compactMap { nonEmpty($0) })
+    }
+
+    private static func launchConfigurationPath(arguments: [String]) -> String? {
+        for index in arguments.indices {
+            let argument = arguments[index]
+            if argument == configArgument,
+               arguments.index(after: index) < arguments.endIndex {
+                return arguments[arguments.index(after: index)]
+            }
+            if argument.hasPrefix("\(configArgument)=") {
+                let value = argument.dropFirst(configArgument.count + 1)
+                return value.isEmpty ? nil : String(value)
+            }
+        }
+        return nil
+    }
+
+    private static func directoryURL(_ raw: String?) -> URL? {
+        guard let raw = nonEmpty(raw) else { return nil }
+        return URL(
+            fileURLWithPath: (raw as NSString).expandingTildeInPath,
+            isDirectory: true)
+    }
+
+    private static func nonEmpty(_ raw: String?) -> String? {
+        guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
+
+    private static func stepNames(_ raw: String?) -> [String]? {
+        guard let raw = nonEmpty(raw) else { return nil }
+        return raw.split(separator: ",")
+            .compactMap { nonEmpty(String($0)) }
+    }
+
+    private struct LaunchConfigurationFile: Decodable {
+        let mode: Bool?
+        let home: String?
+        let defaultsSuite: String?
+        let outputDirectory: String?
+        let codexHome: String?
+        let steps: [String]?
     }
 }

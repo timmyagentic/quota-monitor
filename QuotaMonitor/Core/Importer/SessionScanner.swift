@@ -26,6 +26,9 @@ enum SessionScanner {
 
     /// Resolve $CODEX_HOME (env var → ~/.codex).
     static func defaultCodexHome() -> URL {
+        if let qaCodexHome = LocalQAEnvironment.codexHomeDirectory() {
+            return qaCodexHome
+        }
         if let override = ProcessInfo.processInfo.environment["CODEX_HOME"],
            !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)

@@ -8,14 +8,19 @@ struct LocalQAConfiguration: Equatable {
     let outputDirectory: URL
     let steps: [LocalQAStep]
 
-    init?(environment: [String: String] = ProcessInfo.processInfo.environment) {
-        guard environment["QUOTAMONITOR_QA_MODE"] == "1" else { return nil }
+    init?(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) {
+        guard let resolved = LocalQAEnvironment.resolvedConfiguration(
+            environment: environment,
+            arguments: arguments),
+              resolved.isActive else { return nil }
 
-        if let rawSteps = environment["QUOTAMONITOR_QA_STEPS"],
-           !rawSteps.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let rawSteps = resolved.steps,
+           !rawSteps.isEmpty {
             var parsed: [LocalQAStep] = []
-            for token in rawSteps.split(separator: ",") {
-                let name = token.trimmingCharacters(in: .whitespacesAndNewlines)
+            for name in rawSteps {
                 guard let step = LocalQAStep(rawValue: name) else { return nil }
                 parsed.append(step)
             }
@@ -31,8 +36,7 @@ struct LocalQAConfiguration: Equatable {
             ]
         }
 
-        let output = environment["QUOTAMONITOR_QA_OUTPUT_DIR"]
-            .map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath, isDirectory: true) }
+        let output = resolved.outputDirectory
             ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("QuotaMonitorQA", isDirectory: true)
         self.outputDirectory = output

@@ -23,24 +23,16 @@ build_app() {
 }
 
 open_app() {
-    local args=(-n)
-    if [[ "${QUOTAMONITOR_QA_MODE:-}" == "1" ]]; then
-        args+=(--env "QUOTAMONITOR_QA_MODE=1")
-        args+=(--env "QUOTAMONITOR_QA_OUTPUT_DIR=${QUOTAMONITOR_QA_OUTPUT_DIR:?}")
-        args+=(--env "QUOTAMONITOR_QA_HOME=${QUOTAMONITOR_QA_HOME:?}")
-        args+=(--env "QUOTAMONITOR_QA_DEFAULTS_SUITE=${QUOTAMONITOR_QA_DEFAULTS_SUITE:?}")
-        if [[ -n "${QUOTAMONITOR_QA_STEPS:-}" ]]; then
-            args+=(--env "QUOTAMONITOR_QA_STEPS=${QUOTAMONITOR_QA_STEPS}")
-        fi
-        local launch_home="${QUOTAMONITOR_QA_LAUNCH_HOME:-${HOME:-}}"
-        if [[ -n "$launch_home" ]]; then
-            args+=(--env "HOME=${launch_home}")
-        fi
-        if [[ -n "${CODEX_HOME:-}" ]]; then
-            args+=(--env "CODEX_HOME=${CODEX_HOME}")
-        fi
+    local open_args=(-n)
+    local app_args=()
+    if [[ -n "${QUOTAMONITOR_QA_CONFIG:-}" ]]; then
+        app_args+=(--quotamonitor-qa-config "$QUOTAMONITOR_QA_CONFIG")
     fi
-    /usr/bin/open "${args[@]}" "$APP_BUNDLE"
+    if [[ "${#app_args[@]}" -gt 0 ]]; then
+        /usr/bin/open "${open_args[@]}" "$APP_BUNDLE" --args "${app_args[@]}"
+    else
+        /usr/bin/open "${open_args[@]}" "$APP_BUNDLE"
+    fi
 }
 
 verify_process() {
@@ -78,10 +70,11 @@ case "$MODE" in
         verify_process
         ;;
     --qa|qa)
-        export QUOTAMONITOR_QA_MODE=1
-        : "${QUOTAMONITOR_QA_OUTPUT_DIR:?QUOTAMONITOR_QA_OUTPUT_DIR is required for --qa}"
-        : "${QUOTAMONITOR_QA_HOME:?QUOTAMONITOR_QA_HOME is required for --qa}"
-        : "${QUOTAMONITOR_QA_DEFAULTS_SUITE:?QUOTAMONITOR_QA_DEFAULTS_SUITE is required for --qa}"
+        : "${QUOTAMONITOR_QA_CONFIG:?QUOTAMONITOR_QA_CONFIG is required for --qa}"
+        [[ -f "$QUOTAMONITOR_QA_CONFIG" ]] || {
+            echo "error: QA config not found: $QUOTAMONITOR_QA_CONFIG" >&2
+            exit 1
+        }
         stop_running_app
         build_app
         open_app

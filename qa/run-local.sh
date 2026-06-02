@@ -17,6 +17,8 @@ DEFAULTS_SUITE="${QM_QA_DEFAULTS_SUITE:-dev.tjzhou.QuotaMonitor.QA.${RUN_ID}.$$}
 STATE_JSON="${ARTIFACTS}/app-state.json"
 DB_PATH="${QA_HOME}/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
 DEV_LOG="${QA_HOME}/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log"
+QA_CONFIG="${ARTIFACTS}/qa-config.json"
+QA_STEPS="${QUOTAMONITOR_QA_STEPS:-open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,wait,snapshot}"
 
 cleanup() {
     pkill -x QuotaMonitor >/dev/null 2>&1 || true
@@ -32,11 +34,16 @@ qm_write_defaults "$QA_HOME" "$DEFAULTS_SUITE"
 qm_seed_fixtures "$QA_HOME"
 
 export CODEX_HOME="$QA_HOME/.codex"
-export QUOTAMONITOR_QA_HOME="$QA_HOME"
-export QUOTAMONITOR_QA_LAUNCH_HOME="$QA_HOME"
-export QUOTAMONITOR_QA_DEFAULTS_SUITE="$DEFAULTS_SUITE"
-export QUOTAMONITOR_QA_OUTPUT_DIR="$ARTIFACTS"
-export QUOTAMONITOR_QA_STEPS="${QUOTAMONITOR_QA_STEPS:-open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,wait,snapshot}"
+qm_write_launch_config \
+    "$QA_CONFIG" \
+    "$QA_HOME" \
+    "$DEFAULTS_SUITE" \
+    "$ARTIFACTS" \
+    "$QA_STEPS" \
+    "$CODEX_HOME"
+plutil -convert json -o /dev/null "$QA_CONFIG" >/dev/null
+
+export QUOTAMONITOR_QA_CONFIG="$QA_CONFIG"
 
 "${ROOT_DIR}/script/build_and_run.sh" --qa
 

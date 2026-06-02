@@ -46,6 +46,33 @@ test_seed_fixtures() {
     assert_file "$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-config-session.jsonl"
 }
 
+test_write_launch_config() {
+    local dir config
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-config.XXXXXX")"
+    config="$dir/qa-config.json"
+    trap 'rm -rf "$dir"' RETURN
+
+    qm_write_launch_config \
+        "$config" \
+        "$dir/home" \
+        "dev.tjzhou.QuotaMonitor.QATest" \
+        "$dir/artifacts" \
+        "open-dashboard,snapshot,quit" \
+        "$dir/home/.codex"
+
+    plutil -convert json -o /dev/null "$config" >/dev/null
+    grep -q '"mode": true' "$config" || fail "mode flag missing from launch config"
+    grep -q '"home": "' "$config" || fail "home missing from launch config"
+    grep -q '"defaultsSuite": "dev.tjzhou.QuotaMonitor.QATest"' "$config" \
+        || fail "defaults suite missing from launch config"
+    grep -q '"outputDirectory": "' "$config" || fail "output directory missing from launch config"
+    grep -q '"codexHome": "' "$config" || fail "codex home missing from launch config"
+    grep -q '"open-dashboard"' "$config" || fail "first QA step missing from launch config"
+    grep -q '"snapshot"' "$config" || fail "snapshot QA step missing from launch config"
+    grep -q '"quit"' "$config" || fail "quit QA step missing from launch config"
+}
+
 test_write_defaults
 test_seed_fixtures
+test_write_launch_config
 echo "common_tests: ok"
