@@ -101,6 +101,8 @@ if command -v osascript >/dev/null 2>&1; then
         fi
         echo "warning: AX dump failed; set QM_QA_REQUIRE_AX=1 to make this fatal" \
             >"${ARTIFACTS}/ax-dump-warning.txt"
+    else
+        qm_warn_incomplete_ax_snapshot "$ARTIFACTS"
     fi
 fi
 

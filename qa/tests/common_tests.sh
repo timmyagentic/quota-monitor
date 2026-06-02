@@ -240,6 +240,82 @@ TEXT
     qm_assert_artifact_contract "$dir"
 }
 
+test_assert_artifact_contract_allows_incomplete_ax_with_warning() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-artifacts-ax-warning.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    cat >"$dir/app-state.json" <<'JSON'
+{
+  "bundleIdentifier": "dev.tjzhou.QuotaMonitor",
+  "databasePath": "/tmp/qm/quotamonitor.sqlite",
+  "developerLogPath": "/tmp/qm/quotamonitor-dev.log",
+  "generatedAt": "2026-06-02T00:00:00Z",
+  "menuBar": {
+    "claudeEvents": 1,
+    "claudeSessions": 1,
+    "claudeTokens": 1740,
+    "codexEvents": 2,
+    "codexSessions": 1,
+    "codexTokens": 290
+  },
+  "pid": 123,
+  "qaSteps": ["open-settings", "exercise-settings", "snapshot"],
+  "settings": {
+    "developerModeEnabled": true,
+    "enabledProviders": ["claude"],
+    "language": "en",
+    "menuBarIconProviders": ["claude"],
+    "pollIntervalSeconds": 900,
+    "quotaDisplayMode": "remaining",
+    "showDockIconForWindows": false
+  },
+  "statusItemVisibility": "visible",
+  "windows": [
+    {"identifier": "dashboard", "isKeyWindow": false, "isVisible": true, "title": "Quota Monitor"},
+    {"identifier": "settings", "isKeyWindow": true, "isVisible": true, "title": "Settings"}
+  ]
+}
+JSON
+    cat >"$dir/db-counts.txt" <<'TEXT'
+provider  sessions
+--------  --------
+claude    1
+codex     1
+provider  events  tokens
+--------  ------  ------
+claude    1       1740
+codex     2       290
+source_kind  bucket     samples
+-----------  ---------  -------
+jsonl        primary    1
+jsonl        secondary  1
+TEXT
+    {
+        printf '{"event":"qa.settings.exercise","result":"success"}\n'
+        printf '{"event":"qa.snapshot.write","result":"success"}\n'
+    } >"$dir/quotamonitor-dev.log"
+    printf 'PNGDATA' >"$dir/screen.png"
+    printf '# QuotaMonitor AX snapshot\nfrontmost=false\n' >"$dir/ax-tree.txt"
+    printf 'AX snapshot did not expose expected windows.\n' >"$dir/ax-dump-warning.txt"
+
+    qm_assert_artifact_contract "$dir"
+}
+
+test_warns_when_ax_snapshot_is_incomplete() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-ax-incomplete.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    printf '# QuotaMonitor AX snapshot\nfrontmost=false\n' >"$dir/ax-tree.txt"
+
+    qm_warn_incomplete_ax_snapshot "$dir"
+
+    assert_file "$dir/ax-dump-warning.txt"
+    grep -q 'did not expose expected windows' "$dir/ax-dump-warning.txt" \
+        || fail "AX warning did not explain incomplete window capture"
+}
+
 test_write_defaults
 test_seed_fixtures
 test_write_launch_config
@@ -250,4 +326,6 @@ test_app_artifacts_dir_lives_under_qa_home
 test_write_computer_qa_brief
 test_write_interactive_cleanup_script
 test_assert_artifact_contract
+test_assert_artifact_contract_allows_incomplete_ax_with_warning
+test_warns_when_ax_snapshot_is_incomplete
 echo "common_tests: ok"
