@@ -102,6 +102,83 @@ test_default_steps_include_settings_exercise() {
         || fail "default QA steps do not exercise settings: $steps"
 }
 
+test_interactive_steps_are_safe_for_computer_use() {
+    local steps
+    steps="$(qm_interactive_steps)"
+
+    [[ "$steps" == *"open-dashboard"* ]] \
+        || fail "interactive QA steps do not open Dashboard: $steps"
+    [[ "$steps" == *"open-settings"* ]] \
+        || fail "interactive QA steps do not open Settings: $steps"
+    [[ "$steps" == *"show-popover"* ]] \
+        || fail "interactive QA steps do not show the popover: $steps"
+    [[ "$steps" == *"snapshot"* ]] \
+        || fail "interactive QA steps do not write a snapshot: $steps"
+    [[ "$steps" != *"quit"* ]] \
+        || fail "interactive QA steps must keep the app open: $steps"
+}
+
+test_app_artifacts_dir_lives_under_qa_home() {
+    local home app_artifacts
+    home="/tmp/qm-qa-home"
+    app_artifacts="$(qm_app_artifacts_dir "$home")"
+
+    [[ "$app_artifacts" == "$home/"* ]] \
+        || fail "app artifact dir must live under QA home: $app_artifacts"
+    [[ "$app_artifacts" == *"QAArtifacts" ]] \
+        || fail "app artifact dir should be identifiable: $app_artifacts"
+}
+
+test_write_computer_qa_brief() {
+    local dir brief
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-computer-qa-brief.XXXXXX")"
+    brief="$dir/computer-use-qa.md"
+    trap 'rm -rf "$dir"' RETURN
+
+    qm_write_computer_qa_brief \
+        "$brief" \
+        "$dir/artifacts" \
+        "$dir/home" \
+        "dev.tjzhou.QuotaMonitor.QA.Test" \
+        "/Volumes/SamsungDisk/Code/quota-monitor"
+
+    assert_file "$brief"
+    grep -q 'Computer Use QA Brief' "$brief" \
+        || fail "brief title missing"
+    grep -q 'Dashboard' "$brief" \
+        || fail "Dashboard walkthrough missing from brief"
+    grep -q 'Sessions' "$brief" \
+        || fail "Sessions walkthrough missing from brief"
+    grep -q 'History' "$brief" \
+        || fail "History walkthrough missing from brief"
+    grep -q 'Settings' "$brief" \
+        || fail "Settings walkthrough missing from brief"
+    grep -q 'Do not use real Codex or Claude credentials' "$brief" \
+        || fail "credential safety warning missing from brief"
+}
+
+test_write_interactive_cleanup_script() {
+    local dir cleanup
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-computer-qa-cleanup.XXXXXX")"
+    cleanup="$dir/cleanup.sh"
+    trap 'rm -rf "$dir"' RETURN
+
+    qm_write_interactive_cleanup \
+        "$cleanup" \
+        "$dir/work" \
+        "$dir/home" \
+        "dev.tjzhou.QuotaMonitor.QA.Test"
+
+    assert_file "$cleanup"
+    [[ -x "$cleanup" ]] || fail "cleanup script is not executable"
+    grep -q 'pkill -x QuotaMonitor' "$cleanup" \
+        || fail "cleanup script does not stop QuotaMonitor"
+    grep -q 'defaults delete' "$cleanup" \
+        || fail "cleanup script does not delete QA defaults"
+    grep -q 'rm -rf' "$cleanup" \
+        || fail "cleanup script does not remove the QA work root"
+}
+
 test_assert_artifact_contract() {
     local dir
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-artifacts.XXXXXX")"
@@ -168,5 +245,9 @@ test_seed_fixtures
 test_write_launch_config
 test_launch_config_base64
 test_default_steps_include_settings_exercise
+test_interactive_steps_are_safe_for_computer_use
+test_app_artifacts_dir_lives_under_qa_home
+test_write_computer_qa_brief
+test_write_interactive_cleanup_script
 test_assert_artifact_contract
 echo "common_tests: ok"

@@ -10,27 +10,21 @@ qm_require_command sqlite3
 qm_require_command plutil
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-WORK_ROOT="${QM_QA_WORK_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/quotamonitor-qa.XXXXXX")}"
+WORK_ROOT="${QM_QA_WORK_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/quotamonitor-computer-qa.XXXXXX")}"
 QA_HOME="${WORK_ROOT}/home"
-ARTIFACTS="${QM_QA_ARTIFACTS:-${ROOT_DIR}/.build/qa-artifacts/${RUN_ID}}"
+ARTIFACTS="${QM_QA_ARTIFACTS:-${ROOT_DIR}/.build/qa-artifacts/${RUN_ID}-interactive}"
 APP_ARTIFACTS="$(qm_app_artifacts_dir "$QA_HOME")"
-DEFAULTS_SUITE="${QM_QA_DEFAULTS_SUITE:-dev.tjzhou.QuotaMonitor.QA.${RUN_ID}.$$}"
+DEFAULTS_SUITE="${QM_QA_DEFAULTS_SUITE:-dev.tjzhou.QuotaMonitor.ComputerQA.${RUN_ID}.$$}"
 STATE_JSON="${APP_ARTIFACTS}/app-state.json"
 DB_PATH="${QA_HOME}/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
 DEV_LOG="${QA_HOME}/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log"
 QA_CONFIG="${ARTIFACTS}/qa-config.json"
-QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_default_steps)}"
-
-cleanup() {
-    pkill -x QuotaMonitor >/dev/null 2>&1 || true
-    HOME="$QA_HOME" defaults delete "$DEFAULTS_SUITE" >/dev/null 2>&1 || true
-    if [[ -z "${QM_QA_KEEP_WORK_ROOT:-}" ]]; then
-        rm -rf "$WORK_ROOT"
-    fi
-}
-trap cleanup EXIT
+QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_interactive_steps)}"
+BRIEF="${ARTIFACTS}/computer-use-qa.md"
+CLEANUP_SCRIPT="${ARTIFACTS}/cleanup-interactive.sh"
 
 mkdir -p "$QA_HOME" "$ARTIFACTS" "$APP_ARTIFACTS"
+qm_write_interactive_cleanup "$CLEANUP_SCRIPT" "$WORK_ROOT" "$QA_HOME" "$DEFAULTS_SUITE"
 qm_write_defaults "$QA_HOME" "$DEFAULTS_SUITE"
 qm_seed_fixtures "$QA_HOME"
 
@@ -111,5 +105,11 @@ if command -v osascript >/dev/null 2>&1; then
 fi
 
 qm_assert_artifact_contract "$ARTIFACTS"
+qm_write_computer_qa_brief "$BRIEF" "$ARTIFACTS" "$QA_HOME" "$DEFAULTS_SUITE" "$ROOT_DIR"
 
-echo "QA artifacts: $ARTIFACTS"
+cat <<EOF
+Interactive QA app is running.
+QA artifacts: $ARTIFACTS
+Computer Use brief: $BRIEF
+Cleanup command: $CLEANUP_SCRIPT
+EOF

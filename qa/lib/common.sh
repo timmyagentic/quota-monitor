@@ -60,6 +60,73 @@ qm_default_steps() {
         "open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,exercise-settings,wait,snapshot"
 }
 
+qm_interactive_steps() {
+    qm_default_steps
+}
+
+qm_app_artifacts_dir() {
+    local home="$1"
+    printf '%s\n' "$home/Library/Application Support/QuotaMonitor/QAArtifacts"
+}
+
+qm_write_interactive_cleanup() {
+    local cleanup_path="$1"
+    local work_root="$2"
+    local qa_home="$3"
+    local defaults_suite="$4"
+
+    mkdir -p "$(dirname "$cleanup_path")"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf 'set -euo pipefail\n'
+        printf 'WORK_ROOT=%q\n' "$work_root"
+        printf 'QA_HOME=%q\n' "$qa_home"
+        printf 'DEFAULTS_SUITE=%q\n' "$defaults_suite"
+        printf 'pkill -x QuotaMonitor >/dev/null 2>&1 || true\n'
+        printf 'HOME="$QA_HOME" defaults delete "$DEFAULTS_SUITE" >/dev/null 2>&1 || true\n'
+        printf 'rm -rf "$WORK_ROOT"\n'
+    } >"$cleanup_path"
+    chmod +x "$cleanup_path"
+}
+
+qm_write_computer_qa_brief() {
+    local brief_path="$1"
+    local artifacts="$2"
+    local qa_home="$3"
+    local defaults_suite="$4"
+    local repo_root="$5"
+
+    mkdir -p "$(dirname "$brief_path")"
+    {
+        printf '# Computer Use QA Brief\n\n'
+        printf 'Use this brief after the code-level QA harness has launched the isolated app.\n\n'
+        printf '%s\n' "- Repo: \`$repo_root\`"
+        printf '%s\n' "- Artifacts: \`$artifacts\`"
+        printf '%s\n' "- QA home: \`$qa_home\`"
+        printf '%s\n' "- Defaults suite: \`$defaults_suite\`"
+        printf '%s\n\n' "- Cleanup: \`$artifacts/cleanup-interactive.sh\`"
+        printf 'Do not use real Codex or Claude credentials. The app is running with fixture data, an isolated HOME, and an isolated UserDefaults suite.\n\n'
+        printf '## Before Computer Use\n\n'
+        printf '1. Confirm `app-state.json`, `db-counts.txt`, `quotamonitor-dev.log`, `screen.png`, and `ax-tree.txt` exist in the artifact directory.\n'
+        printf '2. Read `app-state.json` to identify currently open windows and the QA settings snapshot.\n'
+        printf '3. Use Computer Use only for local UI reading/clicking. Ask before destructive UI actions such as uninstall, deleting files, changing system settings, or transmitting credentials.\n\n'
+        printf '## Walkthrough\n\n'
+        printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data and no empty primary panels.'
+        printf '%s\n' '- Sessions: switch to Sessions, search for the fixture session, change sort if available, open detail, and verify token/cost/event rows are visible.'
+        printf '%s\n' '- History: switch to History, select a populated day, and verify rollups plus per-session details are readable.'
+        printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
+        printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'
+        printf '%s\n' '- Menu-bar help: verify the help window is visible, readable, and can be closed without quitting the app.'
+        printf '%s\n\n' '- Visual pass: note any clipped text, overlapping controls, blank charts, missing icons, or disabled controls that should be usable.'
+        printf '## Report Format\n\n'
+        printf '%s\n' '- Commands run'
+        printf '%s\n' '- Artifact directory'
+        printf '%s\n' '- Computer Use observations by area'
+        printf '%s\n' '- Failures with screenshot or AX evidence'
+        printf '%s\n' '- Untested areas and why'
+    } >"$brief_path"
+}
+
 qm_json_string() {
     local value="$1"
     value="${value//\\/\\\\}"
