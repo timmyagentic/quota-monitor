@@ -32,6 +32,8 @@ struct LocalQAConfiguration: Equatable {
                 .openMenuBarHelp,
                 .showPopover,
                 .refreshAll,
+                .exerciseSettings,
+                .wait,
                 .snapshot
             ]
         }
@@ -49,6 +51,7 @@ enum LocalQAStep: String, Equatable {
     case openMenuBarHelp = "open-menubar-help"
     case showPopover = "show-popover"
     case refreshAll = "refresh-all"
+    case exerciseSettings = "exercise-settings"
     case wait
     case snapshot
     case quit

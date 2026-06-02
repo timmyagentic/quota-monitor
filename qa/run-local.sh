@@ -18,7 +18,7 @@ STATE_JSON="${ARTIFACTS}/app-state.json"
 DB_PATH="${QA_HOME}/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
 DEV_LOG="${QA_HOME}/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log"
 QA_CONFIG="${ARTIFACTS}/qa-config.json"
-QA_STEPS="${QUOTAMONITOR_QA_STEPS:-open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,wait,snapshot}"
+QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_default_steps)}"
 
 cleanup() {
     pkill -x QuotaMonitor >/dev/null 2>&1 || true
@@ -73,6 +73,17 @@ SELECT provider, COUNT(*) AS events, SUM(total_tokens) AS tokens FROM usage_even
 SELECT source_kind, bucket, COUNT(*) AS samples FROM rate_limit_samples GROUP BY source_kind, bucket ORDER BY source_kind, bucket;
 SQL
 
+dev_log_has_qa_events() {
+    [[ -f "$DEV_LOG" ]] || return 1
+    grep -q '"event":"qa.settings.exercise"' "$DEV_LOG" || return 1
+    grep -q '"event":"qa.snapshot.write"' "$DEV_LOG" || return 1
+}
+
+qm_retry_until 20 0.5 dev_log_has_qa_events || {
+    echo "error: QA Developer Mode log did not record expected QA events: $DEV_LOG" >&2
+    exit 1
+}
+
 if [[ -f "$DEV_LOG" ]]; then
     cp "$DEV_LOG" "${ARTIFACTS}/quotamonitor-dev.log"
 fi
@@ -97,13 +108,6 @@ if command -v osascript >/dev/null 2>&1; then
     fi
 fi
 
-grep -q '"title" : "Quota Monitor"' "$STATE_JSON" || {
-    echo "error: dashboard window was not captured in QA state" >&2
-    exit 1
-}
-grep -q '"title" : "Settings"' "$STATE_JSON" || {
-    echo "error: settings window was not captured in QA state" >&2
-    exit 1
-}
+qm_assert_artifact_contract "$ARTIFACTS"
 
 echo "QA artifacts: $ARTIFACTS"

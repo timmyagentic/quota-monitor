@@ -22,16 +22,29 @@ build_app() {
     (cd "$ROOT_DIR" && ./build.sh debug)
 }
 
+prepare_qa_launch_bundle() {
+    local qa_bundle="${QUOTAMONITOR_QA_APP_BUNDLE:-}"
+    [[ -n "$qa_bundle" ]] || return 0
+    [[ "$qa_bundle" != "$APP_BUNDLE" ]] || return 0
+
+    rm -rf "$qa_bundle"
+    mkdir -p "$(dirname "$qa_bundle")"
+    /usr/bin/ditto "$APP_BUNDLE" "$qa_bundle"
+}
+
 open_app() {
     local open_args=(-n)
     local app_args=()
+    local launch_bundle="${QUOTAMONITOR_QA_APP_BUNDLE:-$APP_BUNDLE}"
     if [[ -n "${QUOTAMONITOR_QA_CONFIG:-}" ]]; then
-        app_args+=(--quotamonitor-qa-config "$QUOTAMONITOR_QA_CONFIG")
+        local config_payload
+        config_payload="$(base64 <"$QUOTAMONITOR_QA_CONFIG" | tr -d '\n')"
+        app_args+=(--quotamonitor-qa-config-base64 "$config_payload")
     fi
     if [[ "${#app_args[@]}" -gt 0 ]]; then
-        /usr/bin/open "${open_args[@]}" "$APP_BUNDLE" --args "${app_args[@]}"
+        /usr/bin/open "${open_args[@]}" "$launch_bundle" --args "${app_args[@]}"
     else
-        /usr/bin/open "${open_args[@]}" "$APP_BUNDLE"
+        /usr/bin/open "${open_args[@]}" "$launch_bundle"
     fi
 }
 
@@ -77,6 +90,7 @@ case "$MODE" in
         }
         stop_running_app
         build_app
+        prepare_qa_launch_bundle
         open_app
         verify_process
         ;;

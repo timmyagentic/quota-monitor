@@ -17,12 +17,16 @@ enum LocalQAEnvironment {
     static let stepsKey = "QUOTAMONITOR_QA_STEPS"
     static let codexHomeKey = "CODEX_HOME"
     static let configArgument = "--quotamonitor-qa-config"
+    static let configBase64Argument = "--quotamonitor-qa-config-base64"
 
     static func resolvedConfiguration(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> LocalQAResolvedConfiguration? {
-        if let fileConfiguration = launchConfiguration(arguments: arguments) {
+        if let inlineConfiguration = inlineLaunchConfiguration(arguments: arguments) {
+            return inlineConfiguration
+        }
+        if let fileConfiguration = fileLaunchConfiguration(arguments: arguments) {
             return fileConfiguration
         }
 
@@ -116,20 +120,37 @@ enum LocalQAEnvironment {
         return configuration
     }
 
-    private static func launchConfiguration(
+    private static func inlineLaunchConfiguration(
         arguments: [String]
     ) -> LocalQAResolvedConfiguration? {
-        guard let rawPath = launchConfigurationPath(arguments: arguments) else {
-            return nil
-        }
+        guard let rawPayload = launchConfigurationValue(
+            argumentName: configBase64Argument,
+            arguments: arguments),
+              let data = Data(base64Encoded: rawPayload),
+              let decoded = try? JSONDecoder().decode(LaunchConfigurationFile.self, from: data)
+        else { return nil }
+        return resolvedConfiguration(from: decoded)
+    }
+
+    private static func fileLaunchConfiguration(
+        arguments: [String]
+    ) -> LocalQAResolvedConfiguration? {
+        guard let rawPath = launchConfigurationValue(
+            argumentName: configArgument,
+            arguments: arguments) else { return nil }
         let url = URL(
             fileURLWithPath: (rawPath as NSString).expandingTildeInPath,
             isDirectory: false)
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(LaunchConfigurationFile.self, from: data)
         else { return nil }
+        return resolvedConfiguration(from: decoded)
+    }
 
-        return LocalQAResolvedConfiguration(
+    private static func resolvedConfiguration(
+        from decoded: LaunchConfigurationFile
+    ) -> LocalQAResolvedConfiguration {
+        LocalQAResolvedConfiguration(
             isActive: decoded.mode ?? true,
             homeDirectory: directoryURL(decoded.home),
             defaultsSuite: nonEmpty(decoded.defaultsSuite),
@@ -138,15 +159,18 @@ enum LocalQAEnvironment {
             steps: decoded.steps?.compactMap { nonEmpty($0) })
     }
 
-    private static func launchConfigurationPath(arguments: [String]) -> String? {
+    private static func launchConfigurationValue(
+        argumentName: String,
+        arguments: [String]
+    ) -> String? {
         for index in arguments.indices {
             let argument = arguments[index]
-            if argument == configArgument,
+            if argument == argumentName,
                arguments.index(after: index) < arguments.endIndex {
                 return arguments[arguments.index(after: index)]
             }
-            if argument.hasPrefix("\(configArgument)=") {
-                let value = argument.dropFirst(configArgument.count + 1)
+            if argument.hasPrefix("\(argumentName)=") {
+                let value = argument.dropFirst(argumentName.count + 1)
                 return value.isEmpty ? nil : String(value)
             }
         }

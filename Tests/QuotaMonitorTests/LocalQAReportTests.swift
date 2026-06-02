@@ -19,6 +19,14 @@ struct LocalQAReportTests {
             developerLogPath: "/tmp/qa/quotamonitor-dev.log",
             statusItemVisibility: "visible",
             lastError: nil,
+            settings: LocalQASettingsReport(
+                language: "en",
+                enabledProviders: ["claude"],
+                menuBarIconProviders: ["claude"],
+                quotaDisplayMode: "remaining",
+                showDockIconForWindows: false,
+                developerModeEnabled: true,
+                pollIntervalSeconds: 900),
             windows: [
                 LocalQAWindowReport(
                     title: "Quota Monitor",

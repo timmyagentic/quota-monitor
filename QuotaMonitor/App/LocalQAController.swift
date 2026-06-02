@@ -47,6 +47,9 @@ final class LocalQAController {
             case .refreshAll:
                 environment.refreshAll(throttle: false, trigger: "qa")
                 await pause(seconds: 2.0)
+            case .exerciseSettings:
+                exerciseSettings()
+                await pause(seconds: 0.8)
             case .wait:
                 await pause(seconds: 1.0)
             case .snapshot:
@@ -64,8 +67,36 @@ final class LocalQAController {
         try? await Task.sleep(nanoseconds: nanos)
     }
 
+    private func exerciseSettings() {
+        let settings = SettingsStore.shared
+
+        settings.pollIntervalSeconds = 900
+        settings.quotaDisplayMode = .remaining
+        settings.showDockIconForWindows = false
+        _ = settings.setMenuBarIconProviderEnabled("codex", enabled: false)
+        _ = settings.setProviderEnabled("codex", enabled: false)
+
+        environment.applySettings()
+        environment.applyDockIconPolicy()
+        environment.applyEnabledProviders()
+
+        DeveloperLog.eventRecord(
+            "qa.settings.exercise",
+            category: "settings",
+            trigger: "qa",
+            result: "success",
+            fields: [
+                "enabled_providers": .string(settings.enabledProviders.sorted().joined(separator: ",")),
+                "menu_bar_icon_providers": .string(settings.menuBarIconProviders.sorted().joined(separator: ",")),
+                "quota_display_mode": .string(settings.quotaDisplayMode.rawValue),
+                "show_dock_icon": .bool(settings.showDockIconForWindows),
+                "poll_interval_seconds": .int(settings.pollIntervalSeconds)
+            ])
+    }
+
     private func writeSnapshot() {
         let visibility = statusItemController.currentVisibility()
+        let settings = SettingsStore.shared
         let report = LocalQAReport(
             generatedAt: ISO8601.fractional.string(from: Date()),
             pid: Int(ProcessInfo.processInfo.processIdentifier),
@@ -75,6 +106,14 @@ final class LocalQAController {
             developerLogPath: DeveloperLog.logFileURL.path,
             statusItemVisibility: String(describing: visibility),
             lastError: environment.lastError,
+            settings: LocalQASettingsReport(
+                language: LocalizationStore.shared.currentLanguage.rawValue,
+                enabledProviders: settings.enabledProviders.sorted(),
+                menuBarIconProviders: settings.menuBarIconProviders.sorted(),
+                quotaDisplayMode: settings.quotaDisplayMode.rawValue,
+                showDockIconForWindows: settings.showDockIconForWindows,
+                developerModeEnabled: settings.developerModeEnabled,
+                pollIntervalSeconds: settings.pollIntervalSeconds),
             windows: NSApp.windows.map {
                 LocalQAWindowReport(
                     title: $0.title,

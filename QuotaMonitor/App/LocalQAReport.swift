@@ -16,6 +16,16 @@ struct LocalQAMenuBarReport: Codable, Equatable {
     let claudeTokens: Int64
 }
 
+struct LocalQASettingsReport: Codable, Equatable {
+    let language: String
+    let enabledProviders: [String]
+    let menuBarIconProviders: [String]
+    let quotaDisplayMode: String
+    let showDockIconForWindows: Bool
+    let developerModeEnabled: Bool
+    let pollIntervalSeconds: Int
+}
+
 struct LocalQAReport: Codable, Equatable {
     let generatedAt: String
     let pid: Int
@@ -25,6 +35,7 @@ struct LocalQAReport: Codable, Equatable {
     let developerLogPath: String
     let statusItemVisibility: String
     let lastError: String?
+    let settings: LocalQASettingsReport
     let windows: [LocalQAWindowReport]
     let menuBar: LocalQAMenuBarReport?
 
@@ -38,7 +49,7 @@ struct LocalQAReport: Codable, Equatable {
             isDirectory: false)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(self).write(to: url, options: [.atomic])
+        try encoder.encode(self).write(to: url)
         return url
     }
 }

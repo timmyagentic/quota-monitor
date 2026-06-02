@@ -49,11 +49,17 @@ The Codex desktop Run action is wired to `./script/build_and_run.sh` through
 ## What `qa/run-local.sh` Verifies
 
 The harness creates a temporary profile and writes `qa-config.json` into the
-artifact directory. `script/build_and_run.sh --qa` launches the app with:
+artifact directory. `script/build_and_run.sh --qa` validates that config file,
+base64-encodes it, and launches the app with:
 
 ```sh
-open .build/QuotaMonitor.app --args --quotamonitor-qa-config <artifact-dir>/qa-config.json
+open .build/QuotaMonitor.app --args --quotamonitor-qa-config-base64 <payload>
 ```
+
+The app still accepts the older
+`--quotamonitor-qa-config <artifact-dir>/qa-config.json` form for focused
+debugging, but the normal end-to-end script uses the inline config payload so
+startup does not depend on app-side file reads from the artifact volume.
 
 The config includes:
 
@@ -74,11 +80,16 @@ LaunchServices environment propagation is not reliable for GUI app launches.
 The default QA steps are:
 
 ```text
-open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,wait,snapshot
+open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,exercise-settings,wait,snapshot
 ```
 
 In QA mode, `refresh-all` is local-only: it runs the importer and UI refreshes
 without contacting the live Codex app-server or Claude OAuth endpoint.
+`exercise-settings` then changes settings through the real `SettingsStore`,
+applies the environment side effects, and verifies those changes through the
+artifact contract. The expected QA mutation is: English UI, Developer Mode on,
+Codex disabled, Claude still enabled, quota display set to remaining, Dock icon
+off, and a 15-minute polling interval.
 
 ## Artifacts
 
@@ -86,13 +97,25 @@ Each `qa/run-local.sh` run prints an artifact directory under
 `.build/qa-artifacts/<timestamp>/`. Important files:
 
 - `app-state.json` — app-reported PID, bundle id, database/log paths, visible
-  windows, status-item visibility, and menu-bar totals.
+  windows, status-item visibility, settings snapshot, and menu-bar totals.
 - `db-counts.txt` — provider/session/event/rate-limit counts read from the
   isolated SQLite database.
 - `qa-config.json` — launch config passed to the app.
 - `quotamonitor-dev.log` — Developer Mode JSONL log for the QA run.
 - `screen.png` — full-screen screenshot when macOS allows `screencapture`.
 - `ax-tree.txt` — Accessibility tree dump for open QuotaMonitor windows.
+
+Before `qa/run-local.sh` succeeds, it asserts the artifact contract:
+
+- `app-state.json` is valid JSON and contains Dashboard and Settings windows.
+- `app-state.json` includes the `exercise-settings` step and the expected
+  settings snapshot.
+- `db-counts.txt` includes Codex, Claude, and both primary/secondary JSONL
+  rate-limit samples.
+- `quotamonitor-dev.log` includes `qa.settings.exercise` and
+  `qa.snapshot.write`.
+- `screen.png` and `ax-tree.txt` are nonempty when available; if macOS denies
+  Screen Recording or Accessibility, the harness writes a warning file instead.
 
 If the AX dump is required, run:
 

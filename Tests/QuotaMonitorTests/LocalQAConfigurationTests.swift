@@ -23,13 +23,13 @@ struct LocalQAConfigurationTests {
         let config = try #require(LocalQAConfiguration(environment: [
             "QUOTAMONITOR_QA_MODE": "1",
             "QUOTAMONITOR_QA_OUTPUT_DIR": "/tmp/qm-qa",
-            "QUOTAMONITOR_QA_STEPS": "open-dashboard,open-settings,snapshot,quit"
+            "QUOTAMONITOR_QA_STEPS": "open-dashboard,exercise-settings,snapshot,quit"
         ]))
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa")
         #expect(config.steps == [
             .openDashboard,
-            .openSettings,
+            .exerciseSettings,
             .snapshot,
             .quit
         ])
@@ -47,6 +47,8 @@ struct LocalQAConfigurationTests {
             .openMenuBarHelp,
             .showPopover,
             .refreshAll,
+            .exerciseSettings,
+            .wait,
             .snapshot
         ])
         #expect(config.outputDirectory.path.hasSuffix("/QuotaMonitorQA"))
@@ -61,7 +63,7 @@ struct LocalQAConfigurationTests {
           "defaultsSuite": "dev.tjzhou.QuotaMonitor.QATest",
           "codexHome": "/tmp/qm-qa-home/.codex",
           "outputDirectory": "/tmp/qm-qa-artifacts",
-          "steps": ["open-dashboard", "snapshot", "quit"]
+          "steps": ["open-dashboard", "exercise-settings", "snapshot", "quit"]
         }
         """)
 
@@ -70,7 +72,29 @@ struct LocalQAConfigurationTests {
             arguments: ["QuotaMonitor", "--quotamonitor-qa-config", configFile.path]))
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa-artifacts")
-        #expect(config.steps == [.openDashboard, .snapshot, .quit])
+        #expect(config.steps == [.openDashboard, .exerciseSettings, .snapshot, .quit])
+    }
+
+    @Test("Parses inline base64 QA launch config without file IO")
+    func parsesInlineBase64LaunchConfigArgument() throws {
+        let payload = """
+        {
+          "mode": true,
+          "home": "/tmp/qm-qa-inline-home",
+          "defaultsSuite": "dev.tjzhou.QuotaMonitor.QAInline",
+          "codexHome": "/tmp/qm-qa-inline-home/.codex",
+          "outputDirectory": "/tmp/qm-qa-inline-artifacts",
+          "steps": ["exercise-settings", "snapshot"]
+        }
+        """
+        let encoded = Data(payload.utf8).base64EncodedString()
+
+        let config = try #require(LocalQAConfiguration(
+            environment: [:],
+            arguments: ["QuotaMonitor", "--quotamonitor-qa-config-base64", encoded]))
+
+        #expect(config.outputDirectory.path == "/tmp/qm-qa-inline-artifacts")
+        #expect(config.steps == [.exerciseSettings, .snapshot])
     }
 
     @Test("Rejects unknown QA steps instead of silently skipping them")
