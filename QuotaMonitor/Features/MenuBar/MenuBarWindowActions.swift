@@ -6,34 +6,32 @@ import Foundation
 /// SwiftUI `Scene`, so it cannot rely on `@Environment(\.openWindow)` having
 /// a scene context. These actions route through `WindowManager` by default.
 struct MenuBarWindowActions {
-    var activateForWindow: @MainActor () -> Void
     var requestWindow: @MainActor (String) -> Void
     var refreshDashboard: @MainActor () -> Void
 
     @MainActor
     static func live(env: AppEnvironment) -> MenuBarWindowActions {
         MenuBarWindowActions(
-            activateForWindow: { env.activateForWindow() },
             requestWindow: { WindowManager.shared.show($0) },
             refreshDashboard: { env.refreshDashboard() })
     }
 
+    // `requestWindow` is `WindowManager.show`, which already activates the app
+    // and brings the window forward over the popover — so there's no separate
+    // activate step here (mirrors the Dashboard/Settings/Help view callers).
     @MainActor
     func openDashboard() {
-        activateForWindow()
         requestWindow("dashboard")
         refreshDashboard()
     }
 
     @MainActor
     func openSettings() {
-        activateForWindow()
         requestWindow("settings")
     }
 
     @MainActor
     func openOnboarding() {
-        activateForWindow()
         requestWindow("onboarding")
     }
 }

@@ -127,12 +127,10 @@ struct MenuBarContentView: View {
             .controlSize(.large)
             .keyboardShortcut("d")
 
-            // Settings is a regular `Window(id: "settings")` scene
-            // (see QuotaMonitorApp.swift for why) so we open it by id
-            // rather than via SwiftUI's `openSettings` action — that
-            // action only targets a `Settings { }` scene, which we
-            // explicitly don't have. activateForWindow() runs first so
-            // the Settings window comes forward over the menu popover.
+            // Settings is an AppKit `NSWindow` owned by `WindowManager`
+            // (not a SwiftUI `Settings { }` scene), so we open it by id via
+            // `WindowManager.show`, which also brings it forward over the
+            // menu popover.
             Button {
                 windowActions(env).openSettings()
             } label: {

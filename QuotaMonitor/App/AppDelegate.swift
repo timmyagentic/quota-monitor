@@ -98,10 +98,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Dock-icon click (the Dock icon is our clipped-menu-bar fallback).
-    /// AppKit's default reopen-with-no-windows opens the *first* `Window`
-    /// scene — which is onboarding — so a fully-onboarded user clicking the
-    /// Dock icon would wrongly get the wizard. Open the right window
-    /// ourselves and suppress the default.
+    /// AppKit's default reopen-with-no-windows would open the *first* SwiftUI
+    /// scene — now the inert hidden `__inert__` placeholder, which is useless
+    /// (and a fully-onboarded user must land on the dashboard, not the wizard).
+    /// Open the right window ourselves via `WindowManager` and suppress the
+    /// default.
     func applicationShouldHandleReopen(_ sender: NSApplication,
                                        hasVisibleWindows: Bool) -> Bool {
         if hasVisibleWindows { return true }   // bring the existing window forward
