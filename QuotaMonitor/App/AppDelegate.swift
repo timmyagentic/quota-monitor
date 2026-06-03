@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// UserDefaults via Sparkle, so it must run *after* the migration — which is
     /// guaranteed by the time `applicationDidFinishLaunching` fires.
     private var updater: UpdaterController!
+    private var localQAController: LocalQAController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
@@ -67,6 +68,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             // Pure menu-bar agent: windows open on demand only.
             scheduleDiscoverabilityCheck()
+        }
+
+        if let qa = LocalQAConfiguration() {
+            let qaController = LocalQAController(
+                configuration: qa,
+                environment: env,
+                statusItemController: controller)
+            localQAController = qaController
+            qaController.start()
         }
     }
 

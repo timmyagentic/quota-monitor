@@ -173,6 +173,15 @@ final class AppEnvironment {
                 "enabled_providers": .string(snap.enabledProviders.sorted().joined(separator: ",")),
                 "onboarding_done": .bool(snap.hasCompletedProviderOnboarding)
             ])
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "poller.background.start.skip",
+                category: "poller",
+                trigger: "launch",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
         guard snap.hasCompletedProviderOnboarding else {
             DeveloperLog.eventRecord(
                 "poller.background.start.skip",
@@ -210,6 +219,15 @@ final class AppEnvironment {
     /// Boot just the Codex rate-limit poller. Safe to call repeatedly —
     /// no-op if it's already running.
     private func startCodexPoller(database db: DatabaseManager) {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "poller.codex.start.skip",
+                category: "poller",
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
         guard poller == nil else {
             DeveloperLog.eventRecord(
                 "poller.codex.start.skip",
@@ -259,6 +277,15 @@ final class AppEnvironment {
     /// too; the poller's own 60 s spam gap + 429 cooldown keep that
     /// safe.
     private func startClaudePoller(database db: DatabaseManager) {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "poller.claude.start.skip",
+                category: "poller",
+                provider: "claude",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
         guard claudeUsagePoller == nil else {
             DeveloperLog.eventRecord(
                 "poller.claude.start.skip",
@@ -339,6 +366,19 @@ final class AppEnvironment {
             category: "settings",
             trigger: "settings",
             fields: ["enabled_providers": .string(enabled.sorted().joined(separator: ","))])
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            stopCodexPoller()
+            stopClaudePoller()
+            DeveloperLog.eventRecord(
+                "settings.enabled_providers.apply.skip_live_sources",
+                category: "settings",
+                trigger: "settings",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            refreshMenuBar(trigger: "settings")
+            refreshDashboard(trigger: "settings")
+            return
+        }
         do {
             let (db, _) = try ensureServices()
             if enabled.contains("codex") {
@@ -410,6 +450,18 @@ final class AppEnvironment {
     /// Keeping this in one place guarantees both paths stay in sync (e.g.
     /// the scan-progress bar appears for either when a scan actually runs).
     func refreshAll(throttle: Bool, trigger: String) {
+        if LocalQAEnvironment.isActive() {
+            DeveloperLog.eventRecord(
+                "refresh.all.qa_local_only",
+                category: "app",
+                trigger: trigger,
+                fields: ["throttle": .bool(throttle)])
+            runScan(
+                minInterval: throttle ? 20 : nil,
+                trigger: trigger)
+            return
+        }
+
         let op = DeveloperLog.startOperation(
             "refresh.all",
             category: "app",
@@ -436,6 +488,17 @@ final class AppEnvironment {
         trigger: String = "manual",
         parentOperation: DeveloperLogOperation? = nil
     ) {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "ratelimits.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
         guard !isRefreshingRateLimits else {
             DeveloperLog.eventRecord(
                 "ratelimits.refresh.skip",
@@ -548,6 +611,17 @@ final class AppEnvironment {
         trigger: String = "manual",
         parentOperation: DeveloperLogOperation? = nil
     ) {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "claude_usage.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "claude",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
         let snap = SettingsStore.snapshot()
         // Hard gate: see `refreshRateLimits` — Keychain reads in
         // particular must not fire before the onboarding window.

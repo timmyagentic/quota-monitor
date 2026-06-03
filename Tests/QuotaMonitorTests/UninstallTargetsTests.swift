@@ -83,6 +83,22 @@ struct UninstallTargetsTests {
                 ["dev.tjzhou.QuotaMonitor", "dev.tjzhou.CodexMonitor"])
     }
 
+    @Test("Local QA disables self uninstall")
+    func localQADisablesSelfUninstall() {
+        let arguments = [
+            "QuotaMonitor",
+            "--quotamonitor-qa-config-base64",
+            Data(#"{"mode":true,"home":"/tmp/qm-qa-home"}"#.utf8).base64EncodedString()
+        ]
+
+        #expect(AppEnvironment.allowsUninstall(
+            environment: ["HOME": "/Users/example"],
+            arguments: arguments) == false)
+        #expect(AppEnvironment.allowsUninstall(
+            environment: ["HOME": "/Users/example"],
+            arguments: ["QuotaMonitor"]) == true)
+    }
+
     @Test("Trusted app bundles include running copy plus installed current and legacy copies")
     func trustedAppBundlesIncludeKnownInstallLocations() throws {
         let root = try makeTempRoot()

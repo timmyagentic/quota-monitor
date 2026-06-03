@@ -120,6 +120,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// `retryAfterRefresh = true`; if that 401s again we surface
     /// `.unauthorized` so the user sees a real failure.
     private func fetchInternal(retryAfterRefresh: Bool) async throws -> ClaudeUsageSnapshot {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            throw FetchError.noCredentials
+        }
         guard let token = try await loadAccessToken() else {
             throw FetchError.noCredentials
         }
@@ -357,6 +360,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// require Keychain UI so we don't keep retrying a path that cannot
     /// complete from a background poller.
     private func readKeychainCredsIfAllowed() async -> StoredCredentials? {
+        guard LocalQAEnvironment.allowsExternalDataSources() else { return nil }
         let snap = SettingsStore.snapshot()
         guard snap.keychainPolicy != .never, !keychainBlocked else { return nil }
         switch Self.readKeychainTokenOutcomeViaSecurityTool(timeout: 2) {
@@ -504,8 +508,14 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     }
 
     /// Resolve `~/.claude/.credentials.json`.
-    static func credentialsFilePath() -> String {
-        let home = (NSHomeDirectory() as NSString).appendingPathComponent(".claude")
+    static func credentialsFilePath(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> String {
+        let homeDirectory = LocalQAEnvironment.homeDirectory(
+            environment: environment,
+            arguments: arguments)
+        let home = (homeDirectory.path as NSString).appendingPathComponent(".claude")
         return (home as NSString).appendingPathComponent(".credentials.json")
     }
 
@@ -522,6 +532,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     static func readKeychainTokenOutcomeViaSecurityTool(
         timeout: TimeInterval
     ) -> KeychainOutcome {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            return .notFound
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = [
@@ -593,6 +606,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// freshest persistent ref. CodexBar source:
     /// https://github.com/steipete/CodexBar/blob/main/Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthCredentials.swift#L1485-L1517
     static func readKeychainTokenOutcome() -> KeychainOutcome {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            return .notFound
+        }
         let listQuery = keychainListQuery()
         var listResult: CFTypeRef?
         let listStatus = SecItemCopyMatching(listQuery as CFDictionary, &listResult)

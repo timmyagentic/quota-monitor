@@ -80,9 +80,11 @@ final class LocalizationStore {
     var needsOnboarding: Bool { language == nil }
 
     private let userDefaultsKey = "app.language"
+    private let defaults: UserDefaults
 
     private init() {
-        if let raw = UserDefaults.standard.string(forKey: userDefaultsKey),
+        self.defaults = LocalQAEnvironment.userDefaults() ?? .standard
+        if let raw = defaults.string(forKey: userDefaultsKey),
            let lang = Language(rawValue: raw) {
             self.language = lang
             Self.activeLanguageBytes.withLock { $0 = lang }
@@ -98,7 +100,7 @@ final class LocalizationStore {
         Self.activeLanguageBytes.withLock { $0 = language }
         self.language = language
         self.tickForceRedraw &+= 1
-        UserDefaults.standard.set(language.rawValue, forKey: userDefaultsKey)
+        defaults.set(language.rawValue, forKey: userDefaultsKey)
     }
 
     /// Test/preview hook. To re-trigger first-launch onboarding in
@@ -108,7 +110,7 @@ final class LocalizationStore {
         Self.activeLanguageBytes.withLock { $0 = .english }
         self.language = nil
         self.tickForceRedraw &+= 1
-        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        defaults.removeObject(forKey: userDefaultsKey)
     }
 
     // MARK: - nonisolated read path

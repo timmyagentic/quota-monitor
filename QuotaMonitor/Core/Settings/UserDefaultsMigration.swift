@@ -32,7 +32,8 @@ enum UserDefaultsMigration {
     private static let guardKey = "migration.fromCodexMonitor.done"
 
     static func runIfNeeded() {
-        let defaults = UserDefaults.standard
+        if LocalQAEnvironment.isActive() { return }
+        let defaults = LocalQAEnvironment.userDefaults() ?? .standard
         if defaults.bool(forKey: guardKey) { return }
 
         let legacy = legacyBundleID as CFString

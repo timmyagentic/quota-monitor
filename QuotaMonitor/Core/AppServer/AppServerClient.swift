@@ -21,6 +21,7 @@ actor AppServerClient {
         case malformedResponse(String)
         case rpcError(JSONRPCError)
         case decodingFailed(String)
+        case disabledInLocalQA
 
         var description: String {
             switch self {
@@ -31,6 +32,7 @@ actor AppServerClient {
             case .malformedResponse(let s): return "malformed app-server response: \(s)"
             case .rpcError(let e): return "rpc error \(e.code): \(e.message)"
             case .decodingFailed(let s): return "failed to decode response: \(s)"
+            case .disabledInLocalQA: return "codex app-server is disabled in local QA"
             }
         }
     }
@@ -158,8 +160,25 @@ actor AppServerClient {
     /// even when launchd handed us an empty PATH. We also splice in the
     /// user's login-shell PATH so version-managed runtimes (nvm/asdf/…)
     /// that live outside our hardcoded `extras` list are still reachable.
-    private static func augmentedEnvironment() -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
+    static func augmentedEnvironment(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        loginShellPath: String? = loginShellPATH
+    ) -> [String: String] {
+        var env = environment
+        if LocalQAEnvironment.isActive(environment: environment, arguments: arguments) {
+            let qaHome = LocalQAEnvironment.homeDirectory(
+                environment: environment,
+                arguments: arguments)
+            env["HOME"] = qaHome.path
+            env["CODEX_HOME"] = (
+                LocalQAEnvironment.codexHomeDirectory(
+                    environment: environment,
+                    arguments: arguments)
+                ?? qaHome.appendingPathComponent(".codex", isDirectory: true)
+            ).path
+        }
+
         let home = env["HOME"] ?? NSHomeDirectory()
         let extras = [
             "/opt/homebrew/bin",
@@ -169,7 +188,7 @@ actor AppServerClient {
             "\(home)/.cargo/bin",
             "\(home)/.bun/bin",
         ]
-        let loginParts = (loginShellPATH ?? "").split(separator: ":").map(String.init)
+        let loginParts = (loginShellPath ?? "").split(separator: ":").map(String.init)
         let existing = env["PATH"] ?? ""
         let existingParts = existing.split(separator: ":").map(String.init)
         let merged = (extras + loginParts + existingParts).reduce(into: [String]()) { acc, dir in
@@ -203,6 +222,9 @@ actor AppServerClient {
     /// Convenience: read rate limits, transparently recovering from the
     /// known `plan_type` decode bug by salvaging the embedded body.
     func readRateLimits() async throws -> RateLimitsPayload {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            throw ClientError.disabledInLocalQA
+        }
         let response = try await call(method: "account/rateLimits/read", params: EmptyParams())
 
         if let result = response.result {

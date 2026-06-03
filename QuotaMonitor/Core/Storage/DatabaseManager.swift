@@ -44,9 +44,7 @@ final class DatabaseManager: Sendable {
     /// directory. The migration is idempotent: it no-ops if the new file
     /// already exists or if there's nothing legacy to move.
     static func defaultURL() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let appSupport = LocalQAEnvironment.applicationSupportDirectory()
         migrateLegacyDatabaseIfNeeded(appSupportRoot: appSupport)
         return appSupport
             .appendingPathComponent("QuotaMonitor", isDirectory: true)

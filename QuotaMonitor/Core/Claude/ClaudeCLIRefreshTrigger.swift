@@ -64,6 +64,15 @@ actor ClaudeCLIRefreshTrigger {
     /// CLI-not-found, timeout, or the CLI completing without touching
     /// the Keychain (which means it had nothing to refresh).
     func triggerRefreshIfAllowed() async -> Bool {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "claude_cli.refresh.skip",
+                category: "poller",
+                provider: "claude",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return false
+        }
         if let task = inFlight {
             return await task.value
         }
@@ -160,6 +169,9 @@ actor ClaudeCLIRefreshTrigger {
     /// doesn't exist or any error occurs — both treated as "no change
     /// detectable" by the caller's loop.
     static func keychainMdat() -> Date? {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            return nil
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "Claude Code-credentials",
@@ -183,6 +195,9 @@ actor ClaudeCLIRefreshTrigger {
     /// budget. The caller separately verifies whether anything actually
     /// changed in the Keychain.
     static func runClaudeCLI() async -> Bool {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            return false
+        }
         // Resolve `claude` from the PATH augmented in the same way
         // `AppServerClient` does — GUI launches inherit launchd's empty
         // PATH otherwise. Inlined rather than importing because the

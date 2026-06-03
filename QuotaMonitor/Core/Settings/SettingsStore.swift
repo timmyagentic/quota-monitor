@@ -22,7 +22,8 @@ extension Notification.Name {
 @Observable
 @MainActor
 final class SettingsStore {
-    static let shared = SettingsStore()
+    static let shared = SettingsStore(
+        defaults: LocalQAEnvironment.userDefaults() ?? .standard)
 
     private let defaults: UserDefaults
 
@@ -296,7 +297,8 @@ final class SettingsStore {
     /// preference straight from UserDefaults and combines it with
     /// `LocalizationStore.activeLanguage` (also nonisolated).
     nonisolated static var tokenFormatLocaleNonisolated: Locale {
-        let stored = UserDefaults.standard.string(forKey: Keys.tokenUnitLanguage)
+        let stored = (LocalQAEnvironment.userDefaults() ?? .standard)
+            .string(forKey: Keys.tokenUnitLanguage)
             .flatMap(TokenUnitLanguage.init(rawValue:)) ?? .followLanguage
         switch stored {
         case .english: return Locale(identifier: "en_US")
@@ -557,8 +559,13 @@ final class SettingsStore {
     nonisolated static let knownProviders: Set<String> = ["codex", "claude"]
 
     /// Read-only snapshot for non-MainActor callers (poller actor, etc.).
-    nonisolated static func snapshot() -> Snapshot {
-        snapshot(defaults: .standard)
+    nonisolated static func snapshot(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Snapshot {
+        snapshot(defaults: LocalQAEnvironment.userDefaults(
+            environment: environment,
+            arguments: arguments) ?? .standard)
     }
 
     nonisolated static func snapshot(defaults d: UserDefaults) -> Snapshot {
@@ -585,7 +592,8 @@ final class SettingsStore {
     }
 
     nonisolated static var developerModeEnabledNonisolated: Bool {
-        UserDefaults.standard.bool(forKey: Keys.developerModeEnabled)
+        (LocalQAEnvironment.userDefaults() ?? .standard)
+            .bool(forKey: Keys.developerModeEnabled)
     }
 
     struct Snapshot: Sendable {

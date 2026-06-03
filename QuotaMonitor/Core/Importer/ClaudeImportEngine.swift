@@ -55,7 +55,7 @@ actor ClaudeImportEngine {
     /// (`~/.config/claude/projects`). Non-existent directories are
     /// silently ignored — `scan()` just returns an empty list.
     static func defaultRoots() -> [URL] {
-        let home = FileManager.default.homeDirectoryForCurrentUser
+        let home = LocalQAEnvironment.homeDirectory()
         return [
             home.appendingPathComponent(".claude/projects", isDirectory: true),
             home.appendingPathComponent(".config/claude/projects", isDirectory: true),

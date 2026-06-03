@@ -6,9 +6,28 @@ import GRDB
 
 extension AppEnvironment {
 
+    nonisolated static func allowsPricingRefresh(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
+        LocalQAEnvironment.allowsExternalDataSources(
+            environment: environment,
+            arguments: arguments)
+    }
+
     /// Fire a LiteLLM refresh if we've never fetched, or the latest fetched_at
     /// is older than 24h. Errors are swallowed (set on `lastError`).
     func refreshPricingIfStale(maxAge: TimeInterval = 24 * 3600) async {
+        guard Self.allowsPricingRefresh() else {
+            DeveloperLog.eventRecord(
+                "pricing.refresh_if_stale.skip",
+                category: "pricing",
+                trigger: "background",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
+
         let op = DeveloperLog.startOperation(
             "pricing.refresh_if_stale",
             category: "pricing",
@@ -52,6 +71,15 @@ extension AppEnvironment {
     /// network/decode failure so the caller can surface it.
     @discardableResult
     func refreshPricingFromLiteLLM() async throws -> Int {
+        guard Self.allowsPricingRefresh() else {
+            DeveloperLog.eventRecord(
+                "pricing.litellm_refresh.skip",
+                category: "pricing",
+                trigger: "settings",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return 0
+        }
         guard !isRefreshingPricing else {
             DeveloperLog.eventRecord(
                 "pricing.litellm_refresh.skip",

@@ -164,9 +164,7 @@ actor DeveloperFileLogger {
     }
 
     nonisolated static func defaultLogDirectory() -> URL {
-        let appSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let appSupport = LocalQAEnvironment.applicationSupportDirectory()
         return appSupport
             .appendingPathComponent("QuotaMonitor", isDirectory: true)
             .appendingPathComponent("Logs", isDirectory: true)

@@ -35,6 +35,15 @@ extension AppEnvironment {
     nonisolated static let uninstallBundleIDs: [String] =
         ["dev.tjzhou.QuotaMonitor", "dev.tjzhou.CodexMonitor"]
 
+    nonisolated static func allowsUninstall(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
+        LocalQAEnvironment.allowsExternalDataSources(
+            environment: environment,
+            arguments: arguments)
+    }
+
     /// Pure helper: enumerate every Library path we should wipe given
     /// a `home` (the user's home directory) and the bundle-id list.
     /// Kept pure (no FileManager call, no I/O) so a test can assert
@@ -145,6 +154,17 @@ extension AppEnvironment {
     /// last-close. Adding plumbing to drain them cleanly would just
     /// be ceremony.
     func performUninstall() {
+        guard Self.allowsUninstall() else {
+            DeveloperLog.eventRecord(
+                "uninstall.perform.skip",
+                level: .warning,
+                category: "uninstall",
+                trigger: "user",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
+
         let op = DeveloperLog.startOperation(
             "uninstall.perform",
             category: "uninstall",

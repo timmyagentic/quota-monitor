@@ -12,6 +12,11 @@ struct QuotaMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        // QA isolation: apply process-environment overrides (e.g. an isolated
+        // `QUOTAMONITOR_QA_HOME` / `CODEX_HOME`) via `setenv` BEFORE anything
+        // reads those paths or the persisted defaults below. No-op outside a
+        // local-QA launch.
+        LocalQAEnvironment.applyProcessEnvironmentOverridesIfNeeded()
         // Migrate UserDefaults from the legacy `dev.tjzhou.CodexMonitor` bundle
         // id BEFORE anything reads the singletons' persisted values. This init
         // body runs before `applicationDidFinishLaunching` and before the
