@@ -29,10 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil)
 
         // Launch fan-out previously carried by the MenuBarExtra `.task`.
+        env.startBackgroundPolling()
         env.refreshAll(throttle: false, trigger: "launch")
         env.refreshDashboard()
         env.refreshMenuBar(trigger: "launch")
-        env.startBackgroundPolling()
 
         // Onboarding window on launch (previously MenuBarLabelView.task).
         let onboardingNeeded = loc.needsOnboarding || settings.needsProviderOnboarding
