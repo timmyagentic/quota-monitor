@@ -31,8 +31,10 @@ window copy.
 - Release and PR checks are stricter while the default local QA path stays static
 - The test circuit now clearly separates static checks, Computer Use setup, visible UI walkthroughs, and artifact replay
 - Interactive QA cleanup no longer risks closing the user's installed QuotaMonitor app
+- Codex live quota refreshes avoid redundant automatic polls while manual refresh stays immediate
 
 ### Changed
+- **Codex usage refresh throttling.** Automatic Codex live quota refreshes now skip redundant requests within a short window, while manual refresh still bypasses that short-window throttle.
 - **Static QA default.** `qa/run-all.sh` now delegates to `qa/run-static.sh` and no longer launches a new QuotaMonitor instance.
 - **Computer Use owns visible app validation.** The standard visible QA path is `qa/prepare-computer-use-fixture.sh` or `qa/prepare-computer-use-real-data.sh` followed by Computer Use.
 - **Testing circuit documentation.** `docs/local-qa.md`, `docs/computer-qa.md`, and the project QA skill now describe the same responsibilities: static gate, Computer Use setup, Computer Use walkthrough, and artifact replay.
@@ -43,6 +45,8 @@ window copy.
 - **PR changelog enforcement.** Pull-request CI now requires both English and Simplified-Chinese changelog updates for non-appcast PRs, then validates the section that will appear in the update window.
 
 ### Fixed
+- **Codex quota source isolation.** Codex quota cards and history now ignore Claude OAuth samples that share the same storage table, preventing provider views from crossing over.
+- **Codex refresh diagnostics.** Failed Codex rate-limit refresh operations now close their developer-log entry, and active 429 cooldowns report the cooldown reason before normal automatic-poll throttling.
 - **Installed app restoration after QA cleanup.** QA cleanup now records whether `/Applications/QuotaMonitor.app` was already running, closes only QA-launched processes, and restores the installed app when needed.
 
 ### Removed

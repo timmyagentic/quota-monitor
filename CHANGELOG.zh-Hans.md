@@ -28,8 +28,10 @@ appcast 中按系统语言切换的双语更新说明。
 - 发布和 PR 检查更严格，同时默认本地 QA 路径保持静态
 - 测试链路现在明确拆分静态检查、Computer Use 准备、可见 UI 走查和 artifact 复核
 - 交互式 QA 清理不再误关用户已安装的 QuotaMonitor
+- Codex 实时配额刷新会避开重复的自动轮询，同时手动刷新仍保持立即执行
 
 ### 变更
+- **Codex usage 刷新节流。** 自动 Codex 实时配额刷新现在会在短时间窗口内跳过重复请求，而手动刷新仍会绕过这个短窗口节流。
 - **静态 QA 默认入口。** `qa/run-all.sh` 现在转发到 `qa/run-static.sh`，不再启动新的 QuotaMonitor 实例。
 - **Computer Use 负责可见 app 验证。** 标准可见 QA 路径是 `qa/prepare-computer-use-fixture.sh` 或 `qa/prepare-computer-use-real-data.sh`，然后使用 Computer Use。
 - **测试链路文档。** `docs/local-qa.md`、`docs/computer-qa.md` 和项目 QA skill 现在用同一套职责描述：静态门禁、Computer Use 准备、Computer Use 走查和 artifact 复核。
@@ -40,6 +42,8 @@ appcast 中按系统语言切换的双语更新说明。
 - **PR 更新日志强制检查。** 非 appcast PR 的 CI 现在要求同时更新英文和简体中文 changelog，并校验会展示在更新窗口中的小节。
 
 ### 修复
+- **Codex 配额来源隔离。** Codex 配额卡片和历史曲线现在会忽略同一存储表中的 Claude OAuth 样本，避免不同 provider 的视图互相串数据。
+- **Codex 刷新诊断。** 失败的 Codex rate-limit 刷新现在会正确关闭 developer-log 操作记录，活跃的 429 冷却也会优先显示冷却原因，而不是普通自动轮询节流原因。
 - **QA 清理后恢复已安装 app。** QA 清理现在会记录 `/Applications/QuotaMonitor.app` 运行前状态，只关闭 QA 启动的进程，并在需要时恢复已安装 app。
 
 ### 移除
