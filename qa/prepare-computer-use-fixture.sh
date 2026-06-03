@@ -12,7 +12,7 @@ qm_require_command plutil
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
 WORK_ROOT="${QM_QA_WORK_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/quotamonitor-computer-qa.XXXXXX")}"
 QA_HOME="${WORK_ROOT}/home"
-ARTIFACTS="${QM_QA_ARTIFACTS:-${ROOT_DIR}/.build/qa-artifacts/${RUN_ID}-interactive}"
+ARTIFACTS="${QM_QA_ARTIFACTS:-${ROOT_DIR}/.build/qa-artifacts/${RUN_ID}-computer-use-fixture}"
 APP_ARTIFACTS="$(qm_app_artifacts_dir "$QA_HOME")"
 DEFAULTS_SUITE="${QM_QA_DEFAULTS_SUITE:-dev.tjzhou.QuotaMonitor.ComputerQA.${RUN_ID}.$$}"
 STATE_JSON="${APP_ARTIFACTS}/app-state.json"
@@ -20,7 +20,7 @@ DB_PATH="${QA_HOME}/Library/Application Support/QuotaMonitor/quotamonitor.sqlite
 DEV_LOG="${QA_HOME}/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log"
 QA_CONFIG="${ARTIFACTS}/qa-config.json"
 BOUNDARY_MANIFEST="${ARTIFACTS}/qa-boundary.json"
-QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_interactive_steps)}"
+QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_computer_use_steps)}"
 BRIEF="${ARTIFACTS}/computer-use-qa.md"
 CLEANUP_SCRIPT="${ARTIFACTS}/cleanup-computer-use.sh"
 INSTALLED_APP_BUNDLE="$(qm_installed_app_bundle)"
@@ -127,7 +127,7 @@ qm_assert_artifact_contract "$ARTIFACTS"
 qm_write_computer_qa_brief "$BRIEF" "$ARTIFACTS" "$QA_HOME" "$DEFAULTS_SUITE" "$ROOT_DIR"
 
 cat <<EOF
-Interactive QA app is running.
+Computer Use fixture QA app is running.
 QA artifacts: $ARTIFACTS
 Computer Use brief: $BRIEF
 Cleanup command: $CLEANUP_SCRIPT

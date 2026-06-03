@@ -78,7 +78,7 @@ The Codex desktop Run action is wired to `./script/build_and_run.sh` through
 - `git diff --check`
 - `swift test --disable-keychain`
 
-## What the Interactive Harness Sets Up
+## What Computer Use Setup Prepares
 
 The harness creates a temporary profile and writes `qa-config.json` into the
 artifact directory. `script/build_and_run.sh --qa` validates that config file,
@@ -110,8 +110,8 @@ keeps GUI app file IO away from repo/external-volume paths that can trigger
 macOS file-access prompts or stalls. It uses `defaultsSuite` for settings and
 localization, so the harness does not read or overwrite the normal
 `dev.tjzhou.QuotaMonitor` preferences domain. The older `QUOTAMONITOR_QA_*`
-environment variables still work for focused unit tests, but the interactive
-launch path uses command-line config because LaunchServices environment
+environment variables still work for focused unit tests, but the Computer Use
+setup path uses command-line config because LaunchServices environment
 propagation is not reliable for GUI app launches.
 
 The default QA steps are:
@@ -131,8 +131,8 @@ off, and a 15-minute polling interval.
 ## Artifacts
 
 Each Computer Use setup prints an artifact directory under
-`.build/qa-artifacts/<timestamp>-interactive/` or
-`.build/qa-artifacts/<timestamp>-real-data-interactive/`. Important files:
+`.build/qa-artifacts/<timestamp>-computer-use-fixture/` or
+`.build/qa-artifacts/<timestamp>-computer-use-real-data/`. Important files:
 
 - `app-state.json` — app-reported PID, bundle id, database/log paths, visible
   windows, status-item visibility, settings snapshot, and menu-bar totals.

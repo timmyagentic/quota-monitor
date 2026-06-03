@@ -60,7 +60,7 @@ qm_default_steps() {
         "open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,exercise-settings,wait,snapshot"
 }
 
-qm_interactive_steps() {
+qm_computer_use_steps() {
     qm_default_steps
 }
 

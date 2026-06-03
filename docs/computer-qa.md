@@ -77,7 +77,7 @@ realistic charts, sessions, history, and model distribution.
 To re-check an artifact directory later:
 
 ```sh
-./qa/check-artifacts.sh .build/qa-artifacts/<timestamp>-interactive
+./qa/check-artifacts.sh .build/qa-artifacts/<timestamp>-computer-use-fixture
 ```
 
 ## What Static Checks Verify

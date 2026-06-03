@@ -146,20 +146,20 @@ test_default_steps_include_settings_exercise() {
         || fail "default QA steps do not exercise settings: $steps"
 }
 
-test_interactive_steps_are_safe_for_computer_use() {
+test_computer_use_steps_keep_app_open() {
     local steps
-    steps="$(qm_interactive_steps)"
+    steps="$(qm_computer_use_steps)"
 
     [[ "$steps" == *"open-dashboard"* ]] \
-        || fail "interactive QA steps do not open Dashboard: $steps"
+        || fail "Computer Use setup steps do not open Dashboard: $steps"
     [[ "$steps" == *"open-settings"* ]] \
-        || fail "interactive QA steps do not open Settings: $steps"
+        || fail "Computer Use setup steps do not open Settings: $steps"
     [[ "$steps" == *"show-popover"* ]] \
-        || fail "interactive QA steps do not show the popover: $steps"
+        || fail "Computer Use setup steps do not show the popover: $steps"
     [[ "$steps" == *"snapshot"* ]] \
-        || fail "interactive QA steps do not write a snapshot: $steps"
+        || fail "Computer Use setup steps do not write a snapshot: $steps"
     [[ "$steps" != *"quit"* ]] \
-        || fail "interactive QA steps must keep the app open: $steps"
+        || fail "Computer Use setup steps must keep the app open: $steps"
 }
 
 test_steps_include_quit_detects_exact_step() {
@@ -212,6 +212,24 @@ test_computer_use_setup_entrypoints_are_role_named() {
             fail "Computer Use setup entrypoint should be role-named, not interactive: $obsolete"
         fi
     done
+}
+
+test_computer_use_setup_language_is_consistent() {
+    if grep -q \
+        -e 'qm_interactive_steps' \
+        -e 'Interactive QA app' \
+        -e 'interactive setup' \
+        -e 'interactive harness' \
+        -e '-interactive' \
+        -- \
+        "$ROOT_DIR/qa/prepare-computer-use-fixture.sh" \
+        "$ROOT_DIR/qa/prepare-computer-use-real-data.sh" \
+        "$ROOT_DIR/qa/lib/common.sh" \
+        "$ROOT_DIR/docs/local-qa.md" \
+        "$ROOT_DIR/docs/computer-qa.md" \
+        "$ROOT_DIR/.codex/skills/quota-monitor-computer-qa/SKILL.md"; then
+        fail "Computer Use setup should not retain old interactive naming"
+    fi
 }
 
 test_standard_test_circuit_is_documented() {
@@ -676,12 +694,13 @@ test_write_boundary_manifest_documents_fixture_policy
 test_assert_boundary_manifest_contract_rejects_wrong_mode
 test_launch_config_base64
 test_default_steps_include_settings_exercise
-test_interactive_steps_are_safe_for_computer_use
+test_computer_use_steps_keep_app_open
 test_steps_include_quit_detects_exact_step
 test_app_artifacts_dir_lives_under_qa_home
 test_static_entrypoint_does_not_launch_app
 test_obsolete_local_e2e_entrypoint_is_removed
 test_computer_use_setup_entrypoints_are_role_named
+test_computer_use_setup_language_is_consistent
 test_standard_test_circuit_is_documented
 test_standard_qa_docs_do_not_recommend_run_local
 test_write_computer_qa_brief
