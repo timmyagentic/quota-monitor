@@ -274,23 +274,33 @@ actor RateLimitPoller {
         context: String,
         operation: @escaping @Sendable () async throws -> R
     ) async throws -> R {
-        let workTask = Task<R, Error>(operation: operation)
-        return try await withThrowingTaskGroup(of: R?.self) { group in
-            group.addTask {
-                try await workTask.value
+        let race = RateLimitPollerTimeoutRace<R>()
+        let workTask = Task {
+            do {
+                let value = try await operation()
+                await race.finish(.success(value))
+            } catch {
+                await race.finish(.failure(error))
             }
-            group.addTask {
-                try? await Task.sleep(for: duration)
-                workTask.cancel()
-                return nil
-            }
-            defer { group.cancelAll() }
-            for try await result in group {
-                if let value = result { return value }
-                throw RateLimitPollerTimeoutError(context: context)
-            }
-            throw RateLimitPollerTimeoutError(context: context)
         }
+        let timeoutTask = Task {
+            try? await Task.sleep(for: duration)
+            guard !Task.isCancelled else { return }
+            await race.finish(.failure(RateLimitPollerTimeoutError(context: context)))
+        }
+
+        let result = await withTaskCancellationHandler {
+            await race.wait()
+        } onCancel: {
+            workTask.cancel()
+            timeoutTask.cancel()
+            Task {
+                await race.finish(.failure(CancellationError()))
+            }
+        }
+        workTask.cancel()
+        timeoutTask.cancel()
+        return try result.get()
     }
 
     private func persist(snapshot: RateLimitSnapshot) async throws {
@@ -354,4 +364,24 @@ private struct RateLimitPollerTimeoutError: LocalizedError, CustomStringConverti
     let context: String
     var description: String { "\(context) timed out" }
     var errorDescription: String? { description }
+}
+
+private actor RateLimitPollerTimeoutRace<R: Sendable> {
+    private var result: Result<R, any Error>?
+    private var continuation: CheckedContinuation<Result<R, any Error>, Never>?
+
+    func wait() async -> Result<R, any Error> {
+        if let result { return result }
+        return await withCheckedContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func finish(_ newResult: Result<R, any Error>) {
+        guard result == nil else { return }
+        result = newResult
+        let continuation = continuation
+        self.continuation = nil
+        continuation?.resume(returning: newResult)
+    }
 }

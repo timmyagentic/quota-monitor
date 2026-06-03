@@ -27,8 +27,7 @@ struct RateLimitPollerTests {
             case .failure(let error):
                 throw error
             case .hang:
-                try await Task.sleep(for: .seconds(3600))
-                throw CancellationError()
+                return await withUnsafeContinuation { (_: UnsafeContinuation<RateLimitsPayload, Never>) in }
             }
         }
 
@@ -49,6 +48,28 @@ struct RateLimitPollerTests {
             lock.lock()
             defer { lock.unlock() }
             return snapshots
+        }
+    }
+
+    actor CompletionBox<T: Sendable> {
+        private var continuation: CheckedContinuation<T, Never>?
+        private var result: T?
+
+        func wait() async -> T {
+            if let result {
+                return result
+            }
+            return await withCheckedContinuation { continuation in
+                self.continuation = continuation
+            }
+        }
+
+        func finish(_ value: T) {
+            guard result == nil else { return }
+            result = value
+            let continuation = continuation
+            self.continuation = nil
+            continuation?.resume(returning: value)
         }
     }
 
@@ -105,19 +126,16 @@ struct RateLimitPollerTests {
         _ duration: Duration,
         operation: @escaping @Sendable () async -> RateLimitPoller.PollOutcome
     ) async -> RateLimitPoller.PollOutcome? {
-        await withTaskGroup(of: RateLimitPoller.PollOutcome?.self) { group in
-            group.addTask {
-                await operation()
-            }
-            group.addTask {
-                try? await Task.sleep(for: duration)
-                return nil
-            }
-
-            let result = await group.next()!
-            group.cancelAll()
-            return result
+        let box = CompletionBox<RateLimitPoller.PollOutcome?>()
+        Task {
+            let outcome = await operation()
+            await box.finish(outcome)
         }
+        Task {
+            try? await Task.sleep(for: duration)
+            await box.finish(nil)
+        }
+        return await box.wait()
     }
 
     @Test("two rapid pollOnce calls collapse to one Codex usage fetch")
