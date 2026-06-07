@@ -28,11 +28,13 @@ appcast 中按系统语言切换的双语更新说明。
 - 发布和 PR 检查更严格，同时默认本地 QA 路径保持静态
 - 测试链路现在明确拆分静态检查、Computer Use 准备、可见 UI 走查和 artifact 复核
 - 交互式 QA 清理不再误关用户已安装的 QuotaMonitor
+- PR CI 对草稿或仅文档/更新日志改动不再启动 macOS Swift runner
 
 ### 变更
 - **静态 QA 默认入口。** `qa/run-all.sh` 现在转发到 `qa/run-static.sh`，不再启动新的 QuotaMonitor 实例。
 - **Computer Use 负责可见 app 验证。** 标准可见 QA 路径是 `qa/prepare-computer-use-fixture.sh` 或 `qa/prepare-computer-use-real-data.sh`，然后使用 Computer Use。
 - **测试链路文档。** `docs/local-qa.md`、`docs/computer-qa.md` 和项目 QA skill 现在用同一套职责描述：静态门禁、Computer Use 准备、Computer Use 走查和 artifact 复核。
+- **macOS CI 按需运行。** 必需的 `swift-test` 检查现在先跑快速汇总 job，只有 ready PR 触及 app、测试、QA、资源、Package、工具或 workflow 时才启动 macOS Swift 套件。
 
 ### 新增
 - **隔离的本地 QA harness。** 本地 QA 现在会用隔离 profile、fixture 数据、重定向后的 Codex/Claude home 启动 QuotaMonitor，并产出 app 状态、数据库计数、日志、截图和辅助功能快照等可机器检查的 artifacts。
