@@ -1,10 +1,18 @@
-# Runs static QA checks plus a release-build smoke check on every push and PR.
+# Runs static QA checks plus a release-build smoke check when changes can affect
+# the Swift app, tests, QA scripts, or release tooling.
 #
-# Why a single workflow / single job: the project's main risk is upstream
-# wire-format drift (Codex CLI app-server JSON-RPC + Anthropic OAuth
-# usage payloads) silently breaking the decoder. The static QA suite includes
-# Swift tests as the canary, plus shell/Python checks for the local QA and
-# release-note helper scripts. It does not launch a GUI app instance.
+# Why gate the macOS job: macOS runners are slow to queue and expensive. Keep a
+# cheap Ubuntu change detector and summary check on every PR so the required
+# `swift-test` check is present, but run the macOS job only for ready PRs whose
+# changes can affect the app/test/tooling surface.
+# Job-level skips report success, avoiding the Pending required-check problem
+# caused by workflow-level path filters.
+#
+# Why keep the macOS job broad when it runs: the project's main risk is upstream
+# wire-format drift (Codex CLI app-server JSON-RPC + Anthropic OAuth usage
+# payloads) silently breaking the decoder. The static QA suite includes Swift
+# tests as the canary, plus shell/Python checks for the local QA and release-note
+# helper scripts. It does not launch a GUI app instance.
 #
 # The release-build step is the second canary: Swift 6 strict concurrency
 # + release-mode optimization occasionally surface issues that debug
@@ -31,7 +39,88 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  swift-test:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      swift-test: ${{ steps.filter.outputs.swift-test }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect whether macOS Swift tests are needed
+        id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${GITHUB_SHA}"
+          fi
+
+          if [[ -z "${BASE}" || "${BASE}" =~ ^0+$ ]]; then
+            echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          mapfile -t changed < <(git diff --name-only "${BASE}" "${HEAD}")
+          printf 'Changed files:\n'
+          printf '  %s\n' "${changed[@]}"
+
+          for path in "${changed[@]}"; do
+            case "${path}" in
+              .github/workflows/tests.yml|\
+              Package.swift|Package.resolved|\
+              QuotaMonitor/*|QuotaMonitor/**|\
+              Tests/*|Tests/**|\
+              Resources/*|Resources/**|\
+              qa/*|qa/**|\
+              tools/*|tools/**)
+                echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+                exit 0
+                ;;
+            esac
+          done
+
+          echo "swift-test=false" >> "${GITHUB_OUTPUT}"
+
+  pr_changelog:
+    name: PR changelog
+    needs: changes
+    if: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        github.event.pull_request.draft == false
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR changelog
+        run: python3 tools/validate-pr-changelog.py --base "${{ github.event.pull_request.base.sha }}" --head HEAD
+
+  macos_swift_test:
+    name: macOS Swift tests
+    needs: [changes, pr_changelog]
+    if: >-
+      ${{
+        always() &&
+        needs.changes.result == 'success' &&
+        needs.changes.outputs.swift-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
+      }}
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -45,10 +134,6 @@ jobs:
         run: |
           swift --version
           xcodebuild -version || true
-
-      - name: Validate PR changelog
-        if: github.event_name == 'pull_request'
-        run: python3 tools/validate-pr-changelog.py --base "${{ github.event.pull_request.base.sha }}" --head HEAD
 
       - name: static QA checks
         # Non-GUI gate: shell/Python helper tests, release-note format,
@@ -64,3 +149,53 @@ jobs:
         # — no app bundle, no DMG. release.yml still does the full
         # build + bundle + DMG on tag push.
         run: swift build -c release
+
+  swift-test:
+    name: swift-test
+    needs: [changes, pr_changelog, macos_swift_test]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarize gated test checks
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          NEEDS_SWIFT_TEST: ${{ needs.changes.outputs.swift-test }}
+          PR_CHANGELOG_RESULT: ${{ needs.pr_changelog.result }}
+          MACOS_SWIFT_RESULT: ${{ needs.macos_swift_test.result }}
+          IS_DRAFT: ${{ github.event.pull_request.draft || 'false' }}
+        run: |
+          set -euo pipefail
+
+          echo "changes result: ${CHANGES_RESULT}"
+          echo "needs macOS Swift tests: ${NEEDS_SWIFT_TEST}"
+          echo "PR changelog result: ${PR_CHANGELOG_RESULT}"
+          echo "macOS Swift result: ${MACOS_SWIFT_RESULT}"
+
+          if [[ "${CHANGES_RESULT}" != "success" ]]; then
+            echo "::error::Change detection failed"
+            exit 1
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
+            echo "Draft PR; macOS Swift tests intentionally skipped"
+            exit 0
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${PR_CHANGELOG_RESULT}" != "success" ]]; then
+            echo "::error::PR changelog validation failed"
+            exit 1
+          fi
+
+          if [[ "${NEEDS_SWIFT_TEST}" != "true" ]]; then
+            echo "No app/test/tooling changes; macOS Swift tests intentionally skipped"
+            exit 0
+          fi
+
+          if [[ "${MACOS_SWIFT_RESULT}" != "success" ]]; then
+            echo "::error::macOS Swift tests did not pass"
+            exit 1
+          fi
+
+          echo "macOS Swift tests passed"
