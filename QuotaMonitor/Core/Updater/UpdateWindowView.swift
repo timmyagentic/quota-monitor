@@ -98,11 +98,27 @@ struct UpdateWindowView: View {
     private var updateAvailableView: some View {
         VStack(spacing: 0) {
             header
-            if state.releaseNotesHTML.isEmpty {
-                Spacer()
-            } else {
+            if state.hasReleaseNotes {
                 AnimatedReleaseNotesView(htmlContent: state.releaseNotesHTML)
+            } else {
+                noReleaseNotesView
             }
+        }
+    }
+
+    /// Shown when an update has no release notes — a calm placeholder rather
+    /// than a blank WebView. The update itself is still installable.
+    private var noReleaseNotesView: some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Image(systemName: "doc.plaintext")
+                .font(.system(size: 28))
+                .foregroundStyle(.tertiary)
+            Text(L10n.updateNoReleaseNotes)
+                .font(.callout)
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+            Spacer()
         }
     }
 
@@ -226,8 +242,6 @@ struct UpdateWindowView: View {
                 state.onInstall?()
             }
             .buttonStyle(.borderedProminent)
-            .disabled(state.phase == .updateAvailable
-                      && state.releaseNotesHTML.isEmpty)
         }
     }
 }

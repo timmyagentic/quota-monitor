@@ -15,6 +15,18 @@ import Foundation
 /// scroll into view.  `prefers-reduced-motion` disables all motion.
 enum ReleaseNotesCSS {
 
+    // MARK: - Content detection
+
+    /// Whether `rawHTML` (an appcast `<description>` body, before wrapping)
+    /// carries any renderable content. The update window uses this to choose
+    /// between the WebView and a graceful "no notes" fallback: `wrapHTML`
+    /// always returns a non-empty document, so emptiness can't be judged on
+    /// the wrapped string.
+    static func hasContent(_ rawHTML: String?) -> Bool {
+        guard let rawHTML else { return false }
+        return !rawHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     // MARK: - Full HTML document
 
     /// Wraps raw body HTML in a complete document with our styles and

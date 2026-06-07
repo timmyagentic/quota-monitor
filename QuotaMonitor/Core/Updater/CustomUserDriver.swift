@@ -71,10 +71,14 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
             "CFBundleShortVersionString"] as? String ?? "?"
         s.isCritical = appcastItem.isCriticalUpdate
 
-        // Build the full HTML document for the WKWebView.
+        // Build the full HTML document for the WKWebView — but only when the
+        // appcast item actually carried a description. An empty/missing
+        // description shows a graceful fallback instead of a blank WebView.
         let rawHTML = appcastItem.itemDescription ?? ""
-        s.releaseNotesHTML = ReleaseNotesCSS.wrapHTML(
-            rawHTML, isDark: isDarkMode, locale: localeID)
+        s.hasReleaseNotes = ReleaseNotesCSS.hasContent(rawHTML)
+        s.releaseNotesHTML = s.hasReleaseNotes
+            ? ReleaseNotesCSS.wrapHTML(rawHTML, isDark: isDarkMode, locale: localeID)
+            : ""
 
         s.phase = .updateAvailable
 
@@ -90,7 +94,9 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         // this method is typically not called.  If Sparkle does call
         // it (e.g. for a `releaseNotesURL` item), append the data.
         guard let text = String(data: downloadData.data,
-                                encoding: .utf8) else { return }
+                                encoding: .utf8),
+              ReleaseNotesCSS.hasContent(text) else { return }
+        state.hasReleaseNotes = true
         state.releaseNotesHTML = ReleaseNotesCSS.wrapHTML(
             text, isDark: isDarkMode, locale: localeID)
     }

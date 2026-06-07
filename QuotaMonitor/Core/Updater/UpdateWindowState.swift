@@ -39,8 +39,16 @@ final class UpdateWindowState {
     var isCritical: Bool = false
 
     /// Raw HTML from `SUAppcastItem.itemDescription`, already wrapped
-    /// in a full document by `ReleaseNotesCSS.wrapHTML(…)`.
+    /// in a full document by `ReleaseNotesCSS.wrapHTML(…)`. Empty when the
+    /// appcast item carried no description.
     var releaseNotesHTML: String = ""
+
+    /// Whether this update actually shipped release notes. Tracked
+    /// separately from `releaseNotesHTML` because the wrapped document is
+    /// never empty (it always contains the CSS/JS shell) — so emptiness
+    /// must be judged on the raw `<description>`, not the wrapped string.
+    /// Drives the WebView-vs-fallback choice in `UpdateWindowView`.
+    var hasReleaseNotes: Bool = false
 
     // MARK: - Download / extraction progress
 
@@ -120,6 +128,7 @@ final class UpdateWindowState {
         currentVersion = ""
         isCritical = false
         releaseNotesHTML = ""
+        hasReleaseNotes = false
         totalBytes = 0
         downloadedBytes = 0
         extractionProgress = 0

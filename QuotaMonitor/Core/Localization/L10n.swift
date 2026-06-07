@@ -726,6 +726,10 @@ enum L10n {
     static var updateHideDetails: String {
         t(en: "Hide details", zh: "收起详情")
     }
+    static var updateNoReleaseNotes: String {
+        t(en: "No release notes were provided for this update.",
+          zh: "本次更新未提供更新说明。")
+    }
 
     // language
     static var languagePickerLabel: String { t(en: "Display language", zh: "显示语言") }
