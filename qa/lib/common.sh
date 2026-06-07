@@ -897,7 +897,7 @@ qm_assert_no_external_data_source_events() {
 
 qm_assert_no_real_provider_paths_leaked() {
     local artifacts="$1"
-    local source_home="${QM_QA_REAL_SOURCE_HOME:-$HOME}"
+    local source_home="${QM_QA_SOURCE_HOME:-${QM_QA_REAL_SOURCE_HOME:-$HOME}}"
     local real_codex="${source_home}/.codex"
     local real_claude="${source_home}/.claude"
     local real_claude_config="${source_home}/.config/claude"

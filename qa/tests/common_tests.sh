@@ -731,6 +731,33 @@ test_rejects_real_provider_path_leak() {
     fi
 }
 
+test_rejects_source_home_provider_path_leak() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-home-leak.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    printf '{"codexHome":"/Users/source-user/.codex"}\n' >"$dir/app-state.json"
+
+    if QM_QA_SOURCE_HOME="/Users/source-user" \
+        qm_assert_no_real_provider_paths_leaked "$dir" >/dev/null 2>&1; then
+        fail "QM_QA_SOURCE_HOME provider path leak was accepted"
+    fi
+}
+
+test_source_home_takes_precedence_for_provider_path_leak() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-home-precedence.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    printf '{"codexHome":"/Users/source-user/.claude"}\n' >"$dir/app-state.json"
+
+    if QM_QA_SOURCE_HOME="/Users/source-user" \
+        QM_QA_REAL_SOURCE_HOME="/Users/legacy-user" \
+        qm_assert_no_real_provider_paths_leaked "$dir" >/dev/null 2>&1; then
+        fail "QM_QA_SOURCE_HOME did not take precedence over legacy source home"
+    fi
+}
+
 test_rejects_external_data_source_events() {
     local dir
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-live-source-artifacts.XXXXXX")"
@@ -790,6 +817,8 @@ test_copy_sqlite_snapshot_preserves_source
 test_write_real_data_computer_qa_brief_documents_shadow_boundary
 test_assert_real_data_artifact_contract
 test_rejects_real_provider_path_leak
+test_rejects_source_home_provider_path_leak
+test_source_home_takes_precedence_for_provider_path_leak
 test_rejects_external_data_source_events
 test_rejects_live_pricing_refresh_events
 echo "common_tests: ok"
