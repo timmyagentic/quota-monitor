@@ -44,6 +44,7 @@ appcast 中按系统语言切换的双语更新说明。
 
 ### 修复
 - **菜单栏读数跟随设置。** 当已选择的工具暂时没有 live 配额样本时，菜单栏现在会继续显示配置的文字读数，并用短横占位或 Dashboard 配额快照回填，而不是退回表盘图标。
+- **Codex 弹窗配额回填。** 当 live CLI 配额获取不可用时，Codex 菜单栏卡片现在会使用 Dashboard 配额快照，避免真实数据 QA 中出现误导性的登录提示。
 - **升级后的设置窗口布局。** 由 AppKit 承载的 Settings 现在会复用旧 Settings 窗口的 frame key，同时保持与原本分组式设置页面一致的 pane 宽度。
 - **更新窗口关闭后的 Dock 清理。** Sparkle 更新窗口关闭后，如果没有其他 app 窗口打开，QuotaMonitor 现在会回到纯菜单栏模式。
 - **QA 清理后恢复已安装 app。** QA 清理现在会记录 `/Applications/QuotaMonitor.app` 运行前状态，只关闭 QA 启动的进程，并在需要时恢复已安装 app。

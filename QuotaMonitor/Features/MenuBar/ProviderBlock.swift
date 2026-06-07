@@ -41,9 +41,23 @@ extension MenuBarContentView {
                     }
                 }
             }
+        } else if let quota = env.dashboardSnapshot?.codexQuota,
+                  quota.primary != nil || quota.secondary != nil {
+            VStack(alignment: .leading, spacing: 6) {
+                if let primary = quota.primary {
+                    QuotaRow(title: L10n.quotaCardTitle5h, window: primary, accent: .blue)
+                }
+                if let secondary = quota.secondary {
+                    QuotaRow(title: L10n.quotaCardTitle7d, window: secondary, accent: .blue)
+                }
+            }
         } else if env.isRefreshingRateLimits {
             ProgressView().controlSize(.small)
                 .frame(maxWidth: .infinity, alignment: .leading)
+        } else if LocalQAEnvironment.isActive() {
+            Text(L10n.codexLiveQuotaDisabledInQA)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         } else {
             // No live data + not loading = either signed-out or first run.
             // Show a one-liner so the empty space isn't mysterious.

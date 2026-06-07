@@ -153,6 +153,10 @@ enum L10n {
         t(en: "Sign in via codex CLI to see live quotas",
           zh: "通过 codex CLI 登录以查看实时配额")
     }
+    static var codexLiveQuotaDisabledInQA: String {
+        t(en: "Live Codex quotas are disabled in local QA",
+          zh: "本地 QA 已禁用 Codex 实时配额获取")
+    }
     static var claudeStartTracking: String {
         t(en: "Run a Claude Code session to start tracking",
           zh: "运行 Claude Code 会话以开始跟踪")

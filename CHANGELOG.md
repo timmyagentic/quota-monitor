@@ -47,6 +47,7 @@ window copy.
 
 ### Fixed
 - **Menu-bar readout follows Settings.** When the selected provider has no live quota sample yet, the menu-bar item now keeps the configured text readout with dash placeholders or the dashboard quota snapshot instead of falling back to the gauge icon.
+- **Codex popover quota fallback.** The Codex menu-bar card now uses the dashboard quota snapshot when live CLI quota fetching is unavailable, avoiding a misleading sign-in prompt during real-data QA runs.
 - **Settings window layout after upgrade.** AppKit-hosted Settings now reuses the old Settings window frame key while keeping the pane width aligned with the original grouped Settings layout.
 - **Update-window Dock cleanup.** Closing the Sparkle update window now lets QuotaMonitor return to menu-bar-only mode when no other app window is open.
 - **Installed app restoration after QA cleanup.** QA cleanup now records whether `/Applications/QuotaMonitor.app` was already running, closes only QA-launched processes, and restores the installed app when needed.
