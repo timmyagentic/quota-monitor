@@ -46,6 +46,7 @@ window copy.
 - **PR changelog enforcement.** Pull-request CI now requires both English and Simplified-Chinese changelog updates for non-appcast PRs, then validates the section that will appear in the update window.
 
 ### Fixed
+- **Settings window layout after upgrade.** AppKit-hosted Settings now reuses the old Settings window frame key and opens wide enough to preserve the grouped Settings layout users already had.
 - **Update-window Dock cleanup.** Closing the Sparkle update window now lets QuotaMonitor return to menu-bar-only mode when no other app window is open.
 - **Installed app restoration after QA cleanup.** QA cleanup now records whether `/Applications/QuotaMonitor.app` was already running, closes only QA-launched processes, and restores the installed app when needed.
 

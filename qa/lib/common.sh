@@ -748,6 +748,7 @@ qm_assert_artifact_contract() {
 
     qm_assert_plutil_equals "$state" "settings.language" "en"
     qm_assert_plutil_equals "$state" "settings.quotaDisplayMode" "remaining"
+    qm_assert_plutil_equals "$state" "settings.menuBarLabelStyle" "emphasis"
     qm_assert_plutil_equals "$state" "settings.showDockIconForWindows" "false"
     qm_assert_plutil_equals "$state" "settings.developerModeEnabled" "true"
     qm_assert_plutil_equals "$state" "settings.pollIntervalSeconds" "900"
@@ -833,6 +834,10 @@ qm_assert_real_data_artifact_contract() {
         return 1
     }
     qm_assert_plutil_equals "$state" "settings.developerModeEnabled" "true"
+    qm_plutil_raw "settings.menuBarLabelStyle" "$state" >/dev/null || {
+        echo "error: menu-bar label style missing from real-data QA state" >&2
+        return 1
+    }
 
     [[ -f "$db_counts" ]] || {
         echo "error: missing real-data db-counts artifact: $db_counts" >&2

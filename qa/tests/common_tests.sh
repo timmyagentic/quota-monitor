@@ -473,6 +473,7 @@ test_assert_artifact_contract() {
     "enabledProviders": ["claude"],
     "language": "en",
     "menuBarIconProviders": ["claude"],
+    "menuBarLabelStyle": "emphasis",
     "pollIntervalSeconds": 900,
     "quotaDisplayMode": "remaining",
     "showDockIconForWindows": false
@@ -541,6 +542,7 @@ test_assert_artifact_contract_allows_incomplete_ax_with_warning() {
     "enabledProviders": ["claude"],
     "language": "en",
     "menuBarIconProviders": ["claude"],
+    "menuBarLabelStyle": "emphasis",
     "pollIntervalSeconds": 900,
     "quotaDisplayMode": "remaining",
     "showDockIconForWindows": false
@@ -669,6 +671,7 @@ test_assert_real_data_artifact_contract() {
     "enabledProviders": ["codex", "claude"],
     "language": "zh-Hans",
     "menuBarIconProviders": ["codex"],
+    "menuBarLabelStyle": "emphasis",
     "pollIntervalSeconds": 300,
     "quotaDisplayMode": "used",
     "showDockIconForWindows": true

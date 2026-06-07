@@ -110,6 +110,7 @@ final class LocalQAController {
                 language: LocalizationStore.shared.currentLanguage.rawValue,
                 enabledProviders: settings.enabledProviders.sorted(),
                 menuBarIconProviders: settings.menuBarIconProviders.sorted(),
+                menuBarLabelStyle: settings.menuBarLabelStyle.rawValue,
                 quotaDisplayMode: settings.quotaDisplayMode.rawValue,
                 showDockIconForWindows: settings.showDockIconForWindows,
                 developerModeEnabled: settings.developerModeEnabled,

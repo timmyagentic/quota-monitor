@@ -20,6 +20,7 @@ struct LocalQASettingsReport: Codable, Equatable {
     let language: String
     let enabledProviders: [String]
     let menuBarIconProviders: [String]
+    let menuBarLabelStyle: String
     let quotaDisplayMode: String
     let showDockIconForWindows: Bool
     let developerModeEnabled: Bool

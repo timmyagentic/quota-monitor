@@ -34,7 +34,7 @@ struct SettingsView: View {
         // dragging the corners had no effect because the inner view
         // refused to grow. min keeps tabs from collapsing into illegible
         // widths; ideal is what the window opens at.
-        .frame(minWidth: 480, idealWidth: 620, minHeight: 380, idealHeight: 520)
+        .frame(minWidth: 620, idealWidth: 900, minHeight: 380, idealHeight: 520)
         // Make every Text in Settings copyable. textSelection is an
         // environment value that propagates to descendant Text views, so
         // setting it once at the TabView root covers both tabs and

@@ -43,6 +43,7 @@ appcast 中按系统语言切换的双语更新说明。
 - **PR 更新日志强制检查。** 非 appcast PR 的 CI 现在要求同时更新英文和简体中文 changelog，并校验会展示在更新窗口中的小节。
 
 ### 修复
+- **升级后的设置窗口布局。** 由 AppKit 承载的 Settings 现在会复用旧 Settings 窗口的 frame key，并以足够宽的窗口打开，从而保留用户原本看到的分组式设置布局。
 - **更新窗口关闭后的 Dock 清理。** Sparkle 更新窗口关闭后，如果没有其他 app 窗口打开，QuotaMonitor 现在会回到纯菜单栏模式。
 - **QA 清理后恢复已安装 app。** QA 清理现在会记录 `/Applications/QuotaMonitor.app` 运行前状态，只关闭 QA 启动的进程，并在需要时恢复已安装 app。
 

@@ -156,18 +156,20 @@ final class WindowManager {
                 resizable: true,
                 initialContentSize: NSSize(width: 980, height: 680),
                 minContentSize: NSSize(width: 820, height: 560),
-                autosaveName: "QuotaMonitor.dashboard", centerOnOpen: false)
+                autosaveName: Self.frameAutosaveName(for: id),
+                centerOnOpen: false)
         case "settings":
             root = AnyView(HostedWindow(content: SettingsView())
                 .environment(env).environment(loc).environment(settings)
                 .environment(updater))
             config = WindowConfig(
                 resizable: true,
-                initialContentSize: NSSize(width: 620, height: 520),
-                minContentSize: NSSize(width: 480, height: 380),
-                // Autosave so the user's resized/moved frame survives reopen;
-                // centre only on the very first open (before a frame is saved).
-                autosaveName: "QuotaMonitor.settings", centerOnOpen: true)
+                initialContentSize: NSSize(width: 900, height: 520),
+                minContentSize: NSSize(width: 620, height: 380),
+                // Keep the old SwiftUI Window(id:) autosave key so upgrading to
+                // AppKit-hosted windows preserves the user's existing frame.
+                autosaveName: Self.frameAutosaveName(for: id),
+                centerOnOpen: true)
         case "onboarding":
             root = AnyView(HostedWindow(content: OnboardingView())
                 .environment(env).environment(loc).environment(settings))
@@ -224,6 +226,18 @@ final class WindowManager {
         let minContentSize: NSSize?
         let autosaveName: String?
         let centerOnOpen: Bool
+    }
+
+    static func frameAutosaveName(for id: String) -> String? {
+        switch id {
+        case "dashboard", "settings":
+            // Matches the previous SwiftUI `Window(id:)` frame keys
+            // (`NSWindow Frame dashboard/settings`) so AppKit migration does
+            // not reset window size and layout style for existing users.
+            return id
+        default:
+            return nil
+        }
     }
 }
 

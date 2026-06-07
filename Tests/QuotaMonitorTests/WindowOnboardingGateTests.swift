@@ -32,4 +32,11 @@ struct WindowOnboardingGateTests {
         #expect(WindowManager.shouldAllowOnboardingClose(
             needsOnboarding: false, needsProvider: false) == true)
     }
+
+    @Test("AppKit windows reuse SwiftUI autosave frame names")
+    func frameAutosaveNamesMatchPreviousSwiftUIWindowIDs() {
+        #expect(WindowManager.frameAutosaveName(for: "dashboard") == "dashboard")
+        #expect(WindowManager.frameAutosaveName(for: "settings") == "settings")
+        #expect(WindowManager.frameAutosaveName(for: "menubar-help") == nil)
+    }
 }
