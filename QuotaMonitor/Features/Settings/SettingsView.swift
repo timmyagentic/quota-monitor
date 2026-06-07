@@ -34,8 +34,7 @@ struct SettingsView: View {
         // dragging the corners had no effect because the inner view
         // refused to grow. min keeps tabs from collapsing into illegible
         // widths; ideal is what the window opens at.
-        .frame(minWidth: 480, idealWidth: 620, maxWidth: 620,
-               minHeight: 380, idealHeight: 520)
+        .frame(minWidth: 480, idealWidth: 620, minHeight: 380, idealHeight: 520)
         // Make every Text in Settings copyable. textSelection is an
         // environment value that propagates to descendant Text views, so
         // setting it once at the TabView root covers both tabs and
@@ -43,19 +42,6 @@ struct SettingsView: View {
         // Form controls (Toggle / Picker / Stepper labels) are unaffected
         // because they render as control text, not Text.
         .textSelection(.enabled)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    WindowCrossLinkActions.scene(
-                        env: env,
-                        openWindow: { WindowManager.shared.show($0) }
-                    ).openDashboardFromSettings()
-                } label: {
-                    Label(L10n.openDashboard, systemImage: "chart.bar.xaxis")
-                }
-                .quickHoverHelp(L10n.openDashboardTooltip)
-            }
-        }
         // Demote-on-close is owned by `AppWindowController.windowWillClose`
         // now that this is an AppKit-hosted window.
     }
