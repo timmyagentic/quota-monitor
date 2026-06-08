@@ -25,7 +25,9 @@ extension Aggregator {
             let sharesPrior30d = try fetchModelShares(
                 db: db, provider: provider, sinceDays: 60, untilDaysAgo: 30)
             let providerShares30d = try fetchProviderShares30d(db: db)
-            // Rate-limit samples are Codex-only (live API + jsonl). Hide for Claude.
+            // Codex quota/history queries filter the shared rate-limit table
+            // to Codex sources (`live` + `jsonl`). Hide the Codex section for
+            // the Claude-only dashboard view.
             let history = provider == .claude
                 ? []
                 : try fetchRateLimitHistory(db: db, hours: 24)

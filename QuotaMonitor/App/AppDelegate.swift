@@ -45,10 +45,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil)
 
         // Launch fan-out previously carried by the MenuBarExtra `.task`.
+        env.startBackgroundPolling()
         env.refreshAll(throttle: false, trigger: "launch")
         env.refreshDashboard()
         env.refreshMenuBar(trigger: "launch")
-        env.startBackgroundPolling()
 
         // Close the inert placeholder `Window` SwiftUI auto-opens at launch.
         // Unconditional: on a fresh install (onboarding path) it must still be

@@ -6,10 +6,11 @@ import GRDB
 
 extension Aggregator {
 
-    /// Most-recent rate-limit sample per bucket. We pull the freshest row
-    /// regardless of source_kind so live API updates always win when present
-    /// but old jsonl samples remain visible after the live source goes
-    /// cold (e.g. between Codex sessions).
+    /// Most-recent Codex rate-limit sample per bucket. We read only Codex
+    /// sources (`live` app-server polls + `jsonl` rollout imports) so Claude
+    /// OAuth samples that share the table cannot override Codex quota rows.
+    /// Live API updates win when present, while old jsonl samples remain
+    /// visible after the live source goes cold (e.g. between Codex sessions).
     static func fetchCodexQuota(db: Database) throws -> CodexQuotaSnapshot? {
         let rows = try Row.fetchAll(db, sql: """
             SELECT s.*
@@ -18,9 +19,11 @@ extension Aggregator {
                 SELECT bucket, MAX(sample_timestamp) AS max_ts
                 FROM rate_limit_samples
                 WHERE limit_name IS NULL
+                  AND source_kind IN ('live', 'jsonl')
                 GROUP BY bucket
             ) m ON m.bucket = s.bucket AND m.max_ts = s.sample_timestamp
             WHERE s.limit_name IS NULL
+              AND s.source_kind IN ('live', 'jsonl')
             """)
         guard !rows.isEmpty else { return nil }
 
@@ -58,6 +61,7 @@ extension Aggregator {
                 SELECT sample_timestamp, used_percent
                 FROM rate_limit_samples
                 WHERE bucket = ? AND limit_name IS NULL
+                  AND source_kind IN ('live', 'jsonl')
                   AND sample_timestamp >= datetime('now', ?)
                 ORDER BY sample_timestamp ASC
                 """, arguments: [bucket, "-\(windowMinutes) minutes"])
@@ -115,6 +119,7 @@ extension Aggregator {
             SELECT id, sample_timestamp, bucket, source_kind, used_percent
             FROM rate_limit_samples
             WHERE limit_name IS NULL
+              AND source_kind IN ('live', 'jsonl')
               AND sample_timestamp >= datetime('now', ?)
             ORDER BY sample_timestamp ASC
             """, arguments: ["-\(hours) hours"])

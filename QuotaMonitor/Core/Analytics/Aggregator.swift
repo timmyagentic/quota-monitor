@@ -97,11 +97,11 @@ struct ProviderShare: Sendable, Identifiable, Equatable {
     let valueUSD: Double
 }
 
-/// Most-recent rate-limit sample per bucket. Pacer separates `primary` (5h)
-/// and `secondary` (weekly) windows; we follow the same convention. The
-/// primary bucket includes a `live` source (app-server REST) and a `jsonl`
-/// source (parsed from token_count.rate_limits) — we always prefer the
-/// freshest sample regardless of source so live updates win when available.
+/// Most-recent Codex rate-limit sample per bucket. Pacer separates `primary`
+/// (5h) and `secondary` (weekly) windows; we follow the same convention.
+/// Codex rows come from `live` app-server REST samples and `jsonl` imports
+/// parsed from token_count.rate_limits. Claude OAuth rows share the storage
+/// table but are filtered out by the Codex read-side queries.
 struct CodexQuotaSnapshot: Sendable, Equatable {
     let primary: CodexQuotaWindow?
     let secondary: CodexQuotaWindow?

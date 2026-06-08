@@ -79,6 +79,28 @@ struct AggregatorTests {
         }
     }
 
+    private func seedRateLimitSample(
+        in db: DatabaseManager,
+        sourceKind: String,
+        sampleAt: String,
+        bucket: String = "primary",
+        usedPercent: Double,
+        resetAt: String = "2026-06-03T15:00:00Z"
+    ) throws {
+        try db.pool.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO rate_limit_samples
+                  (source_kind, source_session_id, bucket, sample_timestamp,
+                   plan_type, limit_name, window_start, resets_at,
+                   used_percent, remaining_percent)
+                VALUES (?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, ?)
+                """, arguments: [
+                    sourceKind, bucket, sampleAt, resetAt,
+                    usedPercent, max(0, 100 - usedPercent)
+                ])
+        }
+    }
+
     // MARK: - per-provider rollups
 
     @Test("fetchPerProviderStats: separate codex + claude rollups, missing provider zero-filled")
@@ -214,5 +236,53 @@ struct AggregatorTests {
         #expect(abs(codexOnly.totalValueUSD - 1.00) < 0.0001)
         #expect(abs(claudeOnly.totalValueUSD - 2.00) < 0.0001)
         #expect(abs(union.totalValueUSD - 3.00) < 0.0001)
+    }
+
+    // MARK: - Codex quota source isolation
+
+    @Test("fetchCodexQuota ignores Claude OAuth samples that share rate_limit_samples")
+    func codexQuota_ignoresClaudeOAuthSamples() throws {
+        let db = try makeDatabase()
+        try seedRateLimitSample(
+            in: db,
+            sourceKind: "live",
+            sampleAt: "2026-06-03T10:00:00Z",
+            usedPercent: 12)
+        try seedRateLimitSample(
+            in: db,
+            sourceKind: "claude_oauth",
+            sampleAt: "2026-06-03T11:00:00Z",
+            usedPercent: 88)
+
+        let quota = try db.pool.read { conn in
+            try Aggregator.fetchCodexQuota(db: conn)
+        }
+
+        #expect(abs((quota?.primary?.usedPercent ?? -1) - 12) < 0.0001,
+                "newer Claude OAuth rows must not override Codex quota rows")
+    }
+
+    @Test("fetchRateLimitHistory excludes Claude OAuth samples")
+    func codexRateLimitHistory_ignoresClaudeOAuthSamples() throws {
+        let db = try makeDatabase()
+        let now = ISO8601.fractional.string(from: Date())
+        try seedRateLimitSample(
+            in: db,
+            sourceKind: "live",
+            sampleAt: now,
+            usedPercent: 12)
+        try seedRateLimitSample(
+            in: db,
+            sourceKind: "claude_oauth",
+            sampleAt: now,
+            bucket: "secondary",
+            usedPercent: 88)
+
+        let history = try db.pool.read { conn in
+            try Aggregator.fetchRateLimitHistory(db: conn, hours: 24)
+        }
+
+        #expect(history.count == 1)
+        #expect(history.first?.series == "primary (live)")
     }
 }

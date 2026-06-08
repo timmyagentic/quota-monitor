@@ -259,6 +259,7 @@ final class AppEnvironment {
             await MainActor.run {
                 guard let self else { return }
                 self.latestRateLimits = snapshot
+                self.lastRateLimitsRefreshAt = snapshot.capturedAt
             }
         }
         self.poller = p
@@ -467,7 +468,8 @@ final class AppEnvironment {
         refreshRateLimits(
             minInterval: throttle ? 30 : nil,
             trigger: trigger,
-            parentOperation: op)
+            parentOperation: op,
+            bypassMinimumGap: !throttle && trigger == "manual")
         refreshClaudeUsage(trigger: trigger, parentOperation: op)
         runScan(
             minInterval: throttle ? 20 : nil,
@@ -477,13 +479,15 @@ final class AppEnvironment {
         // runScan's tail re-runs refreshMenuBar(), so no need to repeat here.
     }
 
-    /// `minInterval` is honoured **only** by the auto-refresh-on-popover-open
-    /// caller (it passes a non-nil interval). The explicit Refresh button
-    /// passes nil → no gate → user-driven intent is never throttled.
+    /// `minInterval` is honoured by the auto-refresh-on-popover-open caller
+    /// (it passes a non-nil interval). The explicit Refresh button also sets
+    /// `bypassMinimumGap` so user-driven intent can force a fresh Codex usage
+    /// request unless the app is already in a 429 cooldown.
     func refreshRateLimits(
         minInterval: TimeInterval? = nil,
         trigger: String = "manual",
-        parentOperation: DeveloperLogOperation? = nil
+        parentOperation: DeveloperLogOperation? = nil,
+        bypassMinimumGap: Bool = false
     ) {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             let op = DeveloperLog.startOperation(
@@ -590,15 +594,60 @@ final class AppEnvironment {
             trigger: trigger,
             provider: "codex",
             parent: parentOperation,
-            fields: ["min_interval_seconds": minInterval.map(DeveloperLogValue.double) ?? .string("none")])
+            fields: [
+                "min_interval_seconds": minInterval.map(DeveloperLogValue.double) ?? .string("none"),
+                "bypass_minimum_gap": .bool(bypassMinimumGap)
+            ])
+
+        if let poller {
+            Task { [op] in
+                let outcome = await poller.pollOnce(
+                    trigger: trigger,
+                    bypassMinimumGap: bypassMinimumGap)
+                await MainActor.run {
+                    self.isRefreshingRateLimits = false
+                    switch outcome {
+                    case .success(let snapshot):
+                        self.latestRateLimits = snapshot
+                        self.lastRateLimitsRefreshAt = snapshot.capturedAt
+                        DeveloperLog.finishOperation(
+                            op,
+                            fields: [
+                                "plan_type": .string(snapshot.planType ?? ""),
+                                "primary_used_percent": .double(snapshot.primary?.usedPercent ?? -1),
+                                "secondary_used_percent": .double(snapshot.secondary?.usedPercent ?? -1)
+                            ])
+                    case .skipped(let reason):
+                        let reasonLabel: String
+                        var fields: [String: DeveloperLogValue] = [:]
+                        switch reason {
+                        case .minimumGap(let elapsed, let minimum):
+                            reasonLabel = "minimum-gap"
+                            fields["elapsed_seconds"] = .int(elapsed)
+                            fields["minimum_gap_seconds"] = .int(minimum)
+                        case .rateLimitCooldown(let remaining, let until):
+                            reasonLabel = "rate-limit-cooldown"
+                            fields["remaining_seconds"] = .int(remaining)
+                            fields["cooldown_until"] = .string(ISO8601.fractional.string(from: until))
+                        }
+                        fields["reason"] = .string(reasonLabel)
+                        DeveloperLog.finishOperation(op, result: "skipped", fields: fields)
+                    case .failure(let message):
+                        self.lastError = message
+                        DeveloperLog.failOperation(
+                            op,
+                            error: RateLimitsRefreshError(message: message))
+                    }
+                }
+            }
+            return
+        }
 
         Task { [appServer, op] in
             defer { Task { @MainActor in self.isRefreshingRateLimits = false } }
-            // Codex side only. Claude `/usage` is fetched separately
-            // via `refreshClaudeUsage()` — same Refresh button, but
-            // routed through the Claude poller's own 60 s spam gap and
-            // 429 cooldown so we can't earn rate-limit replies by
-            // double-clicking.
+            // Fallback for early launch or test wiring before the Codex
+            // poller is available. Normal app paths use the poller above
+            // so scheduled, popover, and manual callers share one throttle.
             do {
                 // Hard 30s cap so a hung app-server child or wedged
                 // AppServerClient actor can't strand the spinner forever.
@@ -968,4 +1017,9 @@ struct BoundedWorkTimeoutError: LocalizedError, Sendable {
     let context: String
     let seconds: Int
     var errorDescription: String? { "\(context) timed out after \(seconds)s" }
+}
+
+private struct RateLimitsRefreshError: LocalizedError, Sendable {
+    let message: String
+    var errorDescription: String? { message }
 }

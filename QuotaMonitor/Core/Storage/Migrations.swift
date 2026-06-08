@@ -53,7 +53,7 @@ enum Migrations {
 
             try db.create(table: "rate_limit_samples") { t in
                 t.autoIncrementedPrimaryKey("id")
-                t.column("source_kind", .text).notNull()      // "jsonl" or "live"
+                t.column("source_kind", .text).notNull()      // "jsonl", "live", or "claude_oauth"
                 t.column("source_session_id", .text)
                 t.column("bucket", .text).notNull()           // "primary" or "secondary"
                 t.column("sample_timestamp", .text).notNull()

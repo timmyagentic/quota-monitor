@@ -113,7 +113,7 @@ struct RateLimitSampleRecord: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "rate_limit_samples"
 
     var id: Int64?
-    var sourceKind: String         // "jsonl" or "live"
+    var sourceKind: String          // "jsonl", "live", or "claude_oauth"
     var sourceSessionId: String?
     var bucket: String              // "primary" or "secondary"
     var sampleTimestamp: String
