@@ -39,4 +39,17 @@ struct WindowOnboardingGateTests {
         #expect(WindowManager.frameAutosaveName(for: "settings") == "settings")
         #expect(WindowManager.frameAutosaveName(for: "menubar-help") == nil)
     }
+
+    @Test("Miniaturized windows still count as app windows")
+    func miniaturizedWindowsStillNeedDockPresence() {
+        #expect(WindowManager.shouldCountManagedWindow(
+            isVisible: false,
+            isMiniaturized: true) == true)
+        #expect(WindowManager.shouldCountManagedWindow(
+            isVisible: true,
+            isMiniaturized: false) == true)
+        #expect(WindowManager.shouldCountManagedWindow(
+            isVisible: false,
+            isMiniaturized: false) == false)
+    }
 }

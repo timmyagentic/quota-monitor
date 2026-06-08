@@ -79,12 +79,22 @@ final class WindowManager {
     /// (in `UpdateWindowController`). That window is a real titled window that
     /// needs Dock / Cmd-Tab presence, so it must count too — otherwise closing
     /// the last registry window while an update is showing demotes the app to
-    /// `.accessory` out from under the updater.
+    /// `.accessory` out from under the updater. Miniaturized managed windows
+    /// also count: `isVisible` is false while minimized, but the window still
+    /// exists and needs the Dock/Cmd-Tab entry to be restorable.
     func hasVisibleWindow(excluding ids: Set<String> = []) -> Bool {
         let managedVisible = controllers.contains { id, controller in
-            !ids.contains(id) && (controller.window?.isVisible ?? false)
+            !ids.contains(id)
+                && Self.shouldCountManagedWindow(
+                    isVisible: controller.window?.isVisible ?? false,
+                    isMiniaturized: controller.window?.isMiniaturized ?? false)
         }
         return managedVisible || (updater?.isUpdateWindowVisible ?? false)
+    }
+
+    static func shouldCountManagedWindow(isVisible: Bool,
+                                         isMiniaturized: Bool) -> Bool {
+        isVisible || isMiniaturized
     }
 
     /// Called from `AppWindowController.windowWillClose`. Demote back to
