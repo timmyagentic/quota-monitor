@@ -25,14 +25,16 @@ appcast 中按系统语言切换的双语更新说明。
 ## [Unreleased]
 
 #### Summary
-- 发布和 PR 检查更严格，同时默认本地 QA 路径保持静态
+- 发布和 PR 检查更严格，同时草稿或仅文档 PR 会避开 macOS Swift runner
 - 测试链路现在明确拆分静态检查、Computer Use 准备、可见 UI 走查和 artifact 复核
 - 交互式 QA 清理不再误关用户已安装的 QuotaMonitor
-- PR CI 对草稿或仅文档/更新日志改动不再启动 macOS Swift runner
+- App 窗口现在通过统一的 AppKit 窗口管理器负责打开、聚焦和回到纯菜单栏模式
 
 ### 变更
+- **AppKit 窗口所有权。** Dashboard、Settings、onboarding 和菜单栏恢复指南现在共用一个 AppKit 窗口管理器，使窗口打开和聚焦行为更一致。
 - **静态 QA 默认入口。** `qa/run-all.sh` 现在转发到 `qa/run-static.sh`，不再启动新的 QuotaMonitor 实例。
 - **Computer Use 负责可见 app 验证。** 标准可见 QA 路径是 `qa/prepare-computer-use-fixture.sh` 或 `qa/prepare-computer-use-real-data.sh`，然后使用 Computer Use。
+- **真实数据 QA 保留可见偏好。** `qa/prepare-computer-use-real-data.sh` 现在会把当前 QuotaMonitor UserDefaults 复制到隔离 QA suite，同时继续覆盖凭据敏感设置。
 - **测试链路文档。** `docs/local-qa.md`、`docs/computer-qa.md` 和项目 QA skill 现在用同一套职责描述：静态门禁、Computer Use 准备、Computer Use 走查和 artifact 复核。
 - **macOS CI 按需运行。** 必需的 `swift-test` 检查现在先跑快速汇总 job，只有 ready PR 触及 app、测试、QA、资源、Package、工具或 workflow 时才启动 macOS Swift 套件。
 
@@ -42,6 +44,10 @@ appcast 中按系统语言切换的双语更新说明。
 - **PR 更新日志强制检查。** 非 appcast PR 的 CI 现在要求同时更新英文和简体中文 changelog，并校验会展示在更新窗口中的小节。
 
 ### 修复
+- **菜单栏读数跟随设置。** 当已选择的工具暂时没有 live 配额样本时，菜单栏现在会继续显示配置的文字读数，并用短横占位或 Dashboard 配额快照回填，而不是退回表盘图标。
+- **Codex 弹窗配额回填。** 当 live CLI 配额获取不可用时，Codex 菜单栏卡片现在会使用 Dashboard 配额快照，避免真实数据 QA 中出现误导性的登录提示。
+- **升级后的设置窗口布局。** 由 AppKit 承载的 Settings 现在会复用旧 Settings 窗口的 frame key，同时保持与原本分组式设置页面一致的 pane 宽度。
+- **更新窗口关闭后的 Dock 清理。** Sparkle 更新窗口关闭后，如果没有其他 app 窗口打开，QuotaMonitor 现在会回到纯菜单栏模式。
 - **QA 清理后恢复已安装 app。** QA 清理现在会记录 `/Applications/QuotaMonitor.app` 运行前状态，只关闭 QA 启动的进程，并在需要时恢复已安装 app。
 - **更新窗口不再因空发布说明而空白。** 当 appcast 条目没有附带说明时，更新窗口现在会显示简短占位并保持“安装”可用，而不是渲染空白网页视图；此前的判空逻辑作用在恒不为空的包壳 HTML 上，因此从未生效。
 

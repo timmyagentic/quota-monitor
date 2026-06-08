@@ -161,8 +161,9 @@ final class SettingsStore {
     /// window: 5h + 7d, "X% used"). Multi-select — the user can show
     /// one provider, both side-by-side, or neither (in which case the
     /// menu-bar label falls back to the static gauge SF Symbol).
-    /// Hidden when no chosen provider is currently tracked or when no
-    /// usage data is yet available.
+    /// Hidden only when no chosen provider is currently tracked; missing
+    /// usage windows render as "--" so the visible slot remains aligned
+    /// with the user's Settings choice.
     ///
     /// Default on fresh install: same set as `enabledProviders`. On
     /// upgrades from the legacy single-string key we migrate the old

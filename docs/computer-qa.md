@@ -68,11 +68,17 @@ correctly?", launch the real-data shadow mode instead:
 ```
 
 This still uses an isolated QA profile. It copies the real QuotaMonitor SQLite
-database into the QA home with SQLite backup, points the app at that copy, does
-not copy real Codex or Claude credentials, disables live Codex app-server and
-Claude OAuth polling, and writes `real-data-protection.txt` to prove the source
-database fingerprint did not change. Use this mode for visual checks that need
-realistic charts, sessions, history, and model distribution.
+database into the QA home with SQLite backup, copies the current
+QuotaMonitor UserDefaults into the isolated QA suite when available, points
+the app at those copies, does not copy real Codex or Claude credentials,
+disables live Codex app-server and Claude OAuth polling, and writes
+`real-data-protection.txt` to prove the source database fingerprint did not
+change. Use this mode for visual checks that need realistic charts, sessions,
+history, model distribution, language, provider, and menu-bar settings.
+
+Set `QM_QA_COPY_USER_DEFAULTS=0` before launch if you intentionally want the
+old deterministic QA defaults instead of your current QuotaMonitor
+preferences.
 
 To re-check an artifact directory later:
 

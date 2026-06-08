@@ -34,6 +34,48 @@ test_write_defaults() {
     [[ "$providers_done" == "1" ]] || fail "provider onboarding default was $providers_done"
 }
 
+test_write_real_data_defaults_copies_user_preferences_with_safety_overrides() {
+    local source_home target_home source_domain target_domain report
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-defaults.XXXXXX")"
+    target_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-target-defaults.XXXXXX")"
+    source_domain="dev.tjzhou.QuotaMonitor.SourceTest.$RANDOM.$$"
+    target_domain="dev.tjzhou.QuotaMonitor.TargetTest.$RANDOM.$$"
+    report="$target_home/user-defaults-shadow.txt"
+    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+
+    HOME="$source_home" defaults write "$source_domain" app.language -string zh-Hans
+    HOME="$source_home" defaults write "$source_domain" settings.enabledProviders -array codex
+    HOME="$source_home" defaults write "$source_domain" settings.menuBarIconProviders -array codex
+    HOME="$source_home" defaults write "$source_domain" settings.keychainPolicy -string fallback
+    HOME="$source_home" defaults write "$source_domain" settings.developerModeEnabled -bool false
+    HOME="$source_home" defaults write "$source_domain" settings.mirrorClaudeKeychainToFile -bool true
+
+    qm_write_real_data_defaults \
+        "$target_home" \
+        "$target_domain" \
+        "$source_home" \
+        "$source_domain" \
+        "$report" \
+        1
+
+    local language keychain_policy developer_mode mirror_to_file providers icons
+    language="$(HOME="$target_home" defaults read "$target_domain" app.language)"
+    keychain_policy="$(HOME="$target_home" defaults read "$target_domain" settings.keychainPolicy)"
+    developer_mode="$(HOME="$target_home" defaults read "$target_domain" settings.developerModeEnabled)"
+    mirror_to_file="$(HOME="$target_home" defaults read "$target_domain" settings.mirrorClaudeKeychainToFile)"
+    providers="$(HOME="$target_home" defaults read "$target_domain" settings.enabledProviders)"
+    icons="$(HOME="$target_home" defaults read "$target_domain" settings.menuBarIconProviders)"
+
+    [[ "$language" == "zh-Hans" ]] || fail "copied language was $language"
+    grep -q 'codex' <<<"$providers" || fail "copied enabled provider missing: $providers"
+    grep -q 'codex' <<<"$icons" || fail "copied menu-bar icon provider missing: $icons"
+    [[ "$keychain_policy" == "never" ]] || fail "QA safety keychain policy was $keychain_policy"
+    [[ "$developer_mode" == "1" ]] || fail "QA developer mode was $developer_mode"
+    [[ "$mirror_to_file" == "0" ]] || fail "QA mirror-to-file should be disabled, was $mirror_to_file"
+    grep -q '^copied_user_defaults=true$' "$report" \
+        || fail "user defaults report did not record copied_user_defaults=true"
+}
+
 test_seed_fixtures() {
     local home
     home="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-fixtures.XXXXXX")"
@@ -160,6 +202,20 @@ test_computer_use_steps_keep_app_open() {
         || fail "Computer Use setup steps do not write a snapshot: $steps"
     [[ "$steps" != *"quit"* ]] \
         || fail "Computer Use setup steps must keep the app open: $steps"
+}
+
+test_real_data_computer_use_steps_preserve_user_settings() {
+    local steps
+    steps="$(qm_real_data_computer_use_steps)"
+
+    [[ "$steps" == *"open-dashboard"* ]] \
+        || fail "real-data steps do not open Dashboard: $steps"
+    [[ "$steps" == *"open-settings"* ]] \
+        || fail "real-data steps do not open Settings: $steps"
+    [[ "$steps" == *"snapshot"* ]] \
+        || fail "real-data steps do not write a snapshot: $steps"
+    [[ "$steps" != *"exercise-settings"* ]] \
+        || fail "real-data steps must not overwrite copied user settings: $steps"
 }
 
 test_steps_include_quit_detects_exact_step() {
@@ -417,6 +473,7 @@ test_assert_artifact_contract() {
     "enabledProviders": ["claude"],
     "language": "en",
     "menuBarIconProviders": ["claude"],
+    "menuBarLabelStyle": "emphasis",
     "pollIntervalSeconds": 900,
     "quotaDisplayMode": "remaining",
     "showDockIconForWindows": false
@@ -485,6 +542,7 @@ test_assert_artifact_contract_allows_incomplete_ax_with_warning() {
     "enabledProviders": ["claude"],
     "language": "en",
     "menuBarIconProviders": ["claude"],
+    "menuBarLabelStyle": "emphasis",
     "pollIntervalSeconds": 900,
     "quotaDisplayMode": "remaining",
     "showDockIconForWindows": false
@@ -542,6 +600,17 @@ test_warns_when_ax_snapshot_is_incomplete() {
         || fail "AX warning did not explain incomplete window capture"
 }
 
+test_ax_snapshot_accepts_localized_settings_title() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-ax-localized.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    printf 'Window: Quota Monitor\nWindow: 设置\n' >"$dir/ax-tree.txt"
+
+    qm_ax_snapshot_has_expected_windows "$dir/ax-tree.txt" \
+        || fail "localized Settings title was rejected"
+}
+
 test_copy_sqlite_snapshot_preserves_source() {
     local dir source copy before after source_count copy_count
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-real-db-shadow.XXXXXX")"
@@ -579,13 +648,16 @@ test_write_real_data_computer_qa_brief_documents_shadow_boundary() {
         "dev.tjzhou.QuotaMonitor.RealDataQA.Test" \
         "/Volumes/SamsungDisk/Code/quota-monitor" \
         "$HOME/Library/Application Support/QuotaMonitor/quotamonitor.sqlite" \
-        "$dir/home/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
+        "$dir/home/Library/Application Support/QuotaMonitor/quotamonitor.sqlite" \
+        "$dir/artifacts/user-defaults-shadow.txt"
 
     assert_file "$brief"
     grep -q 'Real Data Shadow QA Brief' "$brief" \
         || fail "real-data brief title missing"
     grep -q 'copied SQLite snapshot' "$brief" \
         || fail "real-data brief does not explain DB shadow copy"
+    grep -q 'UserDefaults are copied into the isolated QA suite' "$brief" \
+        || fail "real-data brief does not explain copied user defaults"
     grep -q 'Do not copy real Codex or Claude credentials' "$brief" \
         || fail "real-data brief credential boundary missing"
     grep -q 'source DB fingerprint' "$brief" \
@@ -604,15 +676,16 @@ test_assert_real_data_artifact_contract() {
   "developerLogPath": "/tmp/qm-shadow/home/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log",
   "generatedAt": "2026-06-02T00:00:00Z",
   "pid": 123,
-  "qaSteps": ["open-dashboard", "open-settings", "exercise-settings", "snapshot"],
+  "qaSteps": ["open-dashboard", "open-settings", "snapshot"],
   "settings": {
     "developerModeEnabled": true,
-    "enabledProviders": ["claude"],
-    "language": "en",
-    "menuBarIconProviders": ["claude"],
-    "pollIntervalSeconds": 900,
-    "quotaDisplayMode": "remaining",
-    "showDockIconForWindows": false
+    "enabledProviders": ["codex", "claude"],
+    "language": "zh-Hans",
+    "menuBarIconProviders": ["codex"],
+    "menuBarLabelStyle": "emphasis",
+    "pollIntervalSeconds": 300,
+    "quotaDisplayMode": "used",
+    "showDockIconForWindows": true
   },
   "statusItemVisibility": "visible",
   "windows": [
@@ -627,11 +700,10 @@ provider  sessions
 claude    10
 TEXT
     {
-        printf '{"event":"qa.settings.exercise","result":"success"}\n'
         printf '{"event":"qa.snapshot.write","result":"success"}\n'
     } >"$dir/quotamonitor-dev.log"
     printf 'PNGDATA' >"$dir/screen.png"
-    printf 'Window: Quota Monitor\nWindow: Settings\n' >"$dir/ax-tree.txt"
+    printf 'Window: Quota Monitor\nWindow: 设置\n' >"$dir/ax-tree.txt"
     printf 'source_unchanged=true\n' >"$dir/real-data-protection.txt"
     qm_write_boundary_manifest \
         "$dir/qa-boundary.json" \
@@ -656,6 +728,33 @@ test_rejects_real_provider_path_leak() {
     if QM_QA_REAL_SOURCE_HOME="/Users/example" \
         qm_assert_no_real_provider_paths_leaked "$dir" >/dev/null 2>&1; then
         fail "real provider path leak was accepted"
+    fi
+}
+
+test_rejects_source_home_provider_path_leak() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-home-leak.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    printf '{"codexHome":"/Users/source-user/.codex"}\n' >"$dir/app-state.json"
+
+    if QM_QA_SOURCE_HOME="/Users/source-user" \
+        qm_assert_no_real_provider_paths_leaked "$dir" >/dev/null 2>&1; then
+        fail "QM_QA_SOURCE_HOME provider path leak was accepted"
+    fi
+}
+
+test_source_home_takes_precedence_for_provider_path_leak() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-home-precedence.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    printf '{"codexHome":"/Users/source-user/.claude"}\n' >"$dir/app-state.json"
+
+    if QM_QA_SOURCE_HOME="/Users/source-user" \
+        QM_QA_REAL_SOURCE_HOME="/Users/legacy-user" \
+        qm_assert_no_real_provider_paths_leaked "$dir" >/dev/null 2>&1; then
+        fail "QM_QA_SOURCE_HOME did not take precedence over legacy source home"
     fi
 }
 
@@ -688,6 +787,7 @@ test_rejects_live_pricing_refresh_events() {
 }
 
 test_write_defaults
+test_write_real_data_defaults_copies_user_preferences_with_safety_overrides
 test_seed_fixtures
 test_write_launch_config
 test_write_boundary_manifest_documents_fixture_policy
@@ -695,6 +795,7 @@ test_assert_boundary_manifest_contract_rejects_wrong_mode
 test_launch_config_base64
 test_default_steps_include_settings_exercise
 test_computer_use_steps_keep_app_open
+test_real_data_computer_use_steps_preserve_user_settings
 test_steps_include_quit_detects_exact_step
 test_app_artifacts_dir_lives_under_qa_home
 test_static_entrypoint_does_not_launch_app
@@ -711,10 +812,13 @@ test_real_data_computer_qa_brief_includes_exact_app_target
 test_assert_artifact_contract
 test_assert_artifact_contract_allows_incomplete_ax_with_warning
 test_warns_when_ax_snapshot_is_incomplete
+test_ax_snapshot_accepts_localized_settings_title
 test_copy_sqlite_snapshot_preserves_source
 test_write_real_data_computer_qa_brief_documents_shadow_boundary
 test_assert_real_data_artifact_contract
 test_rejects_real_provider_path_leak
+test_rejects_source_home_provider_path_leak
+test_source_home_takes_precedence_for_provider_path_leak
 test_rejects_external_data_source_events
 test_rejects_live_pricing_refresh_events
 echo "common_tests: ok"

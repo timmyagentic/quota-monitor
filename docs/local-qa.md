@@ -214,6 +214,8 @@ The script:
 
 - computes a fingerprint for the source database,
 - copies the source database with SQLite backup into a temporary QA home,
+- copies the current QuotaMonitor UserDefaults into the isolated QA suite when
+  available,
 - launches the app with that temporary HOME, an isolated UserDefaults suite,
   and `CODEX_HOME` inside the QA home,
 - does not copy real Codex or Claude credentials,
@@ -234,6 +236,17 @@ To test a different source database:
 
 ```sh
 QM_QA_REAL_DB_PATH=/path/to/quotamonitor.sqlite ./qa/prepare-computer-use-real-data.sh
+```
+
+By default, real-data shadow QA also copies the current
+`dev.tjzhou.QuotaMonitor` preferences into the QA defaults suite so visible
+state matches the installed app's language, provider, menu-bar, quota display,
+and window preferences. QA then applies safety overrides: Developer Mode is on,
+Keychain policy is `never`, credential mirroring is off, and live external
+sources stay disabled. To use deterministic QA defaults instead:
+
+```sh
+QM_QA_COPY_USER_DEFAULTS=0 ./qa/prepare-computer-use-real-data.sh
 ```
 
 The app is expected to mutate only the shadow database under the QA home. The

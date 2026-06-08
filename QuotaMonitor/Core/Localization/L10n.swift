@@ -153,6 +153,10 @@ enum L10n {
         t(en: "Sign in via codex CLI to see live quotas",
           zh: "通过 codex CLI 登录以查看实时配额")
     }
+    static var codexLiveQuotaDisabledInQA: String {
+        t(en: "Live Codex quotas are disabled in local QA",
+          zh: "本地 QA 已禁用 Codex 实时配额获取")
+    }
     static var claudeStartTracking: String {
         t(en: "Run a Claude Code session to start tracking",
           zh: "运行 Claude Code 会话以开始跟踪")
@@ -867,15 +871,15 @@ enum L10n {
         t(en: "Show in menu bar", zh: "菜单栏显示")
     }
     static var menuBarIconProviderHelp: String {
-        t(en: "Pick which tools' 5h and 7d quota percentages to show on the menu-bar icon. Choose both for a combined line, one for a shorter readout, or none to keep the gauge icon.",
-          zh: "选择哪些工具的 5 小时与 7 日配额百分比显示在菜单栏图标上。两个都选会并排显示在一行，只选一个会更短，都不选则显示原本的表盘图标。")
+        t(en: "Pick which tools' 5h and 7d quota percentages to show in the menu-bar item. Choose both for a combined line, one for a shorter readout, or none to show only the gauge icon.",
+          zh: "选择哪些工具的 5 小时与 7 日配额百分比显示在菜单栏项目中。两个都选会并排显示在一行，只选一个会更短，都不选则只显示表盘图标。")
     }
     /// Variant of `menuBarIconProviderHelp` used in Settings when only
     /// one provider is tracked — the "choose both" wording no longer
     /// applies because the other toggle isn't even rendered.
     static var menuBarIconProviderHelpSingle: String {
-        t(en: "Toggle whether this tool's 5h and 7d quota percentages show on the menu-bar icon, or leave it off to keep the gauge icon.",
-          zh: "勾选则在菜单栏图标上显示该工具的 5 小时与 7 日配额百分比；不勾选则保留原本的表盘图标。")
+        t(en: "Toggle whether this tool's 5h and 7d quota percentages show in the menu-bar item, or leave it off to show only the gauge icon.",
+          zh: "勾选则在菜单栏项目中显示该工具的 5 小时与 7 日配额百分比；不勾选则只显示表盘图标。")
     }
 
     // Token unit language picker (Chinese-only — English mode already

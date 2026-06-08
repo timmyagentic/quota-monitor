@@ -88,6 +88,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             enabledProviders: settings.enabledProviders,
             rateLimits: env.latestRateLimits,
             claudeUsage: env.latestClaudeUsage,
+            codexQuota: env.dashboardSnapshot?.codexQuota,
             displayMode: settings.quotaDisplayMode)
         let style = settings.menuBarLabelStyle
 
@@ -128,7 +129,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         popover.show(relativeTo: button.bounds,
                      of: button,
                      preferredEdge: .minY)
-        popover.contentViewController?.view.window?.makeKey()
+        preparePopoverWindowForMenuBarPresentation()
     }
 
     /// `NSPopoverDelegate` — the authoritative "popover opened" hook now
@@ -137,6 +138,84 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func popoverWillShow(_ notification: Notification) {
         guard !settings.needsProviderOnboarding else { return }
         env.refreshAll(throttle: true, trigger: "popover")
+    }
+
+    func popoverDidShow(_ notification: Notification) {
+        preparePopoverWindowForMenuBarPresentation()
+    }
+
+    private func preparePopoverWindowForMenuBarPresentation() {
+        guard let window = popover.contentViewController?.view.window,
+              let button = statusItem.button else { return }
+        Self.configurePopoverWindowForMenuBarPresentation(window)
+        Self.positionPopoverWindowForMenuBarPresentation(window, relativeTo: button)
+        window.makeKey()
+        window.orderFrontRegardless()
+    }
+
+    static func configurePopoverWindowForMenuBarPresentation(_ window: NSWindow) {
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        window.hidesOnDeactivate = false
+        window.level = .popUpMenu
+    }
+
+    static func positionPopoverWindowForMenuBarPresentation(_ window: NSWindow,
+                                                            relativeTo button: NSStatusBarButton) {
+        guard let anchorRect = menuBarAnchorRectOnScreen(for: button) else { return }
+        let screenFrame = menuBarScreenFrame(
+            containing: anchorRect,
+            fallback: button.window?.screen)
+        let origin = menuBarPopoverOrigin(
+            windowSize: window.frame.size,
+            anchorRect: anchorRect,
+            screenFrame: screenFrame,
+            statusBarThickness: NSStatusBar.system.thickness)
+        window.setFrameOrigin(origin)
+    }
+
+    private static func menuBarAnchorRectOnScreen(for button: NSStatusBarButton) -> NSRect? {
+        guard let window = button.window else { return nil }
+        let rectInWindow = button.convert(button.bounds, to: nil)
+        return window.convertToScreen(rectInWindow)
+    }
+
+    private static func menuBarScreenFrame(containing anchorRect: NSRect,
+                                           fallback: NSScreen?) -> NSRect {
+        let anchorMidX = anchorRect.midX
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(anchorRect) }) {
+            return screen.frame
+        }
+        if let screen = NSScreen.screens.first(where: {
+            anchorMidX >= $0.frame.minX && anchorMidX <= $0.frame.maxX
+        }) {
+            return screen.frame
+        }
+        return fallback?.frame ?? NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 0, height: 0)
+    }
+
+    static func menuBarPopoverOrigin(windowSize: NSSize,
+                                     anchorRect: NSRect,
+                                     screenFrame: NSRect,
+                                     statusBarThickness: CGFloat) -> NSPoint {
+        let padding: CGFloat = 8
+        let proposedX = anchorRect.midX - windowSize.width / 2
+        let maxX = screenFrame.maxX - windowSize.width - padding
+        let x = clamp(proposedX, min: screenFrame.minX + padding, max: maxX)
+
+        let anchorIsOutsideScreen = anchorRect.maxY < screenFrame.minY
+            || anchorRect.minY > screenFrame.maxY
+        let anchorBottomY = anchorIsOutsideScreen
+            ? screenFrame.maxY - statusBarThickness
+            : anchorRect.minY
+        let proposedY = anchorBottomY - windowSize.height
+        let maxY = screenFrame.maxY - windowSize.height - padding
+        let y = clamp(proposedY, min: screenFrame.minY + padding, max: maxY)
+
+        return NSPoint(x: x, y: y)
+    }
+
+    private static func clamp(_ value: CGFloat, min minValue: CGFloat, max maxValue: CGFloat) -> CGFloat {
+        Swift.min(Swift.max(value, minValue), Swift.max(minValue, maxValue))
     }
 
     // MARK: - visibility

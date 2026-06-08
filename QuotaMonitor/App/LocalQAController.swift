@@ -30,16 +30,16 @@ final class LocalQAController {
         for step in configuration.steps {
             switch step {
             case .openDashboard:
-                environment.activateForWindow()
-                WindowRouter.shared.request("dashboard")
+                // `WindowManager.show` activates the app then orders the window
+                // front, so the old `activateForWindow()` + URL-scheme
+                // `WindowRouter.request` two-step is no longer needed.
+                WindowManager.shared.show("dashboard")
                 await pause(seconds: 0.8)
             case .openSettings:
-                environment.activateForWindow()
-                WindowRouter.shared.request("settings")
+                WindowManager.shared.show("settings")
                 await pause(seconds: 0.8)
             case .openMenuBarHelp:
-                environment.activateForWindow()
-                WindowRouter.shared.request("menubar-help")
+                WindowManager.shared.show("menubar-help")
                 await pause(seconds: 0.8)
             case .showPopover:
                 statusItemController.showPopover()
@@ -110,6 +110,7 @@ final class LocalQAController {
                 language: LocalizationStore.shared.currentLanguage.rawValue,
                 enabledProviders: settings.enabledProviders.sorted(),
                 menuBarIconProviders: settings.menuBarIconProviders.sorted(),
+                menuBarLabelStyle: settings.menuBarLabelStyle.rawValue,
                 quotaDisplayMode: settings.quotaDisplayMode.rawValue,
                 showDockIconForWindows: settings.showDockIconForWindows,
                 developerModeEnabled: settings.developerModeEnabled,

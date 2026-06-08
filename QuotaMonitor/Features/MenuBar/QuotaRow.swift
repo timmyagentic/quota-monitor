@@ -34,6 +34,15 @@ struct QuotaRow: View {
         self.accent = accent
     }
 
+    /// Convenience constructor for DB-hydrated Codex quota windows.
+    init(title: String, window: CodexQuotaWindow, accent: Color = .accentColor) {
+        self.title = title
+        self.usedPercent = window.usedPercent
+        self.resetAt = window.resetsAt
+        self.paceLabel = nil
+        self.accent = accent
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {

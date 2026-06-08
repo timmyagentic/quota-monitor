@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 // Top-level Settings window. Tab content lives in:
@@ -15,19 +16,25 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(LocalizationStore.self) private var loc
-    @Environment(\.openWindow) private var openWindow
     @State private var settings = SettingsStore.shared
+    private let tabSelection: SettingsTabSelection
+
+    init(tabSelection: SettingsTabSelection = SettingsTabSelection()) {
+        self.tabSelection = tabSelection
+    }
 
     var body: some View {
-        TabView {
-            GeneralSettingsTab()
-                .environment(settings)
-                .environment(loc)
-                .tabItem { Label(L10n.settingsTabGeneral, systemImage: "gearshape") }
-            AdvancedSettingsTab()
-                .environment(settings)
-                .environment(env)
-                .tabItem { Label(L10n.settingsTabAdvanced, systemImage: "wrench.and.screwdriver") }
+        Group {
+            switch tabSelection.tab {
+            case .general:
+                GeneralSettingsTab()
+                    .environment(settings)
+                    .environment(loc)
+            case .advanced:
+                AdvancedSettingsTab()
+                    .environment(settings)
+                    .environment(env)
+            }
         }
         // Use min + ideal instead of a fixed size. The previous
         // `.frame(width:height:)` pinned the content to a single
@@ -43,25 +50,22 @@ struct SettingsView: View {
         // Form controls (Toggle / Picker / Stepper labels) are unaffected
         // because they render as control text, not Text.
         .textSelection(.enabled)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    WindowCrossLinkActions.scene(
-                        env: env,
-                        openWindow: { openWindow(id: $0) }
-                    ).openDashboardFromSettings()
-                } label: {
-                    Label(L10n.openDashboard, systemImage: "chart.bar.xaxis")
-                }
-                .quickHoverHelp(L10n.openDashboardTooltip)
-            }
-        }
-        // Pure menu-bar agent unless another window is still up. Mirrors
-        // MainWindowView's onDisappear — closing Settings shouldn't leave
-        // a stale Dock icon behind once the Dashboard is also closed.
-        // `demoteToAccessory()` itself checks for any visible non-popover
-        // window before flipping the policy, so this is safe to call
-        // unconditionally.
-        .onDisappear { env.demoteToAccessory(excludingWindowIDs: ["settings"]) }
+        // Settings' tabs and Dashboard shortcut are native `NSToolbar`
+        // controls owned by WindowManager. SwiftUI toolbar items inside an
+        // AppKit NSHostingController render below the titlebar, unlike the
+        // original SwiftUI Window scene's promoted titlebar tabs.
+        // Demote-on-close is owned by `AppWindowController.windowWillClose`
+        // now that this is an AppKit-hosted window.
     }
+}
+
+enum SettingsTab: Int, Hashable, CaseIterable {
+    case general
+    case advanced
+}
+
+@MainActor
+@Observable
+final class SettingsTabSelection {
+    var tab: SettingsTab = .general
 }

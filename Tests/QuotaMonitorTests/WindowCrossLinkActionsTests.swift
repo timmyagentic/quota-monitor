@@ -7,29 +7,27 @@ import Testing
 struct WindowCrossLinkActionsTests {
 
     @Test
-    func dashboardToSettingsActivatesAndOpensSettings() {
+    func dashboardToSettingsOpensSettingsWithoutDuplicateActivation() {
         var events: [String] = []
         let actions = WindowCrossLinkActions(
-            activateForWindow: { events.append("activate") },
             openWindow: { events.append("open:\($0)") },
             refreshDashboard: { events.append("refresh") })
 
         actions.openSettingsFromDashboard()
 
-        #expect(events == ["activate", "open:settings"])
+        #expect(events == ["open:settings"])
     }
 
     @Test
-    func settingsToDashboardActivatesOpensAndRefreshesDashboard() {
+    func settingsToDashboardOpensAndRefreshesWithoutDuplicateActivation() {
         var events: [String] = []
         let actions = WindowCrossLinkActions(
-            activateForWindow: { events.append("activate") },
             openWindow: { events.append("open:\($0)") },
             refreshDashboard: { events.append("refresh") })
 
         actions.openDashboardFromSettings()
 
-        #expect(events == ["activate", "open:dashboard", "refresh"])
+        #expect(events == ["open:dashboard", "refresh"])
     }
 
     @Test

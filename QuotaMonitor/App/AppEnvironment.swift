@@ -173,15 +173,6 @@ final class AppEnvironment {
                 "enabled_providers": .string(snap.enabledProviders.sorted().joined(separator: ",")),
                 "onboarding_done": .bool(snap.hasCompletedProviderOnboarding)
             ])
-        guard LocalQAEnvironment.allowsExternalDataSources() else {
-            DeveloperLog.eventRecord(
-                "poller.background.start.skip",
-                category: "poller",
-                trigger: "launch",
-                result: "skipped",
-                fields: ["reason": "local-qa"])
-            return
-        }
         guard snap.hasCompletedProviderOnboarding else {
             DeveloperLog.eventRecord(
                 "poller.background.start.skip",
@@ -199,6 +190,15 @@ final class AppEnvironment {
             }
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
+            }
+            guard LocalQAEnvironment.allowsExternalDataSources() else {
+                DeveloperLog.eventRecord(
+                    "poller.background.start.skip",
+                    category: "poller",
+                    trigger: "launch",
+                    result: "skipped",
+                    fields: ["reason": "local-qa"])
+                return
             }
         } catch {
             self.lastError = String(describing: error)
@@ -219,6 +219,17 @@ final class AppEnvironment {
     /// Boot just the Codex rate-limit poller. Safe to call repeatedly —
     /// no-op if it's already running.
     private func startCodexPoller(database db: DatabaseManager) {
+        // Warm-start from the persisted snapshot even in local QA. QA
+        // disables external app-server calls, but the shadow DB may
+        // already contain copied 5h / 7d samples that the UI should show.
+        Task { [weak self] in
+            if let cached = try? await RateLimitsHydrator.loadLatest(database: db) {
+                await MainActor.run {
+                    guard let self, self.latestRateLimits == nil else { return }
+                    self.latestRateLimits = cached
+                }
+            }
+        }
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             DeveloperLog.eventRecord(
                 "poller.codex.start.skip",
@@ -239,21 +250,6 @@ final class AppEnvironment {
             return
         }
         DeveloperLog.eventRecord("poller.codex.start", category: "poller", provider: "codex")
-        // Warm-start: hydrate the last persisted Codex snapshot from the
-        // DB so the menu bar has something to show before the first
-        // live poll lands (which can take seconds in the happy case and
-        // never in failure modes like the codex CLI's node shebang not
-        // resolving). Without this, `MenuBarLabelView` falls back to
-        // the gauge SF Symbol, which reads as "feature broken" rather
-        // than "fetching". Same pattern as `startClaudePoller`.
-        Task { [weak self] in
-            if let cached = try? await RateLimitsHydrator.loadLatest(database: db) {
-                await MainActor.run {
-                    guard let self, self.latestRateLimits == nil else { return }
-                    self.latestRateLimits = cached
-                }
-            }
-        }
         let interval = SettingsStore.snapshot().pollIntervalSeconds
         let p = RateLimitPoller(
             appServer: appServer,
@@ -277,6 +273,16 @@ final class AppEnvironment {
     /// too; the poller's own 60 s spam gap + 429 cooldown keep that
     /// safe.
     private func startClaudePoller(database db: DatabaseManager) {
+        // Same local-cache warm-start as Codex: QA blocks external OAuth
+        // reads but should still render copied `claude_oauth` rows.
+        Task { [weak self] in
+            if let cached = try? await ClaudeUsageHydrator.loadLatest(database: db) {
+                await MainActor.run {
+                    guard let self, self.latestClaudeUsage == nil else { return }
+                    self.latestClaudeUsage = cached
+                }
+            }
+        }
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             DeveloperLog.eventRecord(
                 "poller.claude.start.skip",
@@ -297,18 +303,6 @@ final class AppEnvironment {
             return
         }
         DeveloperLog.eventRecord("poller.claude.start", category: "poller", provider: "claude")
-        // Warm-start: hydrate the last persisted Claude snapshot from
-        // the DB so the UI has something to show before the first
-        // network poll lands. Avoids the "blank + 'unavailable'" first
-        // impression when Anthropic 429s us at boot.
-        Task { [weak self] in
-            if let cached = try? await ClaudeUsageHydrator.loadLatest(database: db) {
-                await MainActor.run {
-                    guard let self, self.latestClaudeUsage == nil else { return }
-                    self.latestClaudeUsage = cached
-                }
-            }
-        }
         let cp = ClaudeUsagePoller(
             database: db,
             interval: .seconds(7200),
@@ -456,6 +450,9 @@ final class AppEnvironment {
                 category: "app",
                 trigger: trigger,
                 fields: ["throttle": .bool(throttle)])
+            refreshRateLimits(
+                minInterval: throttle ? 30 : nil,
+                trigger: trigger)
             runScan(
                 minInterval: throttle ? 20 : nil,
                 trigger: trigger)
@@ -489,14 +486,41 @@ final class AppEnvironment {
         parentOperation: DeveloperLogOperation? = nil
     ) {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
-            DeveloperLog.eventRecord(
-                "ratelimits.refresh.skip",
+            let op = DeveloperLog.startOperation(
+                "ratelimits.hydrate",
                 category: "poller",
-                operation: parentOperation,
                 trigger: trigger,
                 provider: "codex",
-                result: "skipped",
-                fields: ["reason": "local-qa"])
+                parent: parentOperation,
+                fields: ["source": "local-db"])
+            do {
+                let (db, _) = try ensureServices()
+                Task { [weak self, op] in
+                    do {
+                        let cached = try await RateLimitsHydrator.loadLatest(database: db)
+                        await MainActor.run {
+                            guard let self else { return }
+                            self.latestRateLimits = cached
+                            if cached != nil {
+                                self.lastRateLimitsRefreshAt = Date()
+                            }
+                        }
+                        DeveloperLog.finishOperation(
+                            op,
+                            result: cached == nil ? "no-data" : "success",
+                            fields: [
+                                "primary_used_percent": .double(cached?.primary?.usedPercent ?? -1),
+                                "secondary_used_percent": .double(cached?.secondary?.usedPercent ?? -1)
+                            ])
+                    } catch {
+                        await MainActor.run { self?.lastError = String(describing: error) }
+                        DeveloperLog.failOperation(op, error: error)
+                    }
+                }
+            } catch {
+                self.lastError = String(describing: error)
+                DeveloperLog.failOperation(op, error: error)
+            }
             return
         }
         guard !isRefreshingRateLimits else {
@@ -836,33 +860,13 @@ final class AppEnvironment {
         NSApp.setActivationPolicy(.accessory)
     }
 
+    /// Whether any app-owned window is currently on screen, excluding the
+    /// given ids. AppKit now owns exactly the four `WindowManager` windows
+    /// (all plain `NSWindow`), so this defers to that registry — no more
+    /// scanning `NSApp.windows` and filtering out the popover / status-bar
+    /// host by `NSPanel` / classname heuristics.
     static func hasVisibleAppWindow(excludingWindowIDs: Set<String> = []) -> Bool {
-        NSApp.windows.contains { win in
-            guard win.isVisible else { return false }
-            if let id = win.identifier?.rawValue, excludingWindowIDs.contains(id) {
-                return false
-            }
-            // Reject `NSPanel` subclasses — the menu-bar popover
-            // host, status-bar window, and any future SwiftUI
-            // transient panel are NSPanel-derived, while the
-            // SwiftUI `Window` scenes we open (Dashboard, Settings,
-            // Onboarding) are plain `NSWindow`. This single check
-            // catches the bulk of cases without depending on
-            // private class symbols.
-            if win is NSPanel { return false }
-            // Defence-in-depth: belt-and-suspenders against future
-            // SwiftUI host classes that subclass NSWindow directly
-            // but whose name still spells out their role. The two
-            // current `NSStatusBarWindow` / popover panel classes
-            // are already rejected by the NSPanel check above; this
-            // line only matters if a future macOS reparents one of
-            // those hosts onto NSWindow.
-            let cls = NSStringFromClass(type(of: win))
-            if cls.contains("StatusBar") || cls.contains("Popover") {
-                return false
-            }
-            return true
-        }
+        WindowManager.shared.hasVisibleWindow(excluding: excludingWindowIDs)
     }
 
     /// Re-apply the activation policy based on the current setting.

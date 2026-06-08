@@ -16,31 +16,32 @@ enum MenuBarLabelModel {
     }
 
     /// Build the ordered rows. Order is hard-coded codex-first, claude-second
-    /// (Set iteration is unstable). A provider is included only when it is in
-    /// both the icon-intent set AND the enabled set, and at least one of its
-    /// windows has a number (otherwise it'd just hog width with "-- · --").
+    /// (Set iteration is unstable). A provider is included when it is in both
+    /// the icon-intent set AND the enabled set. Missing windows render as "--"
+    /// so the status item stays visually consistent with the Settings choice;
+    /// the gauge fallback is reserved for the deliberate "show no providers"
+    /// state.
     static func rows(iconProviders: Set<String>,
                      enabledProviders: Set<String>,
                      rateLimits: RateLimitSnapshot?,
                      claudeUsage: ClaudeUsageSnapshot?,
+                     codexQuota: CodexQuotaSnapshot? = nil,
                      displayMode: SettingsStore.QuotaDisplayMode) -> [Row] {
         var out: [Row] = []
         for id in ["codex", "claude"] {
             guard iconProviders.contains(id), enabledProviders.contains(id) else { continue }
             switch id {
             case "codex":
-                guard let snap = rateLimits else { continue }
-                let five = snap.primary?.usedPercent
-                let seven = snap.secondary?.usedPercent
-                guard five != nil || seven != nil else { continue }
+                let five = rateLimits?.primary?.usedPercent
+                    ?? codexQuota?.primary?.usedPercent
+                let seven = rateLimits?.secondary?.usedPercent
+                    ?? codexQuota?.secondary?.usedPercent
                 out.append(Row(tag: "CX",
                                fiveHour: format(five, displayMode),
                                sevenDay: format(seven, displayMode)))
             case "claude":
-                guard let u = claudeUsage else { continue }
-                let five = u.fiveHour?.usedPercent
-                let seven = u.sevenDay?.usedPercent
-                guard five != nil || seven != nil else { continue }
+                let five = claudeUsage?.fiveHour?.usedPercent
+                let seven = claudeUsage?.sevenDay?.usedPercent
                 out.append(Row(tag: "CC",
                                fiveHour: format(five, displayMode),
                                sevenDay: format(seven, displayMode)))

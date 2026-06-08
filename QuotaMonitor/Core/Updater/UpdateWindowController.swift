@@ -10,13 +10,24 @@ final class UpdateWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private let state: UpdateWindowState
+    private let onWindowClosed: @MainActor () -> Void
 
-    init(state: UpdateWindowState) {
+    init(state: UpdateWindowState,
+         onWindowClosed: @escaping @MainActor () -> Void = {}) {
         self.state = state
+        self.onWindowClosed = onWindowClosed
         super.init()
     }
 
     // MARK: - Public
+
+    /// Whether the update window is currently on screen. Consulted by the
+    /// app-window visibility check (via `CustomUserDriver` / `UpdaterController`
+    /// / `WindowManager`) so closing the last `WindowManager` window while an
+    /// update is showing doesn't demote the app to `.accessory` out from under
+    /// this window. The window is non-miniaturizable, so `isVisible` cleanly
+    /// reflects "on screen".
+    var isWindowVisible: Bool { window?.isVisible ?? false }
 
     /// Creates (if needed) and shows the update window, bringing it to
     /// front.
@@ -71,5 +82,6 @@ final class UpdateWindowController: NSObject, NSWindowDelegate {
     /// closed it or we did) so the next `show()` builds a fresh window.
     func windowWillClose(_ notification: Notification) {
         window = nil
+        onWindowClosed()
     }
 }

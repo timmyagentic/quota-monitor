@@ -7,12 +7,28 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItemController: StatusItemController?
+    /// Sparkle updater. Constructed in `applicationDidFinishLaunching`, NOT as a
+    /// stored-property initializer: `@NSApplicationDelegateAdaptor` builds this
+    /// delegate during `QuotaMonitorApp.init`'s prologue, *before* the init body
+    /// runs `UserDefaultsMigration.runIfNeeded()`. `UpdaterController.init` reads
+    /// UserDefaults via Sparkle, so it must run *after* the migration — which is
+    /// guaranteed by the time `applicationDidFinishLaunching` fires.
+    private var updater: UpdaterController!
     private var localQAController: LocalQAController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
         let loc = LocalizationStore.shared
         let settings = SettingsStore.shared
+
+        // Now that the migration has run (in QuotaMonitorApp.init), it's safe to
+        // let Sparkle read UserDefaults. AppKit owns the four app windows (see
+        // WindowManager); hand it the updater so Settings can wire "Check Now".
+        updater = UpdaterController(
+            onUpdateWindowClosed: {
+                AppEnvironment.shared.demoteToAccessory()
+            })
+        WindowManager.shared.configure(updater: updater)
 
         let controller = StatusItemController(
             env: env, localization: loc, settings: settings)
@@ -34,11 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.refreshMenuBar(trigger: "launch")
         env.startBackgroundPolling()
 
+        // Close the inert placeholder `Window` SwiftUI auto-opens at launch.
+        // Unconditional: on a fresh install (onboarding path) it must still be
+        // closed, or the tiny `__inert__` window lingers under the onboarding
+        // window for the whole wizard.
+        closeStrayWindows()
+
         // Onboarding window on launch (previously MenuBarLabelView.task).
         let onboardingNeeded = loc.needsOnboarding || settings.needsProviderOnboarding
         Log.discover.info("launch onboardingNeeded=\(onboardingNeeded, privacy: .public)")
         if onboardingNeeded {
-            WindowRouter.shared.request("onboarding")
+            WindowManager.shared.show("onboarding")
             // A brand-new user is mid-wizard; defer the discoverability
             // check until they finish (see notification observer below).
             NotificationCenter.default.addObserver(
@@ -47,12 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 name: .quotaMonitorOnboardingCompleted,
                 object: nil)
         } else {
-            // This is a pure menu-bar agent: windows open on demand only.
-            // After removing `MenuBarExtra` (which was the non-opening
-            // primary scene), SwiftUI auto-opens the FIRST `Window` scene
-            // at launch — close any such stray window so an existing user
-            // doesn't get the onboarding/dashboard window every launch.
-            closeStrayWindows()
+            // Pure menu-bar agent: windows open on demand only.
             scheduleDiscoverabilityCheck()
         }
 
@@ -66,12 +83,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Close any SwiftUI `Window` scene that macOS auto-opened at launch.
-    /// Runs on the next runloop tick because the scene's `NSWindow` may
-    /// not exist yet inside `applicationDidFinishLaunching`.
+    /// Close the inert SwiftUI placeholder `Window` that macOS auto-opens at
+    /// launch. A SwiftUI `App` must declare at least one `Scene`; ours is a
+    /// hidden `Window(id: "__inert__")` that exists only to satisfy that
+    /// requirement (the four real windows are AppKit-owned via `WindowManager`).
+    /// Runs on the next runloop tick because the scene's `NSWindow` may not
+    /// exist yet inside `applicationDidFinishLaunching`.
     private func closeStrayWindows() {
         DispatchQueue.main.async {
-            let ids: Set<String> = ["onboarding", "dashboard", "settings", "menubar-help"]
+            let ids: Set<String> = ["__inert__"]
             for win in NSApp.windows {
                 guard let id = win.identifier?.rawValue, ids.contains(id) else { continue }
                 Log.discover.info("closing stray auto-opened window id=\(id, privacy: .public)")
@@ -81,17 +101,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Dock-icon click (the Dock icon is our clipped-menu-bar fallback).
-    /// AppKit's default reopen-with-no-windows opens the *first* `Window`
-    /// scene — which is onboarding — so a fully-onboarded user clicking the
-    /// Dock icon would wrongly get the wizard. Open the right window
-    /// ourselves and suppress the default.
+    /// AppKit's default reopen-with-no-windows would open the *first* SwiftUI
+    /// scene — now the inert hidden `__inert__` placeholder, which is useless
+    /// (and a fully-onboarded user must land on the dashboard, not the wizard).
+    /// Open the right window ourselves via `WindowManager` and suppress the
+    /// default.
     func applicationShouldHandleReopen(_ sender: NSApplication,
                                        hasVisibleWindows: Bool) -> Bool {
         if hasVisibleWindows { return true }   // bring the existing window forward
         let needsOnboarding = LocalizationStore.shared.needsOnboarding
             || SettingsStore.shared.needsProviderOnboarding
-        AppEnvironment.shared.activateForWindow()
-        WindowRouter.shared.request(needsOnboarding ? "onboarding" : "dashboard")
+        // `show` already does activate-then-order-front.
+        WindowManager.shared.show(needsOnboarding ? "onboarding" : "dashboard")
         return false
     }
 
@@ -145,8 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .showPopover:
             controller.showPopover()
         case .openFallbackWindow:
-            AppEnvironment.shared.activateForWindow()
-            WindowRouter.shared.request("menubar-help")
+            WindowManager.shared.show("menubar-help")
         case .none:
             break
         }

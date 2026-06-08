@@ -28,14 +28,16 @@ window copy.
 ## [Unreleased]
 
 #### Summary
-- Release and PR checks are stricter while the default local QA path stays static
+- Release and PR checks are stricter while draft/docs-only PRs avoid the macOS Swift runner
 - The test circuit now clearly separates static checks, Computer Use setup, visible UI walkthroughs, and artifact replay
 - Interactive QA cleanup no longer risks closing the user's installed QuotaMonitor app
-- PR CI no longer starts the macOS Swift runner for draft or docs/changelog-only updates
+- App windows now open, focus, and return to menu-bar-only mode through a single AppKit window manager
 
 ### Changed
+- **AppKit window ownership.** Dashboard, Settings, onboarding, and the menu-bar recovery guide now share one AppKit window manager, making window opening and focusing more consistent.
 - **Static QA default.** `qa/run-all.sh` now delegates to `qa/run-static.sh` and no longer launches a new QuotaMonitor instance.
 - **Computer Use owns visible app validation.** The standard visible QA path is `qa/prepare-computer-use-fixture.sh` or `qa/prepare-computer-use-real-data.sh` followed by Computer Use.
+- **Real-data QA preserves visible preferences.** `qa/prepare-computer-use-real-data.sh` now copies the current QuotaMonitor UserDefaults into the isolated QA suite, while still overriding credential-sensitive settings.
 - **Testing circuit documentation.** `docs/local-qa.md`, `docs/computer-qa.md`, and the project QA skill now describe the same responsibilities: static gate, Computer Use setup, Computer Use walkthrough, and artifact replay.
 - **Gated macOS CI.** The required `swift-test` check now runs a fast summary job first and starts the macOS Swift suite only for app, test, QA, resource, package, tool, or workflow changes on ready PRs.
 
@@ -45,6 +47,10 @@ window copy.
 - **PR changelog enforcement.** Pull-request CI now requires both English and Simplified-Chinese changelog updates for non-appcast PRs, then validates the section that will appear in the update window.
 
 ### Fixed
+- **Menu-bar readout follows Settings.** When the selected provider has no live quota sample yet, the menu-bar item now keeps the configured text readout with dash placeholders or the dashboard quota snapshot instead of falling back to the gauge icon.
+- **Codex popover quota fallback.** The Codex menu-bar card now uses the dashboard quota snapshot when live CLI quota fetching is unavailable, avoiding a misleading sign-in prompt during real-data QA runs.
+- **Settings window layout after upgrade.** AppKit-hosted Settings now reuses the old Settings window frame key while keeping the pane width aligned with the original grouped Settings layout.
+- **Update-window Dock cleanup.** Closing the Sparkle update window now lets QuotaMonitor return to menu-bar-only mode when no other app window is open.
 - **Installed app restoration after QA cleanup.** QA cleanup now records whether `/Applications/QuotaMonitor.app` was already running, closes only QA-launched processes, and restores the installed app when needed.
 - **Update window no longer blanks on empty release notes.** When an appcast item ships no description, the update window now shows a short placeholder and keeps Install enabled instead of rendering an empty web view; the previous emptiness check ran on the always-wrapped HTML, so it never fired.
 

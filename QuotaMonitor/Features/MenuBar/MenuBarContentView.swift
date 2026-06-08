@@ -127,12 +127,10 @@ struct MenuBarContentView: View {
             .controlSize(.large)
             .keyboardShortcut("d")
 
-            // Settings is a regular `Window(id: "settings")` scene
-            // (see QuotaMonitorApp.swift for why) so we open it by id
-            // rather than via SwiftUI's `openSettings` action — that
-            // action only targets a `Settings { }` scene, which we
-            // explicitly don't have. activateForWindow() runs first so
-            // the Settings window comes forward over the menu popover.
+            // Settings is an AppKit `NSWindow` owned by `WindowManager`
+            // (not a SwiftUI `Settings { }` scene), so we open it by id via
+            // `WindowManager.show`, which also brings it forward over the
+            // menu popover.
             Button {
                 windowActions(env).openSettings()
             } label: {
@@ -145,11 +143,10 @@ struct MenuBarContentView: View {
     }
 
     /// Placeholder content shown while `settings.needsProviderOnboarding`
-    /// is true. The onboarding Window is auto-opened by
-    /// `AppDelegate`, but it can be dismissed via the title
-    /// bar close button — when that happens we still re-open it from
-    /// `onDisappear`, but the user might land here in the brief gap.
-    /// "Open setup" is the explicit escape hatch.
+    /// is true. The onboarding window is auto-opened by `AppDelegate`, and its
+    /// red close button is blocked by `AppWindowController.windowShouldClose`
+    /// until onboarding completes, so it can't be dismissed early. "Open setup"
+    /// re-focuses the already-open onboarding window.
     @ViewBuilder
     private var onboardingLock: some View {
         VStack(alignment: .leading, spacing: 12) {

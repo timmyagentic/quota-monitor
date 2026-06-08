@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 
 /// First-launch onboarding window. Up to three steps:
 ///   1. **Language** — pick the UI language. Self-readable: both buttons
@@ -35,8 +34,6 @@ struct OnboardingView: View {
     @Environment(LocalizationStore.self) private var loc
     @Environment(SettingsStore.self) private var settings
     @Environment(AppEnvironment.self) private var env
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
 
     /// Flips to `true` when step 2's Continue is clicked with **both**
     /// providers selected, transitioning the wizard to the menu-bar
@@ -60,34 +57,10 @@ struct OnboardingView: View {
         }
         .padding(20)
         .frame(width: 340)
-        // Force the onboarding window to the front whenever it
-        // appears. Without this it can render behind whatever the user
-        // was last looking at — QuotaMonitor is an `.accessory` app
-        // (LSUIElement=YES), and on the launch path the window is
-        // opened from `.task` with no user gesture, so macOS doesn't
-        // grant frontmost focus on its own. Doing this from
-        // `.onAppear` rather than at the openWindow call site sidesteps
-        // a timing race (the NSWindow doesn't exist yet at the moment
-        // openWindow returns) and covers both entry points — first
-        // launch and the `.onDisappear` re-open below.
-        .onAppear {
-            env.activateForWindow()
-            if let win = NSApp.windows.first(where: {
-                $0.identifier?.rawValue == "onboarding"
-            }) {
-                win.makeKeyAndOrderFront(nil)
-            }
-        }
-        // Re-open the window if the user closes it before completing
-        // both steps — `onDisappear` fires both on legitimate
-        // completion (we dismissed it ourselves, in which case the
-        // flags are clear and this no-ops) and on the user closing
-        // the titlebar (in which case the flags are still set).
-        .onDisappear {
-            if loc.needsOnboarding || settings.needsProviderOnboarding {
-                openWindow(id: "onboarding")
-            }
-        }
+        // Focus-on-open is owned by `WindowManager.show`. The hard gate
+        // (can't close until both steps are done) is enforced by
+        // `AppWindowController.windowShouldClose` for the onboarding window,
+        // so the old `onDisappear` re-opener is no longer needed.
     }
 
     // MARK: - language step
@@ -237,10 +210,9 @@ struct OnboardingView: View {
         settings.markProviderOnboardingDone()
         env.applyEnabledProviders()
         env.runScan(minInterval: 0)
-        // Both `needs*` flags are now false, so closing here is the
-        // legitimate path; the `onDisappear` re-opener sees the
-        // cleared flags and stays silent.
-        dismissWindow(id: "onboarding")
+        // Both `needs*` flags are now false, so this legitimate close passes
+        // the `windowShouldClose` gate too (it bypasses it anyway).
+        WindowManager.shared.close("onboarding")
     }
 
     // MARK: - menu-bar step

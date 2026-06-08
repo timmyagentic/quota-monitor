@@ -22,11 +22,15 @@ DB_PATH="${QA_HOME}/Library/Application Support/QuotaMonitor/quotamonitor.sqlite
 DEV_LOG="${QA_HOME}/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log"
 QA_CONFIG="${ARTIFACTS}/qa-config.json"
 BOUNDARY_MANIFEST="${ARTIFACTS}/qa-boundary.json"
-QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_computer_use_steps)}"
+QA_STEPS="${QUOTAMONITOR_QA_STEPS:-$(qm_real_data_computer_use_steps)}"
 BRIEF="${ARTIFACTS}/computer-use-qa.md"
 CLEANUP_SCRIPT="${ARTIFACTS}/cleanup-computer-use.sh"
 REAL_DB="${QM_QA_REAL_DB_PATH:-$(qm_default_real_database_path "$HOME")}"
 PROTECTION_REPORT="${ARTIFACTS}/real-data-protection.txt"
+SOURCE_HOME="${QM_QA_SOURCE_HOME:-$HOME}"
+SOURCE_DEFAULTS_DOMAIN="${QM_QA_SOURCE_DEFAULTS_DOMAIN:-dev.tjzhou.QuotaMonitor}"
+COPY_USER_DEFAULTS="${QM_QA_COPY_USER_DEFAULTS:-1}"
+USER_DEFAULTS_REPORT="${ARTIFACTS}/user-defaults-shadow.txt"
 INSTALLED_APP_BUNDLE="$(qm_installed_app_bundle)"
 INSTALLED_APP_WAS_RUNNING="$(qm_installed_app_was_running "$INSTALLED_APP_BUNDLE")"
 
@@ -43,8 +47,19 @@ qm_write_computer_use_cleanup \
 SOURCE_FINGERPRINT_BEFORE="$(qm_file_fingerprint "$REAL_DB")"
 qm_copy_sqlite_snapshot "$REAL_DB" "$DB_PATH"
 
-qm_write_defaults "$QA_HOME" "$DEFAULTS_SUITE"
+qm_write_real_data_defaults \
+    "$QA_HOME" \
+    "$DEFAULTS_SUITE" \
+    "$SOURCE_HOME" \
+    "$SOURCE_DEFAULTS_DOMAIN" \
+    "$USER_DEFAULTS_REPORT" \
+    "$COPY_USER_DEFAULTS"
 mkdir -p "$QA_HOME/.codex" "$QA_HOME/.claude" "$QA_HOME/.config/claude"
+
+USER_DEFAULTS_POLICY="deterministic-qa-defaults"
+if grep -q '^copied_user_defaults=true$' "$USER_DEFAULTS_REPORT"; then
+    USER_DEFAULTS_POLICY="copied-user-defaults"
+fi
 
 export CODEX_HOME="$QA_HOME/.codex"
 qm_write_launch_config \
@@ -62,7 +77,9 @@ qm_write_boundary_manifest \
     "$CODEX_HOME" \
     "$APP_ARTIFACTS" \
     "$REAL_DB" \
-    "$DB_PATH"
+    "$DB_PATH" \
+    "$USER_DEFAULTS_POLICY" \
+    "$SOURCE_DEFAULTS_DOMAIN"
 plutil -convert json -o /dev/null "$QA_CONFIG" >/dev/null
 
 export QUOTAMONITOR_QA_CONFIG="$QA_CONFIG"
@@ -87,7 +104,6 @@ SQL
 
 dev_log_has_qa_events() {
     [[ -f "$DEV_LOG" ]] || return 1
-    grep -q '"event":"qa.settings.exercise"' "$DEV_LOG" || return 1
     grep -q '"event":"qa.snapshot.write"' "$DEV_LOG" || return 1
 }
 
@@ -149,7 +165,8 @@ qm_write_real_data_computer_qa_brief \
     "$DEFAULTS_SUITE" \
     "$ROOT_DIR" \
     "$REAL_DB" \
-    "$DB_PATH"
+    "$DB_PATH" \
+    "$USER_DEFAULTS_REPORT"
 
 cat <<EOF
 Real-data Computer Use QA app is running.
@@ -158,4 +175,5 @@ Computer Use brief: $BRIEF
 Cleanup command: $CLEANUP_SCRIPT
 Source DB: $REAL_DB
 Shadow DB: $DB_PATH
+User defaults shadow: $USER_DEFAULTS_REPORT
 EOF
