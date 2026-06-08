@@ -31,9 +31,15 @@ behavior, and localization rules as the menu bar and popover.
   - closing it does not quit the app
   - it does not count as a primary app window for Dock demotion decisions
   - it can appear in full-screen Spaces when pinned
+- Make the floating surface ergonomic:
+  - the user can drag it to any visible position on any attached display
+  - dragging it into a screen edge can collapse it into a thin visible tab
+  - the tab can be clicked to expand the widget back to its last full frame
+  - the close action is explicit enough to avoid accidental dismissal
 - Persist only the user-facing widget intent:
   - whether the widget should reopen on launch
   - whether it is pinned above normal windows and across Spaces
+  - whether edge auto-hide is enabled
   - the user-positioned frame via AppKit frame autosave
 - Extend LocalQA so visual/manual verification can prove which running app owns
   the widget window.
@@ -60,6 +66,7 @@ behavior, and localization rules as the menu bar and popover.
    - a toggle: show or hide the widget and persist the launch setting
    - a pin toggle: keep the widget above normal windows and visible across
      Spaces
+   - an edge auto-hide toggle: allow edge docking and collapse to a thin tab
 
 ### Widget Layout
 
@@ -90,6 +97,44 @@ percentage direction as Settings. If the user selected `Remaining`, the widget
 must say `Remaining`, and progress should represent remaining. If the user
 selected `Used`, it must say `Used`, and progress should represent usage.
 
+### Dragging, Edge Hide, And Close Semantics
+
+The widget is a desktop utility, so movement must be forgiving:
+
+- The header and non-control background are drag regions.
+- Dragging works on every attached display, not just `NSScreen.main`.
+- The user can place the expanded widget anywhere inside a screen's visible
+  frame. The controller may clamp just enough to keep at least a small visible
+  recovery area, so a widget cannot be lost completely off-screen.
+- The last expanded frame is saved. Expanding from an edge returns to that
+  frame, adjusted only if the display layout changed.
+
+Edge auto-hide is intentionally a drag-end behavior, not a hover surprise:
+
+- If `floatingQuotaWidgetEdgeAutoHideEnabled` is on and the user releases the
+  widget within 16 px of a visible screen edge, the panel snaps to that edge and
+  collapses.
+- Collapsed state leaves a 10-14 px visible tab inside the screen. The tab uses
+  the current status color and a subtle material, but no text.
+- Supported edges: left, right, top, and bottom. Top docking respects the menu
+  bar by using `visibleFrame`, not full `frame`.
+- Single-click on the collapsed tab expands the widget.
+- If edge auto-hide is off, dragging near an edge only clamps the expanded
+  widget into the visible frame; it does not collapse.
+
+Closing should be explicit:
+
+- Normal expanded single-click never closes the widget. It conflicts with
+  dragging and with refresh/pin controls.
+- Expanded close paths:
+  - close button in the header
+  - Settings toggle off
+  - popover `Hide Widget`
+  - context menu `Hide Widget`
+- Collapsed close shortcuts:
+  - context menu `Hide Widget`
+- Plain click on the collapsed tab expands. It does not close.
+
 ### Status Levels
 
 Status is derived from used percentage, regardless of display direction:
@@ -116,6 +161,10 @@ Use a small AppKit-owned panel:
 - unpinned mode uses `.normal` level and current Space only
 - frame autosave name: `floating-quota-widget`
 - first placement: top-right of the main screen visible frame, with padding
+- `isMovableByWindowBackground = true`, plus controller-level drag-end handling
+  for edge docking
+- collapsed frame and last expanded frame are owned by the controller, not by
+  SwiftUI view state
 
 The widget is an auxiliary surface. It is not one of the four primary managed
 windows (`dashboard`, `settings`, `onboarding`, `menubar-help`) and should not
@@ -222,6 +271,7 @@ Add two persisted settings:
 ```swift
 var floatingQuotaWidgetEnabled: Bool
 var floatingQuotaWidgetPinned: Bool
+var floatingQuotaWidgetEdgeAutoHideEnabled: Bool
 ```
 
 Keys:
@@ -229,16 +279,45 @@ Keys:
 ```swift
 settings.floatingQuotaWidgetEnabled
 settings.floatingQuotaWidgetPinned
+settings.floatingQuotaWidgetEdgeAutoHideEnabled
 ```
 
 Defaults:
 
 - `floatingQuotaWidgetEnabled = false`
 - `floatingQuotaWidgetPinned = true`
+- `floatingQuotaWidgetEdgeAutoHideEnabled = true`
 
 The enabled setting means "show on launch and currently visible unless closed."
 The close button sets `floatingQuotaWidgetEnabled = false` and hides the panel.
 The popover and Settings toggle set it to true and show the panel immediately.
+
+The edge auto-hide setting gates only snap/collapse behavior. It does not
+disable free dragging.
+
+### Interaction State
+
+Keep interaction state in the AppKit controller:
+
+```swift
+enum FloatingQuotaWidgetEdge: String, Codable, Equatable {
+    case left
+    case right
+    case top
+    case bottom
+}
+
+struct FloatingQuotaWidgetPresentationState: Equatable {
+    var isCollapsed: Bool
+    var edge: FloatingQuotaWidgetEdge?
+    var lastExpandedFrame: CGRect?
+}
+```
+
+This state does not need to be a user default in the first version. AppKit frame
+autosave covers normal expanded placement; a collapsed widget can restore as an
+expanded widget on relaunch to avoid trapping the user behind a tiny tab after a
+display-layout change.
 
 ### Localization
 
@@ -250,9 +329,13 @@ Add these keys in `L10n.swift`:
 - `floatingWidgetHelp`
 - `floatingWidgetPinnedLabel`
 - `floatingWidgetPinnedHelp`
+- `floatingWidgetEdgeAutoHideLabel`
+- `floatingWidgetEdgeAutoHideHelp`
 - `floatingWidgetRefreshTooltip`
 - `floatingWidgetPinTooltip`
 - `floatingWidgetCloseTooltip`
+- `floatingWidgetExpandTooltip`
+- `floatingWidgetContextHide`
 - `quotaStatusOK`
 - `quotaStatusWarning`
 - `quotaStatusDanger`
@@ -277,6 +360,8 @@ write an explicit `floatingWidget` object into `app-state.json`:
   "floatingWidget": {
     "isVisible": true,
     "isPinned": true,
+    "isCollapsed": false,
+    "edge": null,
     "windowIdentifier": "floating-quota-widget",
     "status": "ok"
   }
@@ -299,6 +384,10 @@ window checks.
 - The widget respects `quotaDisplayMode` for both label text and progress fill.
 - The widget respects `menuBarIconProviders` and `enabledProviders`.
 - Pinning changes window level/Space behavior immediately.
+- The expanded widget can be dragged freely on any attached display.
+- Dragging to a screen edge collapses it to a thin visible tab when edge
+  auto-hide is enabled.
+- Clicking the collapsed tab expands it; context-menu `Hide Widget` closes it.
 - The widget appears over full-screen Spaces while pinned.
 - The widget does not trigger Dock icon promotion when
   `showDockIconForWindows` is false.
@@ -315,6 +404,9 @@ window checks.
   on keyboard input.
 - A pinned panel can feel intrusive. Default size must stay small, and close
   must be obvious.
+- Auto-hide can become confusing if it triggers while the user is only trying to
+  align the widget. Treat snap/collapse as a drag-end threshold, not a live hover
+  behavior, and expose a Settings toggle.
 - If the widget counts as a primary window, it can regress the Dock demotion
   fixes from PR #25. Keep it outside `hasVisibleWindow`.
 - If it recomputes percentages separately, it can diverge from Settings and the

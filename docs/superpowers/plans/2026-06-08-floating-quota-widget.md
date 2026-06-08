@@ -4,7 +4,7 @@
 
 **Goal:** Add an optional floating quota widget for QuotaMonitor that shows the same 5h and 7d quota state as the menu bar in a small AppKit-owned desktop HUD.
 
-**Architecture:** `WindowManager` owns a new `FloatingQuotaWidgetController` that hosts `FloatingQuotaWidgetView` in an `NSPanel`. A pure `FloatingQuotaWidgetModel` converts the same `AppEnvironment` and `SettingsStore` inputs used by the menu-bar label into rows, headline text, and status. Settings add persistent show/pin toggles; LocalQA gains a widget step and artifact fields so GUI validation can prove the widget belongs to the QA build.
+**Architecture:** `WindowManager` owns a new `FloatingQuotaWidgetController` that hosts `FloatingQuotaWidgetView` in an `NSPanel`. A pure `FloatingQuotaWidgetModel` converts the same `AppEnvironment` and `SettingsStore` inputs used by the menu-bar label into rows, headline text, and status. Settings add persistent show/pin/edge-auto-hide toggles; the controller owns free dragging, edge collapse, tab expansion, and explicit close semantics. LocalQA gains a widget step and artifact fields so GUI validation can prove the widget belongs to the QA build.
 
 **Tech Stack:** Swift 6, SwiftUI, AppKit `NSPanel`, Swift Testing, SwiftPM, QuotaMonitor LocalQA.
 
@@ -31,7 +31,8 @@
 - Modify: `QuotaMonitor/App/LocalQAReport.swift`
   - Add a `floatingWidget` object.
 - Modify: `QuotaMonitor/Core/Settings/SettingsStore.swift`
-  - Add `floatingQuotaWidgetEnabled` and `floatingQuotaWidgetPinned`.
+  - Add `floatingQuotaWidgetEnabled`, `floatingQuotaWidgetPinned`, and
+    `floatingQuotaWidgetEdgeAutoHideEnabled`.
 - Modify: `QuotaMonitor/Core/Localization/L10n.swift`
   - Add English and Simplified Chinese strings.
 - Modify: `QuotaMonitor/Features/MenuBar/MenuBarContentView.swift`
@@ -85,6 +86,7 @@ struct FloatingQuotaWidgetSettingTests {
         let store = SettingsStore(defaults: Self.freshDefaults())
         #expect(store.floatingQuotaWidgetEnabled == false)
         #expect(store.floatingQuotaWidgetPinned == true)
+        #expect(store.floatingQuotaWidgetEdgeAutoHideEnabled == true)
     }
 
     @Test
@@ -104,6 +106,15 @@ struct FloatingQuotaWidgetSettingTests {
         #expect(d.bool(forKey: "settings.floatingQuotaWidgetPinned") == false)
         #expect(SettingsStore(defaults: d).floatingQuotaWidgetPinned == false)
     }
+
+    @Test
+    func edgeAutoHidePersistsToUserDefaults() {
+        let d = Self.freshDefaults()
+        let store = SettingsStore(defaults: d)
+        store.floatingQuotaWidgetEdgeAutoHideEnabled = false
+        #expect(d.bool(forKey: "settings.floatingQuotaWidgetEdgeAutoHideEnabled") == false)
+        #expect(SettingsStore(defaults: d).floatingQuotaWidgetEdgeAutoHideEnabled == false)
+    }
 }
 ```
 
@@ -116,7 +127,8 @@ swift test --filter FloatingQuotaWidgetSettingTests
 ```
 
 Expected: compile failure because `SettingsStore` does not yet expose
-`floatingQuotaWidgetEnabled` and `floatingQuotaWidgetPinned`.
+`floatingQuotaWidgetEnabled`, `floatingQuotaWidgetPinned`, and
+`floatingQuotaWidgetEdgeAutoHideEnabled`.
 
 - [ ] **Step 3: Add the persisted settings**
 
@@ -133,6 +145,11 @@ var floatingQuotaWidgetPinned: Bool {
     didSet { defaults.set(floatingQuotaWidgetPinned,
                           forKey: Keys.floatingQuotaWidgetPinned) }
 }
+
+var floatingQuotaWidgetEdgeAutoHideEnabled: Bool {
+    didSet { defaults.set(floatingQuotaWidgetEdgeAutoHideEnabled,
+                          forKey: Keys.floatingQuotaWidgetEdgeAutoHideEnabled) }
+}
 ```
 
 Add keys inside `SettingsStore.Keys`:
@@ -140,6 +157,7 @@ Add keys inside `SettingsStore.Keys`:
 ```swift
 static let floatingQuotaWidgetEnabled = "settings.floatingQuotaWidgetEnabled"
 static let floatingQuotaWidgetPinned = "settings.floatingQuotaWidgetPinned"
+static let floatingQuotaWidgetEdgeAutoHideEnabled = "settings.floatingQuotaWidgetEdgeAutoHideEnabled"
 ```
 
 Initialize them in `init(defaults:)`:
@@ -152,6 +170,12 @@ if defaults.object(forKey: Keys.floatingQuotaWidgetPinned) == nil {
 } else {
     self.floatingQuotaWidgetPinned =
         defaults.bool(forKey: Keys.floatingQuotaWidgetPinned)
+}
+if defaults.object(forKey: Keys.floatingQuotaWidgetEdgeAutoHideEnabled) == nil {
+    self.floatingQuotaWidgetEdgeAutoHideEnabled = true
+} else {
+    self.floatingQuotaWidgetEdgeAutoHideEnabled =
+        defaults.bool(forKey: Keys.floatingQuotaWidgetEdgeAutoHideEnabled)
 }
 ```
 
@@ -180,6 +204,13 @@ static var floatingWidgetPinnedHelp: String {
     t(en: "Pinned widgets float above normal windows and can appear in full-screen Spaces.",
       zh: "固定后组件会浮在普通窗口上方，并可显示在全屏 Space 中。")
 }
+static var floatingWidgetEdgeAutoHideLabel: String {
+    t(en: "Hide at screen edge", zh: "拖到屏幕边缘时隐藏")
+}
+static var floatingWidgetEdgeAutoHideHelp: String {
+    t(en: "When you drag the widget to a screen edge, it collapses into a thin tab. Click the tab to expand it.",
+      zh: "把组件拖到屏幕边缘后会收成一个窄边；点击窄边即可展开。")
+}
 static var floatingWidgetRefreshTooltip: String {
     t(en: "Refresh quota", zh: "刷新配额")
 }
@@ -188,6 +219,12 @@ static var floatingWidgetPinTooltip: String {
 }
 static var floatingWidgetCloseTooltip: String {
     t(en: "Close widget", zh: "关闭组件")
+}
+static var floatingWidgetExpandTooltip: String {
+    t(en: "Expand widget", zh: "展开组件")
+}
+static var floatingWidgetContextHide: String {
+    t(en: "Hide Widget", zh: "隐藏组件")
 }
 static var quotaStatusOK: String {
     t(en: "OK", zh: "正常")
@@ -503,9 +540,23 @@ Create `QuotaMonitor/Features/FloatingWidget/FloatingQuotaWidgetView.swift`:
 ```swift
 import SwiftUI
 
+enum FloatingQuotaWidgetEdge: String, Codable, Equatable {
+    case left
+    case right
+    case top
+    case bottom
+}
+
+struct FloatingQuotaWidgetPresentationState: Equatable {
+    var isCollapsed: Bool
+    var edge: FloatingQuotaWidgetEdge?
+    var lastExpandedFrame: CGRect?
+}
+
 struct FloatingQuotaWidgetActions {
     var refresh: @MainActor () -> Void
     var togglePinned: @MainActor () -> Void
+    var expand: @MainActor () -> Void
     var close: @MainActor () -> Void
 }
 
@@ -515,6 +566,7 @@ struct FloatingQuotaWidgetView: View {
     @Environment(LocalizationStore.self) private var loc
 
     let actions: FloatingQuotaWidgetActions
+    let presentation: FloatingQuotaWidgetPresentationState
 
     var body: some View {
         let snapshot = FloatingQuotaWidgetModel.snapshot(
@@ -526,20 +578,50 @@ struct FloatingQuotaWidgetView: View {
             displayMode: settings.quotaDisplayMode,
             isRefreshing: env.isScanning || env.isRefreshingRateLimits)
 
+        Group {
+            if presentation.isCollapsed {
+                collapsedTab(snapshot)
+            } else {
+                expandedContent(snapshot)
+            }
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: presentation.isCollapsed ? 4 : 10,
+                                    style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: presentation.isCollapsed ? 4 : 10,
+                             style: .continuous)
+                .strokeBorder(.separator.opacity(0.45))
+        }
+        .contextMenu {
+            Button(L10n.floatingWidgetContextHide) {
+                actions.close()
+            }
+        }
+        .environment(\.locale, loc.locale)
+        .id(loc.tickForceRedraw)
+    }
+
+    private func expandedContent(_ snapshot: FloatingQuotaWidgetModel.Snapshot) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             header(snapshot)
             content(snapshot)
         }
         .padding(14)
         .frame(width: 320, height: 190)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.separator.opacity(0.45))
+    }
+
+    private func collapsedTab(_ snapshot: FloatingQuotaWidgetModel.Snapshot) -> some View {
+        Button {
+            actions.expand()
+        } label: {
+            Rectangle()
+                .fill(color(for: snapshot.status))
+                .frame(width: collapsedTabSize.width,
+                       height: collapsedTabSize.height)
         }
-        .environment(\.locale, loc.locale)
-        .id(loc.tickForceRedraw)
+        .buttonStyle(.plain)
+        .help(L10n.floatingWidgetExpandTooltip)
     }
 
     private func header(_ snapshot: FloatingQuotaWidgetModel.Snapshot) -> some View {
@@ -625,6 +707,14 @@ struct FloatingQuotaWidgetView: View {
         case .unknown: return .secondary
         }
     }
+
+    private var collapsedTabSize: CGSize {
+        switch presentation.edge {
+        case .left, .right: return CGSize(width: 12, height: 72)
+        case .top, .bottom: return CGSize(width: 72, height: 12)
+        case nil: return CGSize(width: 12, height: 72)
+        }
+    }
 }
 ```
 
@@ -696,6 +786,51 @@ struct FloatingQuotaWidgetControllerTests {
         #expect(policy.level == .normal)
         #expect(policy.collectionBehavior.contains(.canJoinAllSpaces) == false)
     }
+
+    @Test
+    func detectsNearestScreenEdgeAtDragEnd() {
+        let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let frame = NSRect(x: 5, y: 300, width: 320, height: 190)
+
+        #expect(FloatingQuotaWidgetController.edgeAttachment(
+            for: frame,
+            visibleFrame: visible) == .left)
+    }
+
+    @Test
+    func doesNotAttachWhenOutsideThreshold() {
+        let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let frame = NSRect(x: 40, y: 300, width: 320, height: 190)
+
+        #expect(FloatingQuotaWidgetController.edgeAttachment(
+            for: frame,
+            visibleFrame: visible) == nil)
+    }
+
+    @Test
+    func collapsedLeftFrameLeavesThinVisibleTab() {
+        let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let expanded = NSRect(x: 0, y: 300, width: 320, height: 190)
+        let collapsed = FloatingQuotaWidgetController.collapsedFrame(
+            edge: .left,
+            expandedFrame: expanded,
+            visibleFrame: visible)
+
+        #expect(collapsed.minX == 0)
+        #expect(collapsed.width == 12)
+        #expect(collapsed.height == 72)
+    }
+
+    @Test
+    func clampedExpandedFrameKeepsRecoveryAreaVisible() {
+        let visible = NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let offscreen = NSRect(x: -500, y: 120, width: 320, height: 190)
+        let clamped = FloatingQuotaWidgetController.clampedExpandedFrame(
+            offscreen,
+            visibleFrame: visible)
+
+        #expect(clamped.minX == -296)
+    }
 }
 ```
 
@@ -718,6 +853,15 @@ Create `QuotaMonitor/App/FloatingQuotaWidgetController.swift`:
 import AppKit
 import SwiftUI
 
+private final class FloatingQuotaWidgetPanel: NSPanel {
+    var onMouseUp: ((NSEvent) -> Void)?
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        onMouseUp?(event)
+    }
+}
+
 @MainActor
 final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
     struct WindowPolicy: Equatable {
@@ -726,6 +870,10 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
     }
 
     private var panel: NSPanel?
+    private var presentation = FloatingQuotaWidgetPresentationState(
+        isCollapsed: false,
+        edge: nil,
+        lastExpandedFrame: nil)
     private let env: AppEnvironment
     private let localization: LocalizationStore
     private let settings: SettingsStore
@@ -740,6 +888,9 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
     }
 
     var isVisible: Bool { panel?.isVisible ?? false }
+    var presentationState: FloatingQuotaWidgetPresentationState {
+        presentation
+    }
 
     func show() {
         let panel = panel ?? makePanel()
@@ -755,6 +906,18 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
         panel?.orderOut(nil)
     }
 
+    func expandFromEdge() {
+        guard let panel else { return }
+        presentation.isCollapsed = false
+        presentation.edge = nil
+        let target = Self.expandedFrame(
+            lastExpandedFrame: presentation.lastExpandedFrame,
+            fallbackSize: Self.expandedSize,
+            visibleFrame: Self.visibleFrame(containing: panel.frame))
+        panel.setFrame(target, display: true)
+        refreshHostedView()
+    }
+
     func setPinned(_ pinned: Bool) {
         settings.floatingQuotaWidgetPinned = pinned
         applyPinnedPolicy()
@@ -764,12 +927,36 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
         settings.floatingQuotaWidgetEnabled = false
     }
 
+    func windowDidMove(_ notification: Notification) {
+        guard let panel, !presentation.isCollapsed else { return }
+        presentation.lastExpandedFrame = panel.frame
+    }
+
+    func handleDragEnded() {
+        guard let panel else { return }
+        let visible = Self.visibleFrame(containing: panel.frame)
+        let clamped = Self.clampedExpandedFrame(panel.frame,
+                                               visibleFrame: visible)
+        panel.setFrame(clamped, display: true)
+        presentation.lastExpandedFrame = clamped
+        guard settings.floatingQuotaWidgetEdgeAutoHideEnabled,
+              let edge = Self.edgeAttachment(for: clamped,
+                                             visibleFrame: visible) else {
+            return
+        }
+        collapse(to: edge, visibleFrame: visible)
+    }
+
     static func initialOrigin(widgetSize: NSSize,
                               visibleFrame: NSRect,
                               padding: CGFloat = 18) -> NSPoint {
         NSPoint(x: visibleFrame.maxX - widgetSize.width - padding,
                 y: visibleFrame.maxY - widgetSize.height - padding)
     }
+
+    static let expandedSize = NSSize(width: 320, height: 190)
+    static let visibleTabThickness: CGFloat = 12
+    static let edgeSnapThreshold: CGFloat = 16
 
     static func windowPolicy(pinned: Bool) -> WindowPolicy {
         if pinned {
@@ -780,24 +967,108 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
         return WindowPolicy(level: .normal, collectionBehavior: [])
     }
 
+    static func edgeAttachment(for frame: NSRect,
+                               visibleFrame: NSRect,
+                               threshold: CGFloat = edgeSnapThreshold) -> FloatingQuotaWidgetEdge? {
+        let distances: [(FloatingQuotaWidgetEdge, CGFloat)] = [
+            (.left, abs(frame.minX - visibleFrame.minX)),
+            (.right, abs(visibleFrame.maxX - frame.maxX)),
+            (.top, abs(visibleFrame.maxY - frame.maxY)),
+            (.bottom, abs(frame.minY - visibleFrame.minY))
+        ]
+        return distances
+            .filter { $0.1 <= threshold }
+            .min { $0.1 < $1.1 }?
+            .0
+    }
+
+    static func collapsedFrame(edge: FloatingQuotaWidgetEdge,
+                               expandedFrame: NSRect,
+                               visibleFrame: NSRect,
+                               thickness: CGFloat = visibleTabThickness) -> NSRect {
+        switch edge {
+        case .left:
+            return NSRect(x: visibleFrame.minX,
+                          y: clamp(expandedFrame.midY - 36,
+                                   min: visibleFrame.minY,
+                                   max: visibleFrame.maxY - 72),
+                          width: thickness,
+                          height: 72)
+        case .right:
+            return NSRect(x: visibleFrame.maxX - thickness,
+                          y: clamp(expandedFrame.midY - 36,
+                                   min: visibleFrame.minY,
+                                   max: visibleFrame.maxY - 72),
+                          width: thickness,
+                          height: 72)
+        case .top:
+            return NSRect(x: clamp(expandedFrame.midX - 36,
+                                   min: visibleFrame.minX,
+                                   max: visibleFrame.maxX - 72),
+                          y: visibleFrame.maxY - thickness,
+                          width: 72,
+                          height: thickness)
+        case .bottom:
+            return NSRect(x: clamp(expandedFrame.midX - 36,
+                                   min: visibleFrame.minX,
+                                   max: visibleFrame.maxX - 72),
+                          y: visibleFrame.minY,
+                          width: 72,
+                          height: thickness)
+        }
+    }
+
+    static func clampedExpandedFrame(_ frame: NSRect,
+                                     visibleFrame: NSRect,
+                                     minimumVisible: CGFloat = 24) -> NSRect {
+        var out = frame
+        out.origin.x = clamp(out.origin.x,
+                             min: visibleFrame.minX - out.width + minimumVisible,
+                             max: visibleFrame.maxX - minimumVisible)
+        out.origin.y = clamp(out.origin.y,
+                             min: visibleFrame.minY - out.height + minimumVisible,
+                             max: visibleFrame.maxY - minimumVisible)
+        return out
+    }
+
+    static func expandedFrame(lastExpandedFrame: NSRect?,
+                              fallbackSize: NSSize,
+                              visibleFrame: NSRect) -> NSRect {
+        let candidate = lastExpandedFrame
+            ?? NSRect(origin: initialOrigin(widgetSize: fallbackSize,
+                                           visibleFrame: visibleFrame),
+                      size: fallbackSize)
+        return clampedExpandedFrame(candidate, visibleFrame: visibleFrame)
+    }
+
+    static func visibleFrame(containing frame: NSRect) -> NSRect {
+        let midpoint = NSPoint(x: frame.midX, y: frame.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(midpoint) }
+            ?? NSScreen.main
+        return screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+    }
+
+    private static func clamp(_ value: CGFloat,
+                              min minValue: CGFloat,
+                              max maxValue: CGFloat) -> CGFloat {
+        Swift.min(Swift.max(value, minValue), Swift.max(minValue, maxValue))
+    }
+
+    private func collapse(to edge: FloatingQuotaWidgetEdge,
+                          visibleFrame: NSRect) {
+        guard let panel else { return }
+        presentation.isCollapsed = true
+        presentation.edge = edge
+        let collapsed = Self.collapsedFrame(edge: edge,
+                                            expandedFrame: panel.frame,
+                                            visibleFrame: visibleFrame)
+        panel.setFrame(collapsed, display: true)
+        refreshHostedView()
+    }
+
     private func makePanel() -> NSPanel {
-        let actions = FloatingQuotaWidgetActions(
-            refresh: { [env] in env.refreshAll(throttle: false, trigger: "floating-widget") },
-            togglePinned: { [weak self] in
-                guard let self else { return }
-                self.setPinned(!self.settings.floatingQuotaWidgetPinned)
-            },
-            close: { [weak self] in
-                self?.settings.floatingQuotaWidgetEnabled = false
-                self?.hide()
-            })
-        let hosting = NSHostingController(
-            rootView: FloatingQuotaWidgetView(actions: actions)
-                .environment(env)
-                .environment(localization)
-                .environment(settings)
-                .environment(\.locale, localization.locale))
-        let panel = NSPanel(
+        let hosting = NSHostingController(rootView: makeRootView())
+        let panel = FloatingQuotaWidgetPanel(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 190),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -806,7 +1077,16 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
         panel.identifier = NSUserInterfaceItemIdentifier("floating-quota-widget")
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
+        panel.isMovableByWindowBackground = true
         panel.delegate = self
+        panel.onMouseUp = { [weak self] _ in
+            guard let self else { return }
+            if self.presentation.isCollapsed {
+                self.expandFromEdge()
+            } else {
+                self.handleDragEnded()
+            }
+        }
         panel.setFrameAutosaveName("floating-quota-widget")
         return panel
     }
@@ -823,6 +1103,40 @@ final class FloatingQuotaWidgetController: NSObject, NSWindowDelegate {
         let policy = Self.windowPolicy(pinned: settings.floatingQuotaWidgetPinned)
         panel.level = policy.level
         panel.collectionBehavior = policy.collectionBehavior
+    }
+
+    private func refreshHostedView() {
+        guard let hosting = panel?.contentViewController as? NSHostingController<AnyView> else {
+            return
+        }
+        hosting.rootView = makeRootView()
+    }
+
+    private func makeRootView() -> AnyView {
+        AnyView(
+            FloatingQuotaWidgetView(actions: makeActions(),
+                                    presentation: presentation)
+                .environment(env)
+                .environment(localization)
+                .environment(settings)
+                .environment(\.locale, localization.locale)
+        )
+    }
+
+    private func makeActions() -> FloatingQuotaWidgetActions {
+        FloatingQuotaWidgetActions(
+            refresh: { [env] in env.refreshAll(throttle: false, trigger: "floating-widget") },
+            togglePinned: { [weak self] in
+                guard let self else { return }
+                self.setPinned(!self.settings.floatingQuotaWidgetPinned)
+            },
+            expand: { [weak self] in
+                self?.expandFromEdge()
+            },
+            close: { [weak self] in
+                self?.settings.floatingQuotaWidgetEnabled = false
+                self?.hide()
+            })
     }
 }
 ```
@@ -864,6 +1178,10 @@ func restoreFloatingQuotaWidgetIfNeeded() {
           !LocalizationStore.shared.needsOnboarding,
           !SettingsStore.shared.needsProviderOnboarding else { return }
     floatingWidget.show()
+}
+
+var floatingQuotaWidgetPresentation: FloatingQuotaWidgetPresentationState {
+    floatingWidget.presentationState
 }
 ```
 
@@ -1019,6 +1337,15 @@ Text(L10n.floatingWidgetPinnedHelp)
     .font(.caption)
     .foregroundStyle(.secondary)
     .fixedSize(horizontal: false, vertical: true)
+
+LabeledContent(L10n.floatingWidgetEdgeAutoHideLabel) {
+    Toggle("", isOn: $settings.floatingQuotaWidgetEdgeAutoHideEnabled)
+        .labelsHidden()
+}
+Text(L10n.floatingWidgetEdgeAutoHideHelp)
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .fixedSize(horizontal: false, vertical: true)
 ```
 
 - [ ] **Step 5: Restore on launch after onboarding is complete**
@@ -1080,6 +1407,8 @@ with:
 floatingWidget: LocalQAFloatingWidgetReport(
     isVisible: true,
     isPinned: true,
+    isCollapsed: false,
+    edge: nil,
     windowIdentifier: "floating-quota-widget",
     status: "warning")
 ```
@@ -1088,6 +1417,7 @@ After decoding, assert:
 
 ```swift
 #expect(decoded.floatingWidget?.isVisible == true)
+#expect(decoded.floatingWidget?.isCollapsed == false)
 #expect(decoded.floatingWidget?.windowIdentifier == "floating-quota-widget")
 #expect(decoded.floatingWidget?.status == "warning")
 ```
@@ -1100,6 +1430,8 @@ In `QuotaMonitor/App/LocalQAReport.swift`, add:
 struct LocalQAFloatingWidgetReport: Codable, Equatable {
     let isVisible: Bool
     let isPinned: Bool
+    let isCollapsed: Bool
+    let edge: String?
     let windowIdentifier: String
     let status: String
 }
@@ -1132,6 +1464,8 @@ When building the report, compute the pure model snapshot and write:
 LocalQAFloatingWidgetReport(
     isVisible: settings.floatingQuotaWidgetEnabled,
     isPinned: settings.floatingQuotaWidgetPinned,
+    isCollapsed: WindowManager.shared.floatingQuotaWidgetPresentation.isCollapsed,
+    edge: WindowManager.shared.floatingQuotaWidgetPresentation.edge?.rawValue,
     windowIdentifier: "floating-quota-widget",
     status: widgetSnapshot.status.rawValue)
 ```
@@ -1142,6 +1476,7 @@ In `qa/lib/common.sh`, update the required app-state assertions for widget QA:
 
 ```sh
 qm_assert_plutil_equals "$state" "floatingWidget.isVisible" "true"
+qm_assert_plutil_equals "$state" "floatingWidget.isCollapsed" "false"
 qm_assert_plutil_equals "$state" "floatingWidget.windowIdentifier" "floating-quota-widget"
 qm_plutil_raw "floatingWidget.status" "$state" >/dev/null || {
     echo "missing floating widget status" >&2
@@ -1155,13 +1490,18 @@ default QA steps only for Computer Use setup paths.
 - [ ] **Step 5: Update QA docs**
 
 In `docs/local-qa.md`, add `show-floating-widget` to the Computer Use setup
-step list and document the `floatingWidget` artifact object.
+step list and document the `floatingWidget` artifact object, including
+`isCollapsed` and `edge`.
 
 In `docs/computer-qa.md`, add a checklist item:
 
 ```text
 - Confirm the floating quota widget is visible, belongs to the QA app path, and
   shows 5h/7d values consistent with the menu-bar label/settings display mode.
+- Drag the widget to the left edge, confirm it collapses to a thin tab, click
+  the tab, and confirm it expands back to a full widget.
+- Confirm the Settings switch can hide and show the widget without quitting
+  QuotaMonitor.
 ```
 
 - [ ] **Step 6: Verify and commit**
@@ -1236,9 +1576,14 @@ data unchanged, and reports the widget state in `app-state.json`.
 Using the exact app path from the generated `computer-use-qa.md`, verify:
 
 - the widget is visible and small
+- the widget can be dragged freely within the visible screen area
+- dragging it into a screen edge collapses it to a thin tab when edge auto-hide is on
+- clicking the collapsed tab expands it
+- right-clicking the tab and choosing `Hide Widget` closes it
 - close hides it and keeps QuotaMonitor running
 - popover button can show it again
 - Settings toggle can show/hide it
+- Settings edge auto-hide toggle disables edge collapse
 - pin toggle changes whether it appears above other windows
 - 5h/7d text matches the menu-bar label's used/remaining mode
 - full-screen Space still shows the pinned widget
