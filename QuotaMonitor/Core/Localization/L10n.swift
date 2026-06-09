@@ -390,6 +390,11 @@ enum L10n {
     // MARK: - dashboard
 
     static var dashboardTitle: String { t(en: "Dashboard", zh: "仪表盘") }
+    static var providerFilterLabel: String { t(en: "Show", zh: "显示") }
+    static var providerFilterHelp: String {
+        t(en: "Choose which tools to include in this view.",
+          zh: "选择这个页面要显示哪些工具。")
+    }
     static var providerAll: String { t(en: "All providers", zh: "全部 Provider") }
     static var providerCodex: String { "Codex" }
     static var providerClaude: String { "Claude" }

@@ -30,6 +30,12 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+- Dashboard's tool selector now stays neatly in the title bar without crowding the window buttons
+
+### Fixed
+- **Dashboard filter layout.** The title-bar tool selector now uses a stable labeled menu, preventing it from collapsing into a tiny control or overlapping the window title after opening or moving the window.
+
 ## [0.2.31] — 2026-06-08
 
 #### Summary

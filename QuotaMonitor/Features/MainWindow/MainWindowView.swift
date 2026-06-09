@@ -16,35 +16,19 @@ struct MainWindowView: View {
     var body: some View {
         @Bindable var env = env
 
-        Group {
-            switch tab {
-            case .dashboard: DashboardView()
-            case .history:   HistoryView()
-            case .sessions:  SessionsView()
-            }
-        }
+        content
         // Force inner views to reload state when:
         //   - providerFilter changes (Dashboard/History/Sessions filter chip),
         //   - Reload button is pressed (reloadToken bump).
         .id("\(env.providerFilter.rawValue)-\(reloadToken)")
         .frame(minWidth: 820, minHeight: 560)
         .toolbar {
-            // Provider filter — left side, compact menu. Filter cases
-            // for disabled providers are hidden so the user can't pick
-            // a view that would just be empty. `.all` always stays in
-            // — even when only one provider is enabled it's a valid
-            // (and identical) view, and keeping it keeps the picker's
-            // shape stable across toggles.
+            // Provider filter — titlebar leading side. Keep an explicit
+            // label so AppKit gets a stable intrinsic width before the
+            // titlebar lays out around the window title and traffic lights.
             if visibleFilters.count > 1 {
                 ToolbarItem(placement: .navigation) {
-                    Picker("", selection: $env.providerFilter) {
-                        ForEach(visibleFilters) { p in
-                            Text(p.label).tag(p)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .fixedSize()
+                    providerToolbarFilter(selection: $env.providerFilter)
                 }
             }
 
@@ -91,6 +75,36 @@ struct MainWindowView: View {
         }
         // Demote-on-close is owned by `AppWindowController.windowWillClose`
         // now that this is an AppKit-hosted window.
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch tab {
+        case .dashboard: DashboardView()
+        case .history:   HistoryView()
+        case .sessions:  SessionsView()
+        }
+    }
+
+    private func providerToolbarFilter(selection: Binding<ProviderFilter>) -> some View {
+        Menu {
+            ForEach(visibleFilters) { filter in
+                Button {
+                    selection.wrappedValue = filter
+                } label: {
+                    if selection.wrappedValue == filter {
+                        Label(filter.label, systemImage: "checkmark")
+                    } else {
+                        Text(filter.label)
+                    }
+                }
+            }
+        } label: {
+            Text(selection.wrappedValue.label)
+        }
+        .fixedSize()
+        .accessibilityLabel(L10n.providerFilterLabel)
+        .help(L10n.providerFilterHelp)
     }
 
     /// Filter cases the user is allowed to choose. Always includes
