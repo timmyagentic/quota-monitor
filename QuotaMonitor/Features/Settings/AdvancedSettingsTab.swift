@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// but 5% absolutely require lives here. Sections:
 ///
 ///   - Codex CLI: rate-limit poll interval
-///   - Claude Code: Keychain policy + credentials-mirror toggle
+///   - Claude Code: credential source + prompt-reduction toggle
 ///   - Database: location + reveal in Finder
 ///   - Export: usage_events.csv dump
 ///   - Pricing: LiteLLM sync + Restore Defaults + view catalog
@@ -111,6 +111,13 @@ struct AdvancedSettingsTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if settings.keychainPolicy == .never {
+                    Label(L10n.claudeCredentialFileOnlyWarning,
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 Toggle(L10n.mirrorClaudeCredsLabel,
                        isOn: $settings.mirrorClaudeKeychainToFile)

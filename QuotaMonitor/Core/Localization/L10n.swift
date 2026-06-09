@@ -748,15 +748,20 @@ enum L10n {
     }
 
     static var claudeOAuthExplanation: String {
-        t(en: "Anthropic's `/api/oauth/usage` endpoint requires the Claude Code OAuth token. We read `~/.claude/.credentials.json` first; Keychain is a non-interactive fallback when macOS allows a silent read.",
-          zh: "Anthropic 的 `/api/oauth/usage` 端点需要 Claude Code OAuth token。我们优先读取 `~/.claude/.credentials.json`；Keychain 仅在 macOS 允许静默读取时作为非交互式兜底。")
+        t(en: "QuotaMonitor needs Claude Code credentials to refresh Claude live quotas. Recommended automatic mode reads the local Claude file first, then uses an authorized Keychain item when the file is missing or stale.",
+          zh: "QuotaMonitor 需要 Claude Code 凭据来刷新 Claude 实时配额。推荐使用自动模式：优先读取 Claude 本地文件，缺失或过期时再读取已授权的钥匙串项。")
     }
-    static var keychainPolicyLabel: String { t(en: "Live quotas", zh: "实时配额") }
+    static var keychainPolicyLabel: String { t(en: "Claude credential source", zh: "Claude 凭据来源") }
     static var keychainPolicyFallback: String {
-        t(en: "Use allowed Keychain item", zh: "使用已授权 Keychain 项")
+        t(en: "Automatic: file first, Keychain when needed (Recommended)",
+          zh: "自动：文件优先，需要时读取钥匙串（推荐）")
     }
     static var keychainPolicyNever: String {
-        t(en: "File only", zh: "仅文件")
+        t(en: "File only (no Keychain)", zh: "仅文件（不读取钥匙串）")
+    }
+    static var claudeCredentialFileOnlyWarning: String {
+        t(en: "File-only mode disables Keychain reads. Claude live quotas will stop refreshing if ~/.claude/.credentials.json is missing or expired.",
+          zh: "仅文件模式会禁用钥匙串读取。如果 ~/.claude/.credentials.json 缺失或过期，Claude 实时配额会停止刷新。")
     }
 
     // polling
@@ -928,12 +933,12 @@ enum L10n {
     // MARK: - settings · advanced · claude credentials mirror
 
     static var mirrorClaudeCredsLabel: String {
-        t(en: "Cache Claude credentials to disk",
-          zh: "将 Claude 凭据缓存到磁盘")
+        t(en: "Use disk cache for fewer Keychain prompts",
+          zh: "减少钥匙串提示：缓存 Claude 凭据到磁盘")
     }
     static var mirrorClaudeCredsHelp: String {
-        t(en: "After a successful Keychain read, write a copy to ~/.claude/.credentials.json (mode 0600). Stops macOS from re-prompting for the Keychain on every rebuild, but moves the token from a per-app Keychain item to a plain file readable by anything running as you. Off by default.",
-          zh: "成功从钥匙串读取后，写一份副本到 ~/.claude/.credentials.json（权限 0600）。可以避免每次重新构建后 macOS 都弹出钥匙串提示，但代价是把 token 从仅本应用可读的钥匙串项搬到一个以你身份可读的普通文件。默认关闭。")
+        t(en: "After a successful Keychain read, QuotaMonitor writes a 0600 copy to ~/.claude/.credentials.json and reads that file first next time. This is less secure than Keychain because any process running as your macOS user can read the file, but it avoids repeated prompts after rebuilds.",
+          zh: "成功从钥匙串读取后，QuotaMonitor 会把一份 0600 副本写到 ~/.claude/.credentials.json，下次优先读这个文件。这样安全性低于钥匙串，因为同一 macOS 用户下的其他进程也可能读到文件，但可以减少重新构建后反复出现的钥匙串提示。")
     }
 
     // MARK: - private
