@@ -32,6 +32,10 @@ window copy.
 
 #### Summary
 - Dashboard's tool selector now stays neatly in the title bar without crowding the window buttons
+- A new product manual makes setup, dashboard, history, sessions, and settings easier to learn
+
+### Added
+- **Product manual.** A new Chinese guide explains onboarding, the menu-bar popover, Dashboard, History, Sessions, Settings, updates, and uninstall flows with screenshots.
 
 ### Fixed
 - **Dashboard filter layout.** The title-bar tool selector now uses a stable labeled menu, preventing it from collapsing into a tiny control or overlapping the window title after opening or moving the window.

@@ -5,7 +5,7 @@ description: Use when creating or updating QuotaMonitor's user-facing product ma
 
 # QuotaMonitor Product Manual
 
-Use this skill in `/Volumes/SamsungDisk/Code/quota-monitor` when the user asks for product documentation, feature explanation, screenshot-based user docs, or continuing updates to `docs/product-manual.md`.
+Use this skill from the current `quota-monitor` checkout root when the user asks for product documentation, feature explanation, screenshot-based user docs, or continuing updates to `docs/product-manual.md`.
 
 ## Workflow
 
