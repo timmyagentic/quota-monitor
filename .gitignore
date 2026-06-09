@@ -16,6 +16,11 @@ Packages/
 # macOS
 .DS_Store
 
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
 # Editor
 .vscode/
 .idea/
