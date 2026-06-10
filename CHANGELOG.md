@@ -33,11 +33,12 @@ window copy.
 #### Summary
 - Dashboard's tool selector now stays neatly in the title bar without crowding the window buttons
 - Claude settings now hide the credential-source picker and offer recovery only when automatic refresh is disabled
-- A new product manual makes setup, dashboard, history, sessions, and settings easier to learn
 - Claude 5-hour quota rows keep the last reset value visible instead of turning into an empty idle line
+- The same app can now also be installed as CodexMonitor — identical features under a different name, with its own update channel
 
 ### Added
 - **Product manual.** A new Chinese guide explains onboarding, the menu-bar popover, Dashboard, History, Sessions, Settings, updates, and uninstall flows with screenshots.
+- **CodexMonitor edition.** Every release now also ships a CodexMonitor-branded build with its own update feed. Existing installs keep their data and settings regardless of which name they run under.
 
 ### Changed
 - **Claude credential settings.** Advanced settings now use automatic Claude credential refresh by default, hide the file-only/Keychain picker from normal use, and show a restore button only when a saved file-only mode can stop live quota refreshes.

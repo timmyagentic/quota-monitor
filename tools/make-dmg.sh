@@ -28,6 +28,16 @@ CONFIG=${CONFIG:-release}
 APP=".build/QuotaMonitor.app"
 DIST="dist"
 
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
+
 # Version: caller may override via VER=..., otherwise read Resources/VERSION.
 # We deliberately do NOT fall back to a fake "0.0.0" — that path silently
 # shipped mismatched DMGs in the past. If VERSION is missing/empty, fail loud.
@@ -44,8 +54,8 @@ else
     exit 1
 fi
 
-NAME="QuotaMonitor-${VER}.dmg"
-VOLNAME="Install QuotaMonitor ${VER}"
+NAME="${BRAND_CODE}-${VER}.dmg"
+VOLNAME="Install ${BRAND_DISPLAY} ${VER}"
 BG_PATH="Resources/dmg-background.png"
 
 STAGING=$(mktemp -d)
@@ -70,11 +80,6 @@ if [[ ! -d "$APP" ]]; then
     exit 1
 fi
 
-if [[ ! -f "${BG_PATH}" ]]; then
-    echo "error: ${BG_PATH} missing — run swift tools/make-dmg-bg.swift ${BG_PATH}" >&2
-    exit 1
-fi
-
 mkdir -p "$DIST"
 rm -f "${DIST}/${NAME}"
 
@@ -83,7 +88,22 @@ echo "==> Staging in ${STAGING}"
 cp -R "$APP" "${STAGING}/"
 ln -s /Applications "${STAGING}/Applications"
 mkdir "${STAGING}/.background"
-cp "${BG_PATH}" "${STAGING}/.background/background.png"
+
+# Regenerate the installer background from the CURRENT branding so a rebrand
+# (changing Branding.swift) flows through to the "Drag <name>…" title without
+# a stale committed PNG. Fall back to the committed image when `swift` is
+# unavailable; only fail if we have neither.
+STAGED_BG="${STAGING}/.background/background.png"
+if command -v swift >/dev/null 2>&1; then
+    echo "==> Generating DMG background for \"${BRAND_DISPLAY}\""
+    swift tools/make-dmg-bg.swift "${STAGED_BG}" "${BRAND_DISPLAY}"
+elif [[ -f "${BG_PATH}" ]]; then
+    echo "==> swift unavailable; using committed ${BG_PATH}"
+    cp "${BG_PATH}" "${STAGED_BG}"
+else
+    echo "error: cannot generate background (no swift) and ${BG_PATH} missing" >&2
+    exit 1
+fi
 
 # 3. Build a writable DMG so we can configure Finder window state.
 #    Size = staging size + 20 % slack, min 32M (Apple gets cranky on tiny RW images).
