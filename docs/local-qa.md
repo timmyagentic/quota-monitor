@@ -10,7 +10,7 @@ launched, isolated QA build.
 | Responsibility | Command | Launches app? | What it owns |
 | --- | --- | --- | --- |
 | Static gate | `./qa/run-static.sh` or `./qa/run-all.sh` | No | Shell/Python helper tests, release-note format, whitespace checks, and Swift tests. |
-| Computer Use setup | `./qa/prepare-computer-use-fixture.sh` or `./qa/prepare-computer-use-real-data.sh` | Yes, isolated QA build only | Build the latest app, prepare fixture or real-data-shadow state, verify the artifact boundary, and write the Computer Use brief. |
+| Computer Use setup | `./qa/prepare-computer-use-real-data.sh` or `./qa/prepare-computer-use-fixture-smoke.sh` | Yes, isolated QA build only | Build the latest app, prepare real-data-shadow or deterministic fixture-smoke state, verify the artifact boundary, and write the Computer Use brief. |
 | Computer Use walkthrough | Computer Use using the exact app target from `computer-use-qa.md` | Uses the running QA build | User-facing Dashboard, Sessions, History, Settings, menu bar, help, and visual checks. |
 | Artifact replay | `./qa/check-artifacts.sh .build/qa-artifacts/<timestamp>` | No | Re-check an existing artifact directory without rebuilding or relaunching the app. |
 
@@ -38,17 +38,22 @@ Run the default non-GUI gate:
 ./qa/run-all.sh
 ```
 
-Launch the fixture app setup and keep it open for Computer Use:
-
-```sh
-./qa/prepare-computer-use-fixture.sh
-```
-
-Launch the real-data shadow setup and keep it open for Computer Use:
+Launch the real-data shadow setup and keep it open for Computer Use. Use this
+for local test-version checks that should resemble the installed app:
 
 ```sh
 ./qa/prepare-computer-use-real-data.sh
 ```
+
+Launch the deterministic fixture smoke setup and keep it open for Computer Use.
+Use this for fixed-input regression checks:
+
+```sh
+./qa/prepare-computer-use-fixture-smoke.sh
+```
+
+`./qa/prepare-computer-use-fixture.sh` is kept as a compatibility wrapper for
+older instructions; new docs and reports should use `fixture-smoke`.
 
 Re-check a QA artifact directory:
 
@@ -131,7 +136,7 @@ off, and a 15-minute polling interval.
 ## Artifacts
 
 Each Computer Use setup prints an artifact directory under
-`.build/qa-artifacts/<timestamp>-computer-use-fixture/` or
+`.build/qa-artifacts/<timestamp>-computer-use-fixture-smoke/` or
 `.build/qa-artifacts/<timestamp>-computer-use-real-data/`. Important files:
 
 - `app-state.json` — app-reported PID, bundle id, database/log paths, visible
@@ -167,7 +172,7 @@ contract:
 If the AX dump is required, run:
 
 ```sh
-QM_QA_REQUIRE_AX=1 ./qa/prepare-computer-use-fixture.sh
+QM_QA_REQUIRE_AX=1 ./qa/prepare-computer-use-fixture-smoke.sh
 ```
 
 Grant Accessibility permission to the terminal/Codex host app if this fails.
@@ -191,24 +196,26 @@ session, usage events for both providers, and Codex JSONL rate-limit samples.
 
 ## Computer Use QA
 
-`qa/prepare-computer-use-fixture.sh` sets up an isolated fixture run and keeps
-the app open. It writes a per-run `computer-use-qa.md` brief into the artifact
-directory, keeps the latest local build open, and prints a cleanup script path.
-The brief includes the exact `.app` path to pass to Computer Use; use that path
-instead of the bare `QuotaMonitor` app name so the agent does not attach to a
-separately installed copy.
+`qa/prepare-computer-use-fixture-smoke.sh` sets up an isolated fixture smoke
+run and keeps the app open. It writes a per-run `computer-use-qa.md` brief into
+the artifact directory, keeps the latest local build open, and prints a cleanup
+script path. The brief includes the exact `.app` path to pass to Computer Use;
+use that path instead of the bare `QuotaMonitor` app name so the agent does not
+attach to a separately installed copy.
 
 Run the printed cleanup script after the Computer Use pass unless the QA app
 should intentionally stay open. The cleanup script closes only QA-launched
 processes and restores `/Applications/QuotaMonitor.app` if it was already
 running before the QA launch.
 
-Use this after `qa/run-static.sh` when the change needs a real UI walkthrough.
-See `docs/computer-qa.md` for the expected Computer Use checklist.
+Use this after `qa/run-static.sh` when the change needs a deterministic
+fixed-input UI smoke. For installed-like local test-version checks, prefer
+real-data shadow QA. See `docs/computer-qa.md` for the expected Computer Use
+checklist.
 
 ## Real Data Shadow QA
 
-`qa/prepare-computer-use-real-data.sh` is the opt-in setup path for checking
+`qa/prepare-computer-use-real-data.sh` is the default setup path for checking
 how the latest local build renders the user's real historical QuotaMonitor data
 without letting the app touch the original profile.
 
@@ -244,7 +251,7 @@ state therefore matches the installed app's language, provider, menu-bar, quota
 display, window preferences, Claude credential mode, Developer Mode, and
 credential-mirroring setting. If those preferences cannot be copied, the script
 fails instead of falling back to deterministic QA defaults. Use
-`./qa/prepare-computer-use-fixture.sh` when deterministic fixture settings are
+`./qa/prepare-computer-use-fixture-smoke.sh` when deterministic fixture settings are
 more useful than the installed app's visible configuration.
 
 The app is expected to mutate only the shadow database under the QA home. The

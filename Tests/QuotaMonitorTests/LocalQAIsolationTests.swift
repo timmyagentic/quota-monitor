@@ -44,6 +44,33 @@ struct LocalQAIsolationTests {
         #expect(UserDefaults(suiteName: suiteName)?.string(forKey: key) == "qa")
     }
 
+    @Test("QA defaults suite refuses the installed app preferences domain")
+    func qaDefaultsSuiteRefusesInstalledAppDomain() throws {
+        let key = "qa.production-guard.\(UUID().uuidString)"
+        let json = #"{"mode":true,"home":"/tmp/qm-qa-prod-guard","defaultsSuite":"dev.tjzhou.QuotaMonitor"}"#
+        let arguments = [
+            "QuotaMonitor",
+            "--quotamonitor-qa-config-base64",
+            Data(json.utf8).base64EncodedString()
+        ]
+        let defaults = try #require(LocalQAEnvironment.userDefaults(
+            environment: [:],
+            arguments: arguments))
+        let fallback = try #require(UserDefaults(
+            suiteName: LocalQAEnvironment.invalidQADefaultsSuite))
+        defer {
+            defaults.removeObject(forKey: key)
+            fallback.removeObject(forKey: key)
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+
+        defaults.set("qa", forKey: key)
+
+        #expect(UserDefaults.standard.string(forKey: key) == nil)
+        #expect(UserDefaults(suiteName: "dev.tjzhou.QuotaMonitor")?.string(forKey: key) == nil)
+        #expect(fallback.string(forKey: key) == "qa")
+    }
+
     @Test("Launch config activates QA isolation without environment variables")
     func launchConfigActivatesIsolationWithoutEnvironmentVariables() throws {
         let configFile = try writeConfig("""

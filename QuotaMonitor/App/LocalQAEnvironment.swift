@@ -18,6 +18,7 @@ enum LocalQAEnvironment {
     static let codexHomeKey = "CODEX_HOME"
     static let configArgument = "--quotamonitor-qa-config"
     static let configBase64Argument = "--quotamonitor-qa-config-base64"
+    static let invalidQADefaultsSuite = "dev.tjzhou.QuotaMonitor.InvalidQA"
 
     static func resolvedConfiguration(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -34,7 +35,7 @@ enum LocalQAEnvironment {
         return LocalQAResolvedConfiguration(
             isActive: true,
             homeDirectory: directoryURL(environment[homeKey]),
-            defaultsSuite: nonEmpty(environment[defaultsSuiteKey]),
+            defaultsSuite: qaDefaultsSuite(environment[defaultsSuiteKey]),
             outputDirectory: directoryURL(environment[outputDirectoryKey]),
             codexHomeDirectory: directoryURL(environment[codexHomeKey]),
             steps: stepNames(environment[stepsKey]))
@@ -86,10 +87,15 @@ enum LocalQAEnvironment {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> UserDefaults? {
-        guard let suite = activeConfiguration(
+        let configuration = activeConfiguration(
             environment: environment,
-            arguments: arguments)?.defaultsSuite
-            ?? nonEmpty(environment[defaultsSuiteKey]) else {
+            arguments: arguments)
+        let suite = configuration?.defaultsSuite
+            ?? qaDefaultsSuite(environment[defaultsSuiteKey])
+        if configuration != nil && suite == nil {
+            return UserDefaults(suiteName: invalidQADefaultsSuite)
+        }
+        guard let suite else {
             return .standard
         }
         return UserDefaults(suiteName: suite)
@@ -195,7 +201,7 @@ enum LocalQAEnvironment {
         LocalQAResolvedConfiguration(
             isActive: decoded.mode ?? true,
             homeDirectory: directoryURL(decoded.home),
-            defaultsSuite: nonEmpty(decoded.defaultsSuite),
+            defaultsSuite: qaDefaultsSuite(decoded.defaultsSuite),
             outputDirectory: directoryURL(decoded.outputDirectory),
             codexHomeDirectory: directoryURL(decoded.codexHome),
             steps: decoded.steps?.compactMap { nonEmpty($0) })
@@ -230,6 +236,15 @@ enum LocalQAEnvironment {
         guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty else { return nil }
         return value
+    }
+
+    private static func qaDefaultsSuite(_ raw: String?) -> String? {
+        guard let suite = nonEmpty(raw) else { return nil }
+        guard suite.hasPrefix("dev.tjzhou.QuotaMonitor."),
+              suite != "dev.tjzhou.QuotaMonitor" else {
+            return invalidQADefaultsSuite
+        }
+        return suite
     }
 
     private static func stepNames(_ raw: String?) -> [String]? {

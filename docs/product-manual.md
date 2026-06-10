@@ -192,7 +192,7 @@ Advanced 适合需要排查或维护数据的用户：
 维护记录：
 
 - 运行 `./qa/run-static.sh`，静态检查、release note 校验、Swift 构建和 269 个 Swift 测试通过。
-- 运行 `./qa/prepare-computer-use-fixture.sh` 启动隔离 QA App。
+- 运行当时的 `./qa/prepare-computer-use-fixture.sh` 启动隔离 QA App；该入口现在仅作为兼容 wrapper，新固定夹具入口是 `./qa/prepare-computer-use-fixture-smoke.sh`。
 - QA App target：`/Volumes/SamsungDisk/Code/quota-monitor/.build/QuotaMonitor.app`。
 - QA artifact：`.build/qa-artifacts/20260609T105643Z-computer-use-fixture`。
 - `./qa/check-artifacts.sh .build/qa-artifacts/20260609T105643Z-computer-use-fixture` 通过。

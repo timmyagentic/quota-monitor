@@ -34,6 +34,63 @@ test_write_defaults() {
     [[ "$providers_done" == "1" ]] || fail "provider onboarding default was $providers_done"
 }
 
+test_refuses_installed_app_defaults_suite() {
+    local source_home target_home source_domain report cleanup
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-prod-guard.XXXXXX")"
+    target_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-target-prod-guard.XXXXXX")"
+    source_domain="dev.tjzhou.QuotaMonitor.SourceTest.$RANDOM.$$"
+    report="$target_home/user-defaults-shadow.txt"
+    cleanup="$target_home/cleanup.sh"
+    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete dev.tjzhou.QuotaMonitor >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+
+    HOME="$source_home" defaults write "$source_domain" app.language -string en
+
+    if qm_write_defaults "$target_home" "dev.tjzhou.QuotaMonitor" >/dev/null 2>&1; then
+        fail "qm_write_defaults accepted the installed app defaults suite"
+    fi
+    if qm_copy_user_defaults_to_qa_suite \
+        "$source_home" \
+        "$target_home" \
+        "$source_domain" \
+        "dev.tjzhou.QuotaMonitor" >/dev/null 2>&1; then
+        fail "qm_copy_user_defaults_to_qa_suite accepted the installed app defaults suite"
+    fi
+    if qm_write_real_data_defaults \
+        "$target_home" \
+        "dev.tjzhou.QuotaMonitor" \
+        "$source_home" \
+        "$source_domain" \
+        "$report" >/dev/null 2>&1; then
+        fail "qm_write_real_data_defaults accepted the installed app defaults suite"
+    fi
+    if [[ -f "$report" ]]; then
+        fail "qm_write_real_data_defaults wrote a report after rejecting the installed app defaults suite"
+    fi
+    if qm_write_computer_use_cleanup \
+        "$cleanup" \
+        "$target_home/work" \
+        "$target_home/home" \
+        "dev.tjzhou.QuotaMonitor" >/dev/null 2>&1; then
+        fail "qm_write_computer_use_cleanup accepted the installed app defaults suite"
+    fi
+    if [[ -f "$cleanup" ]]; then
+        fail "qm_write_computer_use_cleanup wrote a cleanup script for the installed app defaults suite"
+    fi
+}
+
+test_accepts_custom_qa_defaults_suite() {
+    local home domain
+    home="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-custom-suite.XXXXXX")"
+    domain="dev.tjzhou.QuotaMonitor.LocalQA.$RANDOM.$$"
+    trap 'HOME="$home" defaults delete "$domain" >/dev/null 2>&1 || true; rm -rf "$home"' RETURN
+
+    qm_write_defaults "$home" "$domain"
+
+    local language
+    language="$(HOME="$home" defaults read "$domain" app.language)"
+    [[ "$language" == "en" ]] || fail "custom QA defaults suite was not written: $language"
+}
+
 test_write_real_data_defaults_copies_user_preferences_without_overrides() {
     local source_home target_home source_domain target_domain report
     source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-defaults.XXXXXX")"
@@ -139,6 +196,23 @@ test_write_launch_config() {
     grep -q '"open-dashboard"' "$config" || fail "first QA step missing from launch config"
     grep -q '"snapshot"' "$config" || fail "snapshot QA step missing from launch config"
     grep -q '"quit"' "$config" || fail "quit QA step missing from launch config"
+}
+
+test_write_launch_config_rejects_installed_app_defaults_suite() {
+    local dir config
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-prod-launch-guard.XXXXXX")"
+    config="$dir/qa-config.json"
+    trap 'rm -rf "$dir"' RETURN
+
+    if qm_write_launch_config \
+        "$config" \
+        "$dir/home" \
+        "dev.tjzhou.QuotaMonitor" \
+        "$dir/artifacts" \
+        "snapshot" \
+        "$dir/home/.codex" >/dev/null 2>&1; then
+        fail "qm_write_launch_config accepted the installed app defaults suite"
+    fi
 }
 
 test_write_boundary_manifest_documents_fixture_policy() {
@@ -286,8 +360,11 @@ test_obsolete_local_e2e_entrypoint_is_removed() {
 }
 
 test_computer_use_setup_entrypoints_are_role_named() {
+    assert_file "$ROOT_DIR/qa/prepare-computer-use-fixture-smoke.sh"
     assert_file "$ROOT_DIR/qa/prepare-computer-use-fixture.sh"
     assert_file "$ROOT_DIR/qa/prepare-computer-use-real-data.sh"
+    grep -q 'prepare-computer-use-fixture-smoke.sh' "$ROOT_DIR/qa/prepare-computer-use-fixture.sh" \
+        || fail "legacy fixture entrypoint should delegate to fixture-smoke"
     for obsolete in \
         "$ROOT_DIR/qa/run-interactive.sh" \
         "$ROOT_DIR/qa/run-real-data-interactive.sh"; do
@@ -305,6 +382,7 @@ test_computer_use_setup_language_is_consistent() {
         -e 'interactive harness' \
         -e '-interactive' \
         -- \
+        "$ROOT_DIR/qa/prepare-computer-use-fixture-smoke.sh" \
         "$ROOT_DIR/qa/prepare-computer-use-fixture.sh" \
         "$ROOT_DIR/qa/prepare-computer-use-real-data.sh" \
         "$ROOT_DIR/qa/lib/common.sh" \
@@ -337,8 +415,8 @@ test_standard_test_circuit_is_documented() {
         "$doc" "$ROOT_DIR/.github/workflows/tests.yml"; then
         fail "standard test circuit must not mention removed local E2E entrypoints"
     fi
-    grep -q './qa/prepare-computer-use-fixture.sh' "$doc" \
-        || fail "testing doc should name fixture Computer Use setup entrypoint"
+    grep -q './qa/prepare-computer-use-fixture-smoke.sh' "$doc" \
+        || fail "testing doc should name fixture smoke Computer Use setup entrypoint"
     grep -q './qa/prepare-computer-use-real-data.sh' "$doc" \
         || fail "testing doc should name real-data Computer Use setup entrypoint"
 }
@@ -416,7 +494,7 @@ test_write_computer_use_cleanup_script() {
     fi
     grep -q -- '--quotamonitor-qa-config' "$cleanup" \
         || fail "cleanup script does not target QA-launched QuotaMonitor processes"
-    grep -q 'defaults delete' "$cleanup" \
+    grep -q 'qm_delete_qa_defaults_suite "$QA_HOME" "$DEFAULTS_SUITE"' "$cleanup" \
         || fail "cleanup script does not delete QA defaults"
     grep -q 'rm -rf' "$cleanup" \
         || fail "cleanup script does not remove the QA work root"
@@ -825,10 +903,13 @@ test_rejects_live_pricing_refresh_events() {
 }
 
 test_write_defaults
+test_refuses_installed_app_defaults_suite
+test_accepts_custom_qa_defaults_suite
 test_write_real_data_defaults_copies_user_preferences_without_overrides
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied
 test_seed_fixtures
 test_write_launch_config
+test_write_launch_config_rejects_installed_app_defaults_suite
 test_write_boundary_manifest_documents_fixture_policy
 test_assert_boundary_manifest_contract_rejects_wrong_mode
 test_launch_config_base64

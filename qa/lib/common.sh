@@ -18,11 +18,32 @@ qm_app_version() {
     tr -d '[:space:]' <"${root}/Resources/VERSION"
 }
 
+qm_assert_qa_defaults_suite() {
+    local domain="$1"
+    case "$domain" in
+        dev.tjzhou.QuotaMonitor) ;;
+        dev.tjzhou.QuotaMonitor.*) return 0 ;;
+    esac
+
+    echo "error: refusing QA defaults suite '$domain'; use a dev.tjzhou.QuotaMonitor.* isolated suite, not the installed app domain" >&2
+    return 1
+}
+
+qm_delete_qa_defaults_suite() {
+    local home="$1"
+    local domain="$2"
+    qm_assert_qa_defaults_suite "$domain" || return 1
+    HOME="$home" defaults delete "$domain" >/dev/null 2>&1 || true
+    defaults delete "$domain" >/dev/null 2>&1 || true
+}
+
 qm_write_defaults() {
     local home="$1"
     local domain="${2:-dev.tjzhou.QuotaMonitor.QA}"
     local version
     version="$(qm_app_version)"
+
+    qm_assert_qa_defaults_suite "$domain" || return 1
 
     mkdir -p "$home/Library/Preferences"
     HOME="$home" defaults write "$domain" app.language -string en
@@ -42,6 +63,8 @@ qm_copy_user_defaults_to_qa_suite() {
     local source_domain="$3"
     local target_domain="$4"
     local tmp_plist
+
+    qm_assert_qa_defaults_suite "$target_domain" || return 1
 
     mkdir -p "$target_home/Library/Preferences"
     HOME="$source_home" defaults read "$source_domain" >/dev/null 2>&1 || return 1
@@ -64,6 +87,8 @@ qm_write_real_data_defaults() {
     local source_domain="$4"
     local report_path="$5"
     local copied="false"
+
+    qm_assert_qa_defaults_suite "$domain" || return 1
 
     if qm_copy_user_defaults_to_qa_suite \
         "$source_home" \
@@ -236,6 +261,8 @@ qm_write_computer_use_cleanup() {
     local repo_root
     repo_root="$(qm_repo_root)"
 
+    qm_assert_qa_defaults_suite "$defaults_suite" || return 1
+
     mkdir -p "$(dirname "$cleanup_path")"
     {
         printf '#!/usr/bin/env bash\n'
@@ -250,7 +277,7 @@ qm_write_computer_use_cleanup() {
         printf '# QA process cleanup is scoped to --quotamonitor-qa-config launches.\n'
         printf '. "$ROOT_DIR/qa/lib/common.sh"\n'
         printf 'qm_stop_local_qa_process_from_state "$STATE_JSON"\n'
-        printf 'HOME="$QA_HOME" defaults delete "$DEFAULTS_SUITE" >/dev/null 2>&1 || true\n'
+        printf 'qm_delete_qa_defaults_suite "$QA_HOME" "$DEFAULTS_SUITE" || true\n'
         printf 'rm -rf "$WORK_ROOT"\n'
         printf 'qm_restore_installed_app_if_needed "$INSTALLED_APP_WAS_RUNNING" "$INSTALLED_APP_BUNDLE"\n'
     } >"$cleanup_path"
@@ -407,6 +434,8 @@ qm_write_launch_config() {
     local output_dir="$4"
     local steps="$5"
     local codex_home="$6"
+
+    qm_assert_qa_defaults_suite "$defaults_suite" || return 1
 
     mkdir -p "$(dirname "$config_path")"
     {
