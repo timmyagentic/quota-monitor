@@ -15,6 +15,16 @@ APP_BUNDLE=".build/${APP_NAME}.app"
 DIST_DIR="dist"
 BG_SRC="Resources/dmg-background.png"
 
+# Branding — read from the single source of truth in Branding.swift.
+BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
+    | sed 's/.*= "//;s/".*//')"
+if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
+    echo "error: could not extract branding from QuotaMonitor/Core/Branding.swift" >&2
+    exit 1
+fi
+
 if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
     CONFIG=release ./build.sh
 fi
@@ -23,14 +33,10 @@ if [[ ! -d "${APP_BUNDLE}" ]]; then
     echo "error: ${APP_BUNDLE} not found — run ./build.sh release first" >&2
     exit 1
 fi
-if [[ ! -f "${BG_SRC}" ]]; then
-    echo "error: ${BG_SRC} missing — run scripts/make-dmg-bg.py" >&2
-    exit 1
-fi
 
 VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
-VOL_NAME="${APP_NAME} ${VERSION}"
-DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+VOL_NAME="${BRAND_DISPLAY} ${VERSION}"
+DMG_NAME="${BRAND_CODE}-${VERSION}.dmg"
 DMG_PATH="${DIST_DIR}/${DMG_NAME}"
 TMP_DMG="$(mktemp -t qm-dmg-XXXXXX).dmg"
 
@@ -51,7 +57,21 @@ trap cleanup EXIT
 cp -R "${APP_BUNDLE}" "${STAGE_DIR}/"
 ln -s /Applications "${STAGE_DIR}/Applications"
 mkdir "${STAGE_DIR}/.background"
-cp "${BG_SRC}" "${STAGE_DIR}/.background/background.png"
+
+# Regenerate the backdrop from the CURRENT branding so the "Drag <name>…"
+# title matches a rebranded DMG. Needs Pillow; fall back to the committed
+# PNG when it's unavailable, and only fail if we have neither.
+STAGED_BG="${STAGE_DIR}/.background/background.png"
+if python3 -c 'import PIL' >/dev/null 2>&1; then
+    echo "==> Generating DMG background for \"${BRAND_DISPLAY}\""
+    python3 scripts/make-dmg-bg.py "${BRAND_DISPLAY}" "${STAGED_BG}"
+elif [[ -f "${BG_SRC}" ]]; then
+    echo "==> Pillow unavailable; using committed ${BG_SRC}"
+    cp "${BG_SRC}" "${STAGED_BG}"
+else
+    echo "error: cannot generate background (no Pillow) and ${BG_SRC} missing" >&2
+    exit 1
+fi
 
 # Writable DMG → mount → style via AppleScript → detach → compress.
 # UDRW is required because UDZO mounts read-only and Finder can't

@@ -78,8 +78,8 @@ enum L10n {
           zh: "菜单栏图标可能被隐藏")
     }
     static var menuBarHiddenHintBody: String {
-        t(en: "QuotaMonitor's menu-bar icon doesn't fit on your menu bar — it may be behind the notch or hidden by a menu-bar manager (e.g. Bartender, Ice). A Dock icon is shown so you can always reach the app.",
-          zh: "QuotaMonitor 的菜单栏图标在你的菜单栏放不下——可能被刘海挡住，或被菜单栏整理工具（如 Bartender、Ice）隐藏了。已为你显示 Dock 图标，便于随时打开应用。")
+        t(en: "\(Branding.appCodeName)'s menu-bar icon doesn't fit on your menu bar — it may be behind the notch or hidden by a menu-bar manager (e.g. Bartender, Ice). A Dock icon is shown so you can always reach the app.",
+          zh: "\(Branding.appCodeName) 的菜单栏图标在你的菜单栏放不下——可能被刘海挡住，或被菜单栏整理工具（如 Bartender、Ice）隐藏了。已为你显示 Dock 图标，便于随时打开应用。")
     }
     static var menuBarHiddenHintDismiss: String {
         t(en: "Got it", zh: "知道了")
@@ -95,8 +95,8 @@ enum L10n {
         t(en: "Find the menu-bar icon", zh: "找回菜单栏图标")
     }
     static var menuBarHelpHeadline: String {
-        t(en: "Can't find QuotaMonitor's menu-bar icon?",
-          zh: "找不到 QuotaMonitor 的菜单栏图标?")
+        t(en: "Can't find \(Branding.appCodeName)'s menu-bar icon?",
+          zh: "找不到 \(Branding.appCodeName) 的菜单栏图标?")
     }
     static var menuBarHelpIntro: String {
         t(en: "Your menu bar is too full to show it — it may be behind the notch or hidden by a menu-bar manager.",
@@ -114,16 +114,16 @@ enum L10n {
           zh: "退出一些不常用的常驻菜单栏 App。")
     }
     static var menuBarHelpStep3: String {
-        t(en: "Using Bartender, Ice, or a similar tool? Set QuotaMonitor to \"always show\" in its settings.",
-          zh: "用了 Bartender、Ice 等工具？在其设置里把 QuotaMonitor 设为“始终显示”。")
+        t(en: "Using Bartender, Ice, or a similar tool? Set \(Branding.appCodeName) to \"always show\" in its settings.",
+          zh: "用了 Bartender、Ice 等工具？在其设置里把 \(Branding.appCodeName) 设为“始终显示”。")
     }
     static var menuBarHelpStep4: String {
         t(en: "Notched Mac: space left of the notch is limited — remove a few items and the icon appears automatically.",
           zh: "刘海 Mac：刘海左侧空间有限，移走几个图标后图标会自动出现。")
     }
     static var menuBarHelpDockFooter: String {
-        t(en: "You can always open QuotaMonitor from its Dock icon.",
-          zh: "你随时可以从 Dock 图标打开 QuotaMonitor。")
+        t(en: "You can always open \(Branding.appCodeName) from its Dock icon.",
+          zh: "你随时可以从 Dock 图标打开 \(Branding.appCodeName)。")
     }
     static var menuBarHelpRecheck: String {
         t(en: "Re-check", zh: "重新检测")
@@ -223,8 +223,8 @@ enum L10n {
     /// of the default-OFF behaviour so users don't think their
     /// windows are broken when they can't ⌘Tab back into them.
     static var showDockIconHelp: String {
-        t(en: "When off, QuotaMonitor stays in the menu bar only. The Dashboard and Settings windows will not appear in Cmd+Tab.",
-          zh: "关闭后 QuotaMonitor 完全只占菜单栏，但 Cmd+Tab 将切换不到 Dashboard 与设置窗口。")
+        t(en: "When off, \(Branding.appCodeName) stays in the menu bar only. The Dashboard and Settings windows will not appear in Cmd+Tab.",
+          zh: "关闭后 \(Branding.appCodeName) 完全只占菜单栏，但 Cmd+Tab 将切换不到 Dashboard 与设置窗口。")
     }
     static func headlineWindowLabel(_ window: HeadlineWindow) -> String {
         switch window {
@@ -690,8 +690,8 @@ enum L10n {
         t(en: "Update Available", zh: "发现新版本")
     }
     static func updateVersionAvailable(_ version: String) -> String {
-        t(en: "QuotaMonitor \(version) is available",
-          zh: "QuotaMonitor \(version) 可供更新")
+        t(en: "\(Branding.appCodeName) \(version) is available",
+          zh: "\(Branding.appCodeName) \(version) 可供更新")
     }
     static func updateCurrentVersion(_ version: String) -> String {
         t(en: "Current version: \(version)", zh: "当前版本：\(version)")
@@ -748,8 +748,8 @@ enum L10n {
     }
 
     static var claudeOAuthExplanation: String {
-        t(en: "QuotaMonitor automatically reads the local Claude file first, then uses an authorized Keychain item when the file is missing or stale.",
-          zh: "QuotaMonitor 会自动优先读取 Claude 本地文件；文件缺失或过期时，再读取已授权的钥匙串项。")
+        t(en: "\(Branding.appCodeName) automatically reads the local Claude file first, then uses an authorized Keychain item when the file is missing or stale.",
+          zh: "\(Branding.appCodeName) 会自动优先读取 Claude 本地文件；文件缺失或过期时，再读取已授权的钥匙串项。")
     }
     static var keychainPolicyLabel: String { t(en: "Claude credential source", zh: "Claude 凭据来源") }
     static var keychainPolicyFallback: String {
@@ -854,7 +854,25 @@ enum L10n {
     /// or providers) since the body content is what makes the
     /// current step obvious.
     static var onboardingWindowTitle: String {
-        t(en: "Welcome to Quota Monitor", zh: "欢迎使用 Quota Monitor")
+        t(en: "Welcome to \(Branding.appDisplayName)", zh: "欢迎使用 \(Branding.appDisplayName)")
+    }
+    /// Always-English welcome line, shown before language selection so the
+    /// user can read it regardless of which language they'll pick.
+    static var onboardingWelcomeEn: String {
+        "Welcome to \(Branding.appDisplayName)"
+    }
+    /// Always-Chinese welcome line (same context as `onboardingWelcomeEn`).
+    static var onboardingWelcomeZh: String {
+        "欢迎使用 \(Branding.appDisplayName)"
+    }
+    /// Always-English language-pick subtitle, shown alongside the Chinese
+    /// version before the user has chosen a language.
+    static var onboardingLanguagePickEn: String {
+        "Pick your language. You can change it later in Settings."
+    }
+    /// Always-Chinese language-pick subtitle.
+    static var onboardingLanguagePickZh: String {
+        "请选择语言，稍后可在设置中更改。"
     }
     static var onboardingProvidersHeadline: String {
         t(en: "Pick the tools you use", zh: "选择你使用的工具")
@@ -873,8 +891,8 @@ enum L10n {
         t(en: "Setup not finished", zh: "设置尚未完成")
     }
     static var setupNotCompleteBody: String {
-        t(en: "Finish the setup wizard so Quota Monitor knows which tools to track.",
-          zh: "请先完成设置向导，Quota Monitor 才能知道要跟踪哪些工具。")
+        t(en: "Finish the setup wizard so \(Branding.appDisplayName) knows which tools to track.",
+          zh: "请先完成设置向导，\(Branding.appDisplayName) 才能知道要跟踪哪些工具。")
     }
     static var openSetup: String { t(en: "Open setup", zh: "打开设置向导") }
 
@@ -915,14 +933,14 @@ enum L10n {
 
     static var sectionUninstall: String { t(en: "Uninstall", zh: "卸载") }
     static var uninstallButton: String {
-        t(en: "Uninstall Quota Monitor…", zh: "卸载 Quota Monitor…")
+        t(en: "Uninstall \(Branding.appDisplayName)…", zh: "卸载 \(Branding.appDisplayName)…")
     }
     static var uninstallExplain: String {
         t(en: "Removes the usage database, settings, and caches, then moves the app to Trash. Your ~/.codex and ~/.claude folders are not touched.",
           zh: "删除使用记录数据库、设置和缓存，并将应用移到废纸篓。你的 ~/.codex 与 ~/.claude 目录不会被动。")
     }
     static var uninstallConfirmTitle: String {
-        t(en: "Uninstall Quota Monitor?", zh: "确认卸载 Quota Monitor？")
+        t(en: "Uninstall \(Branding.appDisplayName)?", zh: "确认卸载 \(Branding.appDisplayName)？")
     }
     static var uninstallConfirmBody: String {
         t(en: "This will permanently delete your local usage history and settings, then move the app to Trash. This cannot be undone.",
@@ -940,8 +958,8 @@ enum L10n {
           zh: "减少钥匙串提示：缓存 Claude 凭据到磁盘")
     }
     static var mirrorClaudeCredsHelp: String {
-        t(en: "After a successful Keychain read, QuotaMonitor writes a 0600 copy to ~/.claude/.credentials.json and reads that file first next time. This is less secure than Keychain because any process running as your macOS user can read the file, but it avoids repeated prompts after rebuilds.",
-          zh: "成功从钥匙串读取后，QuotaMonitor 会把一份 0600 副本写到 ~/.claude/.credentials.json，下次优先读这个文件。这样安全性低于钥匙串，因为同一 macOS 用户下的其他进程也可能读到文件，但可以减少重新构建后反复出现的钥匙串提示。")
+        t(en: "After a successful Keychain read, \(Branding.appCodeName) writes a 0600 copy to ~/.claude/.credentials.json and reads that file first next time. This is less secure than Keychain because any process running as your macOS user can read the file, but it avoids repeated prompts after rebuilds.",
+          zh: "成功从钥匙串读取后，\(Branding.appCodeName) 会把一份 0600 副本写到 ~/.claude/.credentials.json，下次优先读这个文件。这样安全性低于钥匙串，因为同一 macOS 用户下的其他进程也可能读到文件，但可以减少重新构建后反复出现的钥匙串提示。")
     }
 
     // MARK: - private

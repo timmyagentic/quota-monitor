@@ -17,6 +17,7 @@ window copy.
   feels better after updating. Avoid implementation, test, CI, PR, and release
   plumbing terms in Summary.
 - Put details under `### Added`, `### Changed`, `### Fixed`, `### Removed`,
+- **CodexMonitor edition.** Every release now also ships a CodexMonitor-branded build with its own update feed. Existing installs keep their data and settings regardless of which name they run under.
   or `### Known limitation(s)`. These remain in the GitHub Release notes.
 - Start each detail bullet with a short bold title, then one concise sentence:
   `- **Short title.** What changed and why it matters.`
@@ -34,6 +35,7 @@ window copy.
 - Dashboard's tool selector now stays neatly in the title bar without crowding the window buttons
 - Claude settings now hide the credential-source picker and offer recovery only when automatic refresh is disabled
 - A new product manual makes setup, dashboard, history, sessions, and settings easier to learn
+- The same app can now also be installed as CodexMonitor — identical features under a different name, with its own update channel
 
 ### Added
 - **Product manual.** A new Chinese guide explains onboarding, the menu-bar popover, Dashboard, History, Sessions, Settings, updates, and uninstall flows with screenshots.

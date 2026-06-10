@@ -8,15 +8,36 @@ of the feed). Idempotent — if an <item> for the same sparkle:version is
 already present, it does nothing and exits 0, so re-running a release
 job can't create duplicate entries.
 
+If the feed has no <item> yet — or the target file doesn't exist at all
+(a newly branded variant whose repo has never hosted an appcast) — the
+item is inserted before </channel> (synthesizing a minimal channel when
+the file is absent), so the first release still produces a valid feed.
+
     tools/appcast-insert.py dist/appcast-item-0.2.28.xml appcast.xml
 
 Exit codes:
     0  inserted, or already present (no-op)
-    1  malformed input (missing <sparkle:version>, no <item> anchor)
+    1  malformed input (missing <sparkle:version>, or neither an
+       <item> nor a </channel> anchor to insert against)
 """
 import pathlib
 import re
 import sys
+
+# Minimal valid Sparkle feed used when the target appcast.xml doesn't exist
+# yet (a newly branded repo's first release). Mirrors the committed
+# appcast.xml header; the indented </channel> gives the insert path below a
+# line-anchored anchor so the first <item> lands inside the channel.
+EMPTY_CHANNEL_FEED = (
+    '<?xml version="1.0" standalone="yes"?>\n'
+    '<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"\n'
+    '     xmlns:dc="http://purl.org/dc/elements/1.1/"\n'
+    '     version="2.0">\n'
+    "    <channel>\n"
+    "        <title>Auto-update feed</title>\n"
+    "    </channel>\n"
+    "</rss>\n"
+)
 
 
 def main() -> int:
@@ -28,7 +49,11 @@ def main() -> int:
     appcast_path = pathlib.Path(sys.argv[2])
 
     item = item_path.read_text().rstrip("\n") + "\n"
-    feed = appcast_path.read_text()
+    # A brand-new branded repo may not host an appcast.xml yet. Treat a missing
+    # file as an empty channel so the first release still lands in a well-formed
+    # feed (via the </channel> fallback below), instead of dying with a raw
+    # FileNotFoundError traceback.
+    feed = appcast_path.read_text() if appcast_path.exists() else EMPTY_CHANNEL_FEED
 
     m = re.search(r"<sparkle:version>([^<]+)</sparkle:version>", item)
     if not m:
@@ -46,14 +71,26 @@ def main() -> int:
     # the new entry *inside* that comment — silently commenting it out.
     # A line-anchored match skips prose occurrences.
     anchor_match = re.search(r"^[ \t]*<item>", feed, re.MULTILINE)
-    if not anchor_match:
-        print("error: no <item> element found in appcast.xml", file=sys.stderr)
+    if anchor_match:
+        line_start = anchor_match.start()
+        spliced = feed[:line_start] + item + feed[line_start:]
+        appcast_path.write_text(spliced)
+        print(f"inserted {version} above existing items")
+        return 0
+
+    # Empty channel (no <item> yet) — e.g. a freshly-seeded appcast for a
+    # newly-branded variant's first release. Fall back to inserting just
+    # before the channel's closing tag so the first item still lands inside
+    # <channel>…</channel>.
+    close_match = re.search(r"^[ \t]*</channel>", feed, re.MULTILINE)
+    if not close_match:
+        print("error: appcast.xml has no <item> and no </channel> anchor", file=sys.stderr)
         return 1
 
-    line_start = anchor_match.start()
+    line_start = close_match.start()
     spliced = feed[:line_start] + item + feed[line_start:]
     appcast_path.write_text(spliced)
-    print(f"inserted {version} above existing items")
+    print(f"inserted {version} into empty channel")
     return 0
 
 

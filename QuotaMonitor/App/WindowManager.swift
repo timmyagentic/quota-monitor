@@ -120,7 +120,7 @@ final class WindowManager {
     /// the product name (not localized); the other three read `L10n`.
     static func windowTitle(for id: String) -> String {
         switch id {
-        case "dashboard": return "Quota Monitor"
+        case "dashboard": return Branding.appDisplayName
         case "settings": return L10n.settingsWindowTitle
         case "onboarding": return L10n.onboardingWindowTitle
         case "menubar-help": return L10n.menuBarHelpWindowTitle
