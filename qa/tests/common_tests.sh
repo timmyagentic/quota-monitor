@@ -360,8 +360,11 @@ test_obsolete_local_e2e_entrypoint_is_removed() {
 }
 
 test_computer_use_setup_entrypoints_are_role_named() {
+    assert_file "$ROOT_DIR/qa/prepare-computer-use-fixture-smoke.sh"
     assert_file "$ROOT_DIR/qa/prepare-computer-use-fixture.sh"
     assert_file "$ROOT_DIR/qa/prepare-computer-use-real-data.sh"
+    grep -q 'prepare-computer-use-fixture-smoke.sh' "$ROOT_DIR/qa/prepare-computer-use-fixture.sh" \
+        || fail "legacy fixture entrypoint should delegate to fixture-smoke"
     for obsolete in \
         "$ROOT_DIR/qa/run-interactive.sh" \
         "$ROOT_DIR/qa/run-real-data-interactive.sh"; do
@@ -379,6 +382,7 @@ test_computer_use_setup_language_is_consistent() {
         -e 'interactive harness' \
         -e '-interactive' \
         -- \
+        "$ROOT_DIR/qa/prepare-computer-use-fixture-smoke.sh" \
         "$ROOT_DIR/qa/prepare-computer-use-fixture.sh" \
         "$ROOT_DIR/qa/prepare-computer-use-real-data.sh" \
         "$ROOT_DIR/qa/lib/common.sh" \
@@ -411,8 +415,8 @@ test_standard_test_circuit_is_documented() {
         "$doc" "$ROOT_DIR/.github/workflows/tests.yml"; then
         fail "standard test circuit must not mention removed local E2E entrypoints"
     fi
-    grep -q './qa/prepare-computer-use-fixture.sh' "$doc" \
-        || fail "testing doc should name fixture Computer Use setup entrypoint"
+    grep -q './qa/prepare-computer-use-fixture-smoke.sh' "$doc" \
+        || fail "testing doc should name fixture smoke Computer Use setup entrypoint"
     grep -q './qa/prepare-computer-use-real-data.sh' "$doc" \
         || fail "testing doc should name real-data Computer Use setup entrypoint"
 }

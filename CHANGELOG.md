@@ -42,6 +42,7 @@ window copy.
 
 ### Changed
 - **Claude credential settings.** Advanced settings now use automatic Claude credential refresh by default, hide the file-only/Keychain picker from normal use, and show a restore button only when a saved file-only mode can stop live quota refreshes.
+- **QA launch naming.** Local test-version checks now point to real-data shadow QA by default, while the fixture launch path is renamed to fixture-smoke for deterministic regression checks.
 
 ### Fixed
 - **Dashboard filter layout.** The title-bar tool selector now uses a stable labeled menu, preventing it from collapsing into a tiny control or overlapping the window title after opening or moving the window.

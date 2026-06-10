@@ -23,15 +23,16 @@ Run the static suite first:
 ```
 
 This does not launch a new QuotaMonitor instance. If the change needs visible
-UI validation, then prepare an isolated QA app for Computer Use:
+UI validation against installed-like local state, then prepare real-data shadow
+QA for Computer Use:
 
 ```sh
-./qa/prepare-computer-use-fixture.sh
+./qa/prepare-computer-use-real-data.sh
 ```
 
-This setup command builds the latest local app, starts it with fixture data,
-opens the core windows, verifies the setup artifact contract, and keeps the app
-running for Computer Use. It prints:
+This setup command builds the latest local app, starts it with a shadow copy of
+real data and copied UserDefaults, opens the core windows, verifies the setup
+artifact contract, and keeps the app running for Computer Use. It prints:
 
 - the artifact directory,
 - `computer-use-qa.md`, a per-run walkthrough brief,
@@ -60,26 +61,22 @@ identifier: a developer machine may also have `/Applications/QuotaMonitor.app`
 running, and the exact path keeps Computer Use attached to the isolated QA
 build.
 
-When the question is "does the latest app render my real historical data
-correctly?", launch the real-data shadow mode instead:
+When the question is "does this fixed fixture still render?", launch the
+deterministic fixture smoke mode instead:
 
 ```sh
-./qa/prepare-computer-use-real-data.sh
+./qa/prepare-computer-use-fixture-smoke.sh
 ```
 
-This still uses an isolated QA profile. It copies the real QuotaMonitor SQLite
-database into the QA home with SQLite backup, copies the current
-QuotaMonitor UserDefaults into the isolated QA suite, points the app at those
-copies, does not copy real Codex or Claude credentials, disables live Codex
-app-server and Claude OAuth polling, and writes `real-data-protection.txt` to
-prove the source database fingerprint did not change. It does not override
-product-visible settings after copying; use the fixture setup when deterministic
-QA defaults are more useful than your current QuotaMonitor preferences.
+This still uses an isolated QA profile, but it seeds deterministic fixture data
+and deterministic QA settings. `./qa/prepare-computer-use-fixture.sh` is a
+compatibility wrapper for this command. Prefer the explicit `fixture-smoke`
+name in new docs and reports so it is not confused with real-data local testing.
 
 To re-check an artifact directory later:
 
 ```sh
-./qa/check-artifacts.sh .build/qa-artifacts/<timestamp>-computer-use-fixture
+./qa/check-artifacts.sh .build/qa-artifacts/<timestamp>-computer-use-real-data
 ```
 
 ## What Static Checks Verify
@@ -99,17 +96,20 @@ The setup scripts still perform checks before handing control to Computer Use:
 
 - the app launches as a macOS `.app` bundle,
 - Dashboard, Settings, menu-bar help, and the popover can be opened,
-- fixture Codex and Claude data import into isolated SQLite,
 - `qa-boundary.json` documents and passes the expected boundary contract,
-- fixture Developer Mode writes the expected QA events,
-- the fixture settings exercise applies the expected state,
 - screenshot and AX artifacts exist or record a permission warning.
+- fixture-smoke only: deterministic Codex and Claude data import into isolated
+  SQLite, Developer Mode writes the expected QA events, and the fixture settings
+  exercise applies the expected state.
+- real-data shadow only: the app-reported database path points at the shadow
+  copy, copied UserDefaults are preserved, and the source database fingerprint
+  is unchanged.
 
 ## What Computer Use Verifies
 
 Computer Use owns user-facing operability:
 
-- Dashboard: Forecast, Trends, and Composition render with fixture data.
+- Dashboard: Forecast, Trends, and Composition render with fixture or shadow data.
 - Sessions: search, sort, detail selection, token/cost/event rows.
 - History: day selection, rollups, per-session details.
 - Settings: General and Advanced controls are visible and usable.
@@ -118,8 +118,8 @@ Computer Use owns user-facing operability:
 - Visual pass: clipped text, overlapping controls, blank charts, missing icons,
   unexpected disabled states.
 
-Do not use real Codex or Claude credentials during this pass. The fixture setup
-already configured the QA app with isolated data and an isolated profile.
+Do not use real Codex or Claude credentials during this pass. Both setup paths
+configure the QA app with isolated data and an isolated profile.
 
 For real-data shadow QA, the data is real but the profile is still isolated.
 Treat the source database path as read-only evidence and avoid any Computer Use

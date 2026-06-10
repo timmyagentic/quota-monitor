@@ -20,7 +20,9 @@ Use this skill from the current `quota-monitor` checkout root when the user asks
 
 3. Verify with the real app.
    - Run `./qa/run-static.sh` first.
-   - Launch visible QA with `./qa/prepare-computer-use-fixture.sh`.
+   - Launch visible QA with `./qa/prepare-computer-use-fixture-smoke.sh` for
+     deterministic screenshots, or `./qa/prepare-computer-use-real-data.sh`
+     when validating installed-like behavior.
    - Read the printed `computer-use-qa.md`, `app-state.json`, `qa-boundary.json`, and `db-counts.txt`.
    - Run `./qa/check-artifacts.sh <artifact-dir>`.
    - Use the exact Computer Use app target from the brief. Do not target bare `QuotaMonitor` when an installed app is also running.

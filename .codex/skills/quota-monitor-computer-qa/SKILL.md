@@ -27,22 +27,26 @@ Use this project skill for QuotaMonitor local QA and visible-behavior checks in
 
 3. For visible UI work, launch an isolated setup app for Computer Use. The
    setup script prepares artifacts; it is not a separate visible-app test
-   layer. For fixture UI walkthroughs, launch:
-
-   ```sh
-   ./qa/prepare-computer-use-fixture.sh
-   ```
-
-   For realistic historical rendering with protected source data, launch:
+   layer. For local test-version checks that should resemble the installed app,
+   launch real-data shadow QA:
 
    ```sh
    ./qa/prepare-computer-use-real-data.sh
    ```
 
-   This path copies the current QuotaMonitor UserDefaults into the isolated QA
+   For deterministic fixture smoke walkthroughs, launch:
+
+   ```sh
+   ./qa/prepare-computer-use-fixture-smoke.sh
+   ```
+
+   `./qa/prepare-computer-use-fixture.sh` is a compatibility wrapper for the
+   fixture-smoke command; prefer the explicit name in new docs and reports.
+
+   The real-data path copies the current QuotaMonitor UserDefaults into the isolated QA
    suite without applying product-visible setting overrides. If those
-   preferences cannot be copied, use the fixture setup instead of falling back
-   to generic defaults.
+   preferences cannot be copied, use the fixture-smoke setup only when a
+   deterministic clean-room check is acceptable.
 
 4. Open the run's `computer-use-qa.md` and use its `Computer Use app target`
    exactly. Do not target by bare name `QuotaMonitor` or only by bundle id:
