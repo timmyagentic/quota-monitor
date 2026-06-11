@@ -6,8 +6,13 @@ import Testing
 @Suite("Database migrations")
 struct MigrationsTests {
 
-    @Test("v7 resets Claude import_state so shared-session files are rebuilt once")
-    func v7ResetsClaudeImportStateForSharedSessionRebuild() throws {
+    @Test(
+        "Claude re-read migrations reset import_state so files are rebuilt once",
+        arguments: [
+            "v7-claude-shared-session-reread",
+            "v8-claude-last-snapshot-reread",
+        ])
+    func claudeRereadMigrationResetsImportState(migrationId: String) throws {
         let dir = URL(
             fileURLWithPath: NSTemporaryDirectory(),
             isDirectory: true
@@ -24,15 +29,15 @@ struct MigrationsTests {
                     identifier TEXT NOT NULL PRIMARY KEY
                 )
                 """)
-            // Mark every registered migration EXCEPT v7 as already applied,
-            // so opening the database below runs exactly the migration under
-            // test. Deriving the list from `Migrations.register` keeps this
-            // test scoped to v7 when future migrations are added — a v8
-            // would otherwise run against this hand-built schema and break.
+            // Mark every registered migration EXCEPT the one under test as
+            // already applied, so opening the database below runs exactly
+            // that migration. Deriving the list from `Migrations.register`
+            // keeps this test scoped when future migrations are added — a
+            // v9 would otherwise run against this hand-built schema and
+            // break.
             var migrator = DatabaseMigrator()
             Migrations.register(in: &migrator)
-            for migration in migrator.migrations
-            where migration != "v7-claude-shared-session-reread" {
+            for migration in migrator.migrations where migration != migrationId {
                 try db.execute(
                     sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
                     arguments: [migration])

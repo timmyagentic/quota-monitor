@@ -143,6 +143,25 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect(out.session?.events.first?.messageId == "abc-123")
     }
 
+    @Test("duplicate non-zero message.id keeps the LAST streaming snapshot")
+    func duplicateMessageIdKeepsLastSnapshot() throws {
+        // One API message, one assistant line per content block: usage
+        // snapshots share the message.id and grow in output_tokens while
+        // input/cache stay fixed. The final line is the complete bill.
+        let url = try writeRollout(
+            assistantLine(sid: "S1", msgId: "m1", output: 5) + "\n"
+            + assistantLine(sid: "S1", msgId: "m1", output: 80) + "\n"
+            + assistantLine(sid: "S1", msgId: "m1", output: 350) + "\n"
+            + assistantLine(sid: "S1", msgId: "m2", output: 7) + "\n")
+        let out = try ClaudeRolloutParser.parse(fileURL: url)
+        let events = try #require(out.session?.events)
+        #expect(events.count == 2)
+        #expect(events.first?.messageId == "m1")
+        #expect(events.first?.outputTokens == 350)
+        #expect(events.last?.messageId == "m2")
+        #expect(events.last?.outputTokens == 7)
+    }
+
     @Test("cache creation duration split is parsed from usage.cache_creation")
     func cacheCreationDurationSplit() throws {
         let url = try writeRollout(
@@ -317,6 +336,48 @@ struct ClaudeRolloutParserIncrementalTests {
             "claude-haiku-4-5-20251001": 1,
             "claude-opus-4-8": 1,
         ])
+    }
+
+    @Test("a newer usage snapshot arriving in a later scan updates the stored event")
+    func crossPassSnapshotUpdatesStoredEvent() async throws {
+        let db = try makeDatabase()
+        let (root, project) = try makeProjectRoot()
+
+        let sid = "snapshot-upsert"
+        let main = project.appendingPathComponent("\(sid).jsonl")
+        try (assistantLine(sid: sid, msgId: "m1", output: 5) + "\n")
+            .write(to: main, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        _ = try await engine.performScan()
+
+        // The message keeps streaming after the first scan: its final
+        // snapshot (complete output count) lands in a later append. The
+        // incremental tail read must UPDATE the stored row, not drop the
+        // newer values on the unique-index conflict.
+        try append(main, assistantLine(sid: sid, msgId: "m1", output: 350) + "\n")
+        let report = try await engine.performScan()
+        #expect(report.importedEvents == 1)
+
+        let rows = try await db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT output_tokens, total_tokens, value_usd
+                FROM usage_events
+                """)
+        }
+        #expect(rows.count == 1)
+        #expect((rows.first?["output_tokens"] as Int64?) == 350)
+        #expect((rows.first?["total_tokens"] as Int64?) == 450)
+
+        // Re-emitting an identical row (offset landing mid-message) must
+        // stay a no-op: same snapshot again → nothing imported.
+        try append(main, assistantLine(sid: sid, msgId: "m1", output: 350) + "\n")
+        let noopReport = try await engine.performScan()
+        #expect(noopReport.importedEvents == 0)
+        let count = try await db.pool.read { conn in
+            try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM usage_events") ?? -1
+        }
+        #expect(count == 1)
     }
 
     @Test("a failed read after a session reset is retried on the next scan")

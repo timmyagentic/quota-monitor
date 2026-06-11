@@ -33,7 +33,9 @@ import GRDB
 //
 // Differences from Codex JSONL:
 //   1. Usage is per-message, NOT cumulative — we emit one row per `assistant`
-//      event, no delta math.
+//      MESSAGE, no delta math. One message can span several `assistant`
+//      lines (one per content block) whose usage snapshots grow as the
+//      message streams; the last snapshot is the complete bill.
 //   2. Many event types are noise (file-history-snapshot, progress, user,
 //      system, last-prompt). We only consume `assistant`.
 //   3. Synthetic / placeholder messages have model `<synthetic>` — skipped.
@@ -401,20 +403,24 @@ actor ClaudeImportEngine {
                     .deleteAll(db)
             }
 
-            // INSERT OR IGNORE so the partial unique index on
-            // (session_id, provider_message_id) silently swallows any
-            // re-emitted rows. Required for incremental tail reads —
-            // the writer may flush a half-written `assistant` line
-            // (caught by lastLineHadNewline) which then turns into a
-            // new line on the next scan; if our `byteOffset` happens
-            // to land mid-message it's also possible for the SAME
-            // event to arrive twice across passes.
+            // Upsert keyed on the v5 partial unique index
+            // (session_id, provider_message_id). Two cross-pass cases land
+            // here:
+            //   - The SAME snapshot re-emitted (byteOffset landed
+            //     mid-message, or a sibling file repeating the row): every
+            //     token column matches, the DO UPDATE's WHERE filters it
+            //     out, nothing changes.
+            //   - A NEWER streaming snapshot of an already-imported message
+            //     (its final output_tokens arrived in a later append):
+            //     the row is updated to the latest values — last snapshot
+            //     wins, matching the parser's in-pass behavior. value_usd
+            //     resets to 0; the post-scan backfill reprices it.
             var inserted = 0
             for evt in parsed.events {
                 let total = evt.inputTokens + evt.cacheReadTokens
                     + evt.cacheCreationTokens + evt.outputTokens
                 try db.execute(literal: """
-                    INSERT OR IGNORE INTO usage_events (
+                    INSERT INTO usage_events (
                         session_id, timestamp, model_id,
                         input_tokens, cached_input_tokens, output_tokens,
                         reasoning_output_tokens, total_tokens, value_usd,
@@ -431,6 +437,25 @@ actor ClaudeImportEngine {
                         \("claude"), \(false),
                         \(evt.messageId)
                     )
+                    ON CONFLICT(session_id, provider_message_id)
+                    WHERE provider_message_id IS NOT NULL
+                    DO UPDATE SET
+                        timestamp = excluded.timestamp,
+                        model_id = excluded.model_id,
+                        input_tokens = excluded.input_tokens,
+                        cached_input_tokens = excluded.cached_input_tokens,
+                        output_tokens = excluded.output_tokens,
+                        total_tokens = excluded.total_tokens,
+                        cache_creation_tokens = excluded.cache_creation_tokens,
+                        cache_creation_5m_tokens = excluded.cache_creation_5m_tokens,
+                        cache_creation_1h_tokens = excluded.cache_creation_1h_tokens,
+                        value_usd = 0.0
+                    WHERE usage_events.input_tokens != excluded.input_tokens
+                       OR usage_events.cached_input_tokens != excluded.cached_input_tokens
+                       OR usage_events.output_tokens != excluded.output_tokens
+                       OR usage_events.cache_creation_tokens != excluded.cache_creation_tokens
+                       OR usage_events.cache_creation_5m_tokens != excluded.cache_creation_5m_tokens
+                       OR usage_events.cache_creation_1h_tokens != excluded.cache_creation_1h_tokens
                     """)
                 inserted += db.changesCount
             }
@@ -498,9 +523,13 @@ enum ClaudeRolloutParser {
     ///     (sessionId/title/startedAt) — those landed in the DB on the
     ///     first pass; we still bump `updatedAt`/`lastModelId` if the new
     ///     slice contains them.
-    ///   - In-pass `seenMessageIds` still dedupes the well-known "stub then
-    ///     real assistant row" pattern. Cross-pass dedup is the SQL layer's
-    ///     job (partial unique index on `(session_id, provider_message_id)`).
+    ///   - One `message.id` can span several `assistant` lines: a zero-usage
+    ///     stub (skipped), then one line per content block whose
+    ///     `output_tokens` grows as the message streams. The LAST snapshot
+    ///     carries the complete usage, so in-pass duplicates REPLACE the
+    ///     earlier event (last wins, not first). Cross-pass the SQL layer
+    ///     does the same via an upsert on the v5 partial unique index
+    ///     `(session_id, provider_message_id)`.
     static func parse(
         fileURL: URL, fromOffset: Int64 = 0
     ) throws -> Output {
@@ -518,11 +547,11 @@ enum ClaudeRolloutParser {
         var lastModelId: String? = nil
         var events: [ClaudeUsageEvent] = []
 
-        // Same-pass dedup for the "stub then real row" pattern (see longer
-        // comment below). The cross-scan analogue is the partial unique
-        // index in v5 — we no longer rely on this Set carrying state across
+        // Same-pass dedup, keeping the LAST snapshot per message id (see
+        // longer comment below). The cross-scan analogue is the SQL upsert
+        // on the v5 partial unique index — we don't carry state across
         // invocations.
-        var seenMessageIds: Set<String> = []
+        var eventIndexByMessageId: [String: Int] = [:]
 
         var reader = try LineReader(handle: handle)
         var consumed: Int64 = fromOffset
@@ -592,13 +621,10 @@ enum ClaudeRolloutParser {
             if inputTokens == 0 && cacheRead == 0 && cacheCreate == 0 && output == 0 { continue }
 
             let messageId = message["id"] as? String
-            if let messageId {
-                if !seenMessageIds.insert(messageId).inserted { continue }
-            }
 
             lastModelId = normalized
 
-            events.append(ClaudeUsageEvent(
+            let event = ClaudeUsageEvent(
                 timestamp: ts ?? ISO8601.fractional.string(from: Date()),
                 modelId: normalized,
                 inputTokens: inputTokens,
@@ -607,7 +633,22 @@ enum ClaudeRolloutParser {
                 cacheCreation5mTokens: cacheCreate5m,
                 cacheCreation1hTokens: cacheCreate1h,
                 outputTokens: output,
-                messageId: messageId))
+                messageId: messageId)
+            if let messageId {
+                if let existingIndex = eventIndexByMessageId[messageId] {
+                    // Streaming snapshot of a message we already collected:
+                    // Claude Code writes one assistant line per content
+                    // block, with output_tokens growing while input/cache
+                    // stay fixed. The last snapshot is the complete bill —
+                    // replace the earlier event instead of skipping.
+                    // (First-wins here undercounted output_tokens; measured
+                    // ~389k tokens across 619 messages on a real machine.)
+                    events[existingIndex] = event
+                    continue
+                }
+                eventIndexByMessageId[messageId] = events.count
+            }
+            events.append(event)
         }
 
         // Fall back to the filename stem if no event carried sessionId.
