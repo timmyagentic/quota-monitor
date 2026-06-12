@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.32] — 2026-06-12
+
 #### Summary
 - Dashboard's tool selector now stays neatly in the title bar without crowding the window buttons
 - Claude settings now hide the credential-source picker and offer recovery only when automatic refresh is disabled
