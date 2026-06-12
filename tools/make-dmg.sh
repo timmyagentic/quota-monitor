@@ -91,17 +91,32 @@ mkdir "${STAGING}/.background"
 
 # Regenerate the installer background from the CURRENT branding so a rebrand
 # (changing Branding.swift) flows through to the "Drag <name>…" title without
-# a stale committed PNG. Fall back to the committed image when `swift` is
-# unavailable; only fail if we have neither.
+# a stale committed PNG. Prefer the Swift renderer, fall back to the Python
+# renderer when Swift's JIT cannot materialize AppKit symbols on a local
+# toolchain, then fall back to the committed image.
 STAGED_BG="${STAGING}/.background/background.png"
 if command -v swift >/dev/null 2>&1; then
     echo "==> Generating DMG background for \"${BRAND_DISPLAY}\""
-    swift tools/make-dmg-bg.swift "${STAGED_BG}" "${BRAND_DISPLAY}"
+    if ! swift tools/make-dmg-bg.swift "${STAGED_BG}" "${BRAND_DISPLAY}"; then
+        echo "==> Swift background generation failed; trying Python/Pillow fallback"
+        if python3 -c 'import PIL' >/dev/null 2>&1; then
+            python3 scripts/make-dmg-bg.py "${BRAND_DISPLAY}" "${STAGED_BG}"
+        elif [[ -f "${BG_PATH}" ]]; then
+            echo "==> Pillow unavailable; using committed ${BG_PATH}"
+            cp "${BG_PATH}" "${STAGED_BG}"
+        else
+            echo "error: cannot generate background and ${BG_PATH} missing" >&2
+            exit 1
+        fi
+    fi
+elif python3 -c 'import PIL' >/dev/null 2>&1; then
+    echo "==> swift unavailable; generating DMG background with Python/Pillow"
+    python3 scripts/make-dmg-bg.py "${BRAND_DISPLAY}" "${STAGED_BG}"
 elif [[ -f "${BG_PATH}" ]]; then
     echo "==> swift unavailable; using committed ${BG_PATH}"
     cp "${BG_PATH}" "${STAGED_BG}"
 else
-    echo "error: cannot generate background (no swift) and ${BG_PATH} missing" >&2
+    echo "error: cannot generate background (no swift/Pillow) and ${BG_PATH} missing" >&2
     exit 1
 fi
 
