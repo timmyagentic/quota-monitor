@@ -206,5 +206,40 @@ enum Migrations {
                    OR source_path LIKE '%/.config/claude/projects/%'
                 """)
         }
+
+        // v7: Claude Code dynamic-workflow/subagent files may share the same
+        // raw sessionId as the main rollout file. Importer versions before v7
+        // reset by session per file, so one sibling could delete rows imported
+        // from another sibling and leave per-model stats incomplete. Force one
+        // full Claude re-read under the fixed group-reset importer.
+        migrator.registerMigration("v7-claude-shared-session-reread") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0
+                WHERE source_path LIKE '%/.claude/projects/%'
+                   OR source_path LIKE '%/.config/claude/projects/%'
+                """)
+        }
+
+        // v8: one Claude `message.id` can span several `assistant` lines
+        // whose usage snapshots grow as the message streams (output_tokens
+        // in particular). Importer versions before v8 kept the FIRST
+        // non-zero snapshot — both the parser's in-pass dedup and the SQL
+        // `INSERT OR IGNORE` were first-wins — undercounting output tokens
+        // (~389k tokens across 619 messages on a real machine). Force one
+        // full Claude re-read under the fixed last-snapshot-wins importer
+        // so existing rows pick up the final per-message usage.
+        migrator.registerMigration("v8-claude-last-snapshot-reread") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0
+                WHERE source_path LIKE '%/.claude/projects/%'
+                   OR source_path LIKE '%/.config/claude/projects/%'
+                """)
+        }
     }
 }

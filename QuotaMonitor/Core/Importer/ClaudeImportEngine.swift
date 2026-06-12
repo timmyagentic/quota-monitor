@@ -33,7 +33,9 @@ import GRDB
 //
 // Differences from Codex JSONL:
 //   1. Usage is per-message, NOT cumulative — we emit one row per `assistant`
-//      event, no delta math.
+//      MESSAGE, no delta math. One message can span several `assistant`
+//      lines (one per content block) whose usage snapshots grow as the
+//      message streams; the last snapshot is the complete bill.
 //   2. Many event types are noise (file-history-snapshot, progress, user,
 //      system, last-prompt). We only consume `assistant`.
 //   3. Synthetic / placeholder messages have model `<synthetic>` — skipped.
@@ -76,6 +78,12 @@ actor ClaudeImportEngine {
         // - Otherwise grew or mtime moved → incremental from the recorded offset.
         struct PlannedScan {
             let file: ClaudeFile
+            /// Key used to gather sibling files sharing one raw session.
+            /// Prefers the content-derived session id recorded in
+            /// import_state (covers any layout that shares a session id,
+            /// not just `subagents/` directories); falls back to the
+            /// path-derived id for files we've never seen before.
+            let groupId: String
             let fromOffset: Int64
             /// True when we're starting a fresh read; persist clears the
             /// session's existing usage_events. False for tail reads;
@@ -84,49 +92,95 @@ actor ClaudeImportEngine {
             let resetSession: Bool
         }
 
-        let planned: [PlannedScan] = files.compactMap { file in
+        let groupId: (ClaudeFile) -> String = { file in
+            priorState[file.path]?.sessionId ?? file.sessionId
+        }
+        // Session groups that already have imported state under any file.
+        // A brand-new file joining a known group must NOT trigger a session
+        // reset: its rows were never imported (nothing to clear), the unique
+        // index dedups any overlap, and a reset would force every sibling
+        // through a full re-read each time a subagent file appears.
+        let knownGroupIds = Set(priorState.values.compactMap(\.sessionId))
+
+        var plannedByPath: [String: PlannedScan] = [:]
+        for file in files {
+            let group = groupId(file)
             guard let prior = priorState[file.path] else {
-                return PlannedScan(file: file, fromOffset: 0, resetSession: true)
+                plannedByPath[file.path] = PlannedScan(
+                    file: file, groupId: group, fromOffset: 0,
+                    resetSession: !knownGroupIds.contains(group))
+                continue
             }
             if prior.fileSize == file.fileSize && prior.fileMtimeMs == file.fileMtimeMs {
-                return nil
+                continue
             }
             // Truncation or rotation: file is smaller than the offset we
             // last consumed, so the bytes at that offset can't possibly
             // be what they used to be. Safest is a full re-read.
             if file.fileSize < prior.byteOffset {
-                return PlannedScan(file: file, fromOffset: 0, resetSession: true)
+                plannedByPath[file.path] = PlannedScan(
+                    file: file, groupId: group, fromOffset: 0, resetSession: true)
+                continue
             }
             // First time we see this file post-v5 (legacy import_state row
             // had no offset). One last full read regenerates
             // `provider_message_id` so the unique index can do its job
             // on subsequent scans.
             if prior.byteOffset == 0 {
-                return PlannedScan(file: file, fromOffset: 0, resetSession: true)
+                plannedByPath[file.path] = PlannedScan(
+                    file: file, groupId: group, fromOffset: 0, resetSession: true)
+                continue
             }
-            return PlannedScan(file: file, fromOffset: prior.byteOffset, resetSession: false)
+            plannedByPath[file.path] = PlannedScan(
+                file: file, groupId: group, fromOffset: prior.byteOffset, resetSession: false)
         }
+        // Claude Code dynamic-workflow/subagent files can share one raw
+        // sessionId with the main rollout file. A per-file full reset would
+        // delete rows imported from sibling files in that same session, so
+        // rebuild the whole session group whenever any sibling needs reset.
+        let resetGroupIds = Set(
+            plannedByPath.values
+                .filter(\.resetSession)
+                .map(\.groupId))
+        if !resetGroupIds.isEmpty {
+            for file in files {
+                let group = groupId(file)
+                guard resetGroupIds.contains(group) else { continue }
+                plannedByPath[file.path] = PlannedScan(
+                    file: file,
+                    groupId: group,
+                    fromOffset: 0,
+                    resetSession: true)
+            }
+        }
+        let planned = plannedByPath.values.sorted { $0.file.path < $1.file.path }
         await progress?(ScanProgressUpdate(
             provider: "claude",
             completedFiles: 0,
             totalFiles: planned.count,
             currentFile: planned.first?.file.url.lastPathComponent))
 
-        var importedSessions = 0
+        var importedSessionIds: Set<String> = []
         var importedEvents = 0
         var errors: [String] = []
 
+        var resetGroupsCompleted: Set<String> = []
         for (index, plan) in planned.enumerated() {
             do {
                 let output = try ClaudeRolloutParser.parse(
                     fileURL: plan.file.url, fromOffset: plan.fromOffset)
                 if let parsed = output.session {
+                    let shouldReset = plan.resetSession
+                        && !resetGroupsCompleted.contains(plan.groupId)
                     let count = try await persist(
                         parsed: parsed,
                         file: plan.file,
                         byteOffset: output.endOffset,
-                        resetSession: plan.resetSession)
-                    importedSessions += 1
+                        resetSession: shouldReset)
+                    if shouldReset {
+                        resetGroupsCompleted.insert(plan.groupId)
+                    }
+                    importedSessionIds.insert(parsed.sessionId)
                     importedEvents += count
                 } else {
                     // Either the slice contained nothing, or this is a
@@ -136,6 +190,19 @@ actor ClaudeImportEngine {
                 }
             } catch {
                 errors.append("\(plan.file.path): \(error)")
+                // A sibling's session reset may already have deleted this
+                // file's rows. If its import_state were left matching the
+                // on-disk size/mtime, the next scan would skip the file and
+                // its usage would be silently lost — force a full re-read.
+                if plan.resetSession {
+                    do {
+                        try await invalidateImportState(
+                            file: plan.file, groupId: plan.groupId)
+                    } catch {
+                        errors.append(
+                            "\(plan.file.path): failed to invalidate import state: \(error)")
+                    }
+                }
             }
             let nextIndex = index + 1
             let nextFile = nextIndex < planned.count
@@ -151,7 +218,7 @@ actor ClaudeImportEngine {
         return ImportEngine.ScanReport(
             scannedFiles: files.count,
             changedFiles: planned.count,
-            importedSessions: importedSessions,
+            importedSessions: importedSessionIds.count,
             importedEvents: importedEvents,
             importedRateLimitSamples: 0,    // Claude rollouts don't carry rate-limit samples.
             errors: errors)
@@ -164,7 +231,23 @@ actor ClaudeImportEngine {
         let path: String
         let fileSize: Int64
         let fileMtimeMs: Int64
-        var sessionId: String { url.deletingPathExtension().lastPathComponent }
+        var sessionId: String {
+            // `firstIndex`, not `lastIndex`: nested layouts like
+            // `<sid>/subagents/<agent>/subagents/<file>.jsonl` must group
+            // under the root session — grouping under the inner agent
+            // would let its reset delete the root session's rows while
+            // only re-reading the inner group.
+            let components = url.pathComponents
+            if let subagents = components.firstIndex(of: "subagents"),
+               subagents > components.startIndex {
+                return components[components.index(before: subagents)]
+            }
+            return url.deletingPathExtension().lastPathComponent
+        }
+
+        /// True for files under a `subagents/` directory — they belong to
+        /// the enclosing rollout's session rather than a session of their own.
+        var isSubagentFile: Bool { url.pathComponents.contains("subagents") }
     }
 
     private func scanFiles() -> [ClaudeFile] {
@@ -210,6 +293,25 @@ actor ClaudeImportEngine {
         }
     }
 
+    /// Force a full re-read of `file` on the next scan. Used when a scan
+    /// fails after a sibling's session reset may already have deleted this
+    /// file's rows: the sentinel size/mtime can never match the on-disk
+    /// file, and `byteOffset == 0` routes the next scan through the full
+    /// reset path (same shape the v6/v7 migrations use).
+    private func invalidateImportState(file: ClaudeFile, groupId: String) async throws {
+        let now = ISO8601.fractional.string(from: Date())
+        try await database.pool.write { db in
+            let state = ImportStateRecord(
+                sourcePath: file.path,
+                sessionId: groupId,
+                fileSize: -1,
+                fileMtimeMs: -1,
+                lastImportedAt: now,
+                byteOffset: 0)
+            try state.save(db)
+        }
+    }
+
     // MARK: - persist
 
     private func persist(
@@ -237,19 +339,59 @@ actor ClaudeImportEngine {
                 }
                 return parsed.title
             }()
+            let isSubagent = file.isSubagentFile
+            // Multiple files can persist into one session row (main rollout
+            // + subagent siblings, imported in path order). Last-writer-wins
+            // would leave source_path pointing at whichever subagent file
+            // sorted last — keep it on the main rollout.
+            let resolvedSourcePath: String? = {
+                if !isSubagent { return file.path }
+                if let existingPath = existing?.sourcePath, !existingPath.isEmpty {
+                    return existingPath
+                }
+                return file.path
+            }()
+            // A subagent file whose last event is older than the main
+            // rollout's must not drag updated_at backwards. ISO-8601 UTC
+            // strings compare lexicographically.
+            let resolvedUpdatedAt: String? = {
+                if !resetSession, let existingUpdated = existing?.updatedAt {
+                    guard let parsedUpdated = parsed.updatedAt else {
+                        return existingUpdated
+                    }
+                    return max(existingUpdated, parsedUpdated)
+                }
+                return parsed.updatedAt
+            }()
+            let resolvedContainsSubagents: Bool = {
+                if resetSession { return isSubagent }
+                return (existing?.containsSubagents ?? false) || isSubagent
+            }()
+            // Same staleness rule as updated_at: an older sibling file must
+            // not overwrite the model recorded from a newer one.
+            let resolvedLastModelId: String? = {
+                if !resetSession, let existing,
+                   let existingUpdated = existing.updatedAt,
+                   let parsedUpdated = parsed.updatedAt,
+                   parsedUpdated < existingUpdated,
+                   let existingModel = existing.lastModelId {
+                    return existingModel
+                }
+                return parsed.lastModelId
+            }()
             let session = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.sessionId,
                 parentSessionId: nil,
                 title: resolvedTitle,
-                sourcePath: file.path,
+                sourcePath: resolvedSourcePath,
                 startedAt: resolvedStartedAt,
-                updatedAt: parsed.updatedAt,
+                updatedAt: resolvedUpdatedAt,
                 agentNickname: nil,
                 agentRole: nil,
-                lastModelId: parsed.lastModelId,
+                lastModelId: resolvedLastModelId,
                 latestPlanType: nil,
-                containsSubagents: false,
+                containsSubagents: resolvedContainsSubagents,
                 createdAt: existing?.createdAt ?? now,
                 importedAt: now,
                 provider: "claude")
@@ -261,20 +403,24 @@ actor ClaudeImportEngine {
                     .deleteAll(db)
             }
 
-            // INSERT OR IGNORE so the partial unique index on
-            // (session_id, provider_message_id) silently swallows any
-            // re-emitted rows. Required for incremental tail reads —
-            // the writer may flush a half-written `assistant` line
-            // (caught by lastLineHadNewline) which then turns into a
-            // new line on the next scan; if our `byteOffset` happens
-            // to land mid-message it's also possible for the SAME
-            // event to arrive twice across passes.
+            // Upsert keyed on the v5 partial unique index
+            // (session_id, provider_message_id). Two cross-pass cases land
+            // here:
+            //   - The SAME snapshot re-emitted (byteOffset landed
+            //     mid-message, or a sibling file repeating the row): every
+            //     token column matches, the DO UPDATE's WHERE filters it
+            //     out, nothing changes.
+            //   - A NEWER streaming snapshot of an already-imported message
+            //     (its final output_tokens arrived in a later append):
+            //     the row is updated to the latest values — last snapshot
+            //     wins, matching the parser's in-pass behavior. value_usd
+            //     resets to 0; the post-scan backfill reprices it.
             var inserted = 0
             for evt in parsed.events {
                 let total = evt.inputTokens + evt.cacheReadTokens
                     + evt.cacheCreationTokens + evt.outputTokens
                 try db.execute(literal: """
-                    INSERT OR IGNORE INTO usage_events (
+                    INSERT INTO usage_events (
                         session_id, timestamp, model_id,
                         input_tokens, cached_input_tokens, output_tokens,
                         reasoning_output_tokens, total_tokens, value_usd,
@@ -291,6 +437,25 @@ actor ClaudeImportEngine {
                         \("claude"), \(false),
                         \(evt.messageId)
                     )
+                    ON CONFLICT(session_id, provider_message_id)
+                    WHERE provider_message_id IS NOT NULL
+                    DO UPDATE SET
+                        timestamp = excluded.timestamp,
+                        model_id = excluded.model_id,
+                        input_tokens = excluded.input_tokens,
+                        cached_input_tokens = excluded.cached_input_tokens,
+                        output_tokens = excluded.output_tokens,
+                        total_tokens = excluded.total_tokens,
+                        cache_creation_tokens = excluded.cache_creation_tokens,
+                        cache_creation_5m_tokens = excluded.cache_creation_5m_tokens,
+                        cache_creation_1h_tokens = excluded.cache_creation_1h_tokens,
+                        value_usd = 0.0
+                    WHERE usage_events.input_tokens != excluded.input_tokens
+                       OR usage_events.cached_input_tokens != excluded.cached_input_tokens
+                       OR usage_events.output_tokens != excluded.output_tokens
+                       OR usage_events.cache_creation_tokens != excluded.cache_creation_tokens
+                       OR usage_events.cache_creation_5m_tokens != excluded.cache_creation_5m_tokens
+                       OR usage_events.cache_creation_1h_tokens != excluded.cache_creation_1h_tokens
                     """)
                 inserted += db.changesCount
             }
@@ -358,9 +523,13 @@ enum ClaudeRolloutParser {
     ///     (sessionId/title/startedAt) — those landed in the DB on the
     ///     first pass; we still bump `updatedAt`/`lastModelId` if the new
     ///     slice contains them.
-    ///   - In-pass `seenMessageIds` still dedupes the well-known "stub then
-    ///     real assistant row" pattern. Cross-pass dedup is the SQL layer's
-    ///     job (partial unique index on `(session_id, provider_message_id)`).
+    ///   - One `message.id` can span several `assistant` lines: a zero-usage
+    ///     stub (skipped), then one line per content block whose
+    ///     `output_tokens` grows as the message streams. The LAST snapshot
+    ///     carries the complete usage, so in-pass duplicates REPLACE the
+    ///     earlier event (last wins, not first). Cross-pass the SQL layer
+    ///     does the same via an upsert on the v5 partial unique index
+    ///     `(session_id, provider_message_id)`.
     static func parse(
         fileURL: URL, fromOffset: Int64 = 0
     ) throws -> Output {
@@ -378,11 +547,11 @@ enum ClaudeRolloutParser {
         var lastModelId: String? = nil
         var events: [ClaudeUsageEvent] = []
 
-        // Same-pass dedup for the "stub then real row" pattern (see longer
-        // comment below). The cross-scan analogue is the partial unique
-        // index in v5 — we no longer rely on this Set carrying state across
+        // Same-pass dedup, keeping the LAST snapshot per message id (see
+        // longer comment below). The cross-scan analogue is the SQL upsert
+        // on the v5 partial unique index — we don't carry state across
         // invocations.
-        var seenMessageIds: Set<String> = []
+        var eventIndexByMessageId: [String: Int] = [:]
 
         var reader = try LineReader(handle: handle)
         var consumed: Int64 = fromOffset
@@ -452,13 +621,10 @@ enum ClaudeRolloutParser {
             if inputTokens == 0 && cacheRead == 0 && cacheCreate == 0 && output == 0 { continue }
 
             let messageId = message["id"] as? String
-            if let messageId {
-                if !seenMessageIds.insert(messageId).inserted { continue }
-            }
 
             lastModelId = normalized
 
-            events.append(ClaudeUsageEvent(
+            let event = ClaudeUsageEvent(
                 timestamp: ts ?? ISO8601.fractional.string(from: Date()),
                 modelId: normalized,
                 inputTokens: inputTokens,
@@ -467,7 +633,22 @@ enum ClaudeRolloutParser {
                 cacheCreation5mTokens: cacheCreate5m,
                 cacheCreation1hTokens: cacheCreate1h,
                 outputTokens: output,
-                messageId: messageId))
+                messageId: messageId)
+            if let messageId {
+                if let existingIndex = eventIndexByMessageId[messageId] {
+                    // Streaming snapshot of a message we already collected:
+                    // Claude Code writes one assistant line per content
+                    // block, with output_tokens growing while input/cache
+                    // stay fixed. The last snapshot is the complete bill —
+                    // replace the earlier event instead of skipping.
+                    // (First-wins here undercounted output_tokens; measured
+                    // ~389k tokens across 619 messages on a real machine.)
+                    events[existingIndex] = event
+                    continue
+                }
+                eventIndexByMessageId[messageId] = events.count
+            }
+            events.append(event)
         }
 
         // Fall back to the filename stem if no event carried sessionId.

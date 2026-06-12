@@ -228,6 +228,9 @@ struct PricingValueBackfillTests {
             let isOfficial: Bool
         }
         let expected: [ExpectedSeed] = [
+            .init(modelId: "claude-fable-5",
+                  input: 10.00, cached: 1.00, cacheCreation: 12.50,
+                  output: 50.00, isOfficial: false),
             .init(modelId: "claude-opus-4-8",
                   input: 5.00, cached: 0.50, cacheCreation: 6.25,
                   output: 25.00, isOfficial: false),
@@ -252,6 +255,7 @@ struct PricingValueBackfillTests {
                        is_official
                 FROM pricing_catalog
                 WHERE model_id IN (
+                  'claude-fable-5',
                   'claude-opus-4-8',
                   'claude-sonnet-4-5-20250929',
                   'glm-4.7',

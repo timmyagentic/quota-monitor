@@ -148,6 +148,12 @@ enum PricingSeed {
         // sane even if LiteLLM is unreachable. cache_creation_price_per_million
         // stores the 5-minute cache write rate; 1-hour writes are computed
         // separately as 2x base input during backfill.
+        .init(modelId: "claude-fable-5", displayName: "Claude Fable 5",
+              inputPricePerMillion: 10.00, cachedInputPricePerMillion: 1.00, outputPricePerMillion: 50.00,
+              cacheCreationPricePerMillion: 12.50,
+              effectiveModelId: "claude-fable-5", isOfficial: false,
+              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-opus-4-8", displayName: "Claude Opus 4.8",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
