@@ -223,14 +223,14 @@ See `docs/findings.md`. Most important:
 
 ```bash
 log stream --predicate 'subsystem == "dev.tjzhou.QuotaMonitor"' --level info
-log show --last 1h --predicate 'subsystem == "dev.tjzhou.QuotaMonitor"' --level error
+log show --last 1h --predicate 'subsystem == "dev.tjzhou.QuotaMonitor" AND logType == "error"'
 ```
 
 OSLog categories: `app`, `appserver`, `importer`, `poller`, `pricing`,
 `storage`, `ui`. Developer Mode uses the same operational areas plus `query`,
 `scan`, `settings`, `uninstall`, and `export`. Structured events are mirrored into
 macOS unified logging with normal `info`, `warn`, and `error` levels; start by
-checking `--level error`, then broaden to warnings or category filters.
+checking `logType == "error"`, then broaden to warnings or category filters.
 
 For persistent troubleshooting logs, enable **Settings → Advanced →
 Developer Mode**. QuotaMonitor then writes detailed JSONL diagnostics with

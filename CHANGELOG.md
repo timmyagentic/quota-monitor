@@ -32,9 +32,13 @@ window copy.
 
 #### Summary
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
+- Log inspection docs now use the correct macOS error predicate
 
 ### Changed
 - **Structured developer logging.** Developer diagnostics now mirror info, warning, and error events into macOS unified logging with stable event names, provider, result, trigger, and reason fields, while the opt-in Developer Mode JSONL file keeps the same structured records for local troubleshooting.
+
+### Fixed
+- **Unified log error query.** The README now filters macOS unified logs with `logType == "error"` instead of the unsupported `log show --level error` flag.
 
 ## [0.2.32] — 2026-06-12
 
