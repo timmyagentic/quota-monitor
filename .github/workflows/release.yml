@@ -106,7 +106,9 @@ jobs:
   release-quota-monitor:
     needs: test
     runs-on: macos-15
-    timeout-minutes: 150
+    # Two sequential notary submissions can each wait up to NOTARYTOOL_TIMEOUT.
+    # Leave enough room for app + DMG notarization plus build/upload/appcast work.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -272,7 +274,9 @@ jobs:
   release-codex-monitor:
     needs: test
     runs-on: macos-15
-    timeout-minutes: 150
+    # Two sequential notary submissions can each wait up to NOTARYTOOL_TIMEOUT.
+    # Leave enough room for app + DMG notarization plus build/upload/appcast work.
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v6.0.2
         with: { fetch-depth: 0 }
