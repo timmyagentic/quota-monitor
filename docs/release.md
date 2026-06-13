@@ -1,10 +1,29 @@
 # Release workflow
 
-QuotaMonitor ships via a self-hosted Sparkle appcast (no Apple Developer
-account, no Mac App Store). Every release follows the same handful of
-steps. **One-time setup** is at the bottom — do that first.
+QuotaMonitor ships outside the Mac App Store as a Developer ID signed and
+notarized DMG, with updates delivered through the existing self-hosted Sparkle
+appcast. Every release follows the same handful of steps. **One-time setup** is
+at the bottom — do that first.
 
 ---
+
+## Compatibility contract for existing installs
+
+Existing users can update directly as long as we preserve the identity that
+Sparkle already trusts:
+
+- Keep `Resources/Info.plist` `SUPublicEDKey` unchanged unless you are doing a
+  deliberate Sparkle key-rotation release.
+- Keep using the same `SPARKLE_PRIVATE_KEY` GitHub secret that matches that
+  public key.
+- Keep `SUFeedURL`, `CFBundleIdentifier`, and the semver `CFBundleVersion` /
+  `sparkle:version` path stable.
+
+Apple Developer ID signing is a separate layer from Sparkle's Ed25519 update
+signature. Moving the release artifact from ad-hoc signing to Developer ID
+signing/notarization does not require old users to reinstall, provided the
+first Developer ID release is still signed into the same appcast with the same
+Sparkle key.
 
 ## Why CI signs the appcast (read this first)
 
@@ -17,7 +36,8 @@ local DMG and pasting that signature into `appcast.xml` therefore produces a
 signature that does not match what users download → Sparkle rejects every
 update as *"improperly signed."* (This is exactly what broke 0.2.26/0.2.27.)
 
-So **signing now happens in CI, over the published DMG**, and CI opens the
+So **Sparkle signing still happens in CI, over the published DMG**, after the
+DMG has been Developer ID signed, notarized, stapled, and uploaded. CI opens the
 appcast PR for you. You no longer paste an appcast entry by hand on the happy
 path. `tools/release-sparkle.sh` still exists as a manual fallback (see the
 bottom of this doc).
@@ -65,12 +85,18 @@ bottom of this doc).
      changed user-visible behavior or important support boundaries.
 3. **Local sanity build** (optional but recommended):
    ```sh
-   ./tools/release.sh           # use --force only to overwrite an existing local DMG
+   QM_RELEASE_SIGNING=developer-id ./tools/release.sh
    ```
-   This runs tests, builds the release bundle, verifies codesigning, creates
-   `dist/QuotaMonitor-X.Y.Z.dmg`, writes the `.sha256`, mounts the DMG, and
-   verifies the app inside it. **Do not sign or edit `appcast.xml` from this
-   build** — CI signs the DMG it publishes (see the section above).
+   This runs tests, builds the release bundle, Developer ID signs/notarizes and
+   staples the `.app`, creates `dist/QuotaMonitor-X.Y.Z.dmg`, signs and
+   notarizes/staples the DMG, writes the `.sha256`, mounts the DMG, and verifies
+   the app inside it. **Do not sign or edit `appcast.xml` from this build** —
+   CI signs the DMG it publishes (see the section above).
+
+   Without `QM_RELEASE_SIGNING=developer-id`, `tools/release.sh` uses `auto`: it
+   makes a Developer ID release if the local machine has both a Developer ID
+   identity and notary credentials; otherwise it falls back to a local/ad-hoc
+   artifact for smoke testing only.
    > **`main` is protected.** A GitHub ruleset requires every change to
    > `main` to land through a pull request — `git push origin main` is
    > rejected server-side. So the release commits go on a branch and merge
@@ -95,12 +121,13 @@ bottom of this doc).
    git push origin vX.Y.Z
    ```
    The tag push triggers `.github/workflows/release.yml`, which:
-   1. rebuilds the DMG from the tagged commit and publishes the GitHub
+   1. imports the Developer ID certificate from GitHub secrets;
+   2. rebuilds from the tagged commit, signs/notarizes/staples the `.app`,
+      builds a DMG, signs/notarizes/staples that DMG, and publishes the GitHub
       Release (DMG + `.sha256` + release notes sliced from `CHANGELOG.md`);
-   2. **signs that exact published DMG** with `SPARKLE_PRIVATE_KEY` and
-      builds the appcast `<item>` (bilingual notes + correct signature and
-      `length`);
-   3. opens an **`appcast/vX.Y.Z` PR** that splices the entry into
+   3. **signs that exact published DMG** with `SPARKLE_PRIVATE_KEY` and builds
+      the appcast `<item>` (bilingual notes + correct signature and `length`);
+   4. opens an **`appcast/vX.Y.Z` PR** that splices the entry into
       `appcast.xml`.
 
    **Don't run `gh release create` locally** — it would race the workflow's
@@ -112,10 +139,11 @@ bottom of this doc).
    next scheduled check (default 24 h; raw.githubusercontent caches ~5 min).
    The GitHub release page hosts the actual DMG download.
 
-That's it. No notarization, no Apple Developer cert, no PKG. The Ed25519
-signature in the appcast item is what Sparkle verifies before swapping the
-bundle. Users still need the first manual right-click → Open install because
-the app is ad-hoc signed.
+That's it. The Ed25519 signature in the appcast item is what old Sparkle
+clients verify before swapping the bundle, while the Developer ID signature and
+notarization satisfy Gatekeeper for new downloads and the installed app. Users
+should not need the first-launch right-click bypass on current Developer ID
+releases.
 
 > **If CI couldn't sign** (no `appcast/vX.Y.Z` PR appeared), the workflow
 > logs a `SPARKLE_PRIVATE_KEY not set` warning — configure the secret (see
@@ -124,7 +152,64 @@ the app is ad-hoc signed.
 
 ---
 
-## One-time setup (per developer machine)
+## One-time setup: Developer ID release signing
+
+### Local maintainer machine
+
+1. Install a **Developer ID Application** certificate in the login keychain.
+   Verify it appears in:
+   ```sh
+   security find-identity -v -p codesigning
+   ```
+2. Store notarization credentials once:
+   ```sh
+   xcrun notarytool store-credentials quotamonitor-notary \
+     --apple-id you@example.com \
+     --team-id ABCDE12345 \
+     --password app-specific-password
+   ```
+3. Use these env vars for local release checks:
+   ```sh
+   export DEVELOPER_ID_APPLICATION="Developer ID Application: Your Name (TEAMID)"
+   export NOTARYTOOL_PROFILE=quotamonitor-notary
+   QM_RELEASE_SIGNING=developer-id ./tools/release.sh
+   ```
+
+`DEVELOPER_ID_APPLICATION` is optional if there is only one Developer ID
+Application identity in the keychain; the scripts auto-detect the first one.
+`NOTARYTOOL_PROFILE` is optional on the maintainer machine when the default
+`quotamonitor-notary` profile is already stored.
+
+### GitHub Actions secrets
+
+The tag workflow requires these repository secrets:
+
+| Secret | Purpose |
+|---|---|
+| `DEVELOPER_ID_CERTIFICATE_BASE64` | Base64-encoded `.p12` export containing the Developer ID Application cert and private key. |
+| `DEVELOPER_ID_CERTIFICATE_PASSWORD` | Password for that `.p12`. |
+| `DEVELOPER_ID_APPLICATION` | Optional exact identity name, e.g. `Developer ID Application: Your Name (TEAMID)`. |
+| `APPLE_ID` | Apple ID used for notarization. |
+| `APPLE_TEAM_ID` | Developer Team ID. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for `notarytool`. |
+| `SPARKLE_PRIVATE_KEY` | Existing Sparkle Ed25519 private key. Do not rotate for the Developer ID migration. |
+
+To create the certificate secret from an exported `.p12`:
+
+```sh
+base64 -i DeveloperIDApplication.p12 | gh secret set DEVELOPER_ID_CERTIFICATE_BASE64
+gh secret set DEVELOPER_ID_CERTIFICATE_PASSWORD
+gh secret set DEVELOPER_ID_APPLICATION
+gh secret set APPLE_ID
+gh secret set APPLE_TEAM_ID
+gh secret set APPLE_APP_SPECIFIC_PASSWORD
+```
+
+The release workflow hard-fails if Developer ID secrets are missing. That is
+intentional: after the migration, a public tag should not silently publish an
+ad-hoc DMG.
+
+## One-time setup: Sparkle Ed25519 signing
 
 You only do this once per machine, ever. The QuotaMonitor maintainer
 machine ALREADY has this set up — the steps below are for restoring it

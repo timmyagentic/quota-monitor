@@ -31,10 +31,12 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+- New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
 - Log inspection docs now use the correct macOS error predicate
 
 ### Changed
+- **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
 - **Structured developer logging.** Developer diagnostics now mirror info, warning, and error events into macOS unified logging with stable event names, provider, result, trigger, and reason fields, while the opt-in Developer Mode JSONL file keeps the same structured records for local troubleshooting.
 
 ### Fixed

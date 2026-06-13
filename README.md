@@ -20,18 +20,11 @@ respective official APIs.
    [Releases page](https://github.com/systemoutprintlnnnn/quota-monitor/releases).
 2. Open the DMG, drag **QuotaMonitor.app** onto the **Applications** alias
    shown in the installer window.
-3. **First launch only** — macOS will refuse to open the app directly. Pick
-   one:
-   - **Right-click** `QuotaMonitor.app` → **Open** → click **Open** again in
-     the Gatekeeper dialog. (You only need to do this once.)
-   - Or, in Terminal:
-     ```bash
-     xattr -dr com.apple.quarantine /Applications/QuotaMonitor.app
-     open /Applications/QuotaMonitor.app
-     ```
+3. Open **QuotaMonitor.app** from Applications.
 
-> QuotaMonitor is **ad-hoc signed** (no Apple Developer ID), so macOS asks
-> for confirmation the first time. Subsequent launches are silent.
+Release builds produced by the tag workflow are Developer ID signed and
+notarized. Existing users continue to update through the in-app Sparkle updater;
+the appcast identity and bundle identifier stay unchanged.
 
 Optional integrity check after download:
 
@@ -77,20 +70,20 @@ Codex CLI / Anthropic API quirks discovered along the way.
 | Subprocess | `Foundation.Process` + `Pipe` |
 | Logging | OSLog (subsystem `dev.tjzhou.QuotaMonitor`) |
 | Sandbox | **off** — required for `~/.codex` and `~/.claude` access |
-| Distribution | ad-hoc signed `.app`, packaged into DMG, Sparkle appcast updates (no notarization yet) |
+| Distribution | Developer ID signed and notarized `.app` + DMG, Sparkle appcast updates |
 
 ## Build & run (developers)
 
 No Xcode project needed.
 
 ```bash
-./build.sh                  # debug build, assembles .build/QuotaMonitor.app + ad-hoc sign
+./build.sh                  # debug build, assembles .build/QuotaMonitor.app + local/ad-hoc sign
 open .build/QuotaMonitor.app
 
 CONFIG=release ./build.sh   # release build
 
 ./tools/make-dmg.sh         # release + dist/QuotaMonitor-<ver>.dmg with installer-window layout
-./tools/release.sh          # full pipeline: tests + release + DMG + sha256 + self-check
+./tools/release.sh          # full pipeline; Developer ID when configured, otherwise local/ad-hoc
 ```
 
 Version is sourced from `Resources/VERSION` — bump that single file to
@@ -175,8 +168,10 @@ QuotaMonitor/
     ├── release.sh                  // one-command release pipeline
     ├── make-dmg.sh                 // staged UDRW → AppleScript layout → UDZO
     ├── make-dmg-bg.swift           // regenerate the installer-window PNG
+    ├── developer-id-common.sh      // shared Developer ID identity/notary helpers
     ├── make-icon.sh                // app icon generator
-    └── notarize.sh                 // unused — kept for future Developer ID flow
+    ├── notarize.sh                 // Developer ID sign/notarize/staple the app
+    └── notarize-dmg.sh             // Developer ID sign/notarize/staple the DMG
 ```
 
 ## Reference projects
@@ -253,11 +248,10 @@ grep '"level":"ERROR"' ~/Library/Application\ Support/QuotaMonitor/Logs/quotamon
 
 ## Current limitations
 
-- **Not notarized.** Distribute only to people willing to trust an ad-hoc
-  signature (the Install section above explains the one-time bypass).
-- **Sparkle updates require a signed appcast entry.** The update framework
-  is wired in, but each release still needs `tools/release-sparkle.sh` and
-  a GitHub release asset before installed copies can update automatically.
+- **Sparkle updates require a signed appcast entry.** CI signs the exact
+  GitHub Release DMG with `SPARKLE_PRIVATE_KEY` and opens the appcast PR; do
+  not rotate the Sparkle key/feed/bundle identity as part of Developer ID
+  signing.
 - **Pure Claude Desktop auth is not a live-quota source.** The separate
   Electron safeStorage cache is intentionally not decoded; Claude live
   quotas require Claude Code credentials.

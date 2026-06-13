@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# One-command release pipeline for ad-hoc-signed DMG distribution.
+# One-command release pipeline for QuotaMonitor distribution.
 #
-# Steps: pre-flight → tests → release build → bundle verify → DMG → sha256
-#        → mount-and-verify self-check → next-step checklist.
+# Steps: pre-flight -> tests -> release build -> optional Developer ID
+#        notarization -> DMG -> optional DMG notarization -> sha256
+#        -> mount-and-verify self-check -> next-step checklist.
 #
 # Usage:
-#   ./tools/release.sh           # normal release
-#   ./tools/release.sh --force   # overwrite an existing dist/<...>.dmg
+#   ./tools/release.sh                       # auto: Developer ID if configured, else local/ad-hoc
+#   QM_RELEASE_SIGNING=developer-id ./tools/release.sh
+#   QM_RELEASE_SIGNING=adhoc ./tools/release.sh
+#   ./tools/release.sh --force               # overwrite an existing dist/<...>.dmg
 #
 # Version is read from Resources/VERSION (single source of truth).
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# shellcheck source=tools/developer-id-common.sh
+. tools/developer-id-common.sh
 
 # Prefer the same user-installed Swiftly toolchain that build.sh uses. On some
 # macOS CLT installs, the system SwiftPM manifest API can be out of sync with
@@ -73,6 +79,32 @@ fi
 
 echo "==> Releasing ${BRAND_CODE} v${VERSION}"
 
+# -------- signing mode ------------------------------------------------------
+
+RELEASE_SIGNING="${QM_RELEASE_SIGNING:-auto}"
+case "${RELEASE_SIGNING}" in
+    auto)
+        if qm_developer_id_release_available; then
+            RELEASE_SIGNING="developer-id"
+        else
+            RELEASE_SIGNING="adhoc"
+        fi
+        ;;
+    developer-id|adhoc) ;;
+    *)
+        echo "error: QM_RELEASE_SIGNING must be auto, developer-id, or adhoc" >&2
+        exit 2
+        ;;
+esac
+
+if [[ "${RELEASE_SIGNING}" == "developer-id" ]]; then
+    qm_resolve_developer_id_identity
+    qm_set_notary_args
+    echo "==> Signing mode: Developer ID (${QM_DEVELOPER_IDENTITY})"
+else
+    echo "==> Signing mode: local/ad-hoc (not for public distribution)"
+fi
+
 # -------- tests -------------------------------------------------------------
 
 echo "==> swift test"
@@ -104,16 +136,28 @@ if [[ "${INSIDE_VERSION}" != "${VERSION}" ]]; then
 fi
 echo "    Info.plist CFBundleShortVersionString = ${INSIDE_VERSION}  OK"
 
+# -------- Developer ID app notarization -------------------------------------
+
+if [[ "${RELEASE_SIGNING}" == "developer-id" ]]; then
+    echo "==> tools/notarize.sh"
+    APP_BUNDLE="${APP_BUNDLE}" tools/notarize.sh
+fi
+
 # -------- DMG ---------------------------------------------------------------
 
 echo "==> tools/make-dmg.sh"
-# make-dmg.sh re-runs build.sh internally; tolerate that — it's cheap and
-# guarantees the DMG payload matches what we just verified.
-CONFIG=release VER="${VERSION}" tools/make-dmg.sh
+# Package the verified bundle. In Developer ID mode this is important:
+# rebuilding here would throw away the stapled app we just produced.
+CONFIG=release VER="${VERSION}" QM_MAKE_DMG_SKIP_BUILD=1 tools/make-dmg.sh
 
 if [[ ! -f "${DMG_PATH}" ]]; then
     echo "error: expected ${DMG_PATH} after make-dmg.sh, not found" >&2
     exit 1
+fi
+
+if [[ "${RELEASE_SIGNING}" == "developer-id" ]]; then
+    echo "==> tools/notarize-dmg.sh"
+    tools/notarize-dmg.sh "${DMG_PATH}"
 fi
 
 # -------- SHA-256 -----------------------------------------------------------
@@ -145,14 +189,18 @@ fi
 echo "==> codesign --verify (inside DMG)"
 codesign --verify --strict --verbose=2 "${INSIDE_APP}"
 
-# Gatekeeper assessment WILL fail for an ad-hoc-signed bundle; that's expected
-# and is exactly why the README documents the right-click-Open dance. We log
-# it but don't abort.
-echo "==> spctl --assess (expected to reject ad-hoc signature)"
-if spctl --assess --type execute --verbose=2 "${INSIDE_APP}" 2>&1; then
-    echo "    spctl: accepted (unusual for ad-hoc; not an error)"
+if [[ "${RELEASE_SIGNING}" == "developer-id" ]]; then
+    echo "==> spctl --assess (Developer ID app inside DMG)"
+    spctl --assess --type execute --verbose=2 "${INSIDE_APP}"
 else
-    echo "    spctl: rejected — expected for ad-hoc signing, not a release blocker."
+    # Gatekeeper assessment WILL fail for an ad-hoc-signed bundle; that's
+    # expected for local-only builds. We log it but don't abort.
+    echo "==> spctl --assess (expected to reject local/ad-hoc signature)"
+    if spctl --assess --type execute --verbose=2 "${INSIDE_APP}" 2>&1; then
+        echo "    spctl: accepted (unusual for ad-hoc; not an error)"
+    else
+        echo "    spctl: rejected - expected for local/ad-hoc signing, not a release blocker."
+    fi
 fi
 
 # -------- next-step checklist ----------------------------------------------
@@ -166,16 +214,15 @@ cat <<EOF
 ===========================================
 DMG:    ${DMG_PATH}  (${DMG_SIZE})
 SHA256: ${SHA_PATH}
+Signing: ${RELEASE_SIGNING}
 
 Next steps (manual):
-  1. git tag v${VERSION} && git push origin v${VERSION}
-  2. gh release create v${VERSION} \\
-        ${DMG_PATH} \\
-        ${SHA_PATH} \\
-        --title "${BRAND_CODE} ${VERSION}" \\
-        --notes-file CHANGELOG.md   # or hand-pick the v${VERSION} block
+  1. Land the release commit through a PR to main.
+  2. git switch main && git pull
+  3. git tag v${VERSION} && git push origin v${VERSION}
+  4. Let release.yml publish the GitHub Release and open the appcast PR.
 
-Reminder: this is ad-hoc-signed. Users must right-click → Open
-on first launch (see README "Install" section).
+Do not run gh release create locally unless the workflow is unavailable;
+the appcast signature must be computed over the exact DMG users download.
 ===========================================
 EOF

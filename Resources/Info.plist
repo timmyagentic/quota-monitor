@@ -51,10 +51,11 @@
       will refuse to install updates (intended fail-safe). The release
       pipeline must replace this with the real key before shipping.
 
-      SUEnableInstallerLauncherService=false because we're not Apple-
-      notarized; the in-process installer path is good enough for
-      ad-hoc-signed builds and avoids the XPC installer's stricter
-      sandbox checks.
+      Keep SUEnableInstallerLauncherService=false for now. QuotaMonitor is
+      unsandboxed, and existing installs already update through Sparkle's
+      in-process path. The Developer ID migration should preserve that updater
+      path until a separate old-version smoke test proves a launcher-service
+      switch is safe.
     -->
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml</string>

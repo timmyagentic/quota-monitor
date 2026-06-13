@@ -4,7 +4,7 @@
 # alias). Pure shell + AppleScript — no homebrew dependencies.
 #
 # Flow:
-#   1. ./build.sh CONFIG=$CONFIG    (assemble + ad-hoc sign the .app)
+#   1. ./build.sh CONFIG=$CONFIG    (assemble + local/ad-hoc sign the .app)
 #   2. Stage: copy .app + symlink /Applications + copy background PNG
 #      into a hidden .background folder
 #   3. hdiutil create -format UDRW   (read-WRITE shadow image we can mutate)
@@ -18,8 +18,10 @@
 #
 # Usage:
 #   tools/make-dmg.sh                # release build, dist/QuotaMonitor-<ver>.dmg
-#   CONFIG=debug tools/make-dmg.sh   # debug bundle
-#   VER=0.2.0-rc1 tools/make-dmg.sh  # override version
+#   CONFIG=debug tools/make-dmg.sh          # debug bundle
+#   VER=0.2.0-rc1 tools/make-dmg.sh         # override version
+#   QM_MAKE_DMG_SKIP_BUILD=1 tools/make-dmg.sh
+#                                           # package an existing signed bundle
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -71,9 +73,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. Build first.
-echo "==> ./build.sh (CONFIG=$CONFIG)"
-CONFIG="$CONFIG" ./build.sh >/dev/null
+# 1. Build first unless release.sh already signed/notarized the bundle.
+if [[ "${QM_MAKE_DMG_SKIP_BUILD:-0}" == "1" || "${SKIP_BUILD:-0}" == "1" ]]; then
+    echo "==> Skipping build; packaging existing ${APP}"
+else
+    echo "==> ./build.sh (CONFIG=$CONFIG)"
+    CONFIG="$CONFIG" ./build.sh >/dev/null
+fi
 
 if [[ ! -d "$APP" ]]; then
     echo "error: $APP not found after build" >&2

@@ -97,7 +97,7 @@ CTLineDraw(titleLine, ctx)
 
 // ---- subtitle (small hint, below title) -----------------------------------
 
-let subtitle = "First launch: right-click → Open"
+let subtitle = "Signed and notarized for direct launch"
 let subAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 11, weight: .regular),
     .foregroundColor: NSColor(white: 0.45, alpha: 1.0)
@@ -139,7 +139,7 @@ ctx.fillPath()
 
 // ---- footnote (bottom) ----------------------------------------------------
 
-let foot = "ad-hoc signed · macOS will ask once on first launch"
+let foot = "Developer ID signed · Sparkle updates stay automatic"
 let footAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 10, weight: .regular),
     .foregroundColor: NSColor(white: 0.55, alpha: 1.0)
