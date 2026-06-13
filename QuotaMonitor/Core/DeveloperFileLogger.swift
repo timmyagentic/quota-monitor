@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum DeveloperLogLevel: String, Sendable, Encodable {
     case debug = "DEBUG"
@@ -336,6 +337,17 @@ enum DeveloperLog {
         message: String? = nil,
         fields: [String: DeveloperLogValue] = [:]
     ) {
+        emitUnifiedLog(
+            level: level,
+            category: category,
+            event: event,
+            operation: operation,
+            trigger: trigger,
+            provider: provider,
+            durationMilliseconds: durationMilliseconds,
+            result: result,
+            message: message,
+            fields: fields)
         guard SettingsStore.developerModeEnabledNonisolated else { return }
         Task.detached(priority: .utility) {
             await logger.record(
@@ -368,6 +380,11 @@ enum DeveloperLog {
         record(level: .warning, category: category, message: message)
     }
 
+    nonisolated static func warn(_ message: @autoclosure () -> String,
+                                 category: String) {
+        warning(message(), category: category)
+    }
+
     nonisolated static func error(_ message: @autoclosure () -> String,
                                   category: String) {
         record(level: .error, category: category, message: message)
@@ -376,6 +393,11 @@ enum DeveloperLog {
     nonisolated static func modeChanged(enabled: Bool) {
         Task.detached(priority: .utility) {
             if enabled {
+                emitUnifiedLog(
+                    level: .info,
+                    category: "settings",
+                    event: "developer_mode.enabled",
+                    message: "developer mode enabled")
                 await logger.record(
                     level: .info,
                     category: "settings",
@@ -383,6 +405,11 @@ enum DeveloperLog {
                     message: "developer mode enabled",
                     force: true)
             } else {
+                emitUnifiedLog(
+                    level: .info,
+                    category: "settings",
+                    event: "developer_mode.disabled",
+                    message: "developer mode disabled")
                 await logger.deleteLogFile()
             }
         }
@@ -402,5 +429,93 @@ enum DeveloperLog {
 
     private nonisolated static func durationMilliseconds(since start: Date) -> Int {
         max(0, Int(Date().timeIntervalSince(start) * 1000))
+    }
+
+    nonisolated static func osLogSummary(
+        event: String,
+        category: String,
+        operation: DeveloperLogOperation? = nil,
+        trigger: String? = nil,
+        provider: String? = nil,
+        durationMilliseconds: Int? = nil,
+        result: String? = nil,
+        message: String? = nil,
+        fields: [String: DeveloperLogValue] = [:]
+    ) -> String {
+        var parts = [
+            "event=\(event)",
+            "cat=\(category)"
+        ]
+        if let provider = provider ?? operation?.provider {
+            parts.append("provider=\(provider)")
+        }
+        if let trigger = trigger ?? operation?.trigger {
+            parts.append("trigger=\(trigger)")
+        }
+        if let result {
+            parts.append("result=\(result)")
+        }
+        if let durationMilliseconds {
+            parts.append("duration_ms=\(durationMilliseconds)")
+        }
+        if let operation {
+            parts.append("op_id=\(operation.id)")
+        }
+        for key in ["reason", "error_type", "error_message"] {
+            if let value = fields[key]?.osLogString {
+                parts.append("\(key)=\(DeveloperLogSanitizer.sanitize(value))")
+            }
+        }
+        if let message {
+            parts.append("message=\(DeveloperLogSanitizer.sanitize(message))")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private nonisolated static func emitUnifiedLog(
+        level: DeveloperLogLevel,
+        category: String,
+        event: String,
+        operation: DeveloperLogOperation? = nil,
+        trigger: String? = nil,
+        provider: String? = nil,
+        durationMilliseconds: Int? = nil,
+        result: String? = nil,
+        message: String? = nil,
+        fields: [String: DeveloperLogValue] = [:]
+    ) {
+        guard level != .debug || SettingsStore.developerModeEnabledNonisolated else { return }
+        let summary = osLogSummary(
+            event: event,
+            category: category,
+            operation: operation,
+            trigger: trigger,
+            provider: provider,
+            durationMilliseconds: durationMilliseconds,
+            result: result,
+            message: message,
+            fields: fields)
+        let unifiedLogger = Log.logger(category: category)
+        switch level {
+        case .debug:
+            unifiedLogger.debug("\(summary, privacy: .public)")
+        case .info:
+            unifiedLogger.info("\(summary, privacy: .public)")
+        case .warning:
+            unifiedLogger.warning("\(summary, privacy: .public)")
+        case .error:
+            unifiedLogger.error("\(summary, privacy: .public)")
+        }
+    }
+}
+
+private extension DeveloperLogValue {
+    var osLogString: String {
+        switch self {
+        case .string(let value): return value
+        case .int(let value): return "\(value)"
+        case .double(let value): return "\(value)"
+        case .bool(let value): return value ? "true" : "false"
+        }
     }
 }

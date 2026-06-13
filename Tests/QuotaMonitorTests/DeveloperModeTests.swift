@@ -205,4 +205,34 @@ struct DeveloperModeTests {
         #expect(json["event"] as? String == "scan.finish")
         #expect(json["message"] as? String == "new log")
     }
+
+    @Test
+    func osLogSummaryUsesStableFieldsAndRedactsSecrets() {
+        let summary = DeveloperLog.osLogSummary(
+            event: "ratelimits.refresh.fail",
+            category: "poller",
+            trigger: "manual",
+            provider: "codex",
+            durationMilliseconds: 30_000,
+            result: "failure",
+            message: "Authorization: Bearer message-secret",
+            fields: [
+                "reason": "rate-limit-cooldown",
+                "error_type": "ClientError",
+                "error_message": "access_token=field-secret"
+            ])
+
+        #expect(summary.contains("event=ratelimits.refresh.fail"))
+        #expect(summary.contains("cat=poller"))
+        #expect(summary.contains("provider=codex"))
+        #expect(summary.contains("trigger=manual"))
+        #expect(summary.contains("result=failure"))
+        #expect(summary.contains("duration_ms=30000"))
+        #expect(summary.contains("reason=rate-limit-cooldown"))
+        #expect(summary.contains("error_type=ClientError"))
+        #expect(summary.contains("message-secret") == false)
+        #expect(summary.contains("field-secret") == false)
+        #expect(summary.contains("Authorization: Bearer <redacted>"))
+        #expect(summary.contains("access_token=<redacted>"))
+    }
 }
