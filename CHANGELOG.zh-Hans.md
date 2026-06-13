@@ -24,6 +24,12 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+- 开发者诊断现在使用更清晰的结构化等级，排查问题时更容易先看错误
+
+### 变更
+- **结构化开发者日志。** 开发者诊断现在会把 info、warning 和 error 事件同步写入 macOS unified logging，并保留稳定的事件名、Provider、结果、触发来源和 reason 字段；开启 Developer Mode 后，本地 JSONL 文件仍保留同样的结构化记录，便于本机排查。
+
 ## [0.2.32] — 2026-06-12
 
 #### Summary
