@@ -33,7 +33,6 @@ window copy.
 #### Summary
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
-- Log inspection docs now use the correct macOS error predicate
 - The app icon now sits cleanly on dark Dock and Finder backgrounds
 - Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
 
