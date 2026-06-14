@@ -31,6 +31,9 @@ appcast 中按系统语言切换的双语更新说明。
 - 应用图标现在放在深色 Dock 和 Finder 背景上也不会露出白色方底
 - 今天的用量和花费现在会立即显示在仪表盘里，不再要等到第二天
 
+### 新增
+- **架构审查待办清单。** 新增 `docs/architecture-review-2026-06-14.md`，系统梳理已知的正确性、性能、并发与可维护性问题，便于后续逐项处理与修复。
+
 ### 变更
 - **可信发布链路。** 公开版本现在使用 Apple Developer ID 分发，同时保持原有 Sparkle 更新身份不变，因此已安装副本仍可继续使用应用内更新。
 - **结构化开发者日志。** 开发者诊断现在会把 info、warning 和 error 事件同步写入 macOS unified logging，并保留稳定的事件名、Provider、结果、触发来源和 reason 字段；开启 Developer Mode 后，本地 JSONL 文件仍保留同样的结构化记录，便于本机排查。
