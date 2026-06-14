@@ -34,6 +34,7 @@ window copy.
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
 - Log inspection docs now use the correct macOS error predicate
+- The app icon now sits cleanly on dark Dock and Finder backgrounds
 
 ### Changed
 - **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
@@ -41,6 +42,7 @@ window copy.
 
 ### Fixed
 - **Unified log error query.** The README now filters macOS unified logs with `logType == "error"` instead of the unsupported `log show --level error` flag.
+- **App icon transparency.** The committed app icon now preserves transparent rounded corners, preventing a white square from appearing behind the icon on dark backgrounds.
 
 ## [0.2.32] — 2026-06-12
 
