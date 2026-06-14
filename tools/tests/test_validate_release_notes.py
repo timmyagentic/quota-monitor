@@ -122,6 +122,34 @@ class ValidateReleaseNotesTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("release notes ok", result.stdout)
 
+    def test_rejects_empty_summary(self):
+        result = self.run_validator(
+            """
+            # Changelog
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+
+            ### Changed
+            - **Release notes.** The update copy is now shorter.
+            """,
+            """
+            # 更新日志
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - 更新说明现在更清晰
+
+            ### 变更
+            - **发布说明。** 更新文案现在更短。
+            """,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Summary must contain at least one bullet", result.stderr)
+
     def test_rejects_internal_jargon_in_summary(self):
         result = self.run_validator(
             """
