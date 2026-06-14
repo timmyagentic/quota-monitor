@@ -81,6 +81,35 @@ class ChangelogToHTMLTests(unittest.TestCase):
         self.assertIn("下面是这次版本里最值得留意的改进。", result.stdout)
         self.assertNotIn("窗口稳定性、更新提示和配额刷新", result.stdout)
 
+    def test_cycles_tone_for_more_than_four_summary_cards(self):
+        result = self.run_converter(
+            """
+            # Changelog
+
+            ## [1.2.3] - 2026-06-08
+
+            #### Summary
+            - First improvement
+            - Second improvement
+            - Third improvement
+            - Fourth improvement
+            - Fifth improvement
+
+            ### Changed
+            - **Window ownership.** Dashboard and Settings share one window manager.
+            """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for text in [
+            "First improvement", "Second improvement", "Third improvement",
+            "Fourth improvement", "Fifth improvement",
+        ]:
+            self.assertIn(text, result.stdout)
+        # Tone palette cycles every four cards so the 5th still gets a defined --tone.
+        self.assertIn(".qm-release-highlight:nth-child(4n+1)", result.stdout)
+        self.assertIn(".qm-release-highlight:nth-child(4n)", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

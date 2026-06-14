@@ -306,10 +306,12 @@ def rich_summary_style() -> str:
   height: 3px;
   background: linear-gradient(90deg, var(--tone), transparent);
 }
-.qm-release-highlight:nth-child(1) { --tone: var(--release-accent); }
-.qm-release-highlight:nth-child(2) { --tone: var(--release-green); }
-.qm-release-highlight:nth-child(3) { --tone: var(--release-amber); }
-.qm-release-highlight:nth-child(4) { --tone: var(--release-coral); }
+/* Tone palette cycles every four cards so Summary lists longer than four
+   still get a defined --tone after the upper bullet cap was removed. */
+.qm-release-highlight:nth-child(4n+1) { --tone: var(--release-accent); }
+.qm-release-highlight:nth-child(4n+2) { --tone: var(--release-green); }
+.qm-release-highlight:nth-child(4n+3) { --tone: var(--release-amber); }
+.qm-release-highlight:nth-child(4n) { --tone: var(--release-coral); }
 .qm-release-number {
   display: inline-grid;
   place-items: center;
