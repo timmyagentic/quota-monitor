@@ -25,6 +25,12 @@ if [[ "$width" != "$height" ]]; then
     exit 1
 fi
 
+has_alpha="$(sips -g hasAlpha "$SOURCE" | awk '/hasAlpha/ {print $2}')"
+if [[ "$has_alpha" != "yes" ]]; then
+    echo "error: source icon must preserve transparent corners: $SOURCE" >&2
+    exit 1
+fi
+
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
