@@ -36,6 +36,9 @@ window copy.
 - The app icon now sits cleanly on dark Dock and Finder backgrounds
 - Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
 
+### Added
+- **Architecture review backlog.** Added `docs/architecture-review-2026-06-14.md` cataloguing known correctness, performance, concurrency, and maintainability issues to triage and fix incrementally.
+
 ### Changed
 - **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
 - **Structured developer logging.** Developer diagnostics now mirror info, warning, and error events into macOS unified logging with stable event names, provider, result, trigger, and reason fields, while the opt-in Developer Mode JSONL file keeps the same structured records for local troubleshooting.
