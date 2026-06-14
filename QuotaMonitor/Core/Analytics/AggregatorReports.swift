@@ -136,13 +136,18 @@ extension Aggregator {
     /// `session_count` uses DISTINCT session_id so cross-month sessions
     /// count once per month they touched. Mirrors ccusage's `monthly.ts`.
     static func fetchMonthly(
-        db: Database, months: Int, provider: ProviderFilter = .all
+        db: Database, months: Int, provider: ProviderFilter = .all,
+        timeZone: TimeZone = .current
     ) throws -> [MonthlyPoint] {
-        let cal = Calendar(identifier: .gregorian)
-        let offsetSeconds = TimeZone.current.secondsFromGMT()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        let offsetSeconds = timeZone.secondsFromGMT()
         let plusOffset = String(format: "%+d seconds", offsetSeconds)
-        // SQLite has no `start of month` for an offset date — easiest to
-        // bucket via strftime then reparse client-side.
+        // Lower bound: shift the UTC `start of month` back by the local offset
+        // so it lands on the *local* month start (mirrors fetchDaily). Without
+        // this, first-of-month rows whose UTC instant falls in the previous
+        // month are dropped from the earliest bucket in non-UTC time zones.
+        let minusOffset = String(format: "%+d seconds", -offsetSeconds)
         let rows = try Row.fetchAll(db, sql: """
             SELECT
               strftime('%Y-%m', timestamp, ?) AS month,
@@ -150,11 +155,11 @@ extension Aggregator {
               SUM(total_tokens) AS tokens,
               COUNT(DISTINCT session_id) AS sessions
             FROM usage_events
-            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?, 'start of month')
+            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?, 'start of month', ?)
             \(provider.clause(table: "usage_events"))
             GROUP BY month
             ORDER BY month
-            """, arguments: [plusOffset, "-\(months - 1) months"])
+            """, arguments: [plusOffset, "-\(months - 1) months", minusOffset])
 
         var byMonth: [String: (Double, Int64, Int)] = [:]
         for row in rows {
@@ -167,7 +172,7 @@ extension Aggregator {
 
         let monthFormatter = DateFormatter()
         monthFormatter.calendar = cal
-        monthFormatter.timeZone = TimeZone.current
+        monthFormatter.timeZone = timeZone
         monthFormatter.dateFormat = "yyyy-MM"
 
         // Anchor on first-of-current-month in the local calendar.

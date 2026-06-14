@@ -43,6 +43,7 @@ window copy.
 ### Fixed
 - **Unified log error query.** The README now filters macOS unified logs with `logType == "error"` instead of the unsupported `log show --level error` flag.
 - **Today's usage counts immediately.** Dashboard composition, burn-rate forecasts, and the usage and rate-limit charts now include events from earlier today instead of dropping them until the next day.
+- **Monthly totals include the first day in your time zone.** The monthly usage chart no longer drops first-of-month activity whose UTC instant lands in the previous month, so the earliest month's totals are complete in time zones ahead of UTC.
 
 ## [0.2.32] — 2026-06-12
 
