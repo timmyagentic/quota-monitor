@@ -34,6 +34,10 @@ window copy.
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
 - Log inspection docs now use the correct macOS error predicate
+- Mac App Store preparation now has a local readiness check before any account setup
+
+### Added
+- **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
 
 ### Changed
 - **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
