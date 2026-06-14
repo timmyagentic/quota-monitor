@@ -19,18 +19,25 @@ extension Aggregator {
         db: Database, limit: Int = 365, provider: ProviderFilter = .all,
         calendar: Calendar = .current
     ) throws -> [DaySummary] {
-        let rows = try Row.fetchAll(db, sql: """
+        guard limit > 0 else { return [] }
+        let rows = try Row.fetchCursor(db, sql: """
             SELECT timestamp, value_usd, total_tokens, session_id
             FROM usage_events
             \(provider.whereClause(table: "usage_events"))
+            ORDER BY timestamp DESC, id DESC
             """)
 
         var byDay: [Date: (value: Double, tokens: Int64, events: Int, sessions: Set<String>)] = [:]
-        for row in rows {
+        var orderedDays: [Date] = []
+        while let row = try rows.next() {
             let ts: String = row["timestamp"] ?? ""
             guard let date = parseTimestamp(ts) else { continue }
             let dayStart = calendar.startOfDay(for: date)
             var bucket = byDay[dayStart] ?? (0, 0, 0, [])
+            if bucket.events == 0 {
+                guard orderedDays.count < limit else { break }
+                orderedDays.append(dayStart)
+            }
             bucket.value += row["value_usd"] ?? 0
             bucket.tokens += row["total_tokens"] ?? 0
             bucket.events += 1
@@ -39,7 +46,7 @@ extension Aggregator {
         }
 
         let dayFormatter = Self.dayKeyFormatter(calendar)
-        return byDay.keys.sorted(by: >).prefix(limit).map { dayStart in
+        return orderedDays.map { dayStart in
             let bucket = byDay[dayStart] ?? (0, 0, 0, [])
             return DaySummary(
                 day: dayFormatter.string(from: dayStart),

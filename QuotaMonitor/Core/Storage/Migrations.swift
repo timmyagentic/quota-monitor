@@ -263,5 +263,17 @@ enum Migrations {
                 )
                 """)
         }
+
+        // v10: History fetchDays now scans usage_events by timestamp descending
+        // and stops after collecting the requested number of local days. The
+        // existing (provider, timestamp) index covers provider-filtered scans;
+        // all-provider History needs a timestamp-only index to avoid sorting
+        // the whole event table before the cursor can stop.
+        migrator.registerMigration("v10-usage-events-timestamp-index") { db in
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_usage_events_timestamp
+                ON usage_events(timestamp)
+                """)
+        }
     }
 }

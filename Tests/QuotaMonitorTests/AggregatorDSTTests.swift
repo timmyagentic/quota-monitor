@@ -152,6 +152,33 @@ struct AggregatorDSTTests {
         #expect(tokens(2025, 6, 15) == nil, "no bucket leaks onto Jun 15")
     }
 
+    @Test("fetchDays uses timestamp-descending scan for limited History lists")
+    func fetchDays_usesTimestampDescendingScan() throws {
+        let cal = nyCalendar()
+        let db = try makeDatabase()
+        try seed(in: db, sessionId: "recent",
+                 timestamp: "2025-06-15T03:30:00Z", tokens: 1000)
+        try seed(in: db, sessionId: "older",
+                 timestamp: "2025-01-15T04:30:00Z", tokens: 2000)
+
+        let statements = try db.pool.read { conn in
+            var traced: [String] = []
+            conn.trace { event in
+                guard case .statement(let statement) = event else { return }
+                traced.append(statement.sql)
+            }
+            _ = try Aggregator.fetchDays(db: conn, limit: 1, calendar: cal)
+            conn.trace(options: [])
+            return traced
+        }
+
+        let historyQuery = try #require(statements.first {
+            $0.contains("FROM usage_events")
+                && $0.contains("ORDER BY timestamp DESC")
+        })
+        #expect(historyQuery.contains("ORDER BY timestamp DESC"))
+    }
+
     // MARK: - fetchDayDetail
 
     @Test("fetchDayDetail scopes to the queried day's own local-day range across DST")
