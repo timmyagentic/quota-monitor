@@ -3,6 +3,13 @@ import GRDB
 
 // Codex `rate_limit_samples` queries: latest per-bucket snapshot, derived
 // burn rates, and the 24h history used by the Dashboard's rate-limit chart.
+//
+// Time-window predicates use `strftime('%Y-%m-%dT%H:%M:%fZ', 'now', …)`
+// rather than `datetime('now', …)`. `sample_timestamp` is stored in ISO8601
+// (with `T`/`Z`) and SQLite compares these as plain strings; datetime()
+// returns a space-separated form ("YYYY-MM-DD HH:MM:SS") that lexically
+// mis-compares against the stored values — silently widening the window to
+// "everything since 00:00 today". See AggregatorReports.fetchPerProviderStats.
 
 extension Aggregator {
 
@@ -62,7 +69,7 @@ extension Aggregator {
                 FROM rate_limit_samples
                 WHERE bucket = ? AND limit_name IS NULL
                   AND source_kind IN ('live', 'jsonl')
-                  AND sample_timestamp >= datetime('now', ?)
+                  AND sample_timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
                 ORDER BY sample_timestamp ASC
                 """, arguments: [bucket, "-\(windowMinutes) minutes"])
             let points: [(minutes: Double, percent: Double)] = rows.compactMap { row in
@@ -120,7 +127,7 @@ extension Aggregator {
             FROM rate_limit_samples
             WHERE limit_name IS NULL
               AND source_kind IN ('live', 'jsonl')
-              AND sample_timestamp >= datetime('now', ?)
+              AND sample_timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
             ORDER BY sample_timestamp ASC
             """, arguments: ["-\(hours) hours"])
 

@@ -33,8 +33,8 @@ window copy.
 #### Summary
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
-- Log inspection docs now use the correct macOS error predicate
 - The app icon now sits cleanly on dark Dock and Finder backgrounds
+- Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
 
 ### Changed
 - **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
@@ -43,6 +43,8 @@ window copy.
 ### Fixed
 - **Unified log error query.** The README now filters macOS unified logs with `logType == "error"` instead of the unsupported `log show --level error` flag.
 - **App icon transparency.** The committed app icon now preserves transparent rounded corners, preventing a white square from appearing behind the icon on dark backgrounds.
+- **Today's usage counts immediately.** Dashboard composition, burn-rate forecasts, and the usage and rate-limit charts now include events from earlier today instead of dropping them until the next day.
+- **Monthly totals include the first day in your time zone.** The monthly usage chart no longer drops first-of-month activity whose UTC instant lands in the previous month, so the earliest month's totals are complete in time zones ahead of UTC.
 
 ## [0.2.32] — 2026-06-12
 

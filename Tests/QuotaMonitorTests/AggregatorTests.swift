@@ -47,9 +47,24 @@ struct AggregatorTests {
         valueUSD: Double,
         tokens: Int64 = 1000
     ) throws {
+        try seedEvent(
+            in: db, provider: provider, sessionId: sessionId,
+            at: Date().addingTimeInterval(-daysAgo * 86400),
+            valueUSD: valueUSD, tokens: tokens)
+    }
+
+    /// Same as the `daysAgo:` overload but pins an absolute timestamp — used by
+    /// time-zone boundary tests where the exact wall-clock instant matters.
+    private func seedEvent(
+        in db: DatabaseManager,
+        provider: String,
+        sessionId: String,
+        at when: Date,
+        valueUSD: Double,
+        tokens: Int64 = 1000
+    ) throws {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
-        let when = Date().addingTimeInterval(-daysAgo * 86400)
         let stamp = iso.string(from: when)
 
         try db.pool.write { conn in
@@ -284,5 +299,103 @@ struct AggregatorTests {
 
         #expect(history.count == 1)
         #expect(history.first?.series == "primary (live)")
+    }
+
+    // MARK: - sliding-window timestamp format (datetime() vs strftime regression)
+
+    @Test("fetchModelShares [now-30d, now) keeps events from earlier today")
+    func modelShares30dWindow_includesTodayEvents() throws {
+        let db = try makeDatabase()
+        // Earlier today. The old `datetime('now')` upper bound rendered a
+        // space-separated "YYYY-MM-DD HH:MM:SS" string, so the stored ISO8601
+        // 'T' timestamp sorted lexically ABOVE it — today's spend silently
+        // dropped out of the Composition section.
+        try seedEvent(in: db, provider: "codex", sessionId: "today",
+                      daysAgo: 0.1, valueUSD: 5.00)
+        try seedEvent(in: db, provider: "codex", sessionId: "midwindow",
+                      daysAgo: 10, valueUSD: 2.00)
+        // 40 days old — outside the 30d window, must be excluded.
+        try seedEvent(in: db, provider: "codex", sessionId: "ancient",
+                      daysAgo: 40, valueUSD: 99.00)
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(
+                db: conn, provider: .all, sinceDays: 30, untilDaysAgo: 0)
+        }
+        let total = shares.reduce(0) { $0 + $1.valueUSD }
+        #expect(abs(total - 7.00) < 0.0001,
+                "today's $5 + 10d-old $2 are inside [now-30d, now); 40d-old $99 is not")
+    }
+
+    @Test("fetchModelShares prior window [now-60d, now-30d) excludes the recent 30d")
+    func modelSharesPriorWindow_excludesRecent() throws {
+        let db = try makeDatabase()
+        try seedEvent(in: db, provider: "codex", sessionId: "recent",
+                      daysAgo: 10, valueUSD: 5.00)   // inside last 30d -> excluded
+        try seedEvent(in: db, provider: "codex", sessionId: "prior",
+                      daysAgo: 45, valueUSD: 3.00)   // inside [60,30) -> included
+        try seedEvent(in: db, provider: "codex", sessionId: "old",
+                      daysAgo: 70, valueUSD: 9.00)   // older than 60d -> excluded
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(
+                db: conn, provider: .all, sinceDays: 60, untilDaysAgo: 30)
+        }
+        let total = shares.reduce(0) { $0 + $1.valueUSD }
+        #expect(abs(total - 3.00) < 0.0001,
+                "only the 45d-old event sits inside the prior [60d, 30d) window")
+    }
+
+    @Test("fetchBurnRates derives a positive slope from rising in-window samples")
+    func burnRate_positiveSlopeWithinWindow() throws {
+        let db = try makeDatabase()
+        let now = Date()
+        func stamp(minutesAgo: Double) -> String {
+            ISO8601.fractional.string(from: now.addingTimeInterval(-minutesAgo * 60))
+        }
+        // Three live primary samples inside the 60-minute window, usage rising.
+        // The old `datetime('now', '-60 minutes')` lower bound widened this to
+        // "since 00:00 today"; strftime keeps it a true rolling 60 minutes.
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 50), usedPercent: 10)
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 25), usedPercent: 16)
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 5), usedPercent: 22)
+
+        let rates = try db.pool.read { conn in
+            try Aggregator.fetchBurnRates(
+                db: conn, bucketsOfInterest: ["primary"], windowMinutes: 60)
+        }
+        let primary = try #require(rates["primary"])
+        #expect(primary.sampleCount == 3, "all three in-window samples contribute")
+        #expect(primary.percentPerMinute > 0,
+                "usage climbing 10->22% over ~45min must yield a positive burn rate")
+    }
+
+    @Test("fetchMonthly counts first-of-month rows whose UTC instant is in the prior month")
+    func monthly_includesLocalMonthStartAcrossUTCBoundary() throws {
+        let db = try makeDatabase()
+        // UTC+8: 00:00 on the 1st (local) is 16:00 on the previous month's last
+        // day in UTC. The old UTC `start of month` lower bound dropped these
+        // rows from the earliest bucket; the local-offset bound keeps them.
+        let tz = TimeZone(secondsFromGMT: 8 * 3600)!
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = tz
+        let comps = cal.dateComponents([.year, .month], from: Date())
+        let thisMonthStart = cal.date(from: comps)!
+        let lastMonthStart = cal.date(byAdding: .month, value: -1, to: thisMonthStart)!
+        // 00:30 local on the 1st of last month → previous-day 16:30 in UTC.
+        let earlyLastMonth = lastMonthStart.addingTimeInterval(30 * 60)
+
+        try seedEvent(in: db, provider: "codex", sessionId: "edge",
+                      at: earlyLastMonth, valueUSD: 4.00)
+
+        let monthly = try db.pool.read { conn in
+            try Aggregator.fetchMonthly(db: conn, months: 2, timeZone: tz)
+        }
+        let earliest = try #require(monthly.first)
+        #expect(abs(earliest.valueUSD - 4.00) < 0.0001,
+                "00:30 local on the 1st (prev-day in UTC) must count in its local month")
     }
 }
