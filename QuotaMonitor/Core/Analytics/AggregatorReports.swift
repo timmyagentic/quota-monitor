@@ -97,7 +97,9 @@ extension Aggregator {
               SUM(value_usd) AS value_usd,
               SUM(total_tokens) AS tokens
             FROM usage_events
-            WHERE timestamp >= datetime('now', ?, 'start of day', ?)
+            -- strftime (not datetime): the ISO8601 `now` threshold lexically
+            -- matches stored T/Z timestamps. See fetchPerProviderStats.
+            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?, 'start of day', ?)
             \(provider.clause(table: "usage_events"))
             GROUP BY day
             ORDER BY day
@@ -148,7 +150,7 @@ extension Aggregator {
               SUM(total_tokens) AS tokens,
               COUNT(DISTINCT session_id) AS sessions
             FROM usage_events
-            WHERE timestamp >= datetime('now', ?, 'start of month')
+            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?, 'start of month')
             \(provider.clause(table: "usage_events"))
             GROUP BY month
             ORDER BY month
@@ -232,8 +234,10 @@ extension Aggregator {
               COUNT(*)              AS event_count
             FROM usage_events ue
             LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id
-            WHERE ue.timestamp >= datetime('now', ?)
-              AND ue.timestamp <  datetime('now', ?)
+            -- strftime (not datetime): the ISO8601 `now` bounds lexically
+            -- match stored T/Z timestamps; datetime() would drop today's events.
+            WHERE ue.timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
+              AND ue.timestamp <  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
             """
         sql += provider.clause(table: "ue")
         sql += """

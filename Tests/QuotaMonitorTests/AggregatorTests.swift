@@ -285,4 +285,76 @@ struct AggregatorTests {
         #expect(history.count == 1)
         #expect(history.first?.series == "primary (live)")
     }
+
+    // MARK: - sliding-window timestamp format (datetime() vs strftime regression)
+
+    @Test("fetchModelShares [now-30d, now) keeps events from earlier today")
+    func modelShares30dWindow_includesTodayEvents() throws {
+        let db = try makeDatabase()
+        // Earlier today. The old `datetime('now')` upper bound rendered a
+        // space-separated "YYYY-MM-DD HH:MM:SS" string, so the stored ISO8601
+        // 'T' timestamp sorted lexically ABOVE it — today's spend silently
+        // dropped out of the Composition section.
+        try seedEvent(in: db, provider: "codex", sessionId: "today",
+                      daysAgo: 0.1, valueUSD: 5.00)
+        try seedEvent(in: db, provider: "codex", sessionId: "midwindow",
+                      daysAgo: 10, valueUSD: 2.00)
+        // 40 days old — outside the 30d window, must be excluded.
+        try seedEvent(in: db, provider: "codex", sessionId: "ancient",
+                      daysAgo: 40, valueUSD: 99.00)
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(
+                db: conn, provider: .all, sinceDays: 30, untilDaysAgo: 0)
+        }
+        let total = shares.reduce(0) { $0 + $1.valueUSD }
+        #expect(abs(total - 7.00) < 0.0001,
+                "today's $5 + 10d-old $2 are inside [now-30d, now); 40d-old $99 is not")
+    }
+
+    @Test("fetchModelShares prior window [now-60d, now-30d) excludes the recent 30d")
+    func modelSharesPriorWindow_excludesRecent() throws {
+        let db = try makeDatabase()
+        try seedEvent(in: db, provider: "codex", sessionId: "recent",
+                      daysAgo: 10, valueUSD: 5.00)   // inside last 30d -> excluded
+        try seedEvent(in: db, provider: "codex", sessionId: "prior",
+                      daysAgo: 45, valueUSD: 3.00)   // inside [60,30) -> included
+        try seedEvent(in: db, provider: "codex", sessionId: "old",
+                      daysAgo: 70, valueUSD: 9.00)   // older than 60d -> excluded
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(
+                db: conn, provider: .all, sinceDays: 60, untilDaysAgo: 30)
+        }
+        let total = shares.reduce(0) { $0 + $1.valueUSD }
+        #expect(abs(total - 3.00) < 0.0001,
+                "only the 45d-old event sits inside the prior [60d, 30d) window")
+    }
+
+    @Test("fetchBurnRates derives a positive slope from rising in-window samples")
+    func burnRate_positiveSlopeWithinWindow() throws {
+        let db = try makeDatabase()
+        let now = Date()
+        func stamp(minutesAgo: Double) -> String {
+            ISO8601.fractional.string(from: now.addingTimeInterval(-minutesAgo * 60))
+        }
+        // Three live primary samples inside the 60-minute window, usage rising.
+        // The old `datetime('now', '-60 minutes')` lower bound widened this to
+        // "since 00:00 today"; strftime keeps it a true rolling 60 minutes.
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 50), usedPercent: 10)
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 25), usedPercent: 16)
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 5), usedPercent: 22)
+
+        let rates = try db.pool.read { conn in
+            try Aggregator.fetchBurnRates(
+                db: conn, bucketsOfInterest: ["primary"], windowMinutes: 60)
+        }
+        let primary = try #require(rates["primary"])
+        #expect(primary.sampleCount == 3, "all three in-window samples contribute")
+        #expect(primary.percentPerMinute > 0,
+                "usage climbing 10->22% over ~45min must yield a positive burn rate")
+    }
 }
