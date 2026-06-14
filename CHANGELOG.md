@@ -34,6 +34,7 @@ window copy.
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
 - Log inspection docs now use the correct macOS error predicate
+- Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
 
 ### Changed
 - **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
@@ -41,6 +42,7 @@ window copy.
 
 ### Fixed
 - **Unified log error query.** The README now filters macOS unified logs with `logType == "error"` instead of the unsupported `log show --level error` flag.
+- **Today's usage counts immediately.** Dashboard composition, burn-rate forecasts, and the usage and rate-limit charts now include events from earlier today instead of dropping them until the next day.
 
 ## [0.2.32] — 2026-06-12
 
