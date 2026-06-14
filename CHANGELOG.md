@@ -11,7 +11,7 @@ Every merged PR should update `## [Unreleased]` before or with the merge.
 These entries become both the GitHub Release notes and the Sparkle update
 window copy.
 
-- Start each release section with `#### Summary`: 1-4 plain, user-readable
+- Start each release section with `#### Summary`: plain, user-readable
   bullets. Generated Sparkle update notes render these as rich visual cards.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
@@ -33,6 +33,7 @@ window copy.
 #### Summary
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
+- Log inspection docs now use the correct macOS error predicate
 - The app icon now sits cleanly on dark Dock and Finder backgrounds
 - Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
 

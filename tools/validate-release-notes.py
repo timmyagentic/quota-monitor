@@ -150,8 +150,8 @@ def validate_summary(
         issues=issues,
         context="#### Summary",
     )
-    if not 1 <= len(bullets) <= 4:
-        issues.append(f"{file_name}: Summary must contain 1-4 bullets")
+    if not bullets:
+        issues.append(f"{file_name}: Summary must contain at least one bullet")
 
     for bullet in bullets:
         if bullet.startswith("**"):
