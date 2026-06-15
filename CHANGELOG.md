@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.33] — 2026-06-15
+
 #### Summary
 - New downloads open normally, while existing installs keep updating in place
 - Developer diagnostics now use clearer structured levels for easier troubleshooting
