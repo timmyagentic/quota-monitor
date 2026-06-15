@@ -36,6 +36,7 @@ window copy.
 - Log inspection docs now use the correct macOS error predicate
 - The app icon now sits cleanly on dark Dock and Finder backgrounds
 - Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
+- Long-running installs stay fast — usage history no longer piles up and slows things down over time
 
 ### Added
 - **Architecture review backlog.** Added `docs/architecture-review-2026-06-14.md` cataloguing known correctness, performance, concurrency, and maintainability issues to triage and fix incrementally.
@@ -49,6 +50,7 @@ window copy.
 - **App icon transparency.** The committed app icon now preserves transparent rounded corners, preventing a white square from appearing behind the icon on dark backgrounds.
 - **Today's usage counts immediately.** Dashboard composition, burn-rate forecasts, and the usage and rate-limit charts now include events from earlier today instead of dropping them until the next day.
 - **Monthly totals include the first day in your time zone.** The monthly usage chart no longer drops first-of-month activity whose UTC instant lands in the previous month, so the earliest month's totals are complete in time zones ahead of UTC.
+- **Bounded rate-limit history.** Live Codex and Claude usage samples are now trimmed to a rolling 7-day window (always keeping the latest snapshot per window), so the local database no longer grows without limit and cold-start plus refresh stay fast on long-running installs.
 
 ## [0.2.32] — 2026-06-12
 

@@ -241,5 +241,27 @@ enum Migrations {
                    OR source_path LIKE '%/.config/claude/projects/%'
                 """)
         }
+
+        // v9: indexes for bounded live rate-limit sample retention.
+        //
+        // The prune runs inside the Codex/Claude poller write transaction, so
+        // it must avoid scanning jsonl rows that are intentionally exempt from
+        // retention and may be large on long-lived installs.
+        migrator.registerMigration("v9-rate-limit-samples-retention-indexes") { db in
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_rate_limit_samples_retention_cutoff
+                ON rate_limit_samples(source_kind, sample_timestamp)
+                """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_rate_limit_samples_retention_latest
+                ON rate_limit_samples(
+                    source_kind,
+                    bucket,
+                    COALESCE(limit_name, ''),
+                    sample_timestamp DESC,
+                    id DESC
+                )
+                """)
+        }
     }
 }

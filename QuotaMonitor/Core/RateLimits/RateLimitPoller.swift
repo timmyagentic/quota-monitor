@@ -356,6 +356,9 @@ actor RateLimitPoller {
                         bucket: "secondary", limitName: extra.limitName, window: s)
                 }
             }
+            // Trim stale samples in the same transaction so the table stays
+            // bounded — only writes grow it, so only writes need to prune.
+            try RateLimitSampleRetention.prune(db: db)
         }
     }
 
