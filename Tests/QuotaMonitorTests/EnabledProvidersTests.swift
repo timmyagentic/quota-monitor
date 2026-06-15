@@ -12,10 +12,10 @@ import Testing
 ///     (i.e. fall back to the default rather than honouring the empty),
 ///   - onboarding inference + version gate: a fresh UserDefaults
 ///     gets `needsProviderOnboarding == true`. A UserDefaults that
-///     holds prior settings *and* a `lastOnboardedVersion >=
-///     onboardingResetMinVersion` skips the step. Same user without
-///     a `lastOnboardedVersion` (or with an older one) is dragged
-///     back through it so release-specific changes land.
+///     holds prior settings skips the step even if its
+///     `lastOnboardedVersion` is missing or stale; the version stamp
+///     is repaired in place so updates do not overwrite settings by
+///     sending existing users through fresh-install defaults.
 ///   - version stamp: `markProviderOnboardingDone()` writes the
 ///     current `appVersion` to `lastOnboardedVersion` so the next
 ///     launch's reset gate sees the right value.
@@ -105,20 +105,22 @@ struct EnabledProvidersTests {
     }
 
     @Test
-    func upgradingUserWithoutLastVersionGetsReprompted() {
+    func configuredExistingUserWithoutLastVersionSkipsOnboardingAndStampsCurrentVersion() {
         let d = Self.freshDefaults()
-        // Simulate a v0.2.6 user: language + poll interval written by
-        // prior versions, and `onboarding.providersDone` may already be
-        // true from their earlier completion — but they have never seen
-        // `onboarding.lastVersion` (it didn't exist pre-0.2.7).
-        d.set("en", forKey: "app.language")
-        d.set(180, forKey: "settings.pollIntervalSeconds")
+        // Simulate an installed user whose provider/menu-bar choices
+        // survived but whose version stamp is missing. This happened for
+        // some update paths; re-opening onboarding would submit its
+        // fresh-install defaults and overwrite those choices.
+        d.set("zh-Hans", forKey: "app.language")
+        d.set(["claude"], forKey: "settings.enabledProviders")
+        d.set(["claude"], forKey: "settings.menuBarIconProviders")
         d.set(true, forKey: "onboarding.providersDone")
-        let store = SettingsStore(defaults: d, appVersion: "0.2.7")
-        // The version-gated reset drags them back through the provider
-        // step. Their enabled set is unchanged so they don't lose data.
-        #expect(store.needsProviderOnboarding)
-        #expect(store.enabledProviders == ["codex", "claude"])
+        let store = SettingsStore(defaults: d, appVersion: "0.2.33")
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["claude"])
+        #expect(store.menuBarIconProviders == ["claude"])
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.33")
     }
 
     @Test
@@ -134,13 +136,51 @@ struct EnabledProvidersTests {
     }
 
     @Test
-    func userOnOlderLastVersionGetsReprompted() {
+    func configuredExistingUserWithOlderLastVersionSkipsOnboardingAndStampsCurrentVersion() {
         let d = Self.freshDefaults()
         d.set("en", forKey: "app.language")
+        d.set(["codex", "claude"], forKey: "settings.enabledProviders")
+        d.set(["claude"], forKey: "settings.menuBarIconProviders")
         d.set(true, forKey: "onboarding.providersDone")
         d.set("0.2.6", forKey: "onboarding.lastVersion")
-        let store = SettingsStore(defaults: d, appVersion: "0.2.7")
+        let store = SettingsStore(defaults: d, appVersion: "0.2.33")
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(store.menuBarIconProviders == ["claude"])
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.33")
+    }
+
+    @Test
+    func resetPendingConfiguredUserSkipsOnboardingAndRepairsDoneFlag() {
+        let d = Self.freshDefaults()
+        // A previous launch with a missing/stale version stamp used to
+        // persist providersDone=false before the user could finish the
+        // forced onboarding. If provider settings already exist, the next
+        // launch must repair that state instead of opening onboarding
+        // again and risking another overwrite.
+        d.set("en", forKey: "app.language")
+        d.set(["claude"], forKey: "settings.enabledProviders")
+        d.set(["claude"], forKey: "settings.menuBarIconProviders")
+        d.set(false, forKey: "onboarding.providersDone")
+        let store = SettingsStore(defaults: d, appVersion: "0.2.33")
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["claude"])
+        #expect(store.menuBarIconProviders == ["claude"])
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.33")
+    }
+
+    @Test
+    func partialCurrentOnboardingStillNeedsProviderStep() {
+        let d = Self.freshDefaults()
+        // Current builds write an explicit false before the user finishes
+        // the provider step. A language-only partial onboarding session is
+        // not an existing configured user and should still resume setup.
+        d.set("en", forKey: "app.language")
+        d.set(false, forKey: "onboarding.providersDone")
+        let store = SettingsStore(defaults: d, appVersion: "0.2.33")
         #expect(store.needsProviderOnboarding)
+        #expect(d.string(forKey: "onboarding.lastVersion") == nil)
     }
 
     @Test
