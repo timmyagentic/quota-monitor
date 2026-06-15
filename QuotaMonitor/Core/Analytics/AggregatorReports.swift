@@ -79,56 +79,45 @@ extension Aggregator {
 
     /// Buckets usage_events by local-calendar day. Returns `days` consecutive days
     /// ending at today, even when no events exist on a given day (zero-fill).
+    ///
+    /// Day bucketing happens client-side via `Calendar.startOfDay(for:)`, so each
+    /// event is grouped using the UTC offset in effect at its OWN instant — i.e.
+    /// DST-correct, mirroring `fetchActivity`. The previous SQL `date(timestamp,
+    /// ±offset)` applied today's single offset to all history, mis-bucketing
+    /// near-midnight events from the opposite DST half of the year.
     static func fetchDaily(
-        db: Database, days: Int, provider: ProviderFilter = .all
+        db: Database, days: Int, provider: ProviderFilter = .all,
+        now: Date = Date(), calendar: Calendar = .current
     ) throws -> [DailyPoint] {
-        // SQLite's `date()` parses ISO8601 timestamps and returns a YYYY-MM-DD string in UTC.
-        // For local-day bucketing we offset by the local UTC offset.
-        // NB: SQLite modifier syntax is `±N seconds`. Parentheses cause silent NULL
-        // results (we hit this before — chart was showing zero-filled bars).
-        let cal = Calendar(identifier: .gregorian)
-        let offsetSeconds = TimeZone.current.secondsFromGMT()
-        let plusOffset  = String(format: "%+d seconds", offsetSeconds)
-        let minusOffset = String(format: "%+d seconds", -offsetSeconds)
-
+        guard days > 0 else { return [] }
+        // Lower bound = local start-of-day of the earliest bucket, serialized to
+        // ISO8601 UTC for lexical comparison against stored T/Z timestamps.
+        // Derived from the injected `now` (not SQL 'now') so the window is
+        // deterministic + test-injectable. Each row is then bucketed client-side
+        // by its OWN local day, so a DST offset shift never mis-assigns a
+        // near-midnight event (the old SQL `date(timestamp, ±offset)` applied
+        // today's single offset to all of history).
+        let earliestDay = calendar.date(
+            byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))
+        let lowerBound = ISO8601.fractional.string(from: earliestDay ?? .distantPast)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT
-              date(timestamp, ?) AS day,
-              SUM(value_usd) AS value_usd,
-              SUM(total_tokens) AS tokens
+            SELECT timestamp, value_usd, total_tokens
             FROM usage_events
-            -- strftime (not datetime): the ISO8601 `now` threshold lexically
-            -- matches stored T/Z timestamps. See fetchPerProviderStats.
-            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?, 'start of day', ?)
+            WHERE timestamp >= ?
             \(provider.clause(table: "usage_events"))
-            GROUP BY day
-            ORDER BY day
-            """, arguments: [
-                plusOffset,
-                "-\(days - 1) days",
-                minusOffset
-            ])
+            """, arguments: [lowerBound])
 
-        var byDay: [String: (Double, Int64)] = [:]
+        var dayValue: [Date: Double] = [:]
+        var dayTokens: [Date: Int64] = [:]
         for row in rows {
-            let day: String = row["day"] ?? ""
-            byDay[day] = (row["value_usd"] ?? 0, row["tokens"] ?? 0)
+            let ts: String = row["timestamp"] ?? ""
+            guard let date = parseTimestamp(ts) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            dayValue[dayStart, default: 0] += row["value_usd"] ?? 0
+            dayTokens[dayStart, default: 0] += row["total_tokens"] ?? 0
         }
-
-        let dayFormatter = DateFormatter()
-        dayFormatter.calendar = cal
-        dayFormatter.timeZone = TimeZone.current
-        dayFormatter.dateFormat = "yyyy-MM-dd"
-
-        let today = cal.startOfDay(for: Date())
-        var points: [DailyPoint] = []
-        for offset in (0..<days).reversed() {
-            guard let date = cal.date(byAdding: .day, value: -offset, to: today) else { continue }
-            let key = dayFormatter.string(from: date)
-            let (value, tokens) = byDay[key] ?? (0, 0)
-            points.append(DailyPoint(date: date, valueUSD: value, tokens: tokens))
-        }
-        return points
+        return dailySeries(dayTokens: dayTokens, dayValue: dayValue,
+                           days: days, now: now, calendar: calendar)
     }
 
     /// Buckets `usage_events` by local-calendar month, returning `months`
@@ -137,55 +126,50 @@ extension Aggregator {
     /// count once per month they touched. Mirrors ccusage's `monthly.ts`.
     static func fetchMonthly(
         db: Database, months: Int, provider: ProviderFilter = .all,
-        timeZone: TimeZone = .current
+        now: Date = Date(), timeZone: TimeZone = .current
     ) throws -> [MonthlyPoint] {
+        guard months > 0 else { return [] }
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
-        let offsetSeconds = timeZone.secondsFromGMT()
-        let plusOffset = String(format: "%+d seconds", offsetSeconds)
-        // Lower bound: shift the UTC `start of month` back by the local offset
-        // so it lands on the *local* month start (mirrors fetchDaily). Without
-        // this, first-of-month rows whose UTC instant falls in the previous
-        // month are dropped from the earliest bucket in non-UTC time zones.
-        let minusOffset = String(format: "%+d seconds", -offsetSeconds)
-        let rows = try Row.fetchAll(db, sql: """
-            SELECT
-              strftime('%Y-%m', timestamp, ?) AS month,
-              SUM(value_usd) AS value_usd,
-              SUM(total_tokens) AS tokens,
-              COUNT(DISTINCT session_id) AS sessions
-            FROM usage_events
-            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?, 'start of month', ?)
-            \(provider.clause(table: "usage_events"))
-            GROUP BY month
-            ORDER BY month
-            """, arguments: [plusOffset, "-\(months - 1) months", minusOffset])
-
-        var byMonth: [String: (Double, Int64, Int)] = [:]
-        for row in rows {
-            let m: String = row["month"] ?? ""
-            byMonth[m] = (
-                row["value_usd"] ?? 0,
-                row["tokens"] ?? 0,
-                row["sessions"] ?? 0)
-        }
-
-        let monthFormatter = DateFormatter()
-        monthFormatter.calendar = cal
-        monthFormatter.timeZone = timeZone
-        monthFormatter.dateFormat = "yyyy-MM"
-
-        // Anchor on first-of-current-month in the local calendar.
-        let now = Date()
+        // Anchor on first-of-current-month in the local calendar; the lower
+        // bound is the earliest bucket's local month start, serialized to
+        // ISO8601 UTC. Derived from the injected `now` (not SQL 'now') so the
+        // window is deterministic + test-injectable.
         let comps = cal.dateComponents([.year, .month], from: now)
         let thisMonth = cal.date(from: comps) ?? now
+        let lowerMonth = cal.date(byAdding: .month, value: -(months - 1), to: thisMonth)
+        let lowerBound = ISO8601.fractional.string(from: lowerMonth ?? .distantPast)
+        // Bucket client-side by the local month of each event's OWN instant
+        // (mirrors fetchDaily/fetchActivity), so a DST/UTC offset never shifts a
+        // near-boundary event into the wrong month.
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT timestamp, value_usd, total_tokens, session_id
+            FROM usage_events
+            WHERE timestamp >= ?
+            \(provider.clause(table: "usage_events"))
+            """, arguments: [lowerBound])
+
+        var byMonth: [Date: (value: Double, tokens: Int64, sessions: Set<String>)] = [:]
+        for row in rows {
+            let ts: String = row["timestamp"] ?? ""
+            guard let date = parseTimestamp(ts) else { continue }
+            let mComps = cal.dateComponents([.year, .month], from: date)
+            guard let monthStart = cal.date(from: mComps) else { continue }
+            var bucket = byMonth[monthStart] ?? (0, 0, [])
+            bucket.value += row["value_usd"] ?? 0
+            bucket.tokens += row["total_tokens"] ?? 0
+            if let sid: String = row["session_id"] { bucket.sessions.insert(sid) }
+            byMonth[monthStart] = bucket
+        }
+
+        // Zero-fill `months` consecutive buckets ending at the current month.
         var points: [MonthlyPoint] = []
         for offset in (0..<months).reversed() {
             guard let date = cal.date(byAdding: .month, value: -offset, to: thisMonth) else { continue }
-            let key = monthFormatter.string(from: date)
-            let (value, tokens, sessions) = byMonth[key] ?? (0, 0, 0)
-            points.append(MonthlyPoint(month: date, valueUSD: value,
-                                       tokens: tokens, sessionCount: sessions))
+            let bucket = byMonth[date] ?? (0, 0, [])
+            points.append(MonthlyPoint(month: date, valueUSD: bucket.value,
+                                       tokens: bucket.tokens,
+                                       sessionCount: bucket.sessions.count))
         }
         return points
     }

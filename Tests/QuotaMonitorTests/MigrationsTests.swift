@@ -17,6 +17,21 @@ struct MigrationsTests {
         return dir.appendingPathComponent("quotamonitor.sqlite")
     }
 
+    @Test("usage_events has a timestamp index for all-provider History scans")
+    func usageEventsTimestampIndexExists() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-usage-events-index")
+        let manager = try DatabaseManager(url: url)
+
+        let indexes = try manager.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_index_list('usage_events')
+                """)
+        }
+
+        #expect(indexes.contains("idx_usage_events_timestamp"))
+    }
+
     @Test(
         "Claude re-read migrations reset import_state so files are rebuilt once",
         arguments: [
