@@ -207,11 +207,10 @@ final class SettingsStore {
     /// Set once the user has completed the provider step of onboarding.
     /// Existing-installation upgrades infer `true` in `init` (see the
     /// `looksLikeExistingUser` heuristic) EXCEPT when the stored
-    /// `lastOnboardedVersion` is older than `onboardingResetMinVersion`
-    /// — in that case we drag them back through the provider step so
-    /// they see any release-specific copy or new options. Language is
-    /// never reset (`app.language` is left untouched), only the
-    /// provider step is re-prompted.
+    /// `lastOnboardedVersion` is missing or stale. Configured users are
+    /// repaired in place instead of being dragged back through the
+    /// provider step, because that step starts from fresh-install
+    /// defaults and would overwrite their existing provider choices.
     private(set) var hasCompletedProviderOnboarding: Bool {
         didSet { defaults.set(hasCompletedProviderOnboarding,
                               forKey: Keys.providerOnboardingDone) }
@@ -225,12 +224,10 @@ final class SettingsStore {
     /// Tests inject an explicit value; production reads `Bundle.main`.
     private let appVersion: String?
 
-    /// Bump this when a release introduces an onboarding step (or
-    /// changes copy) you want existing users to see. On launch, any
-    /// user whose `lastOnboardedVersion` is missing or strictly less
-    /// than this string is dragged back through the provider step,
-    /// even if they previously completed onboarding. Language pick is
-    /// preserved.
+    /// Minimum version that introduced the provider/menu-bar onboarding
+    /// stamp. Existing configured users older than this are silently
+    /// repaired to the current app version; fresh or partial onboarding
+    /// users still need to finish setup.
     nonisolated static let onboardingResetMinVersion = "0.2.7"
 
     enum TokenUnitLanguage: String, CaseIterable, Sendable, Identifiable {
@@ -428,16 +425,16 @@ final class SettingsStore {
         //     this UserDefaults. Fresh installs alone get `false` here
         //     and see the full onboarding.
         //
-        //  2. Version-gated reset. If `lastOnboardedVersion` is missing
-        //     or strictly less than `onboardingResetMinVersion`, force
-        //     the flag back to `false` regardless of (1). This is what
-        //     drags upgrading users back through the provider step
-        //     when a release ships changes worth re-confirming.
+        //  2. Version-gated repair. If `lastOnboardedVersion` is missing
+        //     or strictly less than `onboardingResetMinVersion`, keep
+        //     configured users past onboarding and stamp the current
+        //     app version. Re-opening onboarding for those users would
+        //     submit fresh-install defaults and overwrite their provider
+        //     / menu-bar choices.
         //
-        // Result is persisted so a partial-quit-mid-onboarding doesn't
-        // re-trigger the reset on every launch — the false sticks
-        // until the user finishes via `markProviderOnboardingDone()`,
-        // which also stamps `lastOnboardedVersion`.
+        // Result is persisted so a partial-quit-mid-onboarding still
+        // stays pending, while a configured user only pays the repair
+        // once.
         let storedDone = defaults.object(forKey: Keys.providerOnboardingDone) as? Bool
         let baseDone: Bool
         if let done = storedDone {
@@ -450,7 +447,19 @@ final class SettingsStore {
         }
         let lastOnboarded = defaults.string(forKey: Keys.lastOnboardedVersion)
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
-        let resolvedDone = baseDone && !resetGate
+        let hasExistingConfiguration =
+            storedDone == true
+            || storedProviders != nil
+            || storedInterval > 0
+        let resolvedDone: Bool
+        if resetGate && hasExistingConfiguration {
+            resolvedDone = true
+            if let appVersion {
+                defaults.set(appVersion, forKey: Keys.lastOnboardedVersion)
+            }
+        } else {
+            resolvedDone = baseDone && !resetGate
+        }
         self.hasCompletedProviderOnboarding = resolvedDone
         defaults.set(resolvedDone, forKey: Keys.providerOnboardingDone)
     }
