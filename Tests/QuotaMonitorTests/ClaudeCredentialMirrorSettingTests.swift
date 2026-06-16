@@ -21,10 +21,33 @@ struct ClaudeCredentialMirrorSettingTests {
     }
 
     @Test
+    func freshInstallPersistsEnabledDefault() {
+        let d = Self.freshDefaults()
+        _ = SettingsStore(defaults: d)
+        #expect(d.object(forKey: "settings.mirrorClaudeKeychainToFile") as? Bool == true)
+    }
+
+    @Test
     func snapshotDefaultsToEnabledOnFreshInstall() {
         let d = Self.freshDefaults()
         let snapshot = SettingsStore.snapshot(defaults: d)
         #expect(snapshot.mirrorClaudeKeychainToFile == true)
+    }
+
+    @Test
+    func existingUserWithoutSavedPreferenceStaysDisabledOnInit() {
+        let d = Self.freshDefaults()
+        d.set(["claude"], forKey: "settings.enabledProviders")
+        let store = SettingsStore(defaults: d)
+        #expect(store.mirrorClaudeKeychainToFile == false)
+    }
+
+    @Test
+    func existingUserWithoutSavedPreferenceStaysDisabledInSnapshot() {
+        let d = Self.freshDefaults()
+        d.set(["claude"], forKey: "settings.enabledProviders")
+        let snapshot = SettingsStore.snapshot(defaults: d)
+        #expect(snapshot.mirrorClaudeKeychainToFile == false)
     }
 
     @Test

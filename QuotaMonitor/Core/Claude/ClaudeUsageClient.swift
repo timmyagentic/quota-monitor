@@ -406,8 +406,8 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
 
     /// Mirror a Keychain-sourced credentials blob to
     /// `~/.claude/.credentials.json`. Controlled by
-    /// `SettingsStore.mirrorClaudeKeychainToFile` (default ON) — see the
-    /// setting's doc for the security trade-off.
+    /// `SettingsStore.mirrorClaudeKeychainToFile` (default ON for fresh
+    /// installs) — see the setting's doc for the security trade-off.
     ///
     /// Implementation notes:
     ///   - Writes to a temporary sibling then `rename(2)`s into place
