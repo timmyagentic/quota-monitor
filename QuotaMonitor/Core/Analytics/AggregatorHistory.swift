@@ -114,6 +114,8 @@ extension Aggregator {
             SELECT
               s.session_id,
               s.title,
+              s.project_name,
+              s.cwd,
               s.agent_nickname,
               s.last_model_id,
               s.started_at,
@@ -135,8 +137,8 @@ extension Aggregator {
             SessionRow(
                 sessionId: row["session_id"] ?? "",
                 title: row["title"],
-                projectName: nil,
-                cwd: nil,
+                projectName: row["project_name"],
+                cwd: row["cwd"],
                 agentNickname: row["agent_nickname"],
                 lastModelId: row["last_model_id"],
                 startedAt: row["day_started_at"] ?? row["started_at"],

@@ -197,4 +197,46 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["project_name"] as String? == "quota-monitor")
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
+
+    @Test("Session search matches title and project metadata separately")
+    func sessionSearchMatchesTitleAndProject() throws {
+        let db = try makeDatabase()
+        try db.pool.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO sessions
+                  (session_id, root_session_id, parent_session_id, title,
+                   project_name, cwd, source_path, started_at, updated_at,
+                   agent_nickname, agent_role, last_model_id, latest_plan_type,
+                   contains_subagents, created_at, imported_at, provider)
+                VALUES
+                  ('s1', 's1', NULL, 'Review PR #59 default setting',
+                   'quota-monitor', '/Volumes/SamsungDisk/Code/quota-monitor',
+                   NULL, '2026-06-15T10:00:00Z', '2026-06-15T10:10:00Z',
+                   NULL, NULL, 'gpt-5.5', NULL, 0,
+                   '2026-06-15T10:00:00Z', '2026-06-15T10:10:00Z', 'codex')
+                """)
+            try conn.execute(sql: """
+                INSERT INTO usage_events
+                  (session_id, timestamp, model_id, input_tokens,
+                   cached_input_tokens, output_tokens, reasoning_output_tokens,
+                   total_tokens, value_usd, provider, cache_creation_tokens,
+                   model_inferred)
+                VALUES
+                  ('s1', '2026-06-15T10:02:00Z', 'gpt-5.5',
+                   10, 0, 5, 0, 15, 0.01, 'codex', 0, 0)
+                """)
+        }
+
+        let byTitle = try db.pool.read { conn in
+            try Aggregator.fetchSessions(db: conn, search: "default setting")
+        }
+        let byProject = try db.pool.read { conn in
+            try Aggregator.fetchSessions(db: conn, search: "quota-monitor")
+        }
+
+        #expect(byTitle.first?.title == "Review PR #59 default setting")
+        #expect(byTitle.first?.projectName == "quota-monitor")
+        #expect(byTitle.first?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
+        #expect(byProject.first?.sessionId == "s1")
+    }
 }
