@@ -50,6 +50,7 @@ actor ImportEngine {
         } catch {
             codexMetadata = [:]
         }
+        try await backfillCodexSessionMetadata(codexMetadata)
 
         // Source paths of Codex sessions still missing project metadata —
         // re-parse them so the split metadata columns can be backfilled
@@ -159,6 +160,58 @@ actor ImportEngine {
         return report
     }
 
+    private func backfillCodexSessionMetadata(
+        _ metadataBySessionId: [String: CodexSessionMetadata]
+    ) async throws {
+        guard !metadataBySessionId.isEmpty else { return }
+        let now = ISO8601.fractional.string(from: Date())
+
+        try await database.pool.write { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT session_id, title, project_name, cwd
+                FROM sessions
+                WHERE provider = 'codex'
+                """)
+
+            for row in rows {
+                guard let sessionId: String = row["session_id"],
+                      let metadata = metadataBySessionId[sessionId]
+                else { continue }
+
+                let currentTitle = Self.nonEmpty(row["title"] as String?)
+                let currentProjectName = Self.nonEmpty(row["project_name"] as String?)
+                let currentCwd = Self.nonEmpty(row["cwd"] as String?)
+                let nextTitle = metadata.title ?? currentTitle
+                let nextCwd = currentCwd ?? metadata.cwd
+                let nextProjectName = currentProjectName ?? metadata.projectName
+
+                guard nextTitle != currentTitle
+                    || nextProjectName != currentProjectName
+                    || nextCwd != currentCwd
+                else { continue }
+
+                try db.execute(sql: """
+                    UPDATE sessions
+                    SET title = ?, project_name = ?, cwd = ?, imported_at = ?
+                    WHERE provider = 'codex' AND session_id = ?
+                    """, arguments: [
+                        nextTitle,
+                        nextProjectName,
+                        nextCwd,
+                        now,
+                        sessionId
+                    ])
+            }
+        }
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
+    }
+
     // MARK: - persist
 
     private struct PersistCounts { let events: Int; let samples: Int }
@@ -168,17 +221,17 @@ actor ImportEngine {
 
         return try await database.pool.write { db in
             // 1. Upsert the session row.
-            let existed = try SessionRecord
+            let existing = try SessionRecord
                 .filter(Column("session_id") == parsed.sessionId)
-                .fetchOne(db) != nil
+                .fetchOne(db)
 
             let sessionRecord = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.rootSessionId,
                 parentSessionId: parsed.parentSessionId,
-                title: parsed.title,
-                projectName: parsed.projectName,
-                cwd: parsed.cwd,
+                title: parsed.title ?? existing?.title,
+                projectName: parsed.projectName ?? existing?.projectName,
+                cwd: parsed.cwd ?? existing?.cwd,
                 sourcePath: file.path,
                 startedAt: parsed.startedAt,
                 updatedAt: parsed.updatedAt,
@@ -189,9 +242,7 @@ actor ImportEngine {
                 // Filled in by reconcileSessionTree() after the full scan
                 // when we can see this session's children.
                 containsSubagents: false,
-                createdAt: existed ? (try SessionRecord
-                    .filter(Column("session_id") == parsed.sessionId)
-                    .fetchOne(db)?.createdAt) ?? now : now,
+                createdAt: existing?.createdAt ?? now,
                 importedAt: now,
                 provider: "codex")
             try sessionRecord.save(db)

@@ -44,7 +44,9 @@ After implementation:
 - Existing databases with cwd-derived `title` values are migrated by copying `title` into `project_name` and clearing `title`.
 - Migration reclassification logic is shared by v11 and a direct unit-test helper. Do not test historical migration behavior by inserting a legacy row after a fresh fully migrated `DatabaseManager` init; that only tests the final schema.
 - Metadata readers fail open. Codex SQLite metadata failures must not abort a scan or discard titles already read from `session_index.jsonl`.
+- `state_5.sqlite` is WAL-mode in real Codex homes. Plain read-only SQLite can fail with `database is locked`, and copied WAL snapshots without `-wal`/`-shm` sidecars can fail at statement preparation with `SQLITE_CANTOPEN`; the metadata reader must use SQLite URI read-only mode and retry `immutable=1` only for these read-only WAL failure modes.
 - Incremental imports preserve existing `title`, `project_name`, and `cwd` when the newly parsed tail slice does not contain header metadata.
+- If Codex thread metadata becomes readable after a prior scan imported a titleless row, the next scan must backfill the existing `sessions` row even when the JSONL file itself did not change.
 - Search matches `title`, `project_name`, `cwd`, `agent_nickname`, `last_model_id`, and `session_id`.
 - UI row primary text uses `title` or `L10n.untitledSession`.
 - UI row secondary text includes project metadata when present.
@@ -55,6 +57,8 @@ These constraints are part of the implementation contract:
 
 - Use a shared migration helper for legacy title reclassification so v11 and tests exercise the same SQL.
 - Keep Codex metadata enrichment fail-soft: `session_index.jsonl` titles remain usable if `state_5.sqlite` is missing, unreadable, or has an unexpected schema.
+- Do not rely on GRDB's default read-only queue for `state_5.sqlite`; use SQLite C APIs so locked WAL databases and sidecar-less snapshots can be handled without copying the database.
+- Backfill loaded Codex metadata into already-imported rows before deciding unchanged JSONL files can be skipped.
 - Preserve previously stored Claude/Codex header metadata during incremental tail scans that only include new usage events.
 - Treat source-level UI tests as a guardrail only. Primary correctness must come from parser/import/query tests plus real-data QA.
 
@@ -1107,7 +1111,10 @@ git commit -m "Document session title display fix"
 - [ ] `sessions.title` no longer stores cwd leaf fallback values for new imports.
 - [ ] Existing cwd-derived titles are moved to `project_name` and cleared from `title`.
 - [ ] Codex title lookup handles `state_5.sqlite` and `session_index.jsonl`.
+- [ ] Codex title lookup handles locked WAL reads and sidecar-less WAL snapshots without copying the database.
 - [ ] Codex title lookup keeps `session_index.jsonl` titles if SQLite metadata lookup fails.
+- [ ] Codex scans backfill existing rows when thread metadata appears after the JSONL file was already imported.
+- [ ] Codex forced rereads preserve existing true titles when current metadata is unavailable.
 - [ ] Claude title lookup handles `ai-title`.
 - [ ] Incremental Claude imports keep existing explicit title/project metadata when a tail scan does not see header rows.
 - [ ] Search includes both real title and project metadata.

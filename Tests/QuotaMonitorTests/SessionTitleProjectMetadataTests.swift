@@ -1,5 +1,6 @@
 import Foundation
 import GRDB
+import SQLite3
 import Testing
 @testable import QuotaMonitor
 
@@ -23,6 +24,80 @@ struct SessionTitleProjectMetadataTests {
         let url = dir.appendingPathComponent("\(name).jsonl")
         try content.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    private func writeCodexStateDatabase(
+        codexHome: URL,
+        id: String,
+        title: String,
+        cwd: String,
+        useWAL: Bool = false
+    ) throws {
+        let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
+        try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
+        let db = try DatabaseQueue(path: sqliteDir.appendingPathComponent("state_5.sqlite").path)
+        if useWAL {
+            try db.writeWithoutTransaction { conn in
+                _ = try String.fetchOne(conn, sql: "PRAGMA journal_mode = WAL")
+            }
+        }
+        try db.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    cwd TEXT NOT NULL
+                )
+                """)
+            try conn.execute(
+                sql: "INSERT INTO threads (id, title, cwd) VALUES (?, ?, ?)",
+                arguments: [id, title, cwd])
+        }
+    }
+
+    private func stateDatabaseURL(codexHome: URL) -> URL {
+        codexHome
+            .appendingPathComponent("sqlite", isDirectory: true)
+            .appendingPathComponent("state_5.sqlite")
+    }
+
+    private func withExclusiveSQLiteLock<T>(at sqlite: URL, perform body: () throws -> T) throws -> T {
+        var database: OpaquePointer?
+        let openCode = sqlite3_open_v2(
+            sqlite.path,
+            &database,
+            SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX,
+            nil)
+        guard openCode == SQLITE_OK, let database else {
+            let message = database.flatMap(sqlite3_errmsg).map { String(cString: $0) }
+                ?? "SQLite result code \(openCode)"
+            if let database {
+                sqlite3_close(database)
+            }
+            throw NSError(
+                domain: "SessionTitleProjectMetadataTests",
+                code: Int(openCode),
+                userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        defer { sqlite3_close(database) }
+
+        let lockCode = sqlite3_exec(
+            database,
+            "PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE",
+            nil,
+            nil,
+            nil)
+        guard lockCode == SQLITE_OK else {
+            throw NSError(
+                domain: "SessionTitleProjectMetadataTests",
+                code: Int(lockCode),
+                userInfo: [
+                    NSLocalizedDescriptionKey: String(cString: sqlite3_errmsg(database))
+                ])
+        }
+        defer { sqlite3_exec(database, "ROLLBACK", nil, nil, nil) }
+
+        return try body()
     }
 
     @Test("v11 columns exist and legacy title is reclassified as project metadata")
@@ -121,6 +196,44 @@ struct SessionTitleProjectMetadataTests {
         #expect(metadata["s1"]?.title == "真实会话标题")
         #expect(metadata["s1"]?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
         #expect(metadata["s1"]?.projectName == "quota-monitor")
+    }
+
+    @Test("Codex metadata store reads locked WAL state database titles")
+    func codexMetadataReadsLockedWALStateDatabase() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try writeCodexStateDatabase(
+            codexHome: codexHome,
+            id: "s1",
+            title: "梳理一下现在导入数据的流程是什么样的",
+            cwd: "/Volumes/SamsungDisk/Code/emomo",
+            useWAL: true)
+
+        let metadata = try withExclusiveSQLiteLock(at: stateDatabaseURL(codexHome: codexHome)) {
+            try CodexSessionMetadataStore.loadStateDatabase(codexHome: codexHome)
+        }
+        #expect(metadata["s1"]?.title == "梳理一下现在导入数据的流程是什么样的")
+        #expect(metadata["s1"]?.projectName == "emomo")
+    }
+
+    @Test("Codex metadata store reads WAL state database snapshots without sidecars")
+    func codexMetadataReadsWALStateDatabaseSnapshotWithoutSidecars() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try writeCodexStateDatabase(
+            codexHome: codexHome,
+            id: "s1",
+            title: "梳理一下现在导入数据的流程是什么样的",
+            cwd: "/Volumes/SamsungDisk/Code/emomo",
+            useWAL: true)
+
+        let sqlite = stateDatabaseURL(codexHome: codexHome)
+        try? FileManager.default.removeItem(atPath: "\(sqlite.path)-wal")
+        try? FileManager.default.removeItem(atPath: "\(sqlite.path)-shm")
+
+        let metadata = try CodexSessionMetadataStore.loadStateDatabase(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == "梳理一下现在导入数据的流程是什么样的")
+        #expect(metadata["s1"]?.projectName == "emomo")
     }
 
     @Test("Codex metadata store keeps session_index title when state sqlite is unusable")
@@ -288,6 +401,109 @@ struct SessionTitleProjectMetadataTests {
                 """)
         })
         #expect(row["title"] as String? == "梳理项目现状")
+        #expect(row["project_name"] as String? == "quota-monitor")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
+
+    @Test("Codex scan backfills late state database titles without reparsing")
+    func codexScanBackfillsLateStateDatabaseTitle() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sessionsDir = codexHome.appendingPathComponent(
+            "sessions/2026/04/26",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let rollout = sessionsDir.appendingPathComponent(
+            "rollout-2026-04-26T11-49-58-s1.jsonl")
+        try """
+        {"timestamp":"2026-04-26T03:49:58.543Z","type":"session_meta","payload":{"id":"s1","cwd":"/Volumes/SamsungDisk/Code/emomo"}}
+        {"timestamp":"2026-04-26T03:50:00.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-04-26T03:50:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+
+        let before = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's1'
+                """)
+        })
+        #expect(before["title"] as String? == nil)
+        #expect(before["project_name"] as String? == "emomo")
+        #expect(before["cwd"] as String? == "/Volumes/SamsungDisk/Code/emomo")
+
+        try writeCodexStateDatabase(
+            codexHome: codexHome,
+            id: "s1",
+            title: "梳理一下现在导入数据的流程是什么样的",
+            cwd: "/Volumes/SamsungDisk/Code/emomo")
+
+        let secondReport = try await engine.performScan()
+        #expect(secondReport.changedFiles == 0)
+        #expect(secondReport.importedSessions == 0)
+
+        let after = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's1'
+                """)
+        })
+        #expect(after["title"] as String? == "梳理一下现在导入数据的流程是什么样的")
+        #expect(after["project_name"] as String? == "emomo")
+        #expect(after["cwd"] as String? == "/Volumes/SamsungDisk/Code/emomo")
+    }
+
+    @Test("Codex reread preserves existing title when thread metadata is unavailable")
+    func codexRereadPreservesExistingTitleWithoutThreadMetadata() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sessionsDir = codexHome.appendingPathComponent(
+            "sessions/2026/06/07",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let rollout = sessionsDir.appendingPathComponent(
+            "rollout-2026-06-07T11-39-40-s1.jsonl")
+        try """
+        {"timestamp":"2026-06-07T03:39:44.339Z","type":"session_meta","payload":{"id":"s1","cwd":"/Volumes/SamsungDisk/Code/quota-monitor"}}
+        {"timestamp":"2026-06-07T03:40:00.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-06-07T03:40:01.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE sessions
+                SET title = '看一下这个项目有哪些没合并的PR'
+                WHERE session_id = 's1'
+                """)
+            try conn.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1
+                WHERE session_id = 's1'
+                """)
+        }
+
+        _ = try await engine.performScan()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's1'
+                """)
+        })
+        #expect(row["title"] as String? == "看一下这个项目有哪些没合并的PR")
         #expect(row["project_name"] as String? == "quota-monitor")
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
