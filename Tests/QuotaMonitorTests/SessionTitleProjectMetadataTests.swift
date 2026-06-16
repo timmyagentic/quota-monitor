@@ -14,6 +14,17 @@ struct SessionTitleProjectMetadataTests {
         return try DatabaseManager(url: dir.appendingPathComponent("quotamonitor.sqlite"))
     }
 
+    private func writeJSONL(_ content: String, name: String = UUID().uuidString) throws -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "qm-session-metadata-jsonl-\(UUID().uuidString)",
+                isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("\(name).jsonl")
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
     @Test("v11 columns exist and legacy title is reclassified as project metadata")
     func migrationReclassifiesLegacyProjectTitle() throws {
         let db = try makeDatabase()
@@ -47,5 +58,18 @@ struct SessionTitleProjectMetadataTests {
             #expect(row?["project_name"] as String? == "game_backend_task2")
             #expect(row?["cwd"] as String? == nil)
         }
+    }
+
+    @Test("Codex parser treats cwd leaf as project metadata, not title")
+    func codexParserSeparatesProjectFromTitle() throws {
+        let url = try writeJSONL("""
+        {"timestamp":"2026-06-15T10:00:00.000Z","type":"session_meta","payload":{"id":"s1","cwd":"/Volumes/SamsungDisk/Code/game_backend_task2"}}
+        {"timestamp":"2026-06-15T10:01:00.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-06-15T10:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """)
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+        #expect(parsed.title == nil)
+        #expect(parsed.projectName == "game_backend_task2")
+        #expect(parsed.cwd == "/Volumes/SamsungDisk/Code/game_backend_task2")
     }
 }
