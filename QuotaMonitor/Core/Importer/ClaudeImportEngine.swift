@@ -333,12 +333,9 @@ actor ClaudeImportEngine {
                 if !resetSession, let existing { return existing.startedAt }
                 return parsed.startedAt
             }()
-            let resolvedTitle: String? = {
-                if !resetSession, let existing, let t = existing.title, !t.isEmpty {
-                    return t
-                }
-                return parsed.title
-            }()
+            let resolvedTitle = parsed.title ?? (resetSession ? nil : existing?.title)
+            let resolvedProjectName = parsed.projectName ?? (resetSession ? nil : existing?.projectName)
+            let resolvedCwd = parsed.cwd ?? (resetSession ? nil : existing?.cwd)
             let isSubagent = file.isSubagentFile
             // Multiple files can persist into one session row (main rollout
             // + subagent siblings, imported in path order). Last-writer-wins
@@ -384,8 +381,8 @@ actor ClaudeImportEngine {
                 rootSessionId: parsed.sessionId,
                 parentSessionId: nil,
                 title: resolvedTitle,
-                projectName: nil,
-                cwd: nil,
+                projectName: resolvedProjectName,
+                cwd: resolvedCwd,
                 sourcePath: resolvedSourcePath,
                 startedAt: resolvedStartedAt,
                 updatedAt: resolvedUpdatedAt,
@@ -481,6 +478,8 @@ actor ClaudeImportEngine {
 struct ParsedClaudeSession {
     let sessionId: String
     let title: String?
+    let projectName: String?
+    let cwd: String?
     let startedAt: String?
     let updatedAt: String?
     let lastModelId: String?
@@ -544,6 +543,7 @@ enum ClaudeRolloutParser {
 
         var sessionId: String? = nil
         var title: String? = nil
+        var cwd: String? = nil
         var startedAt: String? = nil
         var updatedAt: String? = nil
         var lastModelId: String? = nil
@@ -583,9 +583,13 @@ enum ClaudeRolloutParser {
                 if startedAt == nil { startedAt = ts }
                 updatedAt = ts
             }
-            if title == nil, let cwd = raw["cwd"] as? String {
-                // Use the leaf directory name as a friendly title fallback.
-                title = (cwd as NSString).lastPathComponent
+            if cwd == nil, let rawCwd = raw["cwd"] as? String, !rawCwd.isEmpty {
+                cwd = rawCwd
+            }
+            if title == nil, type == "ai-title",
+               let aiTitle = raw["aiTitle"] as? String,
+               !aiTitle.isEmpty {
+                title = aiTitle
             }
 
             guard type == "assistant",
@@ -661,9 +665,17 @@ enum ClaudeRolloutParser {
             return Output(session: nil, endOffset: consumed)
         }
 
+        let projectName: String? = {
+            guard let cwd, !cwd.isEmpty else { return nil }
+            let leaf = (cwd as NSString).lastPathComponent
+            return leaf.isEmpty ? nil : leaf
+        }()
+
         let session = ParsedClaudeSession(
             sessionId: sid,
             title: title,
+            projectName: projectName,
+            cwd: cwd,
             startedAt: startedAt,
             updatedAt: updatedAt,
             lastModelId: lastModelId,

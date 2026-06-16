@@ -144,4 +144,57 @@ struct SessionTitleProjectMetadataTests {
         let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
         #expect(metadata["s1"]?.title == "session index title")
     }
+
+    @Test("Claude parser uses ai-title as session title and cwd as project metadata")
+    func claudeParserSeparatesTitleAndProject() throws {
+        let url = try writeJSONL("""
+        {"type":"ai-title","aiTitle":"Review PR #59 default setting","sessionId":"c1"}
+        {"type":"user","sessionId":"c1","timestamp":"2026-06-15T10:00:00.000Z","cwd":"/Volumes/SamsungDisk/Code/quota-monitor","message":{"role":"user","content":"review this PR"}}
+        {"type":"assistant","sessionId":"c1","timestamp":"2026-06-15T10:01:00.000Z","message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":5}}}
+        """)
+        let parsed = try #require(try ClaudeRolloutParser.parse(fileURL: url).session)
+        #expect(parsed.title == "Review PR #59 default setting")
+        #expect(parsed.projectName == "quota-monitor")
+        #expect(parsed.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
+
+    @Test("Claude incremental scan preserves existing title and project metadata")
+    func claudeIncrementalScanPreservesExistingHeaderMetadata() async throws {
+        let db = try makeDatabase()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-claude-root-\(UUID().uuidString)", isDirectory: true)
+        let projectDir = root.appendingPathComponent(
+            "-Volumes-SamsungDisk-Code-quota-monitor",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let rollout = projectDir.appendingPathComponent("c1.jsonl")
+        try """
+        {"type":"ai-title","aiTitle":"Review PR #59 default setting","sessionId":"c1"}
+        {"type":"user","sessionId":"c1","timestamp":"2026-06-15T10:00:00.000Z","cwd":"/Volumes/SamsungDisk/Code/quota-monitor","message":{"role":"user","content":"review this PR"}}
+        {"type":"assistant","sessionId":"c1","timestamp":"2026-06-15T10:01:00.000Z","message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":5}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        _ = try await engine.performScan()
+
+        let handle = try FileHandle(forWritingTo: rollout)
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("""
+        {"type":"assistant","sessionId":"c1","timestamp":"2026-06-15T10:02:00.000Z","message":{"id":"m2","model":"claude-opus-4-8","usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":6}}}
+        """.utf8))
+
+        _ = try await engine.performScan()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 'c1'
+                """)
+        })
+        #expect(row["title"] as String? == "Review PR #59 default setting")
+        #expect(row["project_name"] as String? == "quota-monitor")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
 }
