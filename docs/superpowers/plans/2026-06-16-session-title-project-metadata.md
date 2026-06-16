@@ -13,6 +13,7 @@
 ## File Structure
 
 **New files:**
+- `QuotaMonitor/Core/Storage/SessionMetadataMigration.swift` - testable helpers for v11 legacy title reclassification and one-time importer header rereads.
 - `QuotaMonitor/Core/Importer/CodexSessionMetadataStore.swift` - reads Codex thread metadata from `CODEX_HOME/sqlite/state_5.sqlite` and falls back to `CODEX_HOME/session_index.jsonl`.
 - `QuotaMonitor/Features/Sessions/SessionRowMetadataView.swift` - shared compact metadata row for Sessions and History session rows.
 - `Tests/QuotaMonitorTests/SessionTitleProjectMetadataTests.swift` - focused schema, metadata, parser, and query tests for this feature.
@@ -41,13 +42,26 @@ After implementation:
 - `sessions.project_name` means a short display project name, normally the cwd leaf such as `quota-monitor`.
 - `sessions.cwd` means the full working directory path when the source exposes one.
 - Existing databases with cwd-derived `title` values are migrated by copying `title` into `project_name` and clearing `title`.
+- Migration reclassification logic is shared by v11 and a direct unit-test helper. Do not test historical migration behavior by inserting a legacy row after a fresh fully migrated `DatabaseManager` init; that only tests the final schema.
+- Metadata readers fail open. Codex SQLite metadata failures must not abort a scan or discard titles already read from `session_index.jsonl`.
+- Incremental imports preserve existing `title`, `project_name`, and `cwd` when the newly parsed tail slice does not contain header metadata.
 - Search matches `title`, `project_name`, `cwd`, `agent_nickname`, `last_model_id`, and `session_id`.
 - UI row primary text uses `title` or `L10n.untitledSession`.
 - UI row secondary text includes project metadata when present.
 
+## Plan Corrections Before Implementation
+
+These constraints are part of the implementation contract:
+
+- Use a shared migration helper for legacy title reclassification so v11 and tests exercise the same SQL.
+- Keep Codex metadata enrichment fail-soft: `session_index.jsonl` titles remain usable if `state_5.sqlite` is missing, unreadable, or has an unexpected schema.
+- Preserve previously stored Claude/Codex header metadata during incremental tail scans that only include new usage events.
+- Treat source-level UI tests as a guardrail only. Primary correctness must come from parser/import/query tests plus real-data QA.
+
 ## Task 1: Schema and Domain Model Split
 
 **Files:**
+- Create: `QuotaMonitor/Core/Storage/SessionMetadataMigration.swift`
 - Modify: `QuotaMonitor/Core/Storage/Migrations.swift`
 - Modify: `QuotaMonitor/Core/Storage/Records.swift`
 - Modify: `QuotaMonitor/Core/Analytics/Aggregator.swift`
@@ -77,19 +91,26 @@ struct SessionTitleProjectMetadataTests {
     func migrationReclassifiesLegacyProjectTitle() throws {
         let db = try makeDatabase()
         try db.pool.write { conn in
+            // Insert a legacy-shaped row into the final schema, then call the
+            // shared helper directly. A fresh DatabaseManager has already run
+            // every migration, so inserting after init cannot prove that v11
+            // handled a historical row during migration.
             try conn.execute(sql: """
                 INSERT INTO sessions
                   (session_id, root_session_id, parent_session_id, title,
+                   project_name, cwd,
                    source_path, started_at, updated_at, agent_nickname,
                    agent_role, last_model_id, latest_plan_type,
                    contains_subagents, created_at, imported_at, provider)
                 VALUES
                   ('s1', 's1', NULL, 'game_backend_task2',
+                   NULL, NULL,
                    '/Users/timmy/.codex/sessions/rollout-s1.jsonl',
                    '2026-06-15T10:00:00Z', '2026-06-15T10:10:00Z',
                    NULL, NULL, 'gpt-5.5', NULL, 0,
                    '2026-06-15T10:00:00Z', '2026-06-15T10:10:00Z', 'codex')
                 """)
+            try SessionMetadataMigration.reclassifyLegacyTitles(in: conn)
             let row = try Row.fetchOne(conn, sql: """
                 SELECT title, project_name, cwd
                 FROM sessions
@@ -106,9 +127,46 @@ struct SessionTitleProjectMetadataTests {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `swift test --disable-keychain --filter SessionTitleProjectMetadataTests/migrationReclassifiesLegacyProjectTitle`
-Expected: FAIL because `project_name` and `cwd` do not exist.
+Expected: FAIL because `SessionMetadataMigration` and the new columns do not exist yet.
 
-- [ ] **Step 3: Add v11 migration**
+- [ ] **Step 3: Add testable v11 migration helpers**
+
+Create `QuotaMonitor/Core/Storage/SessionMetadataMigration.swift`:
+
+```swift
+import GRDB
+
+enum SessionMetadataMigration {
+    static func reclassifyLegacyTitles(in db: Database) throws {
+        try db.execute(sql: """
+            UPDATE sessions
+            SET project_name = CASE
+                  WHEN project_name IS NULL OR project_name = ''
+                  THEN NULLIF(title, '')
+                  ELSE project_name
+                END,
+                title = NULL
+            WHERE title IS NOT NULL AND title != ''
+            """)
+    }
+
+    static func forceHeaderReread(in db: Database) throws {
+        try db.execute(sql: """
+            UPDATE import_state
+            SET file_size = -1,
+                file_mtime_ms = -1,
+                byte_offset = 0
+            WHERE session_id IN (
+                SELECT session_id
+                FROM sessions
+                WHERE provider IN ('codex', 'claude')
+            )
+            """)
+    }
+}
+```
+
+- [ ] **Step 4: Add v11 migration**
 
 Append this migration after v10 in `QuotaMonitor/Core/Storage/Migrations.swift`:
 
@@ -126,27 +184,12 @@ Append this migration after v10 in `QuotaMonitor/Core/Storage/Migrations.swift`:
                 t.add(column: "project_name", .text)
                 t.add(column: "cwd", .text)
             }
-            try db.execute(sql: """
-                UPDATE sessions
-                SET project_name = NULLIF(title, ''),
-                    title = NULL
-                WHERE title IS NOT NULL AND title != ''
-                """)
-            try db.execute(sql: """
-                UPDATE import_state
-                SET file_size = -1,
-                    file_mtime_ms = -1,
-                    byte_offset = 0
-                WHERE session_id IN (
-                    SELECT session_id
-                    FROM sessions
-                    WHERE provider IN ('codex', 'claude')
-                )
-                """)
+            try SessionMetadataMigration.reclassifyLegacyTitles(in: db)
+            try SessionMetadataMigration.forceHeaderReread(in: db)
         }
 ```
 
-- [ ] **Step 4: Add stored fields to `SessionRecord`**
+- [ ] **Step 5: Add stored fields to `SessionRecord`**
 
 In `QuotaMonitor/Core/Storage/Records.swift`, add properties after `title`:
 
@@ -162,7 +205,7 @@ Add coding keys:
         case cwd
 ```
 
-- [ ] **Step 5: Add read model fields to `SessionRow`**
+- [ ] **Step 6: Add read model fields to `SessionRow`**
 
 In `QuotaMonitor/Core/Analytics/Aggregator.swift`, add fields after `title`:
 
@@ -171,7 +214,7 @@ In `QuotaMonitor/Core/Analytics/Aggregator.swift`, add fields after `title`:
     let cwd: String?
 ```
 
-- [ ] **Step 6: Update all `SessionRecord` initializers**
+- [ ] **Step 7: Update all `SessionRecord` initializers**
 
 For every `SessionRecord(` call, insert:
 
@@ -182,15 +225,15 @@ For every `SessionRecord(` call, insert:
 
 For tests that insert `SessionRecord` directly, pass `projectName: nil, cwd: nil`.
 
-- [ ] **Step 7: Run focused test**
+- [ ] **Step 8: Run focused test**
 
 Run: `swift test --disable-keychain --filter SessionTitleProjectMetadataTests/migrationReclassifiesLegacyProjectTitle`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add QuotaMonitor/Core/Storage/Migrations.swift QuotaMonitor/Core/Storage/Records.swift QuotaMonitor/Core/Analytics/Aggregator.swift Tests/QuotaMonitorTests/SessionTitleProjectMetadataTests.swift
+git add QuotaMonitor/Core/Storage/SessionMetadataMigration.swift QuotaMonitor/Core/Storage/Migrations.swift QuotaMonitor/Core/Storage/Records.swift QuotaMonitor/Core/Analytics/Aggregator.swift Tests/QuotaMonitorTests/SessionTitleProjectMetadataTests.swift
 git commit -m "Split session title from project metadata"
 ```
 
@@ -336,6 +379,28 @@ Append:
         #expect(metadata["s1"]?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
         #expect(metadata["s1"]?.projectName == "quota-monitor")
     }
+
+    @Test("Codex metadata store keeps session_index title when state sqlite is unusable")
+    func codexMetadataFallsBackWhenStateDatabaseFails() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)",
+                                    isDirectory: true)
+        let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
+        try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
+        try """
+        {"id":"s1","thread_name":"session index title"}
+        """.write(to: codexHome.appendingPathComponent("session_index.jsonl"),
+                  atomically: true,
+                  encoding: .utf8)
+
+        let db = try DatabaseQueue(path: sqliteDir.appendingPathComponent("state_5.sqlite").path)
+        try db.write { conn in
+            try conn.execute(sql: "CREATE TABLE unrelated (id TEXT PRIMARY KEY)")
+        }
+
+        let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == "session index title")
+    }
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -364,12 +429,25 @@ struct CodexSessionMetadata: Sendable, Equatable {
 
 enum CodexSessionMetadataStore {
     static func load(codexHome: URL) throws -> [String: CodexSessionMetadata] {
-        var result = try loadSessionIndex(codexHome: codexHome)
+        var result = (try? loadSessionIndex(codexHome: codexHome)) ?? [:]
+        do {
+            try overlayStateDatabase(codexHome: codexHome, into: &result)
+        } catch {
+            // Optional: Log.importer.warning("Failed to read Codex state metadata: \(error.localizedDescription)")
+            return result
+        }
+        return result
+    }
+
+    private static func overlayStateDatabase(
+        codexHome: URL,
+        into result: inout [String: CodexSessionMetadata]
+    ) throws {
         let sqlite = codexHome
             .appendingPathComponent("sqlite", isDirectory: true)
             .appendingPathComponent("state_5.sqlite")
         guard FileManager.default.fileExists(atPath: sqlite.path) else {
-            return result
+            return
         }
         let config = Configuration(readonly: true)
         let db = try DatabaseQueue(path: sqlite.path, configuration: config)
@@ -386,7 +464,6 @@ enum CodexSessionMetadataStore {
                 title: nonEmpty(row["title"]),
                 cwd: nonEmpty(row["cwd"]))
         }
-        return result
     }
 
     private static func loadSessionIndex(codexHome: URL) throws -> [String: CodexSessionMetadata] {
@@ -420,8 +497,15 @@ enum CodexSessionMetadataStore {
 In `ImportEngine.performScan`, load metadata before the file loop:
 
 ```swift
-        let codexMetadata = (try? CodexSessionMetadataStore.load(codexHome: codexHome)) ?? [:]
+        let codexMetadata: [String: CodexSessionMetadata]
+        do {
+            codexMetadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        } catch {
+            codexMetadata = [:]
+        }
 ```
+
+This keeps the import scan resilient if `session_index.jsonl` or the SQLite state database is temporarily unreadable.
 
 Before persist:
 
@@ -493,12 +577,58 @@ Append:
         #expect(parsed.projectName == "quota-monitor")
         #expect(parsed.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
+
+    @Test("Claude incremental scan preserves existing title and project metadata")
+    func claudeIncrementalScanPreservesExistingHeaderMetadata() async throws {
+        let db = try makeDatabase()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-claude-root-\(UUID().uuidString)",
+                                    isDirectory: true)
+        let projectDir = root.appendingPathComponent("-Volumes-SamsungDisk-Code-quota-monitor",
+                                                     isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let rollout = projectDir.appendingPathComponent("c1.jsonl")
+        try """
+        {"type":"ai-title","aiTitle":"Review PR #59 default setting","sessionId":"c1"}
+        {"type":"user","sessionId":"c1","timestamp":"2026-06-15T10:00:00.000Z","cwd":"/Volumes/SamsungDisk/Code/quota-monitor","message":{"role":"user","content":"review this PR"}}
+        {"type":"assistant","sessionId":"c1","timestamp":"2026-06-15T10:01:00.000Z","message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":5}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        _ = try await engine.performScan()
+
+        let handle = try FileHandle(forWritingTo: rollout)
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("""
+        {"type":"assistant","sessionId":"c1","timestamp":"2026-06-15T10:02:00.000Z","message":{"id":"m2","model":"claude-opus-4-8","usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":6}}}
+        """.utf8))
+
+        _ = try await engine.performScan()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 'c1'
+                """)
+        })
+        #expect(row["title"] as String? == "Review PR #59 default setting")
+        #expect(row["project_name"] as String? == "quota-monitor")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `swift test --disable-keychain --filter SessionTitleProjectMetadataTests/claudeParserSeparatesTitleAndProject`
-Expected: FAIL because Claude parsed sessions do not expose `projectName` and `cwd`, and `ai-title` is ignored.
+Run:
+
+```bash
+swift test --disable-keychain --filter SessionTitleProjectMetadataTests/claudeParserSeparatesTitleAndProject
+swift test --disable-keychain --filter SessionTitleProjectMetadataTests/claudeIncrementalScanPreservesExistingHeaderMetadata
+```
+
+Expected: FAIL because Claude parsed sessions do not expose `projectName` and `cwd`, `ai-title` is ignored, and incremental tail scans do not yet preserve existing header metadata.
 
 - [ ] **Step 3: Extend Claude parsed session**
 
@@ -542,16 +672,32 @@ Return `projectName` and `cwd`.
 
 - [ ] **Step 4: Persist Claude metadata**
 
-In the Claude `SessionRecord(` initializer, pass:
+In `ClaudeImportEngine.persist`, resolve header metadata before constructing `SessionRecord`:
 
 ```swift
-                projectName: parsed.projectName,
-                cwd: parsed.cwd,
+            let resolvedTitle = parsed.title ?? (resetSession ? nil : existing?.title)
+            let resolvedProjectName = parsed.projectName ?? (resetSession ? nil : existing?.projectName)
+            let resolvedCwd = parsed.cwd ?? (resetSession ? nil : existing?.cwd)
 ```
+
+Use these values in the Claude `SessionRecord(` initializer:
+
+```swift
+                title: resolvedTitle,
+                projectName: resolvedProjectName,
+                cwd: resolvedCwd,
+```
+
+Do not preserve an existing title when `parsed.title` is non-nil, and do not keep stale metadata across a reset if the full source no longer exposes it. The preservation rule is specifically for incremental tail scans where the parsed slice does not include `ai-title` or `cwd`.
 
 - [ ] **Step 5: Run focused test**
 
-Run: `swift test --disable-keychain --filter SessionTitleProjectMetadataTests/claudeParserSeparatesTitleAndProject`
+Run:
+
+```bash
+swift test --disable-keychain --filter SessionTitleProjectMetadataTests/claudeParserSeparatesTitleAndProject
+swift test --disable-keychain --filter SessionTitleProjectMetadataTests/claudeIncrementalScanPreservesExistingHeaderMetadata
+```
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
@@ -678,18 +824,21 @@ git commit -m "Expose project metadata in session queries"
 - Modify: `QuotaMonitor/Core/Localization/L10n.swift`
 - Test: `Tests/QuotaMonitorTests/SessionTitleProjectMetadataTests.swift`
 
-- [ ] **Step 1: Add source-level regression test**
+- [ ] **Step 1: Add source-level guard test**
+
+This test is only a source-level guard that both row surfaces use the shared metadata view and keep `L10n.untitledSession` for missing true titles. Parser, import, and query tests provide the behavioral proof; real-data QA in Task 8 verifies the rendered app.
 
 Append:
 
 ```swift
-    @Test("History and Sessions rows render project metadata separately from title")
+    @Test("History and Sessions rows route through the shared metadata view")
     func sessionRowsUseSharedProjectMetadataView() throws {
         let sessions = try String(contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/Sessions/SessionsView.swift"))
         let history = try String(contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/History/HistoryView.swift"))
-        #expect(sessions.contains("SessionRowMetadataView(row: row)"))
-        #expect(history.contains("SessionRowMetadataView(row: session)"))
-        #expect(!sessions.contains("Text(row.title?.isEmpty == false ? row.title! : L10n.untitledSession)\\n                    .font(.body.weight(.medium))\\n                    .lineLimit(1)\\n                Spacer()"))
+        #expect(sessions.contains("SessionRowMetadataView(row: row"))
+        #expect(history.contains("SessionRowMetadataView(row: session"))
+        #expect(sessions.contains("L10n.untitledSession"))
+        #expect(history.contains("L10n.untitledSession"))
     }
 ```
 
@@ -954,9 +1103,11 @@ git commit -m "Document session title display fix"
 
 ## Review Checklist
 
+- [ ] v11 uses the shared migration helper, and the helper has a direct regression test.
 - [ ] `sessions.title` no longer stores cwd leaf fallback values for new imports.
 - [ ] Existing cwd-derived titles are moved to `project_name` and cleared from `title`.
 - [ ] Codex title lookup handles `state_5.sqlite` and `session_index.jsonl`.
+- [ ] Codex title lookup keeps `session_index.jsonl` titles if SQLite metadata lookup fails.
 - [ ] Claude title lookup handles `ai-title`.
 - [ ] Incremental Claude imports keep existing explicit title/project metadata when a tail scan does not see header rows.
 - [ ] Search includes both real title and project metadata.
