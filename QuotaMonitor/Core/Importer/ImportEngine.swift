@@ -44,21 +44,29 @@ actor ImportEngine {
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })
         }
 
-        // Source paths of Codex sessions still missing a title — re-parse them
-        // so the cwd-derived title fallback added later can backfill UI labels
-        // without waiting for the file to change.
-        let titlelessCodexPaths: Set<String> = try await database.pool.read { db in
+        let codexMetadata: [String: CodexSessionMetadata]
+        do {
+            codexMetadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        } catch {
+            codexMetadata = [:]
+        }
+
+        // Source paths of Codex sessions still missing project metadata —
+        // re-parse them so the split metadata columns can be backfilled
+        // without waiting for the source file to change.
+        let metadataIncompleteCodexPaths: Set<String> = try await database.pool.read { db in
             let rows = try String.fetchAll(db, sql: """
                 SELECT source_path FROM sessions
                 WHERE provider = 'codex'
-                  AND (title IS NULL OR title = '')
                   AND source_path IS NOT NULL
+                  AND ((project_name IS NULL OR project_name = '')
+                       OR (cwd IS NULL OR cwd = ''))
                 """)
             return Set(rows)
         }
 
         let changed = files.filter { file in
-            if titlelessCodexPaths.contains(file.path) { return true }
+            if metadataIncompleteCodexPaths.contains(file.path) { return true }
             guard let prior = priorState[file.path] else { return true }
             return prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs
         }
@@ -79,7 +87,13 @@ actor ImportEngine {
                     fileURL: file.url,
                     fallbackSessionId: file.sessionIdHint
                 ) {
-                    let counts = try await persist(parsed: parsed, file: file)
+                    var enriched = parsed
+                    if let metadata = codexMetadata[parsed.sessionId] {
+                        enriched.title = metadata.title
+                        enriched.cwd = parsed.cwd ?? metadata.cwd
+                        enriched.projectName = parsed.projectName ?? metadata.projectName
+                    }
+                    let counts = try await persist(parsed: enriched, file: file)
                     importedSessions += 1
                     importedEvents += counts.events
                     importedSamples += counts.samples

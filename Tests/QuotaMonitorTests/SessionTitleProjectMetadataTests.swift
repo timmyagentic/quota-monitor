@@ -72,4 +72,76 @@ struct SessionTitleProjectMetadataTests {
         #expect(parsed.projectName == "game_backend_task2")
         #expect(parsed.cwd == "/Volumes/SamsungDisk/Code/game_backend_task2")
     }
+
+    @Test("Codex metadata store reads session_index thread_name")
+    func codexMetadataReadsSessionIndex() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try """
+        {"id":"s1","thread_name":"梳理项目现状","updated_at":"2026-06-15T03:01:30Z"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == "梳理项目现状")
+    }
+
+    @Test("Codex metadata store prefers threads sqlite title and cwd")
+    func codexMetadataPrefersStateDatabase() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
+        try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
+        try """
+        {"id":"s1","thread_name":"older title"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let db = try DatabaseQueue(path: sqliteDir.appendingPathComponent("state_5.sqlite").path)
+        try db.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    cwd TEXT NOT NULL
+                )
+                """)
+            try conn.execute(sql: """
+                INSERT INTO threads (id, title, cwd)
+                VALUES ('s1', '真实会话标题', '/Volumes/SamsungDisk/Code/quota-monitor')
+                """)
+        }
+
+        let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == "真实会话标题")
+        #expect(metadata["s1"]?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
+        #expect(metadata["s1"]?.projectName == "quota-monitor")
+    }
+
+    @Test("Codex metadata store keeps session_index title when state sqlite is unusable")
+    func codexMetadataFallsBackWhenStateDatabaseFails() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
+        try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
+        try """
+        {"id":"s1","thread_name":"session index title"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let db = try DatabaseQueue(path: sqliteDir.appendingPathComponent("state_5.sqlite").path)
+        try db.write { conn in
+            try conn.execute(sql: "CREATE TABLE unrelated (id TEXT PRIMARY KEY)")
+        }
+
+        let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == "session index title")
+    }
 }
