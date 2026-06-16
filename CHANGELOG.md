@@ -30,6 +30,9 @@ window copy.
 
 ## [Unreleased]
 
+### Changed
+- **Claude credential disk cache defaults on.** New installs and users without a saved preference now keep the Claude credentials disk cache enabled by default, reducing repeated macOS Keychain prompts after local rebuilds while preserving the Settings toggle for Keychain-only storage.
+
 ## [0.2.33] — 2026-06-15
 
 #### Summary
