@@ -30,6 +30,13 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+- Claude credential disk caching now starts enabled unless you already turned it off
+- Session titles and project names now have a concrete cleanup plan before the UI fix lands
+
+### Added
+- **Session title display implementation plan.** Added an implementation plan for separating real session titles from project folder metadata in History and Sessions.
+
 ### Changed
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
 
