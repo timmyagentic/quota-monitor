@@ -64,6 +64,8 @@ extension Aggregator {
                 SessionRow(
                     sessionId: row["session_id"] ?? "",
                     title: row["title"],
+                    projectName: nil,
+                    cwd: nil,
                     agentNickname: row["agent_nickname"],
                     lastModelId: row["last_model_id"],
                     startedAt: row["started_at"],
@@ -103,6 +105,8 @@ extension Aggregator {
         let header = SessionRow(
             sessionId: headerRow["session_id"] ?? "",
             title: headerRow["title"],
+            projectName: nil,
+            cwd: nil,
             agentNickname: headerRow["agent_nickname"],
             lastModelId: headerRow["last_model_id"],
             startedAt: headerRow["started_at"],
@@ -195,6 +199,8 @@ extension Aggregator {
             SessionRow(
                 sessionId: row["session_id"] ?? "",
                 title: row["title"],
+                projectName: nil,
+                cwd: nil,
                 agentNickname: row["agent_nickname"],
                 lastModelId: row["last_model_id"],
                 startedAt: row["started_at"],

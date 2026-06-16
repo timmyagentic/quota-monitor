@@ -163,6 +163,8 @@ actor ImportEngine {
                 rootSessionId: parsed.rootSessionId,
                 parentSessionId: parsed.parentSessionId,
                 title: parsed.title,
+                projectName: nil,
+                cwd: nil,
                 sourcePath: file.path,
                 startedAt: parsed.startedAt,
                 updatedAt: parsed.updatedAt,

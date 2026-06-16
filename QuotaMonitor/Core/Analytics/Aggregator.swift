@@ -226,6 +226,8 @@ struct SessionRow: Sendable, Identifiable, Equatable {
     let sessionId: String
     var id: String { sessionId }
     let title: String?
+    let projectName: String?
+    let cwd: String?
     let agentNickname: String?
     let lastModelId: String?
     let startedAt: String?

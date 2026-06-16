@@ -275,5 +275,22 @@ enum Migrations {
                 ON usage_events(timestamp)
                 """)
         }
+
+        // v11: split session title from project metadata.
+        //
+        // Before v11, Codex and Claude importers stored cwd leaf names in
+        // sessions.title as a friendly fallback. That made History and
+        // Sessions show project names as if they were session names. Move
+        // those legacy values into project_name, clear title, and force one
+        // scan so importers can repopulate true titles where the source has
+        // them.
+        migrator.registerMigration("v11-session-project-metadata") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "project_name", .text)
+                t.add(column: "cwd", .text)
+            }
+            try SessionMetadataMigration.reclassifyLegacyTitles(in: db)
+            try SessionMetadataMigration.forceHeaderReread(in: db)
+        }
     }
 }

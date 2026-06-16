@@ -384,6 +384,8 @@ actor ClaudeImportEngine {
                 rootSessionId: parsed.sessionId,
                 parentSessionId: nil,
                 title: resolvedTitle,
+                projectName: nil,
+                cwd: nil,
                 sourcePath: resolvedSourcePath,
                 startedAt: resolvedStartedAt,
                 updatedAt: resolvedUpdatedAt,

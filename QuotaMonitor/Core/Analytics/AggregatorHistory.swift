@@ -135,6 +135,8 @@ extension Aggregator {
             SessionRow(
                 sessionId: row["session_id"] ?? "",
                 title: row["title"],
+                projectName: nil,
+                cwd: nil,
                 agentNickname: row["agent_nickname"],
                 lastModelId: row["last_model_id"],
                 startedAt: row["day_started_at"] ?? row["started_at"],
