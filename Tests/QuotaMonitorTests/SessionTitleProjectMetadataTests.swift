@@ -252,4 +252,43 @@ struct SessionTitleProjectMetadataTests {
         #expect(sessions.contains("L10n.untitledSession"))
         #expect(history.contains("L10n.untitledSession"))
     }
+
+    @Test("Codex scan persists real title and project metadata")
+    func codexScanPersistsTitleAndProjectMetadata() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sessionsDir = codexHome.appendingPathComponent(
+            "sessions/2026/06/15",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        try """
+        {"id":"s1","thread_name":"梳理项目现状","updated_at":"2026-06-15T03:01:30Z"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let rollout = sessionsDir.appendingPathComponent(
+            "rollout-2026-06-15T11-01-20-s1.jsonl")
+        try """
+        {"timestamp":"2026-06-15T10:00:00.000Z","type":"session_meta","payload":{"id":"s1","cwd":"/Volumes/SamsungDisk/Code/quota-monitor"}}
+        {"timestamp":"2026-06-15T10:01:00.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-06-15T10:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's1'
+                """)
+        })
+        #expect(row["title"] as String? == "梳理项目现状")
+        #expect(row["project_name"] as String? == "quota-monitor")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
 }
