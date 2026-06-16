@@ -268,19 +268,7 @@ private struct ExpandableSessionRow: View {
                             .font(.callout.weight(.medium))
                             .lineLimit(1)
                         HStack(spacing: 8) {
-                            if let agent = session.agentNickname, !agent.isEmpty {
-                                Text(agent)
-                                    .font(.caption2)
-                                    .padding(.horizontal, 5).padding(.vertical, 1)
-                                    .background(Color.accentColor.opacity(0.18))
-                                    .clipShape(Capsule())
-                            }
-                            if let model = session.lastModelId, !model.isEmpty {
-                                Text(model).font(.caption2).foregroundStyle(.secondary)
-                            }
-                            Text(L10n.eventsCount(session.eventCount))
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                            SessionRowMetadataView(row: session)
                             if let started = session.startedAt {
                                 Text(timeRange(started: started, ended: session.updatedAt))
                                     .font(.caption2.monospacedDigit())

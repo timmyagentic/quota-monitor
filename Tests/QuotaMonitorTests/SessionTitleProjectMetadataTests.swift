@@ -239,4 +239,17 @@ struct SessionTitleProjectMetadataTests {
         #expect(byTitle.first?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
         #expect(byProject.first?.sessionId == "s1")
     }
+
+    @Test("History and Sessions rows route through the shared metadata view")
+    func sessionRowsUseSharedProjectMetadataView() throws {
+        let sessions = try String(
+            contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/Sessions/SessionsView.swift"))
+        let history = try String(
+            contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/History/HistoryView.swift"))
+
+        #expect(sessions.contains("SessionRowMetadataView(row: row"))
+        #expect(history.contains("SessionRowMetadataView(row: session"))
+        #expect(sessions.contains("L10n.untitledSession"))
+        #expect(history.contains("L10n.untitledSession"))
+    }
 }

@@ -167,43 +167,8 @@ private struct SessionRowView: View {
                         ? L10n.helpCostApproxInferred
                         : "")
             }
-            HStack(spacing: 8) {
-                if let agent = row.agentNickname, !agent.isEmpty {
-                    Text(agent)
-                        .font(.caption2)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Color.accentColor.opacity(0.18))
-                        .clipShape(Capsule())
-                }
-                if row.containsSubagents {
-                    Label(L10n.subagents, systemImage: "person.2.fill")
-                        .labelStyle(.iconOnly)
-                        .font(.caption2)
-                        .foregroundStyle(.purple)
-                        .help(L10n.helpSpawnedSubagents)
-                }
-                if let model = row.lastModelId, !model.isEmpty {
-                    Text(model).font(.caption2).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text(L10n.eventsCount(row.eventCount))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            if let updated = row.updatedAt {
-                Text(formatRelative(updated))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            SessionRowMetadataView(row: row, showsUpdatedRelativeTime: true)
         }
         .padding(.vertical, 3)
-    }
-
-    private func formatRelative(_ iso: String) -> String {
-        guard let date = ISO8601.parse(iso) else { return iso }
-        let rf = RelativeDateTimeFormatter()
-        rf.locale = LocalizationStore.activeLanguage.locale
-        rf.unitsStyle = .short
-        return rf.localizedString(for: date, relativeTo: Date())
     }
 }

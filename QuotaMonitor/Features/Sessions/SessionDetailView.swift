@@ -29,6 +29,13 @@ struct SessionDetailView: View {
                 .font(.title2.bold())
                 .lineLimit(2)
 
+            if let project = detail.header.projectName, !project.isEmpty {
+                Label(project, systemImage: "folder")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(detail.header.cwd ?? project)
+            }
+
             HStack(spacing: 12) {
                 if let agent = detail.header.agentNickname, !agent.isEmpty {
                     Label(agent, systemImage: "person.crop.circle")
