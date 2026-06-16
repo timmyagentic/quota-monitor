@@ -39,20 +39,21 @@ final class SettingsStore {
     var keychainPolicy: KeychainPolicy {
         didSet { defaults.set(keychainPolicy.rawValue, forKey: Keys.keychainPolicy) }
     }
-    /// **ON by default for fresh installs.** After a successful
-    /// Keychain read of the Claude OAuth credentials we mirror the same
-    /// JSON blob to `~/.claude/.credentials.json`. This stops the
-    /// recurring "QuotaMonitor wants to use…" Keychain prompt that
-    /// appears after every ad-hoc rebuild (the macOS ACL is bound to
-    /// the binary's signature, which changes with each `./build.sh`).
+    /// **ON by default when no preference is saved.** After a
+    /// successful Keychain read of the Claude OAuth credentials we
+    /// mirror the same JSON blob to `~/.claude/.credentials.json`.
+    /// This stops the recurring "QuotaMonitor wants to use…"
+    /// Keychain prompt that appears after every ad-hoc rebuild (the
+    /// macOS ACL is bound to the binary's signature, which changes
+    /// with each `./build.sh`).
     ///
     /// **Trade-off.** Moving credentials from a more-protected store
     /// (Keychain, per-app ACL'd) to a less-protected one (a plain 0600
     /// file readable by any process running as your user) is a security
     /// downgrade. The Settings toggle remains available for users who
     /// prefer Keychain-only storage, and its help text spells out the
-    /// trade-off. Existing users who never saved this preference keep
-    /// the previous implicit OFF default on upgrade.
+    /// trade-off. The first launch that sees this preference missing
+    /// persists the default, so later releases preserve any user choice.
     ///
     /// File written 0600 + atomic replace so we never expose the
     /// token mid-write or leave a half-written file behind.
@@ -339,19 +340,10 @@ final class SettingsStore {
             .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback
         let storedMirrorClaudeKeychainToFile =
             defaults.object(forKey: Keys.mirrorClaudeKeychainToFile) as? Bool
-        let hasExistingConfigurationForMirrorDefault =
-            Self.hasExistingConfigurationForMirrorDefault(
-                defaults,
-                storedInterval: storedInterval,
-                storedProviders: storedProviders)
         let resolvedMirrorClaudeKeychainToFile =
-            Self.resolvedMirrorClaudeKeychainToFile(
-                defaults,
-                storedInterval: storedInterval,
-                storedProviders: storedProviders)
+            Self.resolvedMirrorClaudeKeychainToFile(defaults)
         self.mirrorClaudeKeychainToFile = resolvedMirrorClaudeKeychainToFile
-        if storedMirrorClaudeKeychainToFile == nil
-            && !hasExistingConfigurationForMirrorDefault {
+        if storedMirrorClaudeKeychainToFile == nil {
             defaults.set(resolvedMirrorClaudeKeychainToFile,
                          forKey: Keys.mirrorClaudeKeychainToFile)
         }
@@ -604,10 +596,7 @@ final class SettingsStore {
                 ? d.integer(forKey: Keys.pollInterval) : 300),
             keychainPolicy: (d.string(forKey: Keys.keychainPolicy)
                 .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback,
-            mirrorClaudeKeychainToFile: resolvedMirrorClaudeKeychainToFile(
-                d,
-                storedInterval: d.integer(forKey: Keys.pollInterval),
-                storedProviders: storedProviders),
+            mirrorClaudeKeychainToFile: resolvedMirrorClaudeKeychainToFile(d),
             enabledProviders: providers,
             codexFastModeBilling: d.bool(forKey: Keys.codexFastModeBilling),
             developerModeEnabled: d.bool(forKey: Keys.developerModeEnabled),
@@ -625,42 +614,13 @@ final class SettingsStore {
     }
 
     private nonisolated static func resolvedMirrorClaudeKeychainToFile(
-        _ defaults: UserDefaults,
-        storedInterval: Int,
-        storedProviders: [String]?
+        _ defaults: UserDefaults
     ) -> Bool {
         if let stored = defaults.object(
             forKey: Keys.mirrorClaudeKeychainToFile) as? Bool {
             return stored
         }
-        return !hasExistingConfigurationForMirrorDefault(
-            defaults,
-            storedInterval: storedInterval,
-            storedProviders: storedProviders)
-    }
-
-    private nonisolated static func hasExistingConfigurationForMirrorDefault(
-        _ defaults: UserDefaults,
-        storedInterval: Int,
-        storedProviders: [String]?
-    ) -> Bool {
-        defaults.string(forKey: "app.language") != nil
-            || storedProviders != nil
-            || storedInterval > 0
-            || defaults.object(forKey: Keys.keychainPolicy) != nil
-            || defaults.object(forKey: Keys.showDockIconForWindows) != nil
-            || defaults.object(forKey: Keys.menuBarHeadlineWindow) != nil
-            || defaults.object(forKey: Keys.quotaDisplayMode) != nil
-            || defaults.object(forKey: Keys.tokenUnitLanguage) != nil
-            || defaults.object(forKey: Keys.codexFastModeBilling) != nil
-            || defaults.object(forKey: Keys.developerModeEnabled) != nil
-            || defaults.object(forKey: Keys.firstRunPresentationShown) != nil
-            || defaults.object(forKey: Keys.firstRunHintDismissed) != nil
-            || defaults.object(forKey: Keys.menuBarLabelStyle) != nil
-            || defaults.object(forKey: Keys.menuBarIconProviders) != nil
-            || defaults.object(forKey: Keys.legacyMenuBarIconProvider) != nil
-            || defaults.object(forKey: Keys.providerOnboardingDone) != nil
-            || defaults.object(forKey: Keys.lastOnboardedVersion) != nil
+        return true
     }
 
     struct Snapshot: Sendable {

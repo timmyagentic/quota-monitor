@@ -35,19 +35,27 @@ struct ClaudeCredentialMirrorSettingTests {
     }
 
     @Test
-    func existingUserWithoutSavedPreferenceStaysDisabledOnInit() {
+    func existingUserWithoutSavedPreferenceGetsEnabledOnInit() {
         let d = Self.freshDefaults()
         d.set(["claude"], forKey: "settings.enabledProviders")
         let store = SettingsStore(defaults: d)
-        #expect(store.mirrorClaudeKeychainToFile == false)
+        #expect(store.mirrorClaudeKeychainToFile == true)
     }
 
     @Test
-    func existingUserWithoutSavedPreferenceStaysDisabledInSnapshot() {
+    func existingUserWithoutSavedPreferenceGetsEnabledInSnapshot() {
         let d = Self.freshDefaults()
         d.set(["claude"], forKey: "settings.enabledProviders")
         let snapshot = SettingsStore.snapshot(defaults: d)
-        #expect(snapshot.mirrorClaudeKeychainToFile == false)
+        #expect(snapshot.mirrorClaudeKeychainToFile == true)
+    }
+
+    @Test
+    func existingUserWithoutSavedPreferencePersistsEnabledDefault() {
+        let d = Self.freshDefaults()
+        d.set(["claude"], forKey: "settings.enabledProviders")
+        _ = SettingsStore(defaults: d)
+        #expect(d.object(forKey: "settings.mirrorClaudeKeychainToFile") as? Bool == true)
     }
 
     @Test
@@ -56,5 +64,6 @@ struct ClaudeCredentialMirrorSettingTests {
         d.set(false, forKey: "settings.mirrorClaudeKeychainToFile")
         let store = SettingsStore(defaults: d)
         #expect(store.mirrorClaudeKeychainToFile == false)
+        #expect(d.object(forKey: "settings.mirrorClaudeKeychainToFile") as? Bool == false)
     }
 }
