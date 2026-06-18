@@ -367,6 +367,9 @@ actor ClaudeImportEngine {
             // Same staleness rule as updated_at: an older sibling file must
             // not overwrite the model recorded from a newer one.
             let resolvedLastModelId: String? = {
+                guard let parsedModel = parsed.lastModelId else {
+                    return resetSession ? nil : existing?.lastModelId
+                }
                 if !resetSession, let existing,
                    let existingUpdated = existing.updatedAt,
                    let parsedUpdated = parsed.updatedAt,
@@ -374,7 +377,7 @@ actor ClaudeImportEngine {
                    let existingModel = existing.lastModelId {
                     return existingModel
                 }
-                return parsed.lastModelId
+                return parsedModel
             }()
             let session = SessionRecord(
                 sessionId: parsed.sessionId,

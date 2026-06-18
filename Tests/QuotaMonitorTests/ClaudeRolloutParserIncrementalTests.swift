@@ -156,7 +156,7 @@ struct ClaudeRolloutParserIncrementalTests {
 
         let row = try #require(try await db.pool.read { conn in
             try Row.fetchOne(conn, sql: """
-                SELECT title, COUNT(usage_events.id) AS events
+                SELECT title, last_model_id, COUNT(usage_events.id) AS events
                 FROM sessions
                 LEFT JOIN usage_events USING (session_id)
                 WHERE sessions.session_id = ?
@@ -164,6 +164,7 @@ struct ClaudeRolloutParserIncrementalTests {
                 """, arguments: [sid])
         })
         #expect(row["title"] as String? == "Review PR #60 title split")
+        #expect(row["last_model_id"] as String? == "claude-opus-4-7")
         #expect(row["events"] as Int == 1)
     }
 
