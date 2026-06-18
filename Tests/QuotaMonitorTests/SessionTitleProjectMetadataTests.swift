@@ -164,14 +164,14 @@ struct SessionTitleProjectMetadataTests {
         #expect(metadata["s1"]?.title == "梳理项目现状")
     }
 
-    @Test("Codex metadata store prefers threads sqlite title and cwd")
-    func codexMetadataPrefersStateDatabase() throws {
+    @Test("Codex metadata store combines session_index title with state cwd")
+    func codexMetadataCombinesSessionIndexTitleWithStateCwd() throws {
         let codexHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
         try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
         try """
-        {"id":"s1","thread_name":"older title"}
+        {"id":"s1","thread_name":"检查 git worktree 布局"}
         """.write(
             to: codexHome.appendingPathComponent("session_index.jsonl"),
             atomically: true,
@@ -188,14 +188,54 @@ struct SessionTitleProjectMetadataTests {
                 """)
             try conn.execute(sql: """
                 INSERT INTO threads (id, title, cwd)
-                VALUES ('s1', '真实会话标题', '/Volumes/SamsungDisk/Code/quota-monitor')
+                VALUES (
+                    's1',
+                    '/Volumes/SamsungDisk/Code 你看一下这个文件夹里是不是有很多 git worktree？',
+                    '/Volumes/SamsungDisk/Code/quota-monitor'
+                )
                 """)
         }
 
         let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
-        #expect(metadata["s1"]?.title == "真实会话标题")
+        #expect(metadata["s1"]?.title == "检查 git worktree 布局")
         #expect(metadata["s1"]?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
         #expect(metadata["s1"]?.projectName == "quota-monitor")
+    }
+
+    @Test("Codex metadata store reads root state database path")
+    func codexMetadataReadsRootStateDatabasePath() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try """
+        {"id":"s1","thread_name":"更新 main 并检查未合并 PR"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let db = try DatabaseQueue(path: codexHome.appendingPathComponent("state_5.sqlite").path)
+        try db.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    cwd TEXT NOT NULL
+                )
+                """)
+            try conn.execute(
+                sql: "INSERT INTO threads (id, title, cwd) VALUES (?, ?, ?)",
+                arguments: [
+                    "s1",
+                    "更新 main 并检查未合并 PR 的第一轮很长 prompt",
+                    "/Volumes/SamsungDisk/Code/xianyu-seller-agent"
+                ])
+        }
+
+        let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == "更新 main 并检查未合并 PR")
+        #expect(metadata["s1"]?.cwd == "/Volumes/SamsungDisk/Code/xianyu-seller-agent")
+        #expect(metadata["s1"]?.projectName == "xianyu-seller-agent")
     }
 
     @Test("Codex metadata store reads locked WAL state database titles")
@@ -212,7 +252,7 @@ struct SessionTitleProjectMetadataTests {
         let metadata = try withExclusiveSQLiteLock(at: stateDatabaseURL(codexHome: codexHome)) {
             try CodexSessionMetadataStore.loadStateDatabase(codexHome: codexHome)
         }
-        #expect(metadata["s1"]?.title == "梳理一下现在导入数据的流程是什么样的")
+        #expect(metadata["s1"]?.title == nil)
         #expect(metadata["s1"]?.projectName == "emomo")
     }
 
@@ -232,7 +272,7 @@ struct SessionTitleProjectMetadataTests {
         try? FileManager.default.removeItem(atPath: "\(sqlite.path)-shm")
 
         let metadata = try CodexSessionMetadataStore.loadStateDatabase(codexHome: codexHome)
-        #expect(metadata["s1"]?.title == "梳理一下现在导入数据的流程是什么样的")
+        #expect(metadata["s1"]?.title == nil)
         #expect(metadata["s1"]?.projectName == "emomo")
     }
 
@@ -405,8 +445,8 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
 
-    @Test("Codex scan backfills late state database titles without reparsing")
-    func codexScanBackfillsLateStateDatabaseTitle() async throws {
+    @Test("Codex scan backfills late session_index titles without reparsing")
+    func codexScanBackfillsLateSessionIndexTitle() async throws {
         let db = try makeDatabase()
         let codexHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
@@ -440,8 +480,14 @@ struct SessionTitleProjectMetadataTests {
         try writeCodexStateDatabase(
             codexHome: codexHome,
             id: "s1",
-            title: "梳理一下现在导入数据的流程是什么样的",
+            title: "first prompt should not become the session title",
             cwd: "/Volumes/SamsungDisk/Code/emomo")
+        try """
+        {"id":"s1","thread_name":"梳理一下现在导入数据的流程是什么样的","updated_at":"2026-04-26T03:51:00Z"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
 
         let secondReport = try await engine.performScan()
         #expect(secondReport.changedFiles == 0)

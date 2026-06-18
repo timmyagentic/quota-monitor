@@ -19,7 +19,12 @@ enum CodexSessionMetadataStore {
         var result = (try? loadSessionIndex(codexHome: codexHome)) ?? [:]
         do {
             let stateMetadata = try loadStateDatabase(codexHome: codexHome)
-            result.merge(stateMetadata) { _, state in state }
+            for (id, state) in stateMetadata {
+                let existing = result[id]
+                result[id] = CodexSessionMetadata(
+                    title: existing?.title ?? state.title,
+                    cwd: state.cwd ?? existing?.cwd)
+            }
         } catch {
             Log.importer.warning("failed to read Codex state metadata: \(error.localizedDescription, privacy: .public)")
             return result
@@ -28,17 +33,36 @@ enum CodexSessionMetadataStore {
     }
 
     static func loadStateDatabase(codexHome: URL) throws -> [String: CodexSessionMetadata] {
-        let sqlite = codexHome
-            .appendingPathComponent("sqlite", isDirectory: true)
-            .appendingPathComponent("state_5.sqlite")
-        guard FileManager.default.fileExists(atPath: sqlite.path) else { return [:] }
-
-        let rows = try loadStateRows(sqlite: sqlite)
         var result: [String: CodexSessionMetadata] = [:]
-        for row in rows {
-            result[row.id] = CodexSessionMetadata(title: row.title, cwd: row.cwd)
+        var firstError: Error?
+        var attempted = false
+
+        for sqlite in stateDatabaseCandidates(codexHome: codexHome) {
+            guard FileManager.default.fileExists(atPath: sqlite.path) else { continue }
+            attempted = true
+            do {
+                let rows = try loadStateRows(sqlite: sqlite)
+                for row in rows {
+                    result[row.id] = CodexSessionMetadata(title: nil, cwd: row.cwd)
+                }
+            } catch {
+                firstError = firstError ?? error
+            }
+        }
+
+        if result.isEmpty, attempted, let firstError {
+            throw firstError
         }
         return result
+    }
+
+    private static func stateDatabaseCandidates(codexHome: URL) -> [URL] {
+        [
+            codexHome
+                .appendingPathComponent("sqlite", isDirectory: true)
+                .appendingPathComponent("state_5.sqlite"),
+            codexHome.appendingPathComponent("state_5.sqlite")
+        ]
     }
 
     private struct StateRow {

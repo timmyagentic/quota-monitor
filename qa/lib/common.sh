@@ -204,6 +204,36 @@ qm_copy_sqlite_snapshot() {
 SQL
 }
 
+qm_copy_codex_metadata_snapshot() {
+    local source_codex_home="$1"
+    local target_codex_home="$2"
+
+    mkdir -p "$target_codex_home"
+
+    if [[ -f "${source_codex_home}/session_index.jsonl" ]]; then
+        cp "${source_codex_home}/session_index.jsonl" \
+            "${target_codex_home}/session_index.jsonl"
+    fi
+
+    local copied_root_state=false
+    if [[ -f "${source_codex_home}/state_5.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/state_5.sqlite" \
+            "${target_codex_home}/state_5.sqlite"
+        copied_root_state=true
+    fi
+
+    if [[ -f "${source_codex_home}/sqlite/state_5.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/sqlite/state_5.sqlite" \
+            "${target_codex_home}/sqlite/state_5.sqlite"
+    elif [[ "$copied_root_state" == "true" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/state_5.sqlite" \
+            "${target_codex_home}/sqlite/state_5.sqlite"
+    fi
+}
+
 qm_installed_app_bundle() {
     printf '%s\n' "${QM_QA_INSTALLED_APP_BUNDLE:-/Applications/QuotaMonitor.app}"
 }
