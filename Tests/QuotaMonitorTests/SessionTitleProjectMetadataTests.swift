@@ -553,4 +553,79 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["project_name"] as String? == "quota-monitor")
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
+
+    @Test("Codex scan does not repeatedly reread rollouts that cannot backfill cwd")
+    func codexScanDoesNotRepeatNoCwdReread() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sessionsDir = codexHome.appendingPathComponent(
+            "sessions/2026/06/18",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let rollout = sessionsDir.appendingPathComponent(
+            "rollout-2026-06-18T10-00-00-s-no-cwd.jsonl")
+        try """
+        {"timestamp":"2026-06-18T10:00:00.000Z","type":"session_meta","payload":{"id":"s-no-cwd"}}
+        {"timestamp":"2026-06-18T10:01:00.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-06-18T10:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+
+        let secondReport = try await engine.performScan()
+        #expect(secondReport.changedFiles == 0)
+        #expect(secondReport.importedSessions == 0)
+    }
+
+    @Test("Codex reread clears existing project fallback title")
+    func codexRereadClearsExistingProjectFallbackTitle() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sessionsDir = codexHome.appendingPathComponent(
+            "sessions/2026/06/18",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let rollout = sessionsDir.appendingPathComponent(
+            "rollout-2026-06-18T11-00-00-s-project-title.jsonl")
+        try """
+        {"timestamp":"2026-06-18T11:00:00.000Z","type":"session_meta","payload":{"id":"s-project-title","cwd":"/Volumes/SamsungDisk/Code/项目 空间"}}
+        {"timestamp":"2026-06-18T11:01:00.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-06-18T11:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE sessions
+                SET title = ?, project_name = NULL, cwd = NULL
+                WHERE session_id = ?
+                """, arguments: ["项目 空间", "s-project-title"])
+            try conn.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1
+                WHERE session_id = ?
+                """, arguments: ["s-project-title"])
+        }
+
+        _ = try await engine.performScan()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's-project-title'
+                """)
+        })
+        #expect(row["title"] as String? == nil)
+        #expect(row["project_name"] as String? == "项目 空间")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/项目 空间")
+    }
 }

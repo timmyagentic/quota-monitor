@@ -520,10 +520,9 @@ enum ClaudeRolloutParser {
     ///   - We only advance `endOffset` past a complete line (we stop at the
     ///     last `\n` we saw), so a mid-write tail never gets half-parsed and
     ///     then "completed" on the next pass.
-    ///   - When `fromOffset > 0` we don't rebuild session-header fields
-    ///     (sessionId/title/startedAt) — those landed in the DB on the
-    ///     first pass; we still bump `updatedAt`/`lastModelId` if the new
-    ///     slice contains them.
+    ///   - When `fromOffset > 0`, a metadata-only tail slice can still
+    ///     return a session so late `ai-title` / `cwd` lines are persisted
+    ///     instead of being skipped as empty work.
     ///   - One `message.id` can span several `assistant` lines: a zero-usage
     ///     stub (skipped), then one line per content block whose
     ///     `output_tokens` grows as the message streams. The LAST snapshot
@@ -661,7 +660,12 @@ enum ClaudeRolloutParser {
         if sessionId == nil {
             sessionId = fileURL.deletingPathExtension().lastPathComponent
         }
-        guard let sid = sessionId, !events.isEmpty else {
+        guard let sid = sessionId else {
+            return Output(session: nil, endOffset: consumed)
+        }
+
+        let hasMetadata = title != nil || cwd != nil || startedAt != nil || updatedAt != nil
+        guard !events.isEmpty || hasMetadata else {
             return Output(session: nil, endOffset: consumed)
         }
 

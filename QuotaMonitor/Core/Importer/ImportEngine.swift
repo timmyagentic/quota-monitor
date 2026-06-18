@@ -67,7 +67,10 @@ actor ImportEngine {
         }
 
         let changed = files.filter { file in
-            if metadataIncompleteCodexPaths.contains(file.path) { return true }
+            if metadataIncompleteCodexPaths.contains(file.path),
+               codexRolloutCanBackfillProjectMetadata(file) {
+                return true
+            }
             guard let prior = priorState[file.path] else { return true }
             return prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs
         }
@@ -212,6 +215,24 @@ actor ImportEngine {
         return trimmed
     }
 
+    private func codexRolloutCanBackfillProjectMetadata(_ file: SessionFile) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: file.url) else { return false }
+        defer { try? handle.close() }
+
+        do {
+            for line in try LineReader(handle: handle) {
+                guard let event = RolloutEvent.decode(line: line) else { continue }
+                if case .sessionMeta(let meta, _) = event,
+                   let cwd = Self.nonEmpty(meta.cwd) {
+                    return !(cwd as NSString).lastPathComponent.isEmpty
+                }
+            }
+        } catch {
+            return false
+        }
+        return false
+    }
+
     // MARK: - persist
 
     private struct PersistCounts { let events: Int; let samples: Int }
@@ -225,11 +246,22 @@ actor ImportEngine {
                 .filter(Column("session_id") == parsed.sessionId)
                 .fetchOne(db)
 
+            let existingTitle = Self.nonEmpty(existing?.title)
+            let parsedProjectName = Self.nonEmpty(parsed.projectName)
+            let preservedExistingTitle: String? = {
+                guard parsed.title == nil,
+                      let existingTitle,
+                      let parsedProjectName,
+                      existingTitle == parsedProjectName
+                else { return existingTitle }
+                return nil
+            }()
+
             let sessionRecord = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.rootSessionId,
                 parentSessionId: parsed.parentSessionId,
-                title: parsed.title ?? existing?.title,
+                title: parsed.title ?? preservedExistingTitle,
                 projectName: parsed.projectName ?? existing?.projectName,
                 cwd: parsed.cwd ?? existing?.cwd,
                 sourcePath: file.path,

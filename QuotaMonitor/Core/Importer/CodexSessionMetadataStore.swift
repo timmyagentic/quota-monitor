@@ -73,14 +73,24 @@ enum CodexSessionMetadataStore {
 
     private static func loadStateRows(sqlite: URL) throws -> [StateRow] {
         do {
-            return try readStateRows(sqlite: sqlite, immutable: false)
+            return try readStateRows(sqlite: sqlite)
         } catch {
-            guard shouldRetryAsImmutable(error) else { throw error }
-            return try readStateRows(sqlite: sqlite, immutable: true)
+            guard shouldRetryFromSnapshot(error) else { throw error }
+            return try withStateDatabaseSnapshot(sqlite: sqlite) { snapshot in
+                do {
+                    return try readStateRows(sqlite: snapshot)
+                } catch {
+                    let wal = URL(fileURLWithPath: snapshot.path + "-wal")
+                    guard !FileManager.default.fileExists(atPath: wal.path),
+                          shouldRetryFromSnapshot(error)
+                    else { throw error }
+                    return try readStateRows(sqlite: snapshot, immutable: true)
+                }
+            }
         }
     }
 
-    private static func readStateRows(sqlite: URL, immutable: Bool) throws -> [StateRow] {
+    private static func readStateRows(sqlite: URL, immutable: Bool = false) throws -> [StateRow] {
         let uri = stateDatabaseURI(sqlite: sqlite, immutable: immutable)
         var database: OpaquePointer?
         let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_URI | SQLITE_OPEN_NOMUTEX
@@ -130,13 +140,35 @@ enum CodexSessionMetadataStore {
         }
     }
 
-    private static func stateDatabaseURI(sqlite: URL, immutable: Bool) -> String {
+    private static func stateDatabaseURI(sqlite: URL, immutable: Bool = false) -> String {
         var uri = sqlite.absoluteString
         uri += uri.contains("?") ? "&mode=ro" : "?mode=ro"
         if immutable {
             uri += "&immutable=1"
         }
         return uri
+    }
+
+    private static func withStateDatabaseSnapshot<T>(
+        sqlite: URL,
+        perform body: (URL) throws -> T
+    ) throws -> T {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-state-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let snapshot = directory.appendingPathComponent(sqlite.lastPathComponent)
+        try FileManager.default.copyItem(at: sqlite, to: snapshot)
+
+        for suffix in ["-wal", "-shm"] {
+            let sourceSidecar = URL(fileURLWithPath: sqlite.path + suffix)
+            guard FileManager.default.fileExists(atPath: sourceSidecar.path) else { continue }
+            let targetSidecar = URL(fileURLWithPath: snapshot.path + suffix)
+            try FileManager.default.copyItem(at: sourceSidecar, to: targetSidecar)
+        }
+
+        return try body(snapshot)
     }
 
     private static func sqliteColumnText(_ statement: OpaquePointer?, _ index: Int32) -> String? {
@@ -146,7 +178,7 @@ enum CodexSessionMetadataStore {
         return String(cString: text)
     }
 
-    private static func shouldRetryAsImmutable(_ error: Error) -> Bool {
+    private static func shouldRetryFromSnapshot(_ error: Error) -> Bool {
         let error = error as NSError
         guard error.domain == sqliteErrorDomain else { return false }
         return error.code == Int(SQLITE_BUSY)

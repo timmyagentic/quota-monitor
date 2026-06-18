@@ -133,6 +133,40 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect(pass2.session?.events.map { $0.messageId } == ["m3", "m4"])
     }
 
+    @Test("Claude import persists metadata-only ai-title tails")
+    func metadataOnlyAiTitleTailUpdatesSessionTitle() async throws {
+        let db = try makeDatabase()
+        let (root, project) = try makeProjectRoot()
+
+        let sid = "title-tail"
+        let main = project.appendingPathComponent("\(sid).jsonl")
+        try (assistantLine(sid: sid, msgId: "m1") + "\n")
+            .write(to: main, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        _ = try await engine.performScan()
+
+        try append(main, """
+        {"type":"ai-title","sessionId":"\(sid)","timestamp":"2026-05-13T10:01:00.000Z","aiTitle":"Review PR #60 title split"}
+        """ + "\n")
+
+        let report = try await engine.performScan()
+        #expect(report.changedFiles == 1)
+        #expect(report.importedEvents == 0)
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, COUNT(usage_events.id) AS events
+                FROM sessions
+                LEFT JOIN usage_events USING (session_id)
+                WHERE sessions.session_id = ?
+                GROUP BY sessions.session_id
+                """, arguments: [sid])
+        })
+        #expect(row["title"] as String? == "Review PR #60 title split")
+        #expect(row["events"] as Int == 1)
+    }
+
     // MARK: - 3. message ids surface so SQL dedup can do cross-pass dedup
 
     @Test("messageId is propagated for SQL-side dedup")
