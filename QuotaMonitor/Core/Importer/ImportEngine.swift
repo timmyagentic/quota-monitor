@@ -37,7 +37,6 @@ actor ImportEngine {
         try await database.pool.write { db in
             try PricingService.seedCatalog(in: db)
         }
-        try await clearProjectFallbackTitles()
 
         let files = SessionScanner.scan(codexHome: codexHome)
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
@@ -187,10 +186,7 @@ actor ImportEngine {
                 let currentCwd = Self.nonEmpty(row["cwd"] as String?)
                 let nextCwd = currentCwd ?? metadata.cwd
                 let nextProjectName = currentProjectName ?? metadata.projectName
-                let titleLooksLikeProjectFallback =
-                    currentTitle != nil
-                    && (currentTitle == currentProjectName || currentTitle == metadata.projectName)
-                let nextTitle = metadata.title ?? (titleLooksLikeProjectFallback ? nil : currentTitle)
+                let nextTitle = metadata.title ?? currentTitle
 
                 guard nextTitle != currentTitle
                     || nextProjectName != currentProjectName
@@ -209,12 +205,6 @@ actor ImportEngine {
                         sessionId
                     ])
             }
-        }
-    }
-
-    private func clearProjectFallbackTitles() async throws {
-        try await database.pool.write { db in
-            try SessionMetadataMigration.clearProjectFallbackTitles(in: db)
         }
     }
 
@@ -256,22 +246,11 @@ actor ImportEngine {
                 .filter(Column("session_id") == parsed.sessionId)
                 .fetchOne(db)
 
-            let existingTitle = Self.nonEmpty(existing?.title)
-            let parsedProjectName = Self.nonEmpty(parsed.projectName)
-            let preservedExistingTitle: String? = {
-                guard parsed.title == nil,
-                      let existingTitle,
-                      let parsedProjectName,
-                      existingTitle == parsedProjectName
-                else { return existingTitle }
-                return nil
-            }()
-
             let sessionRecord = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.rootSessionId,
                 parentSessionId: parsed.parentSessionId,
-                title: parsed.title ?? preservedExistingTitle,
+                title: parsed.title ?? existing?.title,
                 projectName: parsed.projectName ?? existing?.projectName,
                 cwd: parsed.cwd ?? existing?.cwd,
                 sourcePath: file.path,

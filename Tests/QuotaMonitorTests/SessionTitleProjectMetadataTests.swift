@@ -413,6 +413,41 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
 
+    @Test("Claude scan preserves real title matching project when file is unchanged")
+    func claudeScanPreservesAmbiguousTitleMatchingProject() async throws {
+        let db = try makeDatabase()
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-claude-root-\(UUID().uuidString)", isDirectory: true)
+        let projectDir = root.appendingPathComponent(
+            "-Volumes-SamsungDisk-Code-quota-monitor",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        let rollout = projectDir.appendingPathComponent("c-project-title.jsonl")
+        try """
+        {"type":"ai-title","aiTitle":"quota-monitor","sessionId":"c-project-title"}
+        {"type":"user","sessionId":"c-project-title","timestamp":"2026-06-15T10:00:00.000Z","cwd":"/Volumes/SamsungDisk/Code/quota-monitor","message":{"role":"user","content":"review this PR"}}
+        {"type":"assistant","sessionId":"c-project-title","timestamp":"2026-06-15T10:01:00.000Z","message":{"id":"m1","model":"claude-opus-4-8","usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":5}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        _ = try await engine.performScan()
+
+        let report = try await engine.performScan()
+        #expect(report.changedFiles == 0)
+        #expect(report.importedSessions == 0)
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 'c-project-title'
+                """)
+        })
+        #expect(row["title"] as String? == "quota-monitor")
+        #expect(row["project_name"] as String? == "quota-monitor")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
+
     @Test("Session search matches title and project metadata separately")
     func sessionSearchMatchesTitleAndProject() throws {
         let db = try makeDatabase()
@@ -633,8 +668,8 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/xianyu-seller-agent")
     }
 
-    @Test("Codex scan clears dirty v11 project fallback titles without reparsing")
-    func codexScanClearsDirtyV11ProjectFallbackTitleWithoutReparsing() async throws {
+    @Test("Codex scan preserves ambiguous project-matching title without metadata")
+    func codexScanPreservesAmbiguousProjectMatchingTitleWithoutMetadata() async throws {
         let db = try makeDatabase()
         let codexHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
@@ -667,7 +702,7 @@ struct SessionTitleProjectMetadataTests {
                 WHERE session_id = 's-dirty'
                 """)
         })
-        #expect(row["title"] as String? == nil)
+        #expect(row["title"] as String? == "quota-monitor")
         #expect(row["project_name"] as String? == "quota-monitor")
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
@@ -747,8 +782,8 @@ struct SessionTitleProjectMetadataTests {
         #expect(secondReport.importedSessions == 0)
     }
 
-    @Test("Codex reread clears existing project fallback title")
-    func codexRereadClearsExistingProjectFallbackTitle() async throws {
+    @Test("Codex reread preserves ambiguous project-matching title")
+    func codexRereadPreservesAmbiguousProjectMatchingTitle() async throws {
         let db = try makeDatabase()
         let codexHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
@@ -791,7 +826,7 @@ struct SessionTitleProjectMetadataTests {
                 WHERE session_id = 's-project-title'
                 """)
         })
-        #expect(row["title"] as String? == nil)
+        #expect(row["title"] as String? == "项目 空间")
         #expect(row["project_name"] as String? == "项目 空间")
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/项目 空间")
     }

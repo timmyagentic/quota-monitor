@@ -14,18 +14,6 @@ enum SessionMetadataMigration {
             """)
     }
 
-    static func clearProjectFallbackTitles(in db: Database) throws {
-        try db.execute(sql: """
-            UPDATE sessions
-            SET title = NULL
-            WHERE title IS NOT NULL
-              AND trim(title) != ''
-              AND project_name IS NOT NULL
-              AND trim(project_name) != ''
-              AND trim(title) = trim(project_name)
-            """)
-    }
-
     static func forceHeaderReread(in db: Database) throws {
         try db.execute(sql: """
             UPDATE import_state
