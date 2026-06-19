@@ -24,12 +24,27 @@ struct SessionFile: Equatable {
 
 enum SessionScanner {
 
-    /// Resolve $CODEX_HOME (env var → ~/.codex).
-    static func defaultCodexHome() -> URL {
-        if let qaCodexHome = LocalQAEnvironment.codexHomeDirectory() {
+    /// Resolve the Codex history root. Developer ID builds keep the legacy
+    /// `$CODEX_HOME` → `~/.codex` fallback; App Store builds must use a
+    /// directory the user selected and the app persisted as a security-scoped
+    /// bookmark.
+    static func defaultCodexHome(
+        distribution: DistributionChannel = .current,
+        authorizations: HistoryRootAuthorizationStore = .shared,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> URL? {
+        if let qaCodexHome = LocalQAEnvironment.codexHomeDirectory(
+            environment: environment,
+            arguments: arguments) {
             return qaCodexHome
         }
-        if let override = ProcessInfo.processInfo.environment["CODEX_HOME"],
+
+        if distribution == .appStore {
+            return authorizations.resolvedURL(for: .codexHome)
+        }
+
+        if let override = environment["CODEX_HOME"],
            !override.isEmpty {
             return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
         }
@@ -42,7 +57,7 @@ enum SessionScanner {
     /// archived_sessions/ when the user uses the CLI's archive command;
     /// without this branch their data silently drops out of the dashboard
     /// (verified locally: 14 archived files were invisible before this fix).
-    static func scan(codexHome: URL = defaultCodexHome()) -> [SessionFile] {
+    static func scan(codexHome: URL) -> [SessionFile] {
         var results: [SessionFile] = []
         for (folder, bucket) in [("sessions", "active"), ("archived_sessions", "archived")] {
             let root = codexHome.appendingPathComponent(folder, isDirectory: true)

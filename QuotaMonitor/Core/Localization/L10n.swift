@@ -829,6 +829,59 @@ enum L10n {
         t(en: "Export failed: \(err)", zh: "导出失败：\(err)")
     }
 
+    // MARK: - settings · history folders
+
+    static var historyFoldersSection: String {
+        t(en: "History folders", zh: "历史目录")
+    }
+    static var historyFoldersHelp: String {
+        t(en: "App Store builds read local history only from folders you select. \(Branding.appCodeName) stores read-only security-scoped bookmarks and imports into its app container database.",
+          zh: "App Store 版本只会读取你显式选择的本地历史目录。\(Branding.appCodeName) 会保存只读 security-scoped bookmark，并导入到应用容器内的数据库。")
+    }
+    static var historyFoldersRequiredForAppStore: String {
+        t(en: "App Store builds need one-time read-only access to each selected tool's history folder before setup can finish.",
+          zh: "App Store 版本需要你为每个已选工具授权一次只读历史目录，才能完成设置。")
+    }
+    static var historyFoldersNotAuthorized: String {
+        t(en: "Choose the local history folders in Settings before importing.",
+          zh: "请先在设置中选择本地历史目录，然后再导入。")
+    }
+    static var historyRootCodexHome: String {
+        t(en: "Codex history folder", zh: "Codex 历史目录")
+    }
+    static var historyRootClaudeProjects: String {
+        t(en: "Claude Code history folder", zh: "Claude Code 历史目录")
+    }
+    static var historyRootClaudeConfigProjects: String {
+        t(en: "Alternate Claude history folder", zh: "Claude 备用历史目录")
+    }
+    static var historyRootCodexHelp: String {
+        t(en: "Choose the .codex folder that contains sessions and archived_sessions.",
+          zh: "请选择包含 sessions 与 archived_sessions 的 .codex 文件夹。")
+    }
+    static var historyRootClaudeProjectsHelp: String {
+        t(en: "Choose the .claude/projects folder that contains Claude Code JSONL history.",
+          zh: "请选择包含 Claude Code JSONL 历史的 .claude/projects 文件夹。")
+    }
+    static var historyRootClaudeConfigHelp: String {
+        t(en: "Optional: choose .config/claude/projects if Claude stores history there on this Mac.",
+          zh: "可选：如果这台 Mac 的 Claude 历史保存在 .config/claude/projects，请选择它。")
+    }
+    static var historyFolderNotSelected: String {
+        t(en: "Not selected", zh: "未选择")
+    }
+    static var historyFolderRequired: String {
+        t(en: "Required for App Store history import.",
+          zh: "App Store 历史导入需要此授权。")
+    }
+    static var chooseFolder: String { t(en: "Choose…", zh: "选择…") }
+    static var changeFolder: String { t(en: "Change…", zh: "更改…") }
+    static var clearFolder: String { t(en: "Clear", zh: "清除") }
+    static func historyFolderAuthorizationFailed(_ err: String) -> String {
+        t(en: "Folder authorization failed: \(err)",
+          zh: "目录授权失败：\(err)")
+    }
+
     // MARK: - settings · tracked tools
 
     static var sectionTrackedTools: String {

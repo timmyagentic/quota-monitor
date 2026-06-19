@@ -125,6 +125,29 @@ struct AdvancedSettingsTab: View {
             }
             }
 
+            if DistributionChannel.current == .appStore {
+                Section(L10n.historyFoldersSection) {
+                    Text(L10n.historyFoldersHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if showCodex {
+                        HistoryRootPickerRow(kind: .codexHome) {
+                            env.reloadHistoryImportRoots()
+                        }
+                    }
+                    if showClaude {
+                        HistoryRootPickerRow(kind: .claudeProjects) {
+                            env.reloadHistoryImportRoots()
+                        }
+                        HistoryRootPickerRow(kind: .claudeConfigProjects,
+                                             required: false) {
+                            env.reloadHistoryImportRoots()
+                        }
+                    }
+                }
+            }
+
             Section(L10n.sectionDatabase) {
                 LabeledContent(L10n.location) {
                     Text(DatabaseManager.defaultURL().path)

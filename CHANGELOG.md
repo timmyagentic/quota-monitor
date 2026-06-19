@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 - Mac App Store preparation now has a local readiness check before any account setup
+- App Store builds can ask for local Codex and Claude history folders before importing
 - Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
 
 ### Added
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
+- **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
 
 ### Changed
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
