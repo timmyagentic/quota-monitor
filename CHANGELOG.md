@@ -31,14 +31,18 @@ window copy.
 ## [Unreleased]
 
 #### Summary
-- Claude credential disk caching now starts enabled unless you already turned it off
-- History and Sessions now show real session titles instead of repeating project folder names
+- Mac App Store preparation now has a local readiness check before any account setup
+- Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
+- History and Sessions now show real session titles, falling back to the project name only when no title exists
 
-### Fixed
-- **Session rows show real titles.** History, Sessions, and Session Detail now keep project folder names as secondary metadata, so rows no longer present repeated project names as if they were session titles.
+### Added
+- **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
 
 ### Changed
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
+
+### Fixed
+- **Session rows show clearer titles.** History, Sessions, and Session Detail now keep project folder names as secondary metadata, use real session titles when available, and fall back to the project name instead of “Untitled session” when no title exists.
 
 ## [0.2.33] — 2026-06-15
 

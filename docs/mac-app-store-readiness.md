@@ -1,0 +1,102 @@
+# Mac App Store Readiness Spike
+
+This spike adds a repeatable local smoke path for a Mac App Store-shaped
+QuotaMonitor build without changing the existing Developer ID + Sparkle release
+pipeline.
+
+## Local Smoke Command
+
+```sh
+QM_DISTRIBUTION=app-store CONFIG=release ./build.sh
+codesign -dvvv --entitlements :- .build/QuotaMonitor.app
+plutil -p .build/QuotaMonitor.app/Contents/Info.plist
+```
+
+Expected local smoke evidence:
+
+- `QMDistributionChannel` is `app-store` in the assembled `Info.plist`.
+- The signed app entitlements include `com.apple.security.app-sandbox = true`.
+- `com.apple.security.network.client = true` remains present for HTTPS quota
+  and pricing requests.
+- The Developer ID-only `allow-dyld-environment-variables` entitlement is not
+  present.
+- `SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`,
+  `SUScheduledCheckInterval`, and `SUEnableInstallerLauncherService` are removed
+  from the assembled app-store `Info.plist`.
+- `UpdaterController` does not start Sparkle when `QMDistributionChannel` is
+  `app-store`, and Advanced settings hides the Sparkle update controls.
+
+This command is a local smoke build only. It has not uploaded anything to App
+Store Connect, has not used Transporter or `altool`, and has not created or
+modified Apple certificates, provisioning profiles, App Store Connect app
+records, GitHub secrets, or production release automation.
+
+## Developer ID Guardrail
+
+The existing direct-distribution path remains the default:
+
+```sh
+CONFIG=debug ./build.sh
+```
+
+Expected evidence:
+
+- `QMDistributionChannel` is `developer-id`.
+- Sparkle update keys remain present in the assembled direct-distribution
+  `Info.plist`.
+- The Sparkle framework is still embedded for the direct-distribution app.
+
+## Apple Requirements Checked
+
+- App Review Guideline 2.5.2 says apps should be self-contained, should not read
+  or write outside the designated container area, and should not download,
+  install, or execute code that changes app features.
+- Apple's Mac-specific App Review guidance says Mac apps must use the Mac App
+  Store for updates; other update mechanisms are not allowed.
+- App Store Connect upload requires an explicit App ID and a Mac App Store
+  Connect provisioning profile before a real submission build can be uploaded.
+- App Store Connect can accept builds through Xcode, Transporter, or `altool`,
+  but this spike deliberately stops before any upload or account mutation.
+
+## Current Feasibility Result
+
+The repository can produce a local Mac App Store-shaped `.app` smoke artifact:
+it is sandbox-signed and carries an app-store distribution marker, while the
+existing Developer ID source plist and release scripts remain unchanged.
+
+This is not yet a production-ready App Store submission. It proves a build-time
+separation point and exposes the remaining product and review risks.
+
+## Remaining Review Risks
+
+1. Local history access still assumes direct reads from `~/.codex`,
+   `~/.claude`, and `~/.config/claude`. A real Mac App Store build should move
+   this to user-selected folders with security-scoped bookmarks, or remove local
+   history scanning from the App Store variant.
+2. Live Codex quota checks currently spawn a user-installed `codex` binary.
+   That is high-risk for App Review and sandbox behavior; the App Store variant
+   should either disable that path or replace it with an App Store-safe API
+   flow.
+3. Claude credential refresh currently shells through `claude` and can read a
+   non-interactive Keychain item. That should be reviewed for App Store policy
+   and likely disabled unless a user-facing, reviewable credential flow is
+   designed.
+4. Sparkle is runtime-disabled and its update plist keys are removed from the
+   app-store artifact, but the SwiftPM target still links and embeds Sparkle in
+   this spike because the existing app code depends on update-window types. A
+   submission-hardening pass should compile Sparkle out of the App Store target
+   entirely.
+5. A real App Store Connect upload still needs App Store metadata, a privacy
+   policy URL, a bundle/app record decision, an App Store provisioning profile,
+   and review notes that explain the data sources and sandbox permissions.
+
+## Recommended Next Steps
+
+1. Add a user-facing folder authorization flow for Codex and Claude history
+   roots, backed by security-scoped bookmarks.
+2. Add a compile-time App Store target or package variant that removes Sparkle
+   from target dependencies instead of only disabling it at runtime.
+3. Decide whether the App Store product should support live Codex/Claude quota
+   checks, or ship a history-only App Store variant.
+4. Prepare privacy-policy copy and App Review notes before creating the App
+   Store Connect record.

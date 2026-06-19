@@ -39,33 +39,35 @@ struct AdvancedSettingsTab: View {
         let showCodex = settings.enabledProviders.contains("codex")
         let showClaude = settings.enabledProviders.contains("claude")
         Form {
-            // Updates lives at the top: it's the single most useful
-            // control for end users (vs. provider polling cadence
-            // / database paths / pricing which are power-user knobs).
-            Section(L10n.sectionUpdates) {
-                // Automatic-check toggle. Two-way bound through the
-                // wrapper so flipping it both updates Sparkle's
-                // schedule and persists to UserDefaults under
-                // SUEnableAutomaticChecks. The KVO publisher then
-                // mirrors the new value back into `updater.auto…` so
-                // the toggle reflects external changes too (e.g. a
-                // user running `defaults write` manually).
-                Toggle(L10n.updatesAutoCheckLabel,
-                       isOn: Binding(
-                        get: { updater.automaticallyChecksForUpdates },
-                        set: { updater.setAutomaticallyChecks($0) }))
-                Text(L10n.updatesAutoCheckHelp)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 8) {
-                    Button(L10n.updatesCheckNow) { updater.checkNow() }
-                        .disabled(!updater.canCheckForUpdates)
-                    Spacer()
-                    LabeledContent(L10n.updatesLastCheckedLabel) {
-                        Text(lastCheckedLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            if DistributionChannel.current != .appStore {
+                // Updates lives at the top: it's the single most useful
+                // control for end users (vs. provider polling cadence
+                // / database paths / pricing which are power-user knobs).
+                Section(L10n.sectionUpdates) {
+                    // Automatic-check toggle. Two-way bound through the
+                    // wrapper so flipping it both updates Sparkle's
+                    // schedule and persists to UserDefaults under
+                    // SUEnableAutomaticChecks. The KVO publisher then
+                    // mirrors the new value back into `updater.auto…` so
+                    // the toggle reflects external changes too (e.g. a
+                    // user running `defaults write` manually).
+                    Toggle(L10n.updatesAutoCheckLabel,
+                           isOn: Binding(
+                            get: { updater.automaticallyChecksForUpdates },
+                            set: { updater.setAutomaticallyChecks($0) }))
+                    Text(L10n.updatesAutoCheckHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        Button(L10n.updatesCheckNow) { updater.checkNow() }
+                            .disabled(!updater.canCheckForUpdates)
+                        Spacer()
+                        LabeledContent(L10n.updatesLastCheckedLabel) {
+                            Text(lastCheckedLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
