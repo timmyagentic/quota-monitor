@@ -85,7 +85,7 @@ class ValidateReleaseNotesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("CHANGELOG.md: 1.2.3 is missing #### Summary", result.stderr)
 
-    def test_rejects_overlong_summary_list(self):
+    def test_accepts_long_summary_list(self):
         result = self.run_validator(
             """
             # Changelog
@@ -109,6 +109,38 @@ class ValidateReleaseNotesTests(unittest.TestCase):
 
             #### Summary
             - 一
+            - 二
+            - 三
+            - 四
+            - 五
+
+            ### 变更
+            - **发布说明。** 更新文案现在更短。
+            """,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("release notes ok", result.stdout)
+
+    def test_rejects_empty_summary(self):
+        result = self.run_validator(
+            """
+            # Changelog
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+
+            ### Changed
+            - **Release notes.** The update copy is now shorter.
+            """,
+            """
+            # 更新日志
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - 更新说明现在更清晰
 
             ### 变更
             - **发布说明。** 更新文案现在更短。
@@ -116,7 +148,7 @@ class ValidateReleaseNotesTests(unittest.TestCase):
         )
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Summary must contain 1-4 bullets", result.stderr)
+        self.assertIn("Summary must contain at least one bullet", result.stderr)
 
     def test_rejects_internal_jargon_in_summary(self):
         result = self.run_validator(

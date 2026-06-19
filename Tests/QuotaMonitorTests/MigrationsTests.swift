@@ -6,6 +6,32 @@ import Testing
 @Suite("Database migrations")
 struct MigrationsTests {
 
+    private func temporaryDatabaseURL(prefix: String = "qm-migration") throws -> URL {
+        let dir = URL(
+            fileURLWithPath: NSTemporaryDirectory(),
+            isDirectory: true
+        ).appendingPathComponent("\(prefix)-\(UUID().uuidString)",
+                                 isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("quotamonitor.sqlite")
+    }
+
+    @Test("usage_events has a timestamp index for all-provider History scans")
+    func usageEventsTimestampIndexExists() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-usage-events-index")
+        let manager = try DatabaseManager(url: url)
+
+        let indexes = try manager.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_index_list('usage_events')
+                """)
+        }
+
+        #expect(indexes.contains("idx_usage_events_timestamp"))
+    }
+
     @Test(
         "Claude re-read migrations reset import_state so files are rebuilt once",
         arguments: [
@@ -13,14 +39,7 @@ struct MigrationsTests {
             "v8-claude-last-snapshot-reread",
         ])
     func claudeRereadMigrationResetsImportState(migrationId: String) throws {
-        let dir = URL(
-            fileURLWithPath: NSTemporaryDirectory(),
-            isDirectory: true
-        ).appendingPathComponent("qm-migration-\(UUID().uuidString)",
-                                 isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent("quotamonitor.sqlite")
+        let url = try temporaryDatabaseURL()
 
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
@@ -114,5 +133,21 @@ struct MigrationsTests {
         #expect((codex["file_size"] as Int64) == 500)
         #expect((codex["file_mtime_ms"] as Int64) == 600)
         #expect((codex["byte_offset"] as Int64) == 500)
+    }
+
+    @Test("rate_limit_samples retention indexes are created")
+    func rateLimitSampleRetentionIndexesCreated() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-retention-index")
+        let manager = try DatabaseManager(url: url)
+
+        let indexNames = try manager.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_index_list('rate_limit_samples')
+                """)
+        }
+
+        #expect(indexNames.contains("idx_rate_limit_samples_retention_cutoff"))
+        #expect(indexNames.contains("idx_rate_limit_samples_retention_latest"))
     }
 }

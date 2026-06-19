@@ -241,5 +241,39 @@ enum Migrations {
                    OR source_path LIKE '%/.config/claude/projects/%'
                 """)
         }
+
+        // v9: indexes for bounded live rate-limit sample retention.
+        //
+        // The prune runs inside the Codex/Claude poller write transaction, so
+        // it must avoid scanning jsonl rows that are intentionally exempt from
+        // retention and may be large on long-lived installs.
+        migrator.registerMigration("v9-rate-limit-samples-retention-indexes") { db in
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_rate_limit_samples_retention_cutoff
+                ON rate_limit_samples(source_kind, sample_timestamp)
+                """)
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_rate_limit_samples_retention_latest
+                ON rate_limit_samples(
+                    source_kind,
+                    bucket,
+                    COALESCE(limit_name, ''),
+                    sample_timestamp DESC,
+                    id DESC
+                )
+                """)
+        }
+
+        // v10: History fetchDays now scans usage_events by timestamp descending
+        // and stops after collecting the requested number of local days. The
+        // existing (provider, timestamp) index covers provider-filtered scans;
+        // all-provider History needs a timestamp-only index to avoid sorting
+        // the whole event table before the cursor can stop.
+        migrator.registerMigration("v10-usage-events-timestamp-index") { db in
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_usage_events_timestamp
+                ON usage_events(timestamp)
+                """)
+        }
     }
 }

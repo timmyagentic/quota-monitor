@@ -39,19 +39,21 @@ final class SettingsStore {
     var keychainPolicy: KeychainPolicy {
         didSet { defaults.set(keychainPolicy.rawValue, forKey: Keys.keychainPolicy) }
     }
-    /// **OFF by default — security policy.** When ON, after a successful
-    /// Keychain read of the Claude OAuth credentials we mirror the same
-    /// JSON blob to `~/.claude/.credentials.json`. This stops the
-    /// recurring "QuotaMonitor wants to use…" Keychain prompt that
-    /// appears after every ad-hoc rebuild (the macOS ACL is bound to
-    /// the binary's signature, which changes with each `./build.sh`).
+    /// **ON by default when no preference is saved.** After a
+    /// successful Keychain read of the Claude OAuth credentials we
+    /// mirror the same JSON blob to `~/.claude/.credentials.json`.
+    /// This stops the recurring "QuotaMonitor wants to use…"
+    /// Keychain prompt that appears after every ad-hoc rebuild (the
+    /// macOS ACL is bound to the binary's signature, which changes
+    /// with each `./build.sh`).
     ///
-    /// **Why opt-in.** Moving credentials from a more-protected store
-    /// (Keychain, per-app ACL'd) to a less-protected one (a plain
-    /// 0600 file readable by any process running as your user) is a
-    /// security downgrade. We will not flip this for the user
-    /// silently — they have to enable it in Settings → Advanced.
-    /// Help text on the toggle spells out the trade-off.
+    /// **Trade-off.** Moving credentials from a more-protected store
+    /// (Keychain, per-app ACL'd) to a less-protected one (a plain 0600
+    /// file readable by any process running as your user) is a security
+    /// downgrade. The Settings toggle remains available for users who
+    /// prefer Keychain-only storage, and its help text spells out the
+    /// trade-off. The first launch that sees this preference missing
+    /// persists the default, so later releases preserve any user choice.
     ///
     /// File written 0600 + atomic replace so we never expose the
     /// token mid-write or leave a half-written file behind.
@@ -207,11 +209,10 @@ final class SettingsStore {
     /// Set once the user has completed the provider step of onboarding.
     /// Existing-installation upgrades infer `true` in `init` (see the
     /// `looksLikeExistingUser` heuristic) EXCEPT when the stored
-    /// `lastOnboardedVersion` is older than `onboardingResetMinVersion`
-    /// — in that case we drag them back through the provider step so
-    /// they see any release-specific copy or new options. Language is
-    /// never reset (`app.language` is left untouched), only the
-    /// provider step is re-prompted.
+    /// `lastOnboardedVersion` is missing or stale. Configured users are
+    /// repaired in place instead of being dragged back through the
+    /// provider step, because that step starts from fresh-install
+    /// defaults and would overwrite their existing provider choices.
     private(set) var hasCompletedProviderOnboarding: Bool {
         didSet { defaults.set(hasCompletedProviderOnboarding,
                               forKey: Keys.providerOnboardingDone) }
@@ -225,12 +226,10 @@ final class SettingsStore {
     /// Tests inject an explicit value; production reads `Bundle.main`.
     private let appVersion: String?
 
-    /// Bump this when a release introduces an onboarding step (or
-    /// changes copy) you want existing users to see. On launch, any
-    /// user whose `lastOnboardedVersion` is missing or strictly less
-    /// than this string is dragged back through the provider step,
-    /// even if they previously completed onboarding. Language pick is
-    /// preserved.
+    /// Minimum version that introduced the provider/menu-bar onboarding
+    /// stamp. Existing configured users older than this are silently
+    /// repaired to the current app version; fresh or partial onboarding
+    /// users still need to finish setup.
     nonisolated static let onboardingResetMinVersion = "0.2.7"
 
     enum TokenUnitLanguage: String, CaseIterable, Sendable, Identifiable {
@@ -335,13 +334,19 @@ final class SettingsStore {
         self.defaults = defaults
         self.appVersion = appVersion
         let storedInterval = defaults.integer(forKey: Keys.pollInterval)
+        let storedProviders = defaults.array(forKey: Keys.enabledProviders) as? [String]
         self.pollIntervalSeconds = storedInterval > 0 ? storedInterval : 300
         self.keychainPolicy = (defaults.string(forKey: Keys.keychainPolicy)
             .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback
-        // Default false. We never default-on a security downgrade —
-        // see `mirrorClaudeKeychainToFile` doc comment.
-        self.mirrorClaudeKeychainToFile =
-            defaults.bool(forKey: Keys.mirrorClaudeKeychainToFile)
+        let storedMirrorClaudeKeychainToFile =
+            defaults.object(forKey: Keys.mirrorClaudeKeychainToFile) as? Bool
+        let resolvedMirrorClaudeKeychainToFile =
+            Self.resolvedMirrorClaudeKeychainToFile(defaults)
+        self.mirrorClaudeKeychainToFile = resolvedMirrorClaudeKeychainToFile
+        if storedMirrorClaudeKeychainToFile == nil {
+            defaults.set(resolvedMirrorClaudeKeychainToFile,
+                         forKey: Keys.mirrorClaudeKeychainToFile)
+        }
         // Default false. A missing key reads as false via
         // `defaults.bool(forKey:)`, which is exactly the resolved
         // default we want for both fresh installs and existing users
@@ -370,7 +375,6 @@ final class SettingsStore {
         // upgrading to this binary keeps tracking both. We sanitise to
         // drop unknown tokens (future renames / deletions) and refuse
         // an empty stored value (treat as "never set" → full default).
-        let storedProviders = defaults.array(forKey: Keys.enabledProviders) as? [String]
         let sanitised: Set<String> = storedProviders.map {
             Set($0).intersection(Self.knownProviders)
         } ?? []
@@ -428,16 +432,16 @@ final class SettingsStore {
         //     this UserDefaults. Fresh installs alone get `false` here
         //     and see the full onboarding.
         //
-        //  2. Version-gated reset. If `lastOnboardedVersion` is missing
-        //     or strictly less than `onboardingResetMinVersion`, force
-        //     the flag back to `false` regardless of (1). This is what
-        //     drags upgrading users back through the provider step
-        //     when a release ships changes worth re-confirming.
+        //  2. Version-gated repair. If `lastOnboardedVersion` is missing
+        //     or strictly less than `onboardingResetMinVersion`, keep
+        //     configured users past onboarding and stamp the current
+        //     app version. Re-opening onboarding for those users would
+        //     submit fresh-install defaults and overwrite their provider
+        //     / menu-bar choices.
         //
-        // Result is persisted so a partial-quit-mid-onboarding doesn't
-        // re-trigger the reset on every launch — the false sticks
-        // until the user finishes via `markProviderOnboardingDone()`,
-        // which also stamps `lastOnboardedVersion`.
+        // Result is persisted so a partial-quit-mid-onboarding still
+        // stays pending, while a configured user only pays the repair
+        // once.
         let storedDone = defaults.object(forKey: Keys.providerOnboardingDone) as? Bool
         let baseDone: Bool
         if let done = storedDone {
@@ -450,7 +454,19 @@ final class SettingsStore {
         }
         let lastOnboarded = defaults.string(forKey: Keys.lastOnboardedVersion)
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
-        let resolvedDone = baseDone && !resetGate
+        let hasExistingConfiguration =
+            storedDone == true
+            || storedProviders != nil
+            || storedInterval > 0
+        let resolvedDone: Bool
+        if resetGate && hasExistingConfiguration {
+            resolvedDone = true
+            if let appVersion {
+                defaults.set(appVersion, forKey: Keys.lastOnboardedVersion)
+            }
+        } else {
+            resolvedDone = baseDone && !resetGate
+        }
         self.hasCompletedProviderOnboarding = resolvedDone
         defaults.set(resolvedDone, forKey: Keys.providerOnboardingDone)
     }
@@ -580,7 +596,7 @@ final class SettingsStore {
                 ? d.integer(forKey: Keys.pollInterval) : 300),
             keychainPolicy: (d.string(forKey: Keys.keychainPolicy)
                 .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback,
-            mirrorClaudeKeychainToFile: d.bool(forKey: Keys.mirrorClaudeKeychainToFile),
+            mirrorClaudeKeychainToFile: resolvedMirrorClaudeKeychainToFile(d),
             enabledProviders: providers,
             codexFastModeBilling: d.bool(forKey: Keys.codexFastModeBilling),
             developerModeEnabled: d.bool(forKey: Keys.developerModeEnabled),
@@ -595,6 +611,16 @@ final class SettingsStore {
     nonisolated static var developerModeEnabledNonisolated: Bool {
         (LocalQAEnvironment.userDefaults() ?? .standard)
             .bool(forKey: Keys.developerModeEnabled)
+    }
+
+    private nonisolated static func resolvedMirrorClaudeKeychainToFile(
+        _ defaults: UserDefaults
+    ) -> Bool {
+        if let stored = defaults.object(
+            forKey: Keys.mirrorClaudeKeychainToFile) as? Bool {
+            return stored
+        }
+        return true
     }
 
     struct Snapshot: Sendable {

@@ -365,12 +365,11 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         guard snap.keychainPolicy != .never, !keychainBlocked else { return nil }
         switch Self.readKeychainTokenOutcomeViaSecurityTool(timeout: 2) {
         case .ok(_, let raw):
-            // Mirror to disk if the user has explicitly opted in. This
-            // turns the next-launch behaviour from "Keychain prompt"
-            // into "silent file read", because the file is read first
-            // and only falls through to Keychain when the file is
-            // missing/stale. Why opt-in: see
-            // `SettingsStore.mirrorClaudeKeychainToFile` doc.
+            // Mirror to disk when enabled. This turns the next-launch
+            // behaviour from "Keychain prompt" into "silent file read",
+            // because the file is read first and only falls through to
+            // Keychain when the file is missing/stale. For the security
+            // trade-off, see `SettingsStore.mirrorClaudeKeychainToFile`.
             if snap.mirrorClaudeKeychainToFile {
                 Self.writeStoredCredentialsFile(jsonData: raw)
             }
@@ -406,9 +405,10 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     }
 
     /// Mirror a Keychain-sourced credentials blob to
-    /// `~/.claude/.credentials.json`. Opt-in via
-    /// `SettingsStore.mirrorClaudeKeychainToFile` (default OFF) — see
-    /// the setting's doc for the security rationale.
+    /// `~/.claude/.credentials.json`. Controlled by
+    /// `SettingsStore.mirrorClaudeKeychainToFile` (default ON when the
+    /// preference is missing) — see the setting's doc for the security
+    /// trade-off.
     ///
     /// Implementation notes:
     ///   - Writes to a temporary sibling then `rename(2)`s into place

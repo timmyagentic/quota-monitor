@@ -11,7 +11,7 @@ Every merged PR should update `## [Unreleased]` before or with the merge.
 These entries become both the GitHub Release notes and the Sparkle update
 window copy.
 
-- Start each release section with `#### Summary`: 1-4 plain, user-readable
+- Start each release section with `#### Summary`: plain, user-readable
   bullets. Generated Sparkle update notes render these as rich visual cards.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
@@ -31,13 +31,28 @@ window copy.
 ## [Unreleased]
 
 #### Summary
-- New downloads open normally, while existing installs keep updating in place
-- Developer diagnostics now use clearer structured levels for easier troubleshooting
-- Log inspection docs now use the correct macOS error predicate
 - Mac App Store preparation now has a local readiness check before any account setup
+- Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
 
 ### Added
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
+
+### Changed
+- **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
+
+## [0.2.33] — 2026-06-15
+
+#### Summary
+- New downloads open normally, while existing installs keep updating in place
+- Developer diagnostics now use clearer structured levels for easier troubleshooting
+- Log inspection docs now use the correct macOS error predicate
+- The app icon now sits cleanly on dark Dock and Finder backgrounds
+- Today's usage and spend now appear right away across the dashboard instead of only showing up the next day
+- Long-running installs stay fast — usage history no longer piles up and slows things down over time
+- Near-midnight usage now lands on the correct local day and month across daylight-saving changes
+
+### Added
+- **Architecture review backlog.** Added `docs/architecture-review-2026-06-14.md` cataloguing known correctness, performance, concurrency, and maintainability issues to triage and fix incrementally.
 
 ### Changed
 - **Trusted release delivery.** Public releases now use Apple Developer ID distribution while keeping the same Sparkle update identity, so installed copies can keep using in-app updates.
@@ -45,6 +60,11 @@ window copy.
 
 ### Fixed
 - **Unified log error query.** The README now filters macOS unified logs with `logType == "error"` instead of the unsupported `log show --level error` flag.
+- **App icon transparency.** The committed app icon now preserves transparent rounded corners, preventing a white square from appearing behind the icon on dark backgrounds.
+- **Today's usage counts immediately.** Dashboard composition, burn-rate forecasts, and the usage and rate-limit charts now include events from earlier today instead of dropping them until the next day.
+- **Monthly totals include the first day in your time zone.** The monthly usage chart no longer drops first-of-month activity whose UTC instant lands in the previous month, so the earliest month's totals are complete in time zones ahead of UTC.
+- **Bounded rate-limit history.** Live Codex and Claude usage samples are now trimmed to a rolling 7-day window (always keeping the latest snapshot per window), so the local database no longer grows without limit and cold-start plus refresh stay fast on long-running installs.
+- **Daily, monthly, and History charts bucket by your local day across DST.** Usage near midnight now lands on the correct local day and month all year, instead of occasionally shifting into the neighbouring day when the event fell in the opposite daylight-saving half of the year.
 
 ## [0.2.32] — 2026-06-12
 
