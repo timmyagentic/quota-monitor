@@ -26,6 +26,27 @@ struct SessionTitleProjectMetadataTests {
         return url
     }
 
+    private func makeSessionRow(
+        title: String?,
+        projectName: String?
+    ) -> SessionRow {
+        SessionRow(
+            sessionId: UUID().uuidString,
+            title: title,
+            projectName: projectName,
+            cwd: projectName.map { "/Volumes/SamsungDisk/Code/\($0)" },
+            agentNickname: nil,
+            lastModelId: "gpt-5.5",
+            startedAt: nil,
+            updatedAt: nil,
+            totalValueUSD: 0,
+            totalTokens: 0,
+            eventCount: 0,
+            containsSubagents: false,
+            subagentCount: nil,
+            hasInferredModel: false)
+    }
+
     private func writeCodexStateDatabase(
         at sqlite: URL,
         id: String,
@@ -440,11 +461,27 @@ struct SessionTitleProjectMetadataTests {
             contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/Sessions/SessionsView.swift"))
         let history = try String(
             contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/History/HistoryView.swift"))
+        let detail = try String(
+            contentsOf: URL(fileURLWithPath: "QuotaMonitor/Features/Sessions/SessionDetailView.swift"))
 
         #expect(sessions.contains("SessionRowMetadataView(row: row"))
         #expect(history.contains("SessionRowMetadataView(row: session"))
-        #expect(sessions.contains("L10n.untitledSession"))
-        #expect(history.contains("L10n.untitledSession"))
+        #expect(sessions.contains("Text(row.displayTitle)"))
+        #expect(history.contains("Text(session.displayTitle)"))
+        #expect(detail.contains("Text(detail.header.displayTitle)"))
+    }
+
+    @Test("Session display title falls back to project metadata")
+    func sessionDisplayTitleFallsBackToProjectMetadata() {
+        let titled = makeSessionRow(title: "梳理未合并 PR", projectName: "quota-monitor")
+        let projectOnly = makeSessionRow(title: nil, projectName: "xianyu-seller-agent")
+        let whitespaceTitle = makeSessionRow(title: "   ", projectName: "emomo")
+        let unknown = makeSessionRow(title: nil, projectName: nil)
+
+        #expect(titled.displayTitle == "梳理未合并 PR")
+        #expect(projectOnly.displayTitle == "xianyu-seller-agent")
+        #expect(whitespaceTitle.displayTitle == "emomo")
+        #expect(unknown.displayTitle == L10n.untitledSession)
     }
 
     @Test("Codex scan persists real title and project metadata")

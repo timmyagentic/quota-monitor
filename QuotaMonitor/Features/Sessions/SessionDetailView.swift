@@ -25,7 +25,7 @@ struct SessionDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(detail.header.title?.isEmpty == false ? detail.header.title! : L10n.untitledSession)
+            Text(detail.header.displayTitle)
                 .font(.title2.bold())
                 .lineLimit(2)
 

@@ -155,7 +155,7 @@ private struct SessionRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text(row.title?.isEmpty == false ? row.title! : L10n.untitledSession)
+                Text(row.displayTitle)
                     .font(.body.weight(.medium))
                     .lineLimit(1)
                 Spacer()

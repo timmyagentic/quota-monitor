@@ -264,7 +264,7 @@ private struct ExpandableSessionRow: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 12)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(session.title?.isEmpty == false ? session.title! : L10n.untitledSession)
+                        Text(session.displayTitle)
                             .font(.callout.weight(.medium))
                             .lineLimit(1)
                         HStack(spacing: 8) {
