@@ -22,8 +22,8 @@ enum CodexSessionMetadataStore {
             for (id, state) in stateMetadata {
                 let existing = result[id]
                 result[id] = CodexSessionMetadata(
-                    title: existing?.title ?? state.title,
-                    cwd: state.cwd ?? existing?.cwd)
+                    title: existing?.title,
+                    cwd: existing?.cwd ?? state.cwd)
             }
         } catch {
             Log.importer.warning("failed to read Codex state metadata: \(error.localizedDescription, privacy: .public)")
@@ -43,7 +43,10 @@ enum CodexSessionMetadataStore {
             do {
                 let rows = try loadStateRows(sqlite: sqlite)
                 for row in rows {
-                    result[row.id] = CodexSessionMetadata(title: nil, cwd: row.cwd)
+                    let existing = result[row.id]
+                    result[row.id] = CodexSessionMetadata(
+                        title: existing?.title,
+                        cwd: existing?.cwd ?? row.cwd)
                 }
             } catch {
                 firstError = firstError ?? error
@@ -67,7 +70,6 @@ enum CodexSessionMetadataStore {
 
     private struct StateRow {
         let id: String
-        let title: String?
         let cwd: String?
     }
 
@@ -109,8 +111,11 @@ enum CodexSessionMetadataStore {
         sqlite3_busy_timeout(database, 100)
 
         var statement: OpaquePointer?
+        // In current Codex data, threads.title can be the first prompt.
+        // Session titles come from session_index.jsonl.thread_name; state DB
+        // is used only for cwd/project metadata.
         let sql = """
-            SELECT id, title, cwd
+            SELECT id, cwd
             FROM threads
             WHERE id IS NOT NULL
             """
@@ -130,8 +135,7 @@ enum CodexSessionMetadataStore {
                 }
                 rows.append(StateRow(
                     id: id,
-                    title: nonEmpty(sqliteColumnText(statement, 1)),
-                    cwd: nonEmpty(sqliteColumnText(statement, 2))))
+                    cwd: nonEmpty(sqliteColumnText(statement, 1))))
             case SQLITE_DONE:
                 return rows
             default:

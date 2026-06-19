@@ -27,15 +27,16 @@ struct SessionTitleProjectMetadataTests {
     }
 
     private func writeCodexStateDatabase(
-        codexHome: URL,
+        at sqlite: URL,
         id: String,
         title: String,
         cwd: String,
         useWAL: Bool = false
     ) throws {
-        let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
-        try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
-        let db = try DatabaseQueue(path: sqliteDir.appendingPathComponent("state_5.sqlite").path)
+        try FileManager.default.createDirectory(
+            at: sqlite.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        let db = try DatabaseQueue(path: sqlite.path)
         if useWAL {
             try db.writeWithoutTransaction { conn in
                 _ = try String.fetchOne(conn, sql: "PRAGMA journal_mode = WAL")
@@ -55,10 +56,29 @@ struct SessionTitleProjectMetadataTests {
         }
     }
 
+    private func writeCodexStateDatabase(
+        codexHome: URL,
+        id: String,
+        title: String,
+        cwd: String,
+        useWAL: Bool = false
+    ) throws {
+        try writeCodexStateDatabase(
+            at: stateDatabaseURL(codexHome: codexHome),
+            id: id,
+            title: title,
+            cwd: cwd,
+            useWAL: useWAL)
+    }
+
     private func stateDatabaseURL(codexHome: URL) -> URL {
         codexHome
             .appendingPathComponent("sqlite", isDirectory: true)
             .appendingPathComponent("state_5.sqlite")
+    }
+
+    private func rootStateDatabaseURL(codexHome: URL) -> URL {
+        codexHome.appendingPathComponent("state_5.sqlite")
     }
 
     private func withExclusiveSQLiteLock<T>(at sqlite: URL, perform body: () throws -> T) throws -> T {
@@ -238,7 +258,28 @@ struct SessionTitleProjectMetadataTests {
         #expect(metadata["s1"]?.projectName == "xianyu-seller-agent")
     }
 
-    @Test("Codex metadata store reads locked WAL state database titles")
+    @Test("Codex metadata store prefers sqlite state database over root fallback")
+    func codexMetadataPrefersPrimaryStateDatabaseOverRootFallback() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try writeCodexStateDatabase(
+            at: stateDatabaseURL(codexHome: codexHome),
+            id: "s1",
+            title: "primary state title should still be ignored",
+            cwd: "/Volumes/SamsungDisk/Code/quota-monitor")
+        try writeCodexStateDatabase(
+            at: rootStateDatabaseURL(codexHome: codexHome),
+            id: "s1",
+            title: "stale root fallback title should still be ignored",
+            cwd: "/Volumes/SamsungDisk/Code/stale-project")
+
+        let metadata = try CodexSessionMetadataStore.loadStateDatabase(codexHome: codexHome)
+        #expect(metadata["s1"]?.title == nil)
+        #expect(metadata["s1"]?.cwd == "/Volumes/SamsungDisk/Code/quota-monitor")
+        #expect(metadata["s1"]?.projectName == "quota-monitor")
+    }
+
+    @Test("Codex metadata store reads locked WAL state database cwd")
     func codexMetadataReadsLockedWALStateDatabase() throws {
         let codexHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
@@ -503,6 +544,56 @@ struct SessionTitleProjectMetadataTests {
         #expect(after["title"] as String? == "梳理一下现在导入数据的流程是什么样的")
         #expect(after["project_name"] as String? == "emomo")
         #expect(after["cwd"] as String? == "/Volumes/SamsungDisk/Code/emomo")
+    }
+
+    @Test("Codex metadata backfill replaces project fallback titles without reparsing")
+    func codexBackfillReplacesProjectFallbackTitleWithoutReparsing() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO sessions
+                  (session_id, root_session_id, parent_session_id, title,
+                   project_name, cwd, source_path, started_at, updated_at,
+                   agent_nickname, agent_role, last_model_id, latest_plan_type,
+                   contains_subagents, created_at, imported_at, provider)
+                VALUES
+                  ('s1', 's1', NULL, 'xianyu-seller-agent',
+                   NULL, NULL,
+                   '/Users/timmy/.codex/sessions/2026/06/16/rollout-s1.jsonl',
+                   '2026-06-16T15:14:01Z', '2026-06-16T15:14:31Z',
+                   NULL, NULL, 'gpt-5.5', NULL, 0,
+                   '2026-06-18T14:27:39Z', '2026-06-18T14:27:39Z', 'codex')
+                """)
+        }
+        try """
+        {"id":"s1","thread_name":"更新 main 并梳理 Agent 结构","updated_at":"2026-06-16T15:14:31Z"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+        try writeCodexStateDatabase(
+            codexHome: codexHome,
+            id: "s1",
+            title: "first prompt should not become the session title",
+            cwd: "/Volumes/SamsungDisk/Code/xianyu-seller-agent")
+
+        let report = try await ImportEngine(database: db, codexHome: codexHome).performScan()
+        #expect(report.changedFiles == 0)
+        #expect(report.importedSessions == 0)
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's1'
+                """)
+        })
+        #expect(row["title"] as String? == "更新 main 并梳理 Agent 结构")
+        #expect(row["project_name"] as String? == "xianyu-seller-agent")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/xianyu-seller-agent")
     }
 
     @Test("Codex reread preserves existing title when thread metadata is unavailable")

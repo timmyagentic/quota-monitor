@@ -667,8 +667,8 @@ enum ClaudeRolloutParser {
             return Output(session: nil, endOffset: consumed)
         }
 
-        let hasMetadata = title != nil || cwd != nil || startedAt != nil || updatedAt != nil
-        guard !events.isEmpty || hasMetadata else {
+        let hasHeaderMetadata = title != nil || cwd != nil
+        guard !events.isEmpty || hasHeaderMetadata else {
             return Output(session: nil, endOffset: consumed)
         }
 
