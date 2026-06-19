@@ -112,8 +112,8 @@ swift test --disable-keychain
 
 # -------- build (release) ---------------------------------------------------
 
-echo "==> CONFIG=release ./build.sh"
-CONFIG=release ./build.sh
+echo "==> CONFIG=release QM_DISTRIBUTION=developer-id ./build.sh"
+CONFIG=release QM_DISTRIBUTION=developer-id ./build.sh
 
 APP_BUNDLE=".build/QuotaMonitor.app"
 if [[ ! -d "${APP_BUNDLE}" ]]; then
@@ -148,7 +148,7 @@ fi
 echo "==> tools/make-dmg.sh"
 # Package the verified bundle. In Developer ID mode this is important:
 # rebuilding here would throw away the stapled app we just produced.
-CONFIG=release VER="${VERSION}" QM_MAKE_DMG_SKIP_BUILD=1 tools/make-dmg.sh
+CONFIG=release QM_DISTRIBUTION=developer-id VER="${VERSION}" QM_MAKE_DMG_SKIP_BUILD=1 tools/make-dmg.sh
 
 if [[ ! -f "${DMG_PATH}" ]]; then
     echo "error: expected ${DMG_PATH} after make-dmg.sh, not found" >&2
