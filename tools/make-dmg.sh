@@ -78,7 +78,7 @@ if [[ "${QM_MAKE_DMG_SKIP_BUILD:-0}" == "1" || "${SKIP_BUILD:-0}" == "1" ]]; the
     echo "==> Skipping build; packaging existing ${APP}"
 else
     echo "==> ./build.sh (CONFIG=$CONFIG)"
-    CONFIG="$CONFIG" ./build.sh >/dev/null
+    CONFIG="$CONFIG" QM_DISTRIBUTION="developer-id" ./build.sh >/dev/null
 fi
 
 if [[ ! -d "$APP" ]]; then

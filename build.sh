@@ -18,9 +18,21 @@ fi
 # Config can come from $1 (positional) OR $CONFIG (env). Env wins so callers
 # like make-dmg.sh / release.sh can pipe a value through without juggling args.
 CONFIG="${CONFIG:-${1:-debug}}"
+QM_DISTRIBUTION="${QM_DISTRIBUTION:-developer-id}"
+case "${QM_DISTRIBUTION}" in
+    developer-id|app-store) ;;
+    *)
+        echo "error: QM_DISTRIBUTION must be developer-id or app-store" >&2
+        exit 2
+        ;;
+esac
 APP_NAME="QuotaMonitor"
 APP_BUNDLE=".build/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
+ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
+if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
+    ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
+fi
 
 # Branding — read from the single source of truth in Branding.swift.
 BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
@@ -35,7 +47,7 @@ fi
 # credential lookup avoids securityd stalls during binary artifact downloads.
 SWIFT_BUILD_FLAGS=(--disable-keychain)
 
-echo "==> swift build -c ${CONFIG}"
+echo "==> swift build -c ${CONFIG} (${QM_DISTRIBUTION})"
 swift build -c "${CONFIG}" "${SWIFT_BUILD_FLAGS[@]}"
 
 BIN_DIR="$(swift build -c "${CONFIG}" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
@@ -92,6 +104,28 @@ BUILD_TAG="$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)
     "${CONTENTS}/Info.plist"
 echo "    version=${VERSION} commit=${BUILD_TAG}"
 
+/usr/libexec/PlistBuddy -c "Add :QMDistributionChannel string ${QM_DISTRIBUTION}" \
+    "${CONTENTS}/Info.plist" 2>/dev/null \
+  || /usr/libexec/PlistBuddy -c "Set :QMDistributionChannel ${QM_DISTRIBUTION}" \
+    "${CONTENTS}/Info.plist"
+
+if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
+    # The Mac App Store must deliver updates through the store. Keep the
+    # self-hosted Sparkle identity in the source plist for Developer ID builds,
+    # but remove it from this assembled smoke artifact.
+    /usr/libexec/PlistBuddy -c "Delete :SUFeedURL" \
+        "${CONTENTS}/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Delete :SUPublicEDKey" \
+        "${CONTENTS}/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Delete :SUEnableAutomaticChecks" \
+        "${CONTENTS}/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Delete :SUScheduledCheckInterval" \
+        "${CONTENTS}/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Delete :SUEnableInstallerLauncherService" \
+        "${CONTENTS}/Info.plist" 2>/dev/null || true
+fi
+echo "    distribution=${QM_DISTRIBUTION}"
+
 # Inject branding display name and code name from Branding.swift.
 # Mirrors the version injection pattern above — the source Info.plist
 # ships placeholders that are obviously wrong if this step is skipped.
@@ -140,6 +174,9 @@ SPARKLE_XCFW=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework"
 SPARKLE_SLICE="${SPARKLE_XCFW}/macos-arm64_x86_64/Sparkle.framework"
 if [[ -d "${SPARKLE_SLICE}" ]]; then
     echo "==> Embedding Sparkle.framework"
+    if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
+        echo "    app-store: Sparkle runtime is disabled by QMDistributionChannel"
+    fi
     mkdir -p "${CONTENTS}/Frameworks"
     rm -rf "${CONTENTS}/Frameworks/Sparkle.framework"
     # -R preserves the framework's internal symlinks (Versions/B/...).
@@ -169,13 +206,17 @@ fi
 #   3. Continue → Done. Cert lands in the login keychain.
 #   4. Verify: `security find-identity -v -p codesigning` shows the name.
 SIGN_IDENTITY="${QM_CODESIGN_IDENTITY:-QuotaMonitor Dev}"
+CODESIGN_ARGS=(--force --deep)
+if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
+    CODESIGN_ARGS+=(--options runtime --entitlements "${ENTITLEMENTS}")
+fi
 if security find-identity -v -p codesigning 2>/dev/null \
         | grep -q " \"${SIGN_IDENTITY}\""; then
     echo "==> codesign with '${SIGN_IDENTITY}'"
-    codesign --force --deep --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
+    codesign "${CODESIGN_ARGS[@]}" --sign "${SIGN_IDENTITY}" "${APP_BUNDLE}"
 else
     echo "==> Ad-hoc codesign (identity '${SIGN_IDENTITY}' not found)"
-    codesign --force --deep --sign - "${APP_BUNDLE}"
+    codesign "${CODESIGN_ARGS[@]}" --sign - "${APP_BUNDLE}"
 fi
 
 echo "==> Done: ${APP_BUNDLE}"

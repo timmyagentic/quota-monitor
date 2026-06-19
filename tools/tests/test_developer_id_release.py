@@ -50,6 +50,13 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("QM_MAKE_DMG_SKIP_BUILD", make_dmg)
         self.assertIn("Skipping build", make_dmg)
 
+    def test_developer_id_release_builds_do_not_inherit_app_store_distribution(self):
+        release = self.read_text("tools/release.sh")
+        make_dmg = self.read_text("tools/make-dmg.sh")
+
+        self.assertIn("QM_DISTRIBUTION=developer-id ./build.sh", release)
+        self.assertIn('QM_DISTRIBUTION="developer-id" ./build.sh', make_dmg)
+
     def test_ci_imports_developer_id_certificate_and_keeps_sparkle_signing(self):
         workflow = self.read_text(".github/workflows/release.yml")
 

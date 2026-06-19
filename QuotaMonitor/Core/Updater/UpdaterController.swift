@@ -48,15 +48,25 @@ final class UpdaterController {
     var automaticallyChecksForUpdates: Bool = true
 
     @ObservationIgnored
-    private let updater: SPUUpdater
+    private let updater: SPUUpdater?
 
     @ObservationIgnored
-    private let userDriver: CustomUserDriver
+    private let userDriver: CustomUserDriver?
 
     @ObservationIgnored
     private var cancellables: Set<AnyCancellable> = []
 
     init(onUpdateWindowClosed: @escaping @MainActor () -> Void = {}) {
+        if DistributionChannel.current == .appStore {
+            self.updater = nil
+            self.userDriver = nil
+            canCheckForUpdates = false
+            lastUpdateCheckDate = nil
+            automaticallyChecksForUpdates = false
+            Log.ui.info("Sparkle disabled for App Store build")
+            return
+        }
+
         let driver = CustomUserDriver(
             onUpdateWindowClosed: onUpdateWindowClosed)
         self.userDriver = driver
@@ -71,6 +81,7 @@ final class UpdaterController {
         // Seed @Observable mirrors from current state so the first
         // render after init doesn't briefly show the default-init
         // values before the KVO publishers fire.
+        guard let updater else { return }
         canCheckForUpdates = updater.canCheckForUpdates
         lastUpdateCheckDate = updater.lastUpdateCheckDate
         automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
@@ -108,14 +119,14 @@ final class UpdaterController {
     /// `WindowManager` count the Sparkle update window as an app-owned window
     /// when deciding the activation policy, even though it isn't in the
     /// `WindowManager` registry.
-    var isUpdateWindowVisible: Bool { userDriver.isUpdateWindowVisible }
+    var isUpdateWindowVisible: Bool { userDriver?.isUpdateWindowVisible ?? false }
 
     /// User-triggered check. Routes through the custom user driver,
     /// which surfaces the SwiftUI update window with animated release
     /// notes + download/install progress. Safe to call repeatedly —
     /// Sparkle dedups internally.
     func checkNow() {
-        updater.checkForUpdates()
+        updater?.checkForUpdates()
     }
 
     /// Persist the user's automatic-check preference. Writes through
@@ -123,6 +134,10 @@ final class UpdaterController {
     /// Sparkle's schedule timer. The KVO publisher then mirrors the
     /// new value back into our `@Observable` property.
     func setAutomaticallyChecks(_ enabled: Bool) {
+        guard let updater else {
+            automaticallyChecksForUpdates = false
+            return
+        }
         updater.automaticallyChecksForUpdates = enabled
     }
 }

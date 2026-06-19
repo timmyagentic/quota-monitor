@@ -30,6 +30,13 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+- Mac App Store preparation now has a local readiness check before any account setup
+- Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
+
+### Added
+- **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
+
 ### Changed
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
 
