@@ -205,6 +205,22 @@ final class AppEnvironment {
         }
     }
 
+    func reloadHistoryImportRoots() {
+        guard let db = database else { return }
+        importEngine = ImportEngine(database: db)
+        claudeEngine = ClaudeImportEngine(database: db)
+    }
+
+    /// Settings entry point for a history-folder grant/clear: rebuild the
+    /// import engines against the new authorized roots AND re-import right
+    /// away, so a folder picked in Settings → Advanced takes effect without
+    /// waiting for the next popover scan. (Onboarding picks several folders
+    /// then scans once at finish, so it uses the plain `reloadHistoryImportRoots`.)
+    func reloadHistoryImportRootsAndRescan() {
+        reloadHistoryImportRoots()
+        runScan(minInterval: 0)
+    }
+
     /// Boot the background rate-limit poller. Idempotent.
     ///
     /// Hard-gated on onboarding completion so a fresh-install user

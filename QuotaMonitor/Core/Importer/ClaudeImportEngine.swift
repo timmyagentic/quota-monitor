@@ -45,26 +45,58 @@ import GRDB
 actor ClaudeImportEngine {
     private let database: DatabaseManager
     private let claudeRoots: [URL]
+    private let securityScopedAccess: any SecurityScopedResourceAccessing
 
     init(database: DatabaseManager,
-         claudeRoots: [URL] = ClaudeImportEngine.defaultRoots()) {
+         claudeRoots: [URL] = ClaudeImportEngine.defaultRoots(),
+         securityScopedAccess: any SecurityScopedResourceAccessing =
+            FoundationSecurityScopedResourceAccessing()) {
         self.database = database
         self.claudeRoots = claudeRoots
+        self.securityScopedAccess = securityScopedAccess
     }
 
     /// Resolve the directories where Claude Code stores rollouts —
     /// both legacy (`~/.claude/projects`) and new
     /// (`~/.config/claude/projects`). Non-existent directories are
     /// silently ignored — `scan()` just returns an empty list.
-    static func defaultRoots() -> [URL] {
-        let home = LocalQAEnvironment.homeDirectory()
-        return [
+    static func defaultRoots(
+        distribution: DistributionChannel = .current,
+        authorizations: HistoryRootAuthorizationStore = .shared,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [URL] {
+        if LocalQAEnvironment.isActive(environment: environment, arguments: arguments) {
+            return legacyDefaultRoots(
+                home: LocalQAEnvironment.homeDirectory(
+                    environment: environment,
+                    arguments: arguments))
+        }
+
+        if distribution == .appStore {
+            return [
+                authorizations.resolvedURL(for: .claudeProjects),
+                authorizations.resolvedURL(for: .claudeConfigProjects),
+            ].compactMap(\.self)
+        }
+
+        return legacyDefaultRoots(
+            home: LocalQAEnvironment.homeDirectory(
+                environment: environment,
+                arguments: arguments))
+    }
+
+    private static func legacyDefaultRoots(home: URL) -> [URL] {
+        [
             home.appendingPathComponent(".claude/projects", isDirectory: true),
             home.appendingPathComponent(".config/claude/projects", isDirectory: true),
         ]
     }
 
     func performScan(progress: ScanProgressHandler? = nil) async throws -> ImportEngine.ScanReport {
+        let scopedAccesses = claudeRoots.map { securityScopedAccess.access($0) }
+        defer { scopedAccesses.reversed().forEach { $0.stop() } }
+
         let files = scanFiles()
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)

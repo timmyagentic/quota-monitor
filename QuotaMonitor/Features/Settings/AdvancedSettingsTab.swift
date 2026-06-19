@@ -138,6 +138,29 @@ struct AdvancedSettingsTab: View {
             }
             }
 
+            if DistributionChannel.current == .appStore {
+                Section(L10n.historyFoldersSection) {
+                    Text(L10n.historyFoldersHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if showCodex {
+                        HistoryRootPickerRow(kind: .codexHome) {
+                            env.reloadHistoryImportRootsAndRescan()
+                        }
+                    }
+                    if showClaude {
+                        HistoryRootPickerRow(kind: .claudeProjects) {
+                            env.reloadHistoryImportRootsAndRescan()
+                        }
+                        HistoryRootPickerRow(kind: .claudeConfigProjects,
+                                             required: false) {
+                            env.reloadHistoryImportRootsAndRescan()
+                        }
+                    }
+                }
+            }
+
             Section(L10n.sectionDatabase) {
                 LabeledContent(L10n.location) {
                     Text(DatabaseManager.defaultURL().path)

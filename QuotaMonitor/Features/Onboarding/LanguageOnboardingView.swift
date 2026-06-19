@@ -40,6 +40,7 @@ struct OnboardingView: View {
     /// step. Session-scoped on purpose — closing and re-opening the
     /// window resets it to `false`, which is what we want (re-do step 2).
     @State private var providersCommitted = false
+    @State private var historyRootRefreshToken = 0
 
     private var step: Step {
         if loc.needsOnboarding { return .language }
@@ -56,7 +57,7 @@ struct OnboardingView: View {
             }
         }
         .padding(20)
-        .frame(width: 340)
+        .frame(width: onboardingWidth)
         // Focus-on-open is owned by `WindowManager.show`. The hard gate
         // (can't close until both steps are done) is enforced by
         // `AppWindowController.windowShouldClose` for the onboarding window,
@@ -164,6 +165,10 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, 8)
 
+            if DistributionChannel.current == .appStore {
+                historyFolderStep
+            }
+
             // The Continue button stays disabled until at least one
             // toggle is on. The implicit "you can't track nothing"
             // constraint matches the runtime invariant in
@@ -189,9 +194,54 @@ struct OnboardingView: View {
             }
             .controlSize(.large)
             .buttonStyle(.borderedProminent)
-            .disabled(!pickedCodex && !pickedClaude)
+            .disabled(providerContinueDisabled)
             .padding(.horizontal, 8)
         }
+    }
+
+    @ViewBuilder
+    private var historyFolderStep: some View {
+        let _ = historyRootRefreshToken
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.historyFoldersRequiredForAppStore)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if pickedCodex {
+                HistoryRootPickerRow(kind: .codexHome,
+                                     required: true,
+                                     showsClearButton: false) {
+                    historyRootRefreshToken += 1
+                    env.reloadHistoryImportRoots()
+                }
+            }
+            if pickedClaude {
+                HistoryRootPickerRow(kind: .claudeProjects,
+                                     required: true,
+                                     showsClearButton: false) {
+                    historyRootRefreshToken += 1
+                    env.reloadHistoryImportRoots()
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private var providerContinueDisabled: Bool {
+        let providers = pickedProviders
+        guard !providers.isEmpty else { return true }
+        guard DistributionChannel.current == .appStore else { return false }
+        let _ = historyRootRefreshToken
+        return !HistoryRootAuthorizationStore.shared
+            .missingRequiredKinds(for: providers)
+            .isEmpty
+    }
+
+    private var pickedProviders: Set<String> {
+        var picked = Set<String>()
+        if pickedCodex { picked.insert("codex") }
+        if pickedClaude { picked.insert("claude") }
+        return picked
     }
 
     /// Single commit path for the whole onboarding wizard. Called once
@@ -213,6 +263,7 @@ struct OnboardingView: View {
                 id, enabled: iconProviders.contains(id))
         }
         settings.markProviderOnboardingDone()
+        env.reloadHistoryImportRoots()
         env.applyEnabledProviders()
         env.runScan(minInterval: 0)
         // Both `needs*` flags are now false, so this legitimate close passes
@@ -279,4 +330,10 @@ struct OnboardingView: View {
     }
 
     private enum Step { case language, providers, menuBar }
+
+    private var onboardingWidth: CGFloat {
+        DistributionChannel.current == .appStore && step == .providers
+            ? 460
+            : 340
+    }
 }

@@ -32,9 +32,11 @@ window copy.
 
 #### Summary
 - Contributors get an architecture guide that maps the app's structure and the gotchas to watch for when editing it
+- App Store builds can ask for local Codex and Claude history folders before importing
 
 ### Added
 - **Architecture guide (`CLAUDE.md`).** Added a concise architecture map covering the `AppEnvironment` hub, the two data planes, and common editing pitfalls, complementing the existing contributor guide.
+- **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
 
 ## [0.2.36] — 2026-06-29
 

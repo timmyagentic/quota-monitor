@@ -26,9 +26,11 @@ appcast 中按系统语言切换的双语更新说明。
 
 #### Summary
 - 贡献者现在有一份架构指南，说明应用的整体结构以及编辑时需要注意的坑
+- App Store 版本导入前可以要求选择本地 Codex 和 Claude 历史目录
 
 ### 新增
 - **架构指南（`CLAUDE.md`）。** 新增一份简洁的架构地图，覆盖 `AppEnvironment` 中枢、两条数据通路以及编辑时常见的坑，作为现有贡献者指南的补充。
+- **App Store 历史目录授权。** App Store 版本现在会为你选择的 Codex 和 Claude 历史目录保存只读 security-scoped bookmark，让本地历史导入可以留在 macOS 沙盒边界内。
 
 ## [0.2.36] — 2026-06-29
 

@@ -35,7 +35,13 @@ actor CodexResetCreditsClient: CodexResetCreditsFetching {
     private let loader: DataLoader
 
     init(
-        authFileURL: URL = SessionScanner.defaultCodexHome()
+        // `defaultCodexHome()` is optional only in App Store builds with no
+        // authorized folder; live Codex reset credits is a network feature
+        // that doesn't run under that sandbox anyway, so fall back to ~/.codex
+        // to keep a valid default. Developer ID builds always get a non-nil URL.
+        authFileURL: URL = (SessionScanner.defaultCodexHome()
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent(".codex", isDirectory: true))
             .appendingPathComponent("auth.json", isDirectory: false),
         endpoint: URL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!,
         loader: @escaping DataLoader = { request in
