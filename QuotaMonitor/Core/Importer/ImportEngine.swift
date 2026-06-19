@@ -37,6 +37,7 @@ actor ImportEngine {
         try await database.pool.write { db in
             try PricingService.seedCatalog(in: db)
         }
+        try await clearProjectFallbackTitles()
 
         let files = SessionScanner.scan(codexHome: codexHome)
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
@@ -184,9 +185,12 @@ actor ImportEngine {
                 let currentTitle = Self.nonEmpty(row["title"] as String?)
                 let currentProjectName = Self.nonEmpty(row["project_name"] as String?)
                 let currentCwd = Self.nonEmpty(row["cwd"] as String?)
-                let nextTitle = metadata.title ?? currentTitle
                 let nextCwd = currentCwd ?? metadata.cwd
                 let nextProjectName = currentProjectName ?? metadata.projectName
+                let titleLooksLikeProjectFallback =
+                    currentTitle != nil
+                    && (currentTitle == currentProjectName || currentTitle == metadata.projectName)
+                let nextTitle = metadata.title ?? (titleLooksLikeProjectFallback ? nil : currentTitle)
 
                 guard nextTitle != currentTitle
                     || nextProjectName != currentProjectName
@@ -205,6 +209,12 @@ actor ImportEngine {
                         sessionId
                     ])
             }
+        }
+    }
+
+    private func clearProjectFallbackTitles() async throws {
+        try await database.pool.write { db in
+            try SessionMetadataMigration.clearProjectFallbackTitles(in: db)
         }
     }
 

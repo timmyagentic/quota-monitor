@@ -65,6 +65,8 @@ actor ClaudeImportEngine {
     }
 
     func performScan(progress: ScanProgressHandler? = nil) async throws -> ImportEngine.ScanReport {
+        try await clearProjectFallbackTitles()
+
         let files = scanFiles()
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)
@@ -222,6 +224,12 @@ actor ClaudeImportEngine {
             importedEvents: importedEvents,
             importedRateLimitSamples: 0,    // Claude rollouts don't carry rate-limit samples.
             errors: errors)
+    }
+
+    private func clearProjectFallbackTitles() async throws {
+        try await database.pool.write { db in
+            try SessionMetadataMigration.clearProjectFallbackTitles(in: db)
+        }
     }
 
     // MARK: - scan

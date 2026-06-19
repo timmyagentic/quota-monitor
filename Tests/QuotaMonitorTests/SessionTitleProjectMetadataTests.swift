@@ -596,6 +596,45 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/xianyu-seller-agent")
     }
 
+    @Test("Codex scan clears dirty v11 project fallback titles without reparsing")
+    func codexScanClearsDirtyV11ProjectFallbackTitleWithoutReparsing() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO sessions
+                  (session_id, root_session_id, parent_session_id, title,
+                   project_name, cwd, source_path, started_at, updated_at,
+                   agent_nickname, agent_role, last_model_id, latest_plan_type,
+                   contains_subagents, created_at, imported_at, provider)
+                VALUES
+                  ('s-dirty', 's-dirty', NULL, 'quota-monitor',
+                   'quota-monitor', '/Volumes/SamsungDisk/Code/quota-monitor',
+                   '/Users/timmy/.codex/sessions/2026/06/16/rollout-s-dirty.jsonl',
+                   '2026-06-16T15:14:01Z', '2026-06-16T15:14:31Z',
+                   NULL, NULL, 'gpt-5.5', NULL, 0,
+                   '2026-06-18T14:27:39Z', '2026-06-18T14:27:39Z', 'codex')
+                """)
+        }
+
+        let report = try await ImportEngine(database: db, codexHome: codexHome).performScan()
+        #expect(report.changedFiles == 0)
+        #expect(report.importedSessions == 0)
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's-dirty'
+                """)
+        })
+        #expect(row["title"] as String? == nil)
+        #expect(row["project_name"] as String? == "quota-monitor")
+        #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
+    }
+
     @Test("Codex reread preserves existing title when thread metadata is unavailable")
     func codexRereadPreservesExistingTitleWithoutThreadMetadata() async throws {
         let db = try makeDatabase()
