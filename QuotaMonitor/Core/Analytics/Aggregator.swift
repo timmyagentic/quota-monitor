@@ -226,6 +226,8 @@ struct SessionRow: Sendable, Identifiable, Equatable {
     let sessionId: String
     var id: String { sessionId }
     let title: String?
+    let projectName: String?
+    let cwd: String?
     let agentNickname: String?
     let lastModelId: String?
     let startedAt: String?
@@ -243,6 +245,19 @@ struct SessionRow: Sendable, Identifiable, Equatable {
     /// the legacy fallback (gpt-5). Surfaces an asterisk in the row so users
     /// know the cost is approximate.
     let hasInferredModel: Bool
+
+    var displayTitle: String {
+        if let title = Self.nonEmpty(title) { return title }
+        if let projectName = Self.nonEmpty(projectName) { return projectName }
+        return L10n.untitledSession
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
+    }
 }
 
 /// Top-level provider filter applied to every dashboard / list query.

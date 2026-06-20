@@ -29,6 +29,7 @@ REAL_DB="${QM_QA_REAL_DB_PATH:-$(qm_default_real_database_path "$HOME")}"
 PROTECTION_REPORT="${ARTIFACTS}/real-data-protection.txt"
 SOURCE_HOME="${QM_QA_SOURCE_HOME:-$HOME}"
 SOURCE_DEFAULTS_DOMAIN="${QM_QA_SOURCE_DEFAULTS_DOMAIN:-dev.tjzhou.QuotaMonitor}"
+SOURCE_CODEX_HOME="${QM_QA_SOURCE_CODEX_HOME:-${CODEX_HOME:-${SOURCE_HOME}/.codex}}"
 USER_DEFAULTS_REPORT="${ARTIFACTS}/user-defaults-shadow.txt"
 INSTALLED_APP_BUNDLE="$(qm_installed_app_bundle)"
 INSTALLED_APP_WAS_RUNNING="$(qm_installed_app_was_running "$INSTALLED_APP_BUNDLE")"
@@ -56,6 +57,7 @@ qm_write_real_data_defaults \
     exit 1
 }
 mkdir -p "$QA_HOME/.codex" "$QA_HOME/.claude" "$QA_HOME/.config/claude"
+qm_copy_codex_metadata_snapshot "$SOURCE_CODEX_HOME" "$QA_HOME/.codex"
 
 USER_DEFAULTS_POLICY="copied-user-defaults"
 

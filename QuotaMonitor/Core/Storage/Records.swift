@@ -11,6 +11,8 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord, Equatable {
     var rootSessionId: String
     var parentSessionId: String?
     var title: String?
+    var projectName: String?
+    var cwd: String?
     var sourcePath: String?
     var startedAt: String?
     var updatedAt: String?
@@ -28,6 +30,8 @@ struct SessionRecord: Codable, FetchableRecord, PersistableRecord, Equatable {
         case rootSessionId = "root_session_id"
         case parentSessionId = "parent_session_id"
         case title
+        case projectName = "project_name"
+        case cwd
         case sourcePath = "source_path"
         case startedAt = "started_at"
         case updatedAt = "updated_at"

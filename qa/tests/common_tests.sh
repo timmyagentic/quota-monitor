@@ -167,9 +167,14 @@ test_seed_fixtures() {
 
     qm_seed_fixtures "$home"
 
+    assert_file "$home/.codex/session_index.jsonl"
     assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
+    assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
     assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-session.jsonl"
+    assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo/qa-claude-project-only.jsonl"
     assert_file "$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-config-session.jsonl"
+    grep -q 'Split session titles from project metadata' "$home/.codex/session_index.jsonl" \
+        || fail "Codex fixture metadata title missing from session_index"
 }
 
 test_write_launch_config() {
@@ -754,6 +759,40 @@ SQL
     [[ "$copy_count" == "1" ]] || fail "shadow DB did not receive copied rows: $copy_count"
 }
 
+test_copy_codex_metadata_snapshot_copies_only_safe_metadata() {
+    local dir source_home target_home
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-codex-metadata-shadow.XXXXXX")"
+    source_home="$dir/source"
+    target_home="$dir/target"
+    trap 'rm -rf "$dir"' RETURN
+
+    mkdir -p "$source_home/.codex" "$target_home"
+    printf '{"id":"s1","thread_name":"梳理未合并PR"}\n' \
+        >"$source_home/.codex/session_index.jsonl"
+    sqlite3 "$source_home/.codex/state_5.sqlite" <<'SQL'
+CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, cwd TEXT NOT NULL);
+INSERT INTO threads (id, title, cwd)
+VALUES ('s1', '梳理未合并PR', '/Volumes/SamsungDisk/Code/quota-monitor');
+SQL
+    printf 'secret-token' >"$source_home/.codex/auth.json"
+
+    qm_copy_codex_metadata_snapshot "$source_home/.codex" "$target_home/.codex"
+
+    assert_file "$target_home/.codex/session_index.jsonl"
+    assert_file "$target_home/.codex/state_5.sqlite"
+    assert_file "$target_home/.codex/sqlite/state_5.sqlite"
+    [[ ! -e "$target_home/.codex/auth.json" ]] \
+        || fail "credential file was copied into real-data shadow"
+
+    local title root_count compat_count
+    title="$(sqlite3 "$target_home/.codex/state_5.sqlite" "SELECT title FROM threads WHERE id='s1';")"
+    root_count="$(sqlite3 "$target_home/.codex/state_5.sqlite" 'SELECT COUNT(*) FROM threads;')"
+    compat_count="$(sqlite3 "$target_home/.codex/sqlite/state_5.sqlite" 'SELECT COUNT(*) FROM threads;')"
+    [[ "$title" == "梳理未合并PR" ]] || fail "root state title copy failed: $title"
+    [[ "$root_count" == "1" ]] || fail "root state row count was $root_count"
+    [[ "$compat_count" == "1" ]] || fail "compat state row count was $compat_count"
+}
+
 test_write_real_data_computer_qa_brief_documents_shadow_boundary() {
     local dir brief
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-real-data-qa-brief.XXXXXX")"
@@ -935,6 +974,7 @@ test_assert_artifact_contract_allows_incomplete_ax_with_warning
 test_warns_when_ax_snapshot_is_incomplete
 test_ax_snapshot_accepts_localized_settings_title
 test_copy_sqlite_snapshot_preserves_source
+test_copy_codex_metadata_snapshot_copies_only_safe_metadata
 test_write_real_data_computer_qa_brief_documents_shadow_boundary
 test_assert_real_data_artifact_contract
 test_rejects_real_provider_path_leak

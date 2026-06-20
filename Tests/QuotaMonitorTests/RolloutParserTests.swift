@@ -5,8 +5,8 @@ import Testing
 /// Snapshot tests for `RolloutParser` against canned `rollout-*.jsonl`
 /// shapes. Locks down:
 ///
-///   1. The Day-30 fix that derives the session title from `session_meta.cwd`'s
-///      leaf path. Pre-fix, every Codex session was titled "Untitled session".
+///   1. Session/project metadata separation: `session_meta.cwd` feeds cwd and
+///      projectName, while Codex thread title metadata is loaded elsewhere.
 ///   2. Subagent reconciliation — `parent_session_id` populated when present,
 ///      nil when absent.
 ///   3. Cumulative→delta conversion: the first event is the baseline (no
@@ -40,26 +40,30 @@ struct RolloutParserTests {
         return url
     }
 
-    // MARK: - title fallback (Day-30 fix)
+    // MARK: - project metadata
 
-    @Test("CLI 0.40 with cwd → title is cwd's leaf directory")
-    func titleDerivedFromCwdLeaf() throws {
+    @Test("CLI 0.40 with cwd → project name is cwd's leaf directory")
+    func projectNameDerivedFromCwdLeaf() throws {
         let url = try loadFixture("cli_0_40_with_cwd")
         let parsed = try #require(try RolloutParser.parse(fileURL: url))
 
-        #expect(parsed.title == "codexmonitor",
-                "title must equal the last component of /Users/jane/Code/codexmonitor")
+        #expect(parsed.title == nil)
+        #expect(parsed.projectName == "codexmonitor",
+                "projectName must equal the last component of /Users/jane/Code/codexmonitor")
+        #expect(parsed.cwd == "/Users/jane/Code/codexmonitor")
         #expect(parsed.sessionId == "019aa0fd-1111-7000-8000-aaaaaaaaaaaa")
         #expect(parsed.parentSessionId == nil)
     }
 
-    @Test("CLI 0.39 without cwd → title is nil (UI falls back to session-id chip)")
-    func titleNilWhenCwdMissing() throws {
+    @Test("CLI 0.39 without cwd → title and project metadata are nil")
+    func titleAndProjectMetadataNilWhenCwdMissing() throws {
         let url = try loadFixture("cli_0_39_no_cwd")
         let parsed = try #require(try RolloutParser.parse(fileURL: url))
 
         #expect(parsed.title == nil,
                 "no cwd in session_meta → title must be nil, never 'Untitled session'")
+        #expect(parsed.projectName == nil)
+        #expect(parsed.cwd == nil)
         #expect(parsed.sessionId == "019aa0fd-2222-7000-8000-bbbbbbbbbbbb")
     }
 
@@ -73,7 +77,8 @@ struct RolloutParserTests {
         #expect(parsed.parentSessionId == "019aa0fd-9999-7000-8000-dddddddddddd")
         #expect(parsed.agentNickname == "researcher")
         #expect(parsed.agentRole == "subagent")
-        #expect(parsed.title == "parent-project")
+        #expect(parsed.title == nil)
+        #expect(parsed.projectName == "parent-project")
     }
 
     // MARK: - cumulative → delta

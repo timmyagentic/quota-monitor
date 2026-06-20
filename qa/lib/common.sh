@@ -118,14 +118,22 @@ qm_seed_fixtures() {
 
     local codex_dir="$home/.codex/sessions/qa"
     local claude_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor"
+    local claude_fallback_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo"
     local claude_config_dir="$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor"
 
-    mkdir -p "$codex_dir" "$claude_dir" "$claude_config_dir" "$home/.codex/archived_sessions"
+    mkdir -p "$codex_dir" "$claude_dir" "$claude_fallback_dir" "$claude_config_dir" "$home/.codex/archived_sessions"
 
     cp "${root}/Tests/QuotaMonitorTests/Fixtures/Rollout/cli_0_40_with_cwd.jsonl" \
         "$codex_dir/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
+    cp "${root}/qa/fixtures/qa-codex-project-only.jsonl" \
+        "$codex_dir/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
+    cat >"$home/.codex/session_index.jsonl" <<'JSON'
+{"id":"019aa0fd-1111-7000-8000-aaaaaaaaaaaa","thread_name":"Split session titles from project metadata","updated_at":"2026-06-01T00:00:03Z"}
+JSON
     cp "${root}/qa/fixtures/qa-claude-session.jsonl" \
         "$claude_dir/qa-claude-session.jsonl"
+    cp "${root}/qa/fixtures/qa-claude-project-only.jsonl" \
+        "$claude_fallback_dir/qa-claude-project-only.jsonl"
     cp "${root}/qa/fixtures/qa-claude-session.jsonl" \
         "$claude_config_dir/qa-claude-config-session.jsonl"
 }
@@ -202,6 +210,36 @@ qm_copy_sqlite_snapshot() {
 .backup $quoted_destination
 .quit
 SQL
+}
+
+qm_copy_codex_metadata_snapshot() {
+    local source_codex_home="$1"
+    local target_codex_home="$2"
+
+    mkdir -p "$target_codex_home"
+
+    if [[ -f "${source_codex_home}/session_index.jsonl" ]]; then
+        cp "${source_codex_home}/session_index.jsonl" \
+            "${target_codex_home}/session_index.jsonl"
+    fi
+
+    local copied_root_state=false
+    if [[ -f "${source_codex_home}/state_5.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/state_5.sqlite" \
+            "${target_codex_home}/state_5.sqlite"
+        copied_root_state=true
+    fi
+
+    if [[ -f "${source_codex_home}/sqlite/state_5.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/sqlite/state_5.sqlite" \
+            "${target_codex_home}/sqlite/state_5.sqlite"
+    elif [[ "$copied_root_state" == "true" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/state_5.sqlite" \
+            "${target_codex_home}/sqlite/state_5.sqlite"
+    fi
 }
 
 qm_installed_app_bundle() {
@@ -357,7 +395,7 @@ qm_write_computer_qa_brief() {
         printf '3. Use Computer Use only for local UI reading/clicking. Ask before destructive UI actions such as uninstall, deleting files, changing system settings, or transmitting credentials.\n\n'
         printf '## Walkthrough\n\n'
         printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data and no empty primary panels.'
-        printf '%s\n' '- Sessions: switch to Sessions, search for the fixture session, change sort if available, open detail, and verify token/cost/event rows are visible.'
+        printf '%s\n' '- Sessions: switch to Sessions, search "Split session titles" to see real session titles, then search "project-name-fallback-demo" to see the project-name fallback row without an "Untitled session" label.'
         printf '%s\n' '- History: switch to History, select a populated day, and verify rollups plus per-session details are readable.'
         printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
         printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'

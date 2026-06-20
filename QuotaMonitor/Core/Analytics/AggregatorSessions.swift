@@ -20,6 +20,8 @@ extension Aggregator {
         SELECT
           s.session_id,
           s.title,
+          s.project_name,
+          s.cwd,
           s.agent_nickname,
           s.last_model_id,
           s.started_at,
@@ -43,11 +45,13 @@ extension Aggregator {
         if hasSearch {
             predicates.append("""
                 (LOWER(COALESCE(s.title,''))          LIKE ?
+              OR LOWER(COALESCE(s.project_name,''))   LIKE ?
+              OR LOWER(COALESCE(s.cwd,''))            LIKE ?
               OR LOWER(COALESCE(s.agent_nickname,'')) LIKE ?
               OR LOWER(COALESCE(s.last_model_id,''))  LIKE ?
               OR LOWER(s.session_id)                  LIKE ?)
             """)
-            args.append(contentsOf: Array(repeating: pattern, count: 4))
+            args.append(contentsOf: Array(repeating: pattern, count: 6))
         }
         if !predicates.isEmpty {
             sql += "\nWHERE " + predicates.joined(separator: " AND ")
@@ -64,6 +68,8 @@ extension Aggregator {
                 SessionRow(
                     sessionId: row["session_id"] ?? "",
                     title: row["title"],
+                    projectName: row["project_name"],
+                    cwd: row["cwd"],
                     agentNickname: row["agent_nickname"],
                     lastModelId: row["last_model_id"],
                     startedAt: row["started_at"],
@@ -82,6 +88,8 @@ extension Aggregator {
             SELECT
               s.session_id,
               s.title,
+              s.project_name,
+              s.cwd,
               s.agent_nickname,
               s.last_model_id,
               s.started_at,
@@ -103,6 +111,8 @@ extension Aggregator {
         let header = SessionRow(
             sessionId: headerRow["session_id"] ?? "",
             title: headerRow["title"],
+            projectName: headerRow["project_name"],
+            cwd: headerRow["cwd"],
             agentNickname: headerRow["agent_nickname"],
             lastModelId: headerRow["last_model_id"],
             startedAt: headerRow["started_at"],
@@ -177,6 +187,8 @@ extension Aggregator {
             SELECT
               s.session_id,
               s.title,
+              s.project_name,
+              s.cwd,
               s.agent_nickname,
               s.last_model_id,
               s.started_at,
@@ -195,6 +207,8 @@ extension Aggregator {
             SessionRow(
                 sessionId: row["session_id"] ?? "",
                 title: row["title"],
+                projectName: row["project_name"],
+                cwd: row["cwd"],
                 agentNickname: row["agent_nickname"],
                 lastModelId: row["last_model_id"],
                 startedAt: row["started_at"],

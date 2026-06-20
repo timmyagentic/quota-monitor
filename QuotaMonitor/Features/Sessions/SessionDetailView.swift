@@ -25,9 +25,16 @@ struct SessionDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(detail.header.title?.isEmpty == false ? detail.header.title! : L10n.untitledSession)
+            Text(detail.header.displayTitle)
                 .font(.title2.bold())
                 .lineLimit(2)
+
+            if let project = detail.header.projectName, !project.isEmpty {
+                Label(project, systemImage: "folder")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help(detail.header.cwd ?? project)
+            }
 
             HStack(spacing: 12) {
                 if let agent = detail.header.agentNickname, !agent.isEmpty {

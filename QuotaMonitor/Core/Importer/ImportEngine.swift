@@ -44,23 +44,46 @@ actor ImportEngine {
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })
         }
 
-        // Source paths of Codex sessions still missing a title — re-parse them
-        // so the cwd-derived title fallback added later can backfill UI labels
-        // without waiting for the file to change.
-        let titlelessCodexPaths: Set<String> = try await database.pool.read { db in
+        let codexMetadata: [String: CodexSessionMetadata]
+        do {
+            codexMetadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
+        } catch {
+            codexMetadata = [:]
+        }
+        try await backfillCodexSessionMetadata(codexMetadata)
+
+        // Source paths of Codex sessions still missing project metadata —
+        // re-parse them so the split metadata columns can be backfilled
+        // without waiting for the source file to change.
+        let metadataIncompleteCodexPaths: Set<String> = try await database.pool.read { db in
             let rows = try String.fetchAll(db, sql: """
                 SELECT source_path FROM sessions
                 WHERE provider = 'codex'
-                  AND (title IS NULL OR title = '')
                   AND source_path IS NOT NULL
+                  AND ((project_name IS NULL OR project_name = '')
+                       OR (cwd IS NULL OR cwd = ''))
                 """)
             return Set(rows)
         }
 
+        var currentCodexPathsWithoutBackfillableProjectMetadata: [String] = []
         let changed = files.filter { file in
-            if titlelessCodexPaths.contains(file.path) { return true }
             guard let prior = priorState[file.path] else { return true }
-            return prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs
+            if prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs {
+                return true
+            }
+            if metadataIncompleteCodexPaths.contains(file.path),
+               prior.byteOffset >= 0 {
+                if codexRolloutCanBackfillProjectMetadata(file) {
+                    return true
+                }
+                currentCodexPathsWithoutBackfillableProjectMetadata.append(file.path)
+            }
+            return false
+        }
+        if !currentCodexPathsWithoutBackfillableProjectMetadata.isEmpty {
+            try await markCodexRolloutsWithoutBackfillableProjectMetadata(
+                currentCodexPathsWithoutBackfillableProjectMetadata)
         }
         await progress?(ScanProgressUpdate(
             provider: "codex",
@@ -79,7 +102,13 @@ actor ImportEngine {
                     fileURL: file.url,
                     fallbackSessionId: file.sessionIdHint
                 ) {
-                    let counts = try await persist(parsed: parsed, file: file)
+                    var enriched = parsed
+                    if let metadata = codexMetadata[parsed.sessionId] {
+                        enriched.title = metadata.title
+                        enriched.cwd = parsed.cwd ?? metadata.cwd
+                        enriched.projectName = parsed.projectName ?? metadata.projectName
+                    }
+                    let counts = try await persist(parsed: enriched, file: file)
                     importedSessions += 1
                     importedEvents += counts.events
                     importedSamples += counts.samples
@@ -145,6 +174,99 @@ actor ImportEngine {
         return report
     }
 
+    private func backfillCodexSessionMetadata(
+        _ metadataBySessionId: [String: CodexSessionMetadata]
+    ) async throws {
+        guard !metadataBySessionId.isEmpty else { return }
+        let now = ISO8601.fractional.string(from: Date())
+
+        try await database.pool.write { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT session_id, title, project_name, cwd
+                FROM sessions
+                WHERE provider = 'codex'
+                """)
+
+            for row in rows {
+                guard let sessionId: String = row["session_id"],
+                      let metadata = metadataBySessionId[sessionId]
+                else { continue }
+
+                let currentTitle = Self.nonEmpty(row["title"] as String?)
+                let currentProjectName = Self.nonEmpty(row["project_name"] as String?)
+                let currentCwd = Self.nonEmpty(row["cwd"] as String?)
+                let nextCwd = currentCwd ?? metadata.cwd
+                let nextProjectName = currentProjectName ?? metadata.projectName
+                let nextTitle = metadata.title ?? currentTitle
+
+                guard nextTitle != currentTitle
+                    || nextProjectName != currentProjectName
+                    || nextCwd != currentCwd
+                else { continue }
+
+                try db.execute(sql: """
+                    UPDATE sessions
+                    SET title = ?, project_name = ?, cwd = ?, imported_at = ?
+                    WHERE provider = 'codex' AND session_id = ?
+                    """, arguments: [
+                        nextTitle,
+                        nextProjectName,
+                        nextCwd,
+                        now,
+                        sessionId
+                    ])
+            }
+        }
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
+    }
+
+    private func markCodexRolloutsWithoutBackfillableProjectMetadata(
+        _ sourcePaths: [String]
+    ) async throws {
+        let uniquePaths = Set(sourcePaths)
+        guard !uniquePaths.isEmpty else { return }
+        let now = ISO8601.fractional.string(from: Date())
+
+        try await database.pool.write { db in
+            for path in uniquePaths {
+                // Codex re-parses whole JSONL files and does not consume
+                // byte_offset. Use -1 as a Codex-only sentinel so current
+                // no-cwd legacy files are not re-probed on every scan.
+                try db.execute(sql: """
+                    UPDATE import_state
+                    SET byte_offset = -1,
+                        last_imported_at = ?
+                    WHERE source_path = ?
+                      AND byte_offset >= 0
+                    """, arguments: [now, path])
+            }
+        }
+    }
+
+    private func codexRolloutCanBackfillProjectMetadata(_ file: SessionFile) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: file.url) else { return false }
+        defer { try? handle.close() }
+
+        do {
+            for line in try LineReader(handle: handle) {
+                guard let event = RolloutEvent.decode(line: line) else { continue }
+                if case .sessionMeta(let meta, _) = event,
+                   let cwd = Self.nonEmpty(meta.cwd) {
+                    return !(cwd as NSString).lastPathComponent.isEmpty
+                }
+            }
+        } catch {
+            return false
+        }
+        return false
+    }
+
     // MARK: - persist
 
     private struct PersistCounts { let events: Int; let samples: Int }
@@ -154,15 +276,17 @@ actor ImportEngine {
 
         return try await database.pool.write { db in
             // 1. Upsert the session row.
-            let existed = try SessionRecord
+            let existing = try SessionRecord
                 .filter(Column("session_id") == parsed.sessionId)
-                .fetchOne(db) != nil
+                .fetchOne(db)
 
             let sessionRecord = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.rootSessionId,
                 parentSessionId: parsed.parentSessionId,
-                title: parsed.title,
+                title: parsed.title ?? existing?.title,
+                projectName: parsed.projectName ?? existing?.projectName,
+                cwd: parsed.cwd ?? existing?.cwd,
                 sourcePath: file.path,
                 startedAt: parsed.startedAt,
                 updatedAt: parsed.updatedAt,
@@ -173,9 +297,7 @@ actor ImportEngine {
                 // Filled in by reconcileSessionTree() after the full scan
                 // when we can see this session's children.
                 containsSubagents: false,
-                createdAt: existed ? (try SessionRecord
-                    .filter(Column("session_id") == parsed.sessionId)
-                    .fetchOne(db)?.createdAt) ?? now : now,
+                createdAt: existing?.createdAt ?? now,
                 importedAt: now,
                 provider: "codex")
             try sessionRecord.save(db)

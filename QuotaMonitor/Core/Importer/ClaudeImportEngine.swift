@@ -333,12 +333,9 @@ actor ClaudeImportEngine {
                 if !resetSession, let existing { return existing.startedAt }
                 return parsed.startedAt
             }()
-            let resolvedTitle: String? = {
-                if !resetSession, let existing, let t = existing.title, !t.isEmpty {
-                    return t
-                }
-                return parsed.title
-            }()
+            let resolvedTitle = parsed.title ?? (resetSession ? nil : existing?.title)
+            let resolvedProjectName = parsed.projectName ?? (resetSession ? nil : existing?.projectName)
+            let resolvedCwd = parsed.cwd ?? (resetSession ? nil : existing?.cwd)
             let isSubagent = file.isSubagentFile
             // Multiple files can persist into one session row (main rollout
             // + subagent siblings, imported in path order). Last-writer-wins
@@ -370,6 +367,9 @@ actor ClaudeImportEngine {
             // Same staleness rule as updated_at: an older sibling file must
             // not overwrite the model recorded from a newer one.
             let resolvedLastModelId: String? = {
+                guard let parsedModel = parsed.lastModelId else {
+                    return resetSession ? nil : existing?.lastModelId
+                }
                 if !resetSession, let existing,
                    let existingUpdated = existing.updatedAt,
                    let parsedUpdated = parsed.updatedAt,
@@ -377,13 +377,15 @@ actor ClaudeImportEngine {
                    let existingModel = existing.lastModelId {
                     return existingModel
                 }
-                return parsed.lastModelId
+                return parsedModel
             }()
             let session = SessionRecord(
                 sessionId: parsed.sessionId,
                 rootSessionId: parsed.sessionId,
                 parentSessionId: nil,
                 title: resolvedTitle,
+                projectName: resolvedProjectName,
+                cwd: resolvedCwd,
                 sourcePath: resolvedSourcePath,
                 startedAt: resolvedStartedAt,
                 updatedAt: resolvedUpdatedAt,
@@ -479,6 +481,8 @@ actor ClaudeImportEngine {
 struct ParsedClaudeSession {
     let sessionId: String
     let title: String?
+    let projectName: String?
+    let cwd: String?
     let startedAt: String?
     let updatedAt: String?
     let lastModelId: String?
@@ -519,10 +523,9 @@ enum ClaudeRolloutParser {
     ///   - We only advance `endOffset` past a complete line (we stop at the
     ///     last `\n` we saw), so a mid-write tail never gets half-parsed and
     ///     then "completed" on the next pass.
-    ///   - When `fromOffset > 0` we don't rebuild session-header fields
-    ///     (sessionId/title/startedAt) — those landed in the DB on the
-    ///     first pass; we still bump `updatedAt`/`lastModelId` if the new
-    ///     slice contains them.
+    ///   - When `fromOffset > 0`, a metadata-only tail slice can still
+    ///     return a session so late `ai-title` / `cwd` lines are persisted
+    ///     instead of being skipped as empty work.
     ///   - One `message.id` can span several `assistant` lines: a zero-usage
     ///     stub (skipped), then one line per content block whose
     ///     `output_tokens` grows as the message streams. The LAST snapshot
@@ -542,6 +545,7 @@ enum ClaudeRolloutParser {
 
         var sessionId: String? = nil
         var title: String? = nil
+        var cwd: String? = nil
         var startedAt: String? = nil
         var updatedAt: String? = nil
         var lastModelId: String? = nil
@@ -581,9 +585,13 @@ enum ClaudeRolloutParser {
                 if startedAt == nil { startedAt = ts }
                 updatedAt = ts
             }
-            if title == nil, let cwd = raw["cwd"] as? String {
-                // Use the leaf directory name as a friendly title fallback.
-                title = (cwd as NSString).lastPathComponent
+            if cwd == nil, let rawCwd = raw["cwd"] as? String, !rawCwd.isEmpty {
+                cwd = rawCwd
+            }
+            if title == nil, type == "ai-title",
+               let aiTitle = raw["aiTitle"] as? String,
+               !aiTitle.isEmpty {
+                title = aiTitle
             }
 
             guard type == "assistant",
@@ -655,13 +663,26 @@ enum ClaudeRolloutParser {
         if sessionId == nil {
             sessionId = fileURL.deletingPathExtension().lastPathComponent
         }
-        guard let sid = sessionId, !events.isEmpty else {
+        guard let sid = sessionId else {
             return Output(session: nil, endOffset: consumed)
         }
+
+        let hasHeaderMetadata = title != nil || cwd != nil
+        guard !events.isEmpty || hasHeaderMetadata else {
+            return Output(session: nil, endOffset: consumed)
+        }
+
+        let projectName: String? = {
+            guard let cwd, !cwd.isEmpty else { return nil }
+            let leaf = (cwd as NSString).lastPathComponent
+            return leaf.isEmpty ? nil : leaf
+        }()
 
         let session = ParsedClaudeSession(
             sessionId: sid,
             title: title,
+            projectName: projectName,
+            cwd: cwd,
             startedAt: startedAt,
             updatedAt: updatedAt,
             lastModelId: lastModelId,

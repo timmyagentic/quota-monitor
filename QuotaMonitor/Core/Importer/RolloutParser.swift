@@ -30,6 +30,8 @@ struct ParsedSession {
     var parentSessionId: String?
     var rootSessionId: String
     var title: String?
+    var projectName: String?
+    var cwd: String?
     var startedAt: String?
     var updatedAt: String?
     var agentNickname: String?
@@ -166,10 +168,7 @@ enum RolloutParser {
         if sessionId == nil { sessionId = fallbackSessionId ?? sessionIdFromFilename(fileURL) }
         guard let resolved = sessionId else { return nil }
 
-        // Codex rollouts don't carry a user-facing title. Mirror Claude's
-        // importer and use the cwd's leaf directory name as a friendly fallback
-        // so the UI shows something more useful than "Untitled session".
-        let title: String? = {
+        let projectName: String? = {
             guard let cwd, !cwd.isEmpty else { return nil }
             let leaf = (cwd as NSString).lastPathComponent
             return leaf.isEmpty ? nil : leaf
@@ -179,7 +178,9 @@ enum RolloutParser {
             sessionId: resolved,
             parentSessionId: parentSessionId,
             rootSessionId: parentSessionId == nil ? resolved : (parentSessionId ?? resolved),
-            title: title,
+            title: nil,
+            projectName: projectName,
+            cwd: cwd,
             startedAt: startedAt,
             updatedAt: updatedAt,
             agentNickname: agentNickname,
