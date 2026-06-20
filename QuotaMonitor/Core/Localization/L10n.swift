@@ -262,9 +262,15 @@ enum L10n {
     /// label like "5 min" / "45s" produced by `cooldownDurationLabel`
     /// — this string just supplies the "rate limited, retry in X"
     /// frame and lets the duration helper pick the right unit.
-    static func claudeRateLimitedRetryIn(_ remaining: String) -> String {
-        t(en: "Claude usage rate limited, retry in \(remaining)",
-          zh: "Claude usage 限速中，约 \(remaining) 后可重试")
+    static func claudeRateLimitedRetryIn(
+        _ remaining: String,
+        lastUpdated: String? = nil
+    ) -> String {
+        let suffix = lastUpdated.map {
+            t(en: " · updated \($0)", zh: " · 上次更新 \($0)")
+        } ?? ""
+        return t(en: "Claude live quota API rate limited, retry in \(remaining)\(suffix)",
+                 zh: "Claude live quota 接口被限速，约 \(remaining)后重试\(suffix)")
     }
     /// Duration unit suffixes for the cooldown countdown. We render
     /// these via the app's own L10n (not Foundation's locale-based

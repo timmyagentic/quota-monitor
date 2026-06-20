@@ -31,6 +31,7 @@ import LocalAuthentication
 /// scoped to `user:inference` get a 403 — we surface that as
 /// `.insufficientScope` so the UI can tell the user to re-login.
 actor ClaudeUsageClient: ClaudeUsageFetching {
+    private static let fallbackClaudeCodeVersion = "2.1.0"
 
     enum FetchError: Error, CustomStringConvertible {
         case noCredentials
@@ -70,6 +71,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     private let session: URLSession
     private let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
     private let refreshTrigger: ClaudeCLIRefreshTrigger
+    private let claudeCodeVersionProvider: @Sendable () -> String?
 
     /// Parsed credentials regardless of expiry. Kept in a struct (not a
     /// bare `String`) so `loadAccessToken` can decide whether to delegate
@@ -104,10 +106,14 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
 
     init(
         session: URLSession = .shared,
-        refreshTrigger: ClaudeCLIRefreshTrigger = ClaudeCLIRefreshTrigger.shared
+        refreshTrigger: ClaudeCLIRefreshTrigger = ClaudeCLIRefreshTrigger.shared,
+        claudeCodeVersionProvider: @escaping @Sendable () -> String? = {
+            ClaudeCodeVersionDetector.detectVersion()
+        }
     ) {
         self.session = session
         self.refreshTrigger = refreshTrigger
+        self.claudeCodeVersionProvider = claudeCodeVersionProvider
     }
 
     /// One-shot fetch. Caller decides retry / scheduling.
@@ -127,13 +133,11 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             throw FetchError.noCredentials
         }
 
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "GET"
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        // Required header per Anthropic's beta gating. Matches CodexBar.
-        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("\(Branding.appCodeName)/\(Branding.versionString)", forHTTPHeaderField: "User-Agent")
+        let req = Self.makeUsageRequest(
+            url: endpoint,
+            token: token,
+            userAgent: Self.claudeCodeUserAgent(
+                versionString: claudeCodeVersionProvider()))
 
         let data: Data
         let response: URLResponse
@@ -185,13 +189,65 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             // the poller can back off (default 30 min in the poller's
             // currentInterval). Otherwise the 5-min poll cadence will
             // self-amplify and keep getting 429'd.
-            let retry = (http.value(forHTTPHeaderField: "Retry-After")
-                .flatMap(TimeInterval.init))
+            let retry = Self.retryAfterSeconds(from: http)
             throw FetchError.rateLimited(retryAfter: retry)
         default:
             let body = String(data: data, encoding: .utf8) ?? ""
             throw FetchError.http(http.statusCode, body)
         }
+    }
+
+    static func makeUsageRequest(
+        url: URL,
+        token: String,
+        userAgent: String
+    ) -> URLRequest {
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        return req
+    }
+
+    static func claudeCodeUserAgent(versionString: String?) -> String {
+        let version = normalizedClaudeCodeVersion(versionString)
+            ?? fallbackClaudeCodeVersion
+        return "claude-code/\(version)"
+    }
+
+    static func normalizedClaudeCodeVersion(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        let pattern = #"[0-9]+(?:\.[0-9]+)+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(raw.startIndex..<raw.endIndex, in: raw)
+        guard let match = regex.firstMatch(in: raw, range: range),
+              let matchRange = Range(match.range, in: raw) else {
+            return nil
+        }
+        return String(raw[matchRange])
+    }
+
+    static func retryAfterSeconds(
+        from response: HTTPURLResponse,
+        now: Date = Date()
+    ) -> TimeInterval? {
+        guard let raw = response.value(forHTTPHeaderField: "Retry-After")?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        if let seconds = TimeInterval(raw) {
+            return seconds > 0 ? seconds : nil
+        }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE',' dd MMM yyyy HH':'mm':'ss zzz"
+        guard let date = formatter.date(from: raw) else { return nil }
+        let remaining = date.timeIntervalSince(now)
+        return remaining > 0 ? remaining.rounded() : nil
     }
 
 
@@ -723,4 +779,139 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         }
     }
 
+}
+
+enum ClaudeCodeVersionDetector {
+    private static let cachedVersion: String? = detectVersionUncached()
+
+    static func detectVersion() -> String? {
+        cachedVersion
+    }
+
+    private static func detectVersionUncached() -> String? {
+        guard LocalQAEnvironment.allowsExternalDataSources() else { return nil }
+        let env = augmentedEnvironment()
+        let home = env["HOME"] ?? NSHomeDirectory()
+        guard let binary = ClaudeCLIRefreshTrigger.resolveClaudeBinary(
+            explicitOverride: env["CLAUDE_BINARY"],
+            home: home,
+            loginShellPath: discoverClaudeViaLoginShell(environment: env),
+            path: env["PATH"] ?? "",
+            desktopBundlePath: ClaudeCLIRefreshTrigger.discoverClaudeDesktopBundle(
+                home: home,
+                isExecutable: FileManager.default.isExecutableFile(atPath:)),
+            isExecutable: FileManager.default.isExecutableFile(atPath:))
+        else { return nil }
+        return versionFromPath(binary) ?? versionFromProcess(binary: binary, environment: env)
+    }
+
+    private static func versionFromPath(_ path: String) -> String? {
+        let components = URL(fileURLWithPath: path).pathComponents
+        guard let marker = components.firstIndex(of: "claude-code"),
+              components.indices.contains(marker + 1) else { return nil }
+        return ClaudeUsageClient.normalizedClaudeCodeVersion(components[marker + 1])
+    }
+
+    private static func versionFromProcess(
+        binary: String,
+        environment: [String: String]
+    ) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["--version"]
+        process.environment = environment
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        do {
+            try process.run()
+        } catch {
+            return nil
+        }
+        let deadline = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if process.isRunning {
+            process.terminate()
+            return nil
+        }
+        guard process.terminationStatus == 0 else { return nil }
+        let output = [
+            String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
+            String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8),
+        ].compactMap { $0 }.joined(separator: "\n")
+        let userAgent = ClaudeUsageClient.claudeCodeUserAgent(versionString: output)
+        let version = userAgent.replacingOccurrences(of: "claude-code/", with: "")
+        return version == "2.1.0" ? nil : version
+    }
+
+    private static func augmentedEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let home = env["HOME"] ?? NSHomeDirectory()
+        let extras = [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "\(home)/.npm-global/bin",
+            "\(home)/.local/bin",
+            "\(home)/.cargo/bin",
+            "\(home)/.bun/bin",
+        ]
+        let loginParts = (loginShellPATH(environment: env) ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        let existingParts = (env["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        let merged = (loginParts + extras + existingParts).reduce(into: [String]()) { acc, dir in
+            if !acc.contains(dir) { acc.append(dir) }
+        }
+        env["PATH"] = merged.joined(separator: ":")
+        return env
+    }
+
+    private static func loginShellPATH(environment: [String: String]) -> String? {
+        runLoginShellLine(
+            environment: environment,
+            command: #"printf %s "$PATH""#)
+    }
+
+    private static func discoverClaudeViaLoginShell(environment: [String: String]) -> String? {
+        runLoginShellLine(
+            environment: environment,
+            command: "command -v claude")
+    }
+
+    private static func runLoginShellLine(
+        environment: [String: String],
+        command: String
+    ) -> String? {
+        let shell = environment["SHELL"] ?? "/bin/zsh"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: shell)
+        process.arguments = ["-ilc", command]
+        process.environment = environment
+        let stdout = Pipe()
+        process.standardOutput = stdout
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            let deadline = Date().addingTimeInterval(2)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+            if process.isRunning {
+                process.terminate()
+                return nil
+            }
+            guard process.terminationStatus == 0 else { return nil }
+            let data = stdout.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return output.isEmpty ? nil : output
+        } catch {
+            return nil
+        }
+    }
 }
