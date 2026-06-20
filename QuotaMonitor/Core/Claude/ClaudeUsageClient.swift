@@ -129,6 +129,10 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             throw FetchError.noCredentials
         }
+        // Version detection may execute `claude --version`, which can refresh
+        // credentials. Do it before reading the bearer so the request uses the
+        // freshest token available after any CLI side effect.
+        let userAgent = Self.claudeCodeUserAgent(versionString: claudeCodeVersionProvider())
         guard let token = try await loadAccessToken() else {
             throw FetchError.noCredentials
         }
@@ -136,8 +140,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         let req = Self.makeUsageRequest(
             url: endpoint,
             token: token,
-            userAgent: Self.claudeCodeUserAgent(
-                versionString: claudeCodeVersionProvider()))
+            userAgent: userAgent)
 
         let data: Data
         let response: URLResponse
