@@ -780,6 +780,19 @@ struct SessionTitleProjectMetadataTests {
         let secondReport = try await engine.performScan()
         #expect(secondReport.changedFiles == 0)
         #expect(secondReport.importedSessions == 0)
+
+        let marker = try await db.pool.read { conn in
+            try Int64.fetchOne(conn, sql: """
+                SELECT byte_offset
+                FROM import_state
+                WHERE session_id = 's-no-cwd'
+                """)
+        }
+        #expect(marker == -1)
+
+        let thirdReport = try await engine.performScan()
+        #expect(thirdReport.changedFiles == 0)
+        #expect(thirdReport.importedSessions == 0)
     }
 
     @Test("Codex reread preserves ambiguous project-matching title")

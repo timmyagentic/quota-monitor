@@ -66,13 +66,24 @@ actor ImportEngine {
             return Set(rows)
         }
 
+        var currentCodexPathsWithoutBackfillableProjectMetadata: [String] = []
         let changed = files.filter { file in
-            if metadataIncompleteCodexPaths.contains(file.path),
-               codexRolloutCanBackfillProjectMetadata(file) {
+            guard let prior = priorState[file.path] else { return true }
+            if prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs {
                 return true
             }
-            guard let prior = priorState[file.path] else { return true }
-            return prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs
+            if metadataIncompleteCodexPaths.contains(file.path),
+               prior.byteOffset >= 0 {
+                if codexRolloutCanBackfillProjectMetadata(file) {
+                    return true
+                }
+                currentCodexPathsWithoutBackfillableProjectMetadata.append(file.path)
+            }
+            return false
+        }
+        if !currentCodexPathsWithoutBackfillableProjectMetadata.isEmpty {
+            try await markCodexRolloutsWithoutBackfillableProjectMetadata(
+                currentCodexPathsWithoutBackfillableProjectMetadata)
         }
         await progress?(ScanProgressUpdate(
             provider: "codex",
@@ -213,6 +224,29 @@ actor ImportEngine {
               !trimmed.isEmpty
         else { return nil }
         return trimmed
+    }
+
+    private func markCodexRolloutsWithoutBackfillableProjectMetadata(
+        _ sourcePaths: [String]
+    ) async throws {
+        let uniquePaths = Set(sourcePaths)
+        guard !uniquePaths.isEmpty else { return }
+        let now = ISO8601.fractional.string(from: Date())
+
+        try await database.pool.write { db in
+            for path in uniquePaths {
+                // Codex re-parses whole JSONL files and does not consume
+                // byte_offset. Use -1 as a Codex-only sentinel so current
+                // no-cwd legacy files are not re-probed on every scan.
+                try db.execute(sql: """
+                    UPDATE import_state
+                    SET byte_offset = -1,
+                        last_imported_at = ?
+                    WHERE source_path = ?
+                      AND byte_offset >= 0
+                    """, arguments: [now, path])
+            }
+        }
     }
 
     private func codexRolloutCanBackfillProjectMetadata(_ file: SessionFile) -> Bool {
