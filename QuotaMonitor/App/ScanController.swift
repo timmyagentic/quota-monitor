@@ -194,47 +194,7 @@ extension AppEnvironment {
             fields: ["path": .string(url.path)])
         do {
             let (db, _) = try ensureServices()
-            let count = try await db.pool.read { conn in
-                let rows = try Row.fetchCursor(conn, sql: """
-                    SELECT ue.id, ue.session_id, ue.timestamp, ue.model_id,
-                           ue.input_tokens, ue.cached_input_tokens, ue.output_tokens,
-                           ue.reasoning_output_tokens, ue.total_tokens, ue.value_usd,
-                           s.title, s.agent_nickname
-                    FROM usage_events ue
-                    LEFT JOIN sessions s ON s.session_id = ue.session_id
-                    ORDER BY ue.timestamp ASC
-                    """)
-                let header = "id,session_id,timestamp,model_id,input,cached,output,reasoning,total,value_usd,title,agent\n"
-                guard FileManager.default.createFile(atPath: url.path, contents: header.data(using: .utf8)) else {
-                    throw NSError(domain: "QuotaMonitor", code: 1,
-                                  userInfo: [NSLocalizedDescriptionKey: "Could not create file at \(url.path)"])
-                }
-                let handle = try FileHandle(forWritingTo: url)
-                defer { try? handle.close() }
-                try handle.seekToEnd()
-                var count = 0
-                while let row = try rows.next() {
-                    let line = Self.csvRow([
-                        "\(row["id"] as Int64? ?? 0)",
-                        row["session_id"] as String? ?? "",
-                        row["timestamp"] as String? ?? "",
-                        row["model_id"] as String? ?? "",
-                        "\(row["input_tokens"] as Int64? ?? 0)",
-                        "\(row["cached_input_tokens"] as Int64? ?? 0)",
-                        "\(row["output_tokens"] as Int64? ?? 0)",
-                        "\(row["reasoning_output_tokens"] as Int64? ?? 0)",
-                        "\(row["total_tokens"] as Int64? ?? 0)",
-                        String(format: "%.6f", row["value_usd"] as Double? ?? 0),
-                        row["title"] as String? ?? "",
-                        row["agent_nickname"] as String? ?? ""
-                    ])
-                    if let data = (line + "\n").data(using: .utf8) {
-                        try handle.write(contentsOf: data)
-                    }
-                    count += 1
-                }
-                return count
-            }
+            let count = try await Self.writeUsageEventsCSV(database: db, to: url)
             DeveloperLog.finishOperation(op, fields: [
                 "path": .string(url.path),
                 "rows": .int(count)
@@ -243,6 +203,51 @@ extension AppEnvironment {
         } catch {
             DeveloperLog.failOperation(op, error: error, fields: ["path": .string(url.path)])
             throw error
+        }
+    }
+
+    nonisolated static func writeUsageEventsCSV(database db: DatabaseManager, to url: URL) async throws -> Int {
+        try await db.pool.read { conn in
+            let rows = try Row.fetchCursor(conn, sql: """
+                SELECT ue.id, ue.session_id, ue.timestamp, ue.model_id,
+                       ue.input_tokens, ue.cached_input_tokens, ue.output_tokens,
+                       ue.reasoning_output_tokens, ue.total_tokens, ue.value_usd,
+                       COALESCE(NULLIF(TRIM(s.title), ''), NULLIF(TRIM(s.project_name), ''), '') AS export_title,
+                       s.agent_nickname
+                FROM usage_events ue
+                LEFT JOIN sessions s ON s.session_id = ue.session_id
+                ORDER BY ue.timestamp ASC
+                """)
+            let header = "id,session_id,timestamp,model_id,input,cached,output,reasoning,total,value_usd,title,agent\n"
+            guard FileManager.default.createFile(atPath: url.path, contents: header.data(using: .utf8)) else {
+                throw NSError(domain: "QuotaMonitor", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Could not create file at \(url.path)"])
+            }
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            var count = 0
+            while let row = try rows.next() {
+                let line = Self.csvRow([
+                    "\(row["id"] as Int64? ?? 0)",
+                    row["session_id"] as String? ?? "",
+                    row["timestamp"] as String? ?? "",
+                    row["model_id"] as String? ?? "",
+                    "\(row["input_tokens"] as Int64? ?? 0)",
+                    "\(row["cached_input_tokens"] as Int64? ?? 0)",
+                    "\(row["output_tokens"] as Int64? ?? 0)",
+                    "\(row["reasoning_output_tokens"] as Int64? ?? 0)",
+                    "\(row["total_tokens"] as Int64? ?? 0)",
+                    String(format: "%.6f", row["value_usd"] as Double? ?? 0),
+                    row["export_title"] as String? ?? "",
+                    row["agent_nickname"] as String? ?? ""
+                ])
+                if let data = (line + "\n").data(using: .utf8) {
+                    try handle.write(contentsOf: data)
+                }
+                count += 1
+            }
+            return count
         }
     }
 
