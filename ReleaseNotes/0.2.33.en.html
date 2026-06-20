@@ -91,6 +91,68 @@
   font-size: 11.5px;
   line-height: 1.4;
 }
+.qm-release-demo {
+  position: relative;
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid var(--release-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, Canvas, var(--release-accent) 4%);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.06);
+}
+.qm-release-demo figcaption {
+  margin: 0 0 6px;
+  color: var(--release-ink);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.qm-release-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.qm-release-demo-panel {
+  min-width: 0;
+  padding: 6px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.48);
+}
+.qm-release-demo-panel.after {
+  background: color-mix(in srgb, var(--release-green), transparent 86%);
+}
+.qm-release-demo-label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--release-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.qm-release-demo-row {
+  display: grid;
+  gap: 2px;
+  min-height: 35px;
+  padding: 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, Canvas, transparent 12%);
+}
+.qm-release-demo-row + .qm-release-demo-row { margin-top: 4px; }
+.qm-release-demo-row strong {
+  overflow: hidden;
+  color: var(--release-ink);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qm-release-demo-row span {
+  overflow: hidden;
+  color: var(--release-muted);
+  font-size: 9px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .qm-release-rhythm {
   display: grid;
   grid-template-columns: 1.4fr 0.8fr 1.1fr 0.55fr;
@@ -170,6 +232,12 @@
     --release-panel: rgba(34, 34, 38, 0.74);
     --release-panel-strong: rgba(45, 45, 51, 0.86);
   }
+  .qm-release-demo-panel {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .qm-release-demo-panel.after {
+    background: color-mix(in srgb, var(--release-green), transparent 88%);
+  }
   .qm-release-hero,
   .qm-release-highlight {
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
@@ -190,26 +258,41 @@
 <div class="qm-release-hero-content">
 <p class="qm-release-eyebrow">Release highlights</p>
 <h2 class="qm-release-title">QuotaMonitor 0.2.33</h2>
-<p class="qm-release-subtitle">This update focuses on daily visibility, long-running performance, and a cleaner app presentation.</p>
+<p class="qm-release-subtitle">This update focuses on daily visibility, long-running performance, and clearer session lists.</p>
 <div class="qm-release-rhythm" aria-hidden="true">
 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
 </div>
 </div>
 </div>
+<figure class="qm-release-demo release-animate" style="--i:1" aria-label="Session title before and after preview">
+<figcaption>Session rows now separate title from project</figcaption>
+<div class="qm-release-demo-grid">
+<div class="qm-release-demo-panel">
+<span class="qm-release-demo-label">Before</span>
+<div class="qm-release-demo-row"><strong>quota-monitor</strong><span>Project name shown as the title</span></div>
+<div class="qm-release-demo-row"><strong>Untitled session</strong><span>No project fallback in the title slot</span></div>
+</div>
+<div class="qm-release-demo-panel after">
+<span class="qm-release-demo-label">After</span>
+<div class="qm-release-demo-row"><strong>Split session titles from project metadata</strong><span>Project: quota-monitor</span></div>
+<div class="qm-release-demo-row"><strong>project-name-fallback-demo</strong><span>Fallback only when no title exists</span></div>
+</div>
+</div>
+</figure>
 <div class="qm-release-highlights">
-<article class="qm-release-highlight release-animate" style="--i:1">
+<article class="qm-release-highlight release-animate" style="--i:2">
 <span class="qm-release-number">1</span>
 <p>Today's usage and spend appear immediately on the dashboard</p>
 </article>
-<article class="qm-release-highlight release-animate" style="--i:2">
+<article class="qm-release-highlight release-animate" style="--i:3">
 <span class="qm-release-number">2</span>
 <p>Performance improvements</p>
 </article>
-<article class="qm-release-highlight release-animate" style="--i:3">
+<article class="qm-release-highlight release-animate" style="--i:4">
 <span class="qm-release-number">3</span>
 <p>Known bug fixes</p>
 </article>
-<article class="qm-release-highlight release-animate" style="--i:4">
+<article class="qm-release-highlight release-animate" style="--i:5">
 <span class="qm-release-number">4</span>
 <p>Updated app icon</p>
 </article>

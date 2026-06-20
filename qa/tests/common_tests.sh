@@ -167,9 +167,14 @@ test_seed_fixtures() {
 
     qm_seed_fixtures "$home"
 
+    assert_file "$home/.codex/session_index.jsonl"
     assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
+    assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
     assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-session.jsonl"
+    assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo/qa-claude-project-only.jsonl"
     assert_file "$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-config-session.jsonl"
+    grep -q 'Split session titles from project metadata' "$home/.codex/session_index.jsonl" \
+        || fail "Codex fixture metadata title missing from session_index"
 }
 
 test_write_launch_config() {
