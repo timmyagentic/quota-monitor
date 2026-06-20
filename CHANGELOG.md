@@ -31,11 +31,13 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+- Contributors now have a concise setup guide for project layout and local checks
 - Mac App Store preparation now has a local readiness check before any account setup
 - Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
 - History and Sessions now show real session titles, falling back to the project name only when no title exists
 
 ### Added
+- **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
 
 ### Changed
