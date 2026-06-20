@@ -322,7 +322,11 @@ final class AppEnvironment {
             },
             onCooldownChange: { [weak self] until in
                 await MainActor.run {
-                    self?.latestClaudeUsageCooldownUntil = until
+                    guard let self else { return }
+                    self.latestClaudeUsageCooldownUntil = until
+                    if until != nil {
+                        self.lastClaudeUsageError = nil
+                    }
                 }
             }
         )

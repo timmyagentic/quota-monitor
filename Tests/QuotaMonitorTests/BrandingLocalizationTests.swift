@@ -25,4 +25,18 @@ struct BrandingLocalizationTests {
         #expect(body.contains("Branding.appCodeName"))
         #expect(!body.contains("\"QuotaMonitor \\(version)"))
     }
+
+    @Test("Claude live quota rate-limit copy is precise and avoids Chinese spacing bug")
+    func claudeLiveQuotaRateLimitCopyIsPrecise() {
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            L10n.claudeRateLimitedRetryIn("5 分钟", lastUpdated: "11:24")
+        }
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            L10n.claudeRateLimitedRetryIn("5 min", lastUpdated: "11:24")
+        }
+
+        #expect(zh == "Claude live quota 接口被限速，约 5 分钟后重试 · 上次更新 11:24")
+        #expect(!zh.contains("分钟 后"))
+        #expect(en == "Claude live quota API rate limited, retry in 5 min · updated 11:24")
+    }
 }

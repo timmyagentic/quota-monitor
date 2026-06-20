@@ -122,7 +122,10 @@ extension MenuBarContentView {
                         Image(systemName: "clock.badge.exclamationmark")
                             .font(.caption2)
                         Text(L10n.claudeRateLimitedRetryIn(
-                            cooldownDurationLabel(seconds: remaining)))
+                            cooldownDurationLabel(seconds: remaining),
+                            lastUpdated: env.latestClaudeUsage.map {
+                                claudeRateLimitLastUpdatedLabel($0.capturedAt)
+                            }))
                             .font(.caption2)
                         Spacer(minLength: 0)
                     }
@@ -143,6 +146,14 @@ extension MenuBarContentView {
         // doesn't render as "1 min" then suddenly "1 min" → "59s".
         let m = (s + 59) / 60
         return L10n.cooldownMinutes(m)
+    }
+
+    func claudeRateLimitLastUpdatedLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = LocalizationStore.activeLanguage.locale
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
     /// Preferred path: render OAuth `/usage` like the Codex block — plan

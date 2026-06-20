@@ -268,6 +268,42 @@ struct ClaudeUsagePollerTests {
         }
     }
 
+    @Test("429 after a successful snapshot does not replace the last surfaced data")
+    func rateLimitAfterSuccess_keepsLastSurfacedSnapshot() async throws {
+        let successfulSnapshot = ClaudeUsageSnapshot(
+            capturedAt: Date(timeIntervalSince1970: 1_777_000_000),
+            tier: "max5x",
+            fiveHour: .init(
+                usedPercent: 42,
+                resetAt: Date(timeIntervalSince1970: 1_777_010_000),
+                windowDuration: 5 * 3600),
+            sevenDay: .init(
+                usedPercent: 12,
+                resetAt: Date(timeIntervalSince1970: 1_777_600_000),
+                windowDuration: 7 * 86400),
+            sevenDayOpus: nil,
+            sevenDaySonnet: nil)
+        let mock = MockFetcher(script: [
+            .success(successfulSnapshot),
+            .failure(ClaudeUsageClient.FetchError.rateLimited(retryAfter: nil))
+        ])
+        let db = try makeDatabase()
+        let results = ResultBox()
+        let poller = makePoller(fetcher: mock, db: db, results: results)
+
+        await poller.pollOnce()
+        await poller._clearLastAttemptForTest()
+        await poller.pollOnce()
+
+        #expect(results.all.count == 1, "429 must not surface an error that blanks the last live quota snapshot")
+        if case .success(let surfaced)? = results.all.first {
+            #expect(surfaced == successfulSnapshot)
+        } else {
+            Issue.record("expected the last surfaced callback to remain the successful snapshot")
+        }
+        #expect(await poller._cooldownUntilForTest != nil)
+    }
+
     @Test("success after auth failure resets the auth counter")
     func success_resetsAuthCounter() async throws {
         let mock = MockFetcher(script: [
