@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Observation
 
 // Cross-feature settings backed by UserDefaults.
@@ -652,11 +653,37 @@ final class SettingsStore {
     }
 
     private nonisolated static func defaultExistingAppDataExists() -> Bool {
-        let db = DatabaseManager.defaultURL()
+        existingAppDataExists(databaseURL: DatabaseManager.defaultURL())
+    }
+
+    nonisolated static func existingAppDataExists(databaseURL db: URL) -> Bool {
         let fm = FileManager.default
-        return ["", "-wal", "-shm"].contains { suffix in
-            fm.fileExists(atPath: db.path + suffix)
+        guard fm.fileExists(atPath: db.path) else { return false }
+        do {
+            var config = Configuration()
+            config.readonly = true
+            let queue = try DatabaseQueue(path: db.path, configuration: config)
+            return try queue.read { conn in
+                try tableHasRows("usage_events", in: conn)
+                    || tableHasRows("rate_limit_samples", in: conn)
+            }
+        } catch {
+            return false
         }
+    }
+
+    private nonisolated static func tableHasRows(
+        _ table: String,
+        in db: Database
+    ) throws -> Bool {
+        let exists = try Int.fetchOne(db, sql: """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = ?
+            LIMIT 1
+            """, arguments: [table]) != nil
+        guard exists else { return false }
+        return try Int.fetchOne(db, sql: "SELECT 1 FROM \(table) LIMIT 1") != nil
     }
 
     struct Snapshot: Sendable {

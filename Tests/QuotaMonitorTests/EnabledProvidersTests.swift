@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import QuotaMonitor
 
@@ -225,6 +226,32 @@ struct EnabledProvidersTests {
         #expect(store.needsProviderOnboarding)
         #expect(d.bool(forKey: "onboarding.providersDone") == false)
         #expect(d.string(forKey: "onboarding.lastVersion") == nil)
+    }
+
+    @Test
+    func existingAppDataDetectorRequiresActualRowsNotJustAnEmptyDatabase() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-onboarding-footprint-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("quotamonitor.sqlite")
+        let manager = try DatabaseManager(url: url)
+
+        #expect(SettingsStore.existingAppDataExists(databaseURL: url) == false)
+
+        try manager.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO rate_limit_samples (
+                    source_kind, bucket, sample_timestamp, resets_at,
+                    used_percent, remaining_percent
+                )
+                VALUES ('live', 'primary', '2026-06-21T00:00:00Z',
+                        '2026-06-21T05:00:00Z', 10, 90)
+                """)
+        }
+
+        #expect(SettingsStore.existingAppDataExists(databaseURL: url))
     }
 
     @Test
