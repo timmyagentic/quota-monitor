@@ -157,6 +157,25 @@ enum L10n {
         t(en: "Live Codex quotas are disabled in local QA",
           zh: "本地 QA 已禁用 Codex 实时配额获取")
     }
+    static var codexResetCardsTitle: String {
+        t(en: "Reset cards", zh: "主动重置卡")
+    }
+    static func codexResetCardsAvailable(_ count: Int) -> String {
+        t(en: "\(count) available", zh: "剩余 \(count) 次")
+    }
+    static var codexResetCardsNoActive: String {
+        t(en: "No active cards", zh: "无可用卡片")
+    }
+    static func codexResetCardsNextExpires(_ formatted: String) -> String {
+        t(en: "Next expires \(formatted)", zh: "最近 \(formatted) 过期")
+    }
+    static var codexResetCardsExpiryUnavailable: String {
+        t(en: "Expiration times unavailable", zh: "暂时无法读取过期时间")
+    }
+    static func codexResetCardsHelp(_ lines: String) -> String {
+        t(en: "Available reset-card expirations:\n\(lines)",
+          zh: "可用主动重置卡过期时间：\n\(lines)")
+    }
     static var claudeStartTracking: String {
         t(en: "Run a Claude Code session to start tracking",
           zh: "运行 Claude Code 会话以开始跟踪")

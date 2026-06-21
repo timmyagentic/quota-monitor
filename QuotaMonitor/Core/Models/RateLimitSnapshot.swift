@@ -10,6 +10,7 @@ struct RateLimitSnapshot: Equatable, Sendable {
     let primary: Window?         // 5-hour window
     let secondary: Window?       // 7-day window
     let additional: [Additional]
+    let resetCreditsAvailable: Int?
 
     struct Window: Equatable, Sendable {
         let usedPercent: Double
@@ -61,6 +62,7 @@ extension RateLimitSnapshot {
                 primary: entry.rateLimit?.primaryWindow.map(Window.init),
                 secondary: entry.rateLimit?.secondaryWindow.map(Window.init))
         }
+        self.resetCreditsAvailable = payload.resetCreditsAvailable
     }
 }
 

@@ -13,7 +13,8 @@ struct MenuBarLabelModelTests {
             p.map { RateLimitSnapshot.Window(usedPercent: $0, windowDuration: 18000, resetAt: Date()) }
         }
         return RateLimitSnapshot(capturedAt: Date(), planType: "pro",
-                                 primary: win(five), secondary: win(seven), additional: [])
+                                 primary: win(five), secondary: win(seven),
+                                 additional: [], resetCreditsAvailable: nil)
     }
 
     private func claudeSnapshot(five: Double?, seven: Double?) -> ClaudeUsageSnapshot {

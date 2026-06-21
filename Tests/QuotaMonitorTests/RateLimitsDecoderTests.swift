@@ -66,4 +66,52 @@ struct RateLimitsDecoderTests {
         #expect(snap.additional.count == 1)
         #expect(snap.additional.first?.limitName == "gpt-5-codex-spark")
     }
+
+    @Test("camelCase rateLimitResetCredits decodes available count")
+    func decodeCamelResetCreditsCount() throws {
+        let json = """
+        {
+          "rateLimitResetCredits": { "availableCount": 2 },
+          "rateLimits": {
+            "planType": "pro",
+            "primary": {
+              "usedPercent": 1,
+              "windowDurationMins": 300,
+              "resetsAt": 1781169600
+            },
+            "secondary": {
+              "usedPercent": 31,
+              "windowDurationMins": 10080,
+              "resetsAt": 1781510400
+            }
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(RateLimitsPayload.self, from: Data(json.utf8))
+        let snap = RateLimitSnapshot(from: payload, capturedAt: Date(timeIntervalSince1970: 1_781_100_000))
+
+        #expect(payload.resetCreditsAvailable == 2)
+        #expect(snap.resetCreditsAvailable == 2)
+    }
+
+    @Test("snake_case rate_limit_reset_credits decodes available count")
+    func decodeSnakeResetCreditsCount() throws {
+        let json = """
+        {
+          "rate_limit_reset_credits": { "available_count": 3 },
+          "rate_limit": {
+            "primary_window": {
+              "used_percent": 5,
+              "limit_window_seconds": 18000,
+              "reset_at": 1781169600
+            }
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(RateLimitsPayload.self, from: Data(json.utf8))
+        let snap = RateLimitSnapshot(from: payload, capturedAt: Date(timeIntervalSince1970: 1_781_100_000))
+
+        #expect(payload.resetCreditsAvailable == 3)
+        #expect(snap.resetCreditsAvailable == 3)
+    }
 }

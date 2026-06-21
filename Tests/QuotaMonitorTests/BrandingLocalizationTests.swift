@@ -39,4 +39,29 @@ struct BrandingLocalizationTests {
         #expect(!zh.contains("分钟 后"))
         #expect(en == "Claude live quota API rate limited, retry in 5 min · updated 11:24")
     }
+
+    @Test("Codex reset-card copy is concise in both languages")
+    func codexResetCardCopy() {
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (
+                L10n.codexResetCardsTitle,
+                L10n.codexResetCardsAvailable(2),
+                L10n.codexResetCardsNoActive
+            )
+        }
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            (
+                L10n.codexResetCardsTitle,
+                L10n.codexResetCardsAvailable(2),
+                L10n.codexResetCardsNoActive
+            )
+        }
+
+        #expect(zh.0 == "主动重置卡")
+        #expect(zh.1 == "剩余 2 次")
+        #expect(zh.2 == "无可用卡片")
+        #expect(en.0 == "Reset cards")
+        #expect(en.1 == "2 available")
+        #expect(en.2 == "No active cards")
+    }
 }

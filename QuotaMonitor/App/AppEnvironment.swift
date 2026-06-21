@@ -26,6 +26,8 @@ final class AppEnvironment {
     let appServer: AppServerClient
 
     var latestRateLimits: RateLimitSnapshot?
+    var latestCodexResetCredits: CodexResetCreditsSnapshot?
+    var lastCodexResetCreditsError: String?
     /// Live Anthropic OAuth `/api/oauth/usage` snapshot, polled every
     /// 2 h by `ClaudeUsagePoller` and on-demand by the Refresh button
     /// (subject to the poller's own 60 s spam gap + 429 cooldown).
@@ -60,6 +62,7 @@ final class AppEnvironment {
     var scanProgressStates: [String: ScanProviderProgress] = [:]
     var scanProgressRunID: UUID?
     var isRefreshingRateLimits = false
+    var isRefreshingCodexResetCredits = false
     var isScanning = false
     var isLoadingDashboard = false
     /// Internal re-entrancy guard for `refreshPricingFromLiteLLM`. Not
@@ -114,11 +117,19 @@ final class AppEnvironment {
     var claudeEngine: ClaudeImportEngine?
     private var poller: RateLimitPoller?
     private var claudeUsagePoller: ClaudeUsagePoller?
+    private let codexResetCreditsClient: any CodexResetCreditsFetching
+    private var lastCodexResetCreditsRefreshAttemptAt: Date?
     let pricingSource = LiteLLMPricingSource()
 
-    init(appServer: AppServerClient = AppServerClient()) {
+    init(
+        appServer: AppServerClient = AppServerClient(),
+        codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
+        startBackgroundTasks: Bool = true
+    ) {
         self.appServer = appServer
+        self.codexResetCreditsClient = codexResetCreditsClient
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
+        guard startBackgroundTasks else { return }
         // Boot background polling immediately so it doesn't depend on the user
         // ever opening the menu bar. Idempotent — safe if .task fires later too.
         Task { [weak self] in
@@ -227,6 +238,9 @@ final class AppEnvironment {
                 await MainActor.run {
                     guard let self, self.latestRateLimits == nil else { return }
                     self.latestRateLimits = cached
+                    self.applyCodexResetCreditsCountFallback(
+                        cached.resetCreditsAvailable,
+                        capturedAt: cached.capturedAt)
                 }
             }
         }
@@ -260,6 +274,12 @@ final class AppEnvironment {
                 guard let self else { return }
                 self.latestRateLimits = snapshot
                 self.lastRateLimitsRefreshAt = snapshot.capturedAt
+                self.applyCodexResetCreditsCountFallback(
+                    snapshot.resetCreditsAvailable,
+                    capturedAt: snapshot.capturedAt)
+                self.refreshCodexResetCredits(
+                    minInterval: 300,
+                    trigger: "poller")
             }
         }
         self.poller = p
@@ -342,6 +362,9 @@ final class AppEnvironment {
         DeveloperLog.eventRecord("poller.codex.stop", category: "poller", provider: "codex")
         self.poller = nil
         self.latestRateLimits = nil
+        self.latestCodexResetCredits = nil
+        self.lastCodexResetCreditsError = nil
+        self.lastCodexResetCreditsRefreshAttemptAt = nil
         Task { await p.stop() }
     }
 
@@ -475,6 +498,10 @@ final class AppEnvironment {
             trigger: trigger,
             parentOperation: op,
             bypassMinimumGap: !throttle && trigger == "manual")
+        refreshCodexResetCredits(
+            minInterval: throttle ? 30 : nil,
+            trigger: trigger,
+            parentOperation: op)
         refreshClaudeUsage(trigger: trigger, parentOperation: op)
         runScan(
             minInterval: throttle ? 20 : nil,
@@ -482,6 +509,149 @@ final class AppEnvironment {
             parentOperation: op)
         DeveloperLog.finishOperation(op, result: "scheduled")
         // runScan's tail re-runs refreshMenuBar(), so no need to repeat here.
+    }
+
+    private func applyCodexResetCreditsCountFallback(
+        _ count: Int?,
+        capturedAt: Date
+    ) {
+        guard let count else { return }
+        if let current = latestCodexResetCredits,
+           current.detailStatus == .complete,
+           current.availableCount == count {
+            return
+        }
+        latestCodexResetCredits = CodexResetCreditsSnapshot.countOnly(
+            availableCount: count,
+            capturedAt: capturedAt)
+    }
+
+    func installLocalQAMockCodexResetCredits(now: Date = Date()) {
+        latestCodexResetCredits = CodexResetCreditsSnapshot(
+            capturedAt: now,
+            availableCount: 2,
+            credits: [
+                CodexResetCredit(
+                    grantedAt: now.addingTimeInterval(-60 * 60),
+                    expiresAt: now.addingTimeInterval(2 * 60 * 60)),
+                CodexResetCredit(
+                    grantedAt: now.addingTimeInterval(-24 * 60 * 60),
+                    expiresAt: now.addingTimeInterval(5 * 24 * 60 * 60)),
+            ],
+            detailStatus: .complete)
+        lastCodexResetCreditsError = nil
+        DeveloperLog.eventRecord(
+            "codex_reset_credits.qa_mock.install",
+            category: "poller",
+            trigger: "qa",
+            provider: "codex",
+            fields: ["available_count": .int(2)])
+    }
+
+    func refreshCodexResetCredits(
+        minInterval: TimeInterval? = nil,
+        trigger: String = "manual",
+        parentOperation: DeveloperLogOperation? = nil
+    ) {
+        guard LocalQAEnvironment.allowsExternalDataSources() else {
+            DeveloperLog.eventRecord(
+                "codex_reset_credits.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "local-qa"])
+            return
+        }
+        let snap = SettingsStore.snapshot()
+        guard snap.hasCompletedProviderOnboarding else {
+            DeveloperLog.eventRecord(
+                "codex_reset_credits.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "onboarding"])
+            return
+        }
+        guard snap.enabledProviders.contains("codex") else {
+            DeveloperLog.eventRecord(
+                "codex_reset_credits.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "codex-disabled"])
+            return
+        }
+        if let interval = minInterval,
+           let lastAttempt = lastCodexResetCreditsRefreshAttemptAt,
+           Date().timeIntervalSince(lastAttempt) < interval {
+            DeveloperLog.eventRecord(
+                "codex_reset_credits.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "throttled"])
+            return
+        }
+        guard !isRefreshingCodexResetCredits else {
+            DeveloperLog.eventRecord(
+                "codex_reset_credits.refresh.skip",
+                category: "poller",
+                operation: parentOperation,
+                trigger: trigger,
+                provider: "codex",
+                result: "skipped",
+                fields: ["reason": "already-refreshing"])
+            return
+        }
+        isRefreshingCodexResetCredits = true
+        lastCodexResetCreditsRefreshAttemptAt = Date()
+        let op = DeveloperLog.startOperation(
+            "codex_reset_credits.refresh",
+            category: "poller",
+            trigger: trigger,
+            provider: "codex",
+            parent: parentOperation)
+
+        Task { [weak self, client = codexResetCreditsClient, op] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.isRefreshingCodexResetCredits = false
+                }
+            }
+            do {
+                let snapshot = try await Self.withTimeout(
+                    seconds: 10,
+                    context: "refreshCodexResetCredits"
+                ) {
+                    try await client.fetchResetCredits()
+                }
+                await MainActor.run {
+                    guard let self else { return }
+                    self.latestCodexResetCredits = snapshot
+                    self.lastCodexResetCreditsError = nil
+                }
+                DeveloperLog.finishOperation(
+                    op,
+                    fields: [
+                        "available_count": .int(snapshot.availableCount),
+                        "detail_count": .int(snapshot.credits.count)
+                    ])
+            } catch {
+                await MainActor.run {
+                    guard let self else { return }
+                    self.lastCodexResetCreditsError = String(describing: error)
+                }
+                DeveloperLog.failOperation(op, error: error)
+            }
+        }
     }
 
     /// `minInterval` is honoured by the auto-refresh-on-popover-open caller
@@ -513,6 +683,9 @@ final class AppEnvironment {
                             if cached != nil {
                                 self.lastRateLimitsRefreshAt = Date()
                             }
+                            self.applyCodexResetCreditsCountFallback(
+                                cached?.resetCreditsAvailable,
+                                capturedAt: cached?.capturedAt ?? Date())
                         }
                         DeveloperLog.finishOperation(
                             op,
@@ -615,6 +788,9 @@ final class AppEnvironment {
                     case .success(let snapshot):
                         self.latestRateLimits = snapshot
                         self.lastRateLimitsRefreshAt = snapshot.capturedAt
+                        self.applyCodexResetCreditsCountFallback(
+                            snapshot.resetCreditsAvailable,
+                            capturedAt: snapshot.capturedAt)
                         DeveloperLog.finishOperation(
                             op,
                             fields: [
@@ -665,6 +841,9 @@ final class AppEnvironment {
                 await MainActor.run {
                     self.latestRateLimits = snapshot
                     self.lastRateLimitsRefreshAt = Date()
+                    self.applyCodexResetCreditsCountFallback(
+                        snapshot.resetCreditsAvailable,
+                        capturedAt: snapshot.capturedAt)
                 }
                 DeveloperLog.finishOperation(
                     op,

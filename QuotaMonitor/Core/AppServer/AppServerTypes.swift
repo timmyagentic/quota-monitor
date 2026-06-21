@@ -63,16 +63,19 @@ struct RateLimitsPayload: Decodable {
     let planType: String?           // free-form! "plus", "pro", "prolite", ...
     let rateLimit: RateLimitGroup?
     let additionalRateLimits: [AdditionalRateLimit]?
+    let resetCreditsAvailable: Int?
 
     private enum CodingKeys: String, CodingKey {
         // legacy snake_case
         case planTypeSnake = "plan_type"
         case rateLimitSnake = "rate_limit"
         case additionalRateLimitsSnake = "additional_rate_limits"
+        case resetCreditsSnake = "rate_limit_reset_credits"
         // current camelCase (codex CLI ≥ 0.128)
         case planTypeCamel = "planType"
         case rateLimitsCamel = "rateLimits"
         case rateLimitsByLimitIdCamel = "rateLimitsByLimitId"
+        case resetCreditsCamel = "rateLimitResetCredits"
     }
 
     init(from decoder: Decoder) throws {
@@ -118,6 +121,31 @@ struct RateLimitsPayload: Decodable {
         } else {
             self.additionalRateLimits = nil
         }
+
+        let camelCredits = try c.decodeIfPresent(
+            RateLimitResetCreditsSummary.self,
+            forKey: .resetCreditsCamel)
+        let snakeCredits = try c.decodeIfPresent(
+            RateLimitResetCreditsSummary.self,
+            forKey: .resetCreditsSnake)
+        self.resetCreditsAvailable = camelCredits?.availableCount
+            ?? snakeCredits?.availableCount
+    }
+}
+
+struct RateLimitResetCreditsSummary: Decodable {
+    let availableCount: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case availableCountCamel = "availableCount"
+        case availableCountSnake = "available_count"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try c.decodeIfPresent(Int.self, forKey: .availableCountCamel)
+            ?? c.decodeIfPresent(Int.self, forKey: .availableCountSnake)
+        self.availableCount = raw.map { max(0, $0) }
     }
 }
 

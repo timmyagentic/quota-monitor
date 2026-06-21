@@ -83,10 +83,18 @@ struct RateLimitPollerTests {
         return try DatabaseManager(url: url)
     }
 
-    private func makePayload(primary: Double = 10, secondary: Double = 20) throws -> RateLimitsPayload {
+    private func makePayload(
+        primary: Double = 10,
+        secondary: Double = 20,
+        resetCreditsAvailable: Int? = nil
+    ) throws -> RateLimitsPayload {
         let reset = Int(Date(timeIntervalSinceNow: 3600).timeIntervalSince1970)
+        let resetCredits = resetCreditsAvailable.map {
+            #""rateLimitResetCredits": { "availableCount": \#($0) },"#
+        } ?? ""
         let json = """
         {
+          \(resetCredits)
           "planType": "pro",
           "rateLimits": {
             "planType": "pro",
@@ -153,6 +161,20 @@ struct RateLimitPollerTests {
         let calls = await mock.callCount
         #expect(calls == 1, "second pollOnce inside the Codex minimum gap must not hit app-server")
         #expect(snapshots.all.count == 1)
+    }
+
+    @Test("poller publishes reset credit count through RateLimitSnapshot")
+    func pollerPublishesResetCreditCount() async throws {
+        let mock = MockCodexRateLimitsFetcher(script: [
+            .success(try makePayload(resetCreditsAvailable: 2))
+        ])
+        let db = try makeDatabase()
+        let snapshots = SnapshotBox()
+        let poller = makePoller(fetcher: mock, db: db, snapshots: snapshots)
+
+        await poller.pollOnce()
+
+        #expect(snapshots.all.first?.resetCreditsAvailable == 2)
     }
 
     @Test("forced pollOnce bypasses the minimum gap for manual refresh")
