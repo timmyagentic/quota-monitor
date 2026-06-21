@@ -77,36 +77,6 @@ struct SessionMetaPayload: Decodable {
 
 struct TurnContextPayload: Decodable {
     let model: String?
-    let turnId: String?
-    let fastMode: Bool?
-    let quickMode: Bool?
-
-    var explicitFastMode: Bool? {
-        fastMode ?? quickMode
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case model, quickMode
-        case turnId
-        case turnIdSnake = "turn_id"
-        case fastModeSnake = "fast_mode"
-        case fastMode
-        case quickModeSnake = "quick_mode"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        model = try container.decodeIfPresent(String.self, forKey: .model)
-        turnId =
-            try container.decodeIfPresent(String.self, forKey: .turnIdSnake)
-            ?? container.decodeIfPresent(String.self, forKey: .turnId)
-        fastMode =
-            try container.decodeIfPresent(Bool.self, forKey: .fastModeSnake)
-            ?? container.decodeIfPresent(Bool.self, forKey: .fastMode)
-        quickMode =
-            try container.decodeIfPresent(Bool.self, forKey: .quickModeSnake)
-            ?? container.decodeIfPresent(Bool.self, forKey: .quickMode)
-    }
 }
 
 // MARK: - event_msg / token_count

@@ -18,9 +18,6 @@ import Foundation
 //      to LegacyFallbackModel and flag the event so UI can asterisk the cost.
 //   4. rate_limits embedded in token_count are valuable historical samples
 //      (different shape from the app-server live API).
-//   5. Codex Fast Mode follows codex-pacer's local JSONL method: explicit
-//      `turn_context.payload.fast_mode` / `quick_mode` markers classify the
-//      current turn; missing markers stay unknown and use the settings fallback.
 
 /// Models are now stamped on `turn_context`, but legacy sessions and the
 /// occasional malformed rollout have no model anywhere. ccusage attributes
@@ -49,14 +46,11 @@ struct ParsedSession {
 struct UsageDelta {
     let timestamp: String
     let modelId: String
-    let turnId: String?
     let inputTokens: Int64
     let cachedInputTokens: Int64
     let outputTokens: Int64
     let reasoningOutputTokens: Int64
     let totalTokens: Int64
-    let billingTier: CodexBillingTier
-    let billingTierSource: CodexBillingTierSource
     /// True iff `modelId` was inferred via the legacy fallback (no
     /// `turn_context` ever set the model in this session). Surfaced in UI
     /// so the user knows the cost is approximate.
@@ -76,10 +70,7 @@ struct RateLimitSampleDraft {
 enum RolloutParser {
 
     /// Parse a full rollout file. Returns nil if no session_id can be resolved.
-    static func parse(
-        fileURL: URL,
-        fallbackSessionId: String? = nil
-    ) throws -> ParsedSession? {
+    static func parse(fileURL: URL, fallbackSessionId: String? = nil) throws -> ParsedSession? {
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
 
@@ -92,8 +83,6 @@ enum RolloutParser {
         var cwd: String?
         var currentModel: String?
         var currentModelIsFallback = false
-        var currentTurnId: String?
-        var currentExplicitFastMode: Bool?
         var seenModels: Set<String> = []
         var latestPlanType: String?
 
@@ -117,8 +106,6 @@ enum RolloutParser {
                 if cwd == nil, let metaCwd = meta.cwd, !metaCwd.isEmpty { cwd = metaCwd }
 
             case .turnContext(let tc, _):
-                currentTurnId = tc.turnId.flatMap(Self.nonEmptyTurnId)
-                currentExplicitFastMode = tc.explicitFastMode
                 if let model = tc.model {
                     let normalized = NormalizeModelId(model)
                     currentModel = normalized
@@ -154,8 +141,6 @@ enum RolloutParser {
                 }
                 seenModels.insert(resolvedModel)
 
-                let classification = CodexBillingTierClassifier.classify(
-                    explicitFastMode: currentExplicitFastMode)
                 let delta = usageDelta(
                     from: info,
                     previousTotal: &previousUsage,
@@ -164,14 +149,11 @@ enum RolloutParser {
                     deltas.append(UsageDelta(
                         timestamp: timestamp,
                         modelId: resolvedModel,
-                        turnId: currentTurnId,
                         inputTokens: delta.inputTokens,
                         cachedInputTokens: delta.cachedInputTokens,
                         outputTokens: delta.outputTokens,
                         reasoningOutputTokens: delta.reasoningOutputTokens,
                         totalTokens: delta.totalTokens,
-                        billingTier: classification.tier,
-                        billingTierSource: classification.source,
                         modelInferred: inferred))
                 }
                 updatedAt = timestamp
@@ -211,11 +193,6 @@ enum RolloutParser {
     }
 
     // MARK: - delta logic
-
-    private static func nonEmptyTurnId(_ turnId: String) -> String? {
-        let trimmed = turnId.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
 
     private static func usageDelta(
         from info: TokenCountInfo,

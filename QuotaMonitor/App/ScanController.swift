@@ -210,7 +210,6 @@ extension AppEnvironment {
         try await db.pool.read { conn in
             let rows = try Row.fetchCursor(conn, sql: """
                 SELECT ue.id, ue.session_id, ue.timestamp, ue.model_id,
-                       ue.turn_id, ue.billing_tier, ue.billing_tier_source,
                        ue.input_tokens, ue.cached_input_tokens, ue.output_tokens,
                        ue.reasoning_output_tokens, ue.total_tokens, ue.value_usd,
                        COALESCE(NULLIF(TRIM(s.title), ''), NULLIF(TRIM(s.project_name), ''), '') AS export_title,
@@ -219,7 +218,7 @@ extension AppEnvironment {
                 LEFT JOIN sessions s ON s.session_id = ue.session_id
                 ORDER BY ue.timestamp ASC
                 """)
-            let header = "id,session_id,timestamp,model_id,turn_id,billing_tier,billing_tier_source,input,cached,output,reasoning,total,value_usd,title,agent\n"
+            let header = "id,session_id,timestamp,model_id,input,cached,output,reasoning,total,value_usd,title,agent\n"
             guard FileManager.default.createFile(atPath: url.path, contents: header.data(using: .utf8)) else {
                 throw NSError(domain: "QuotaMonitor", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Could not create file at \(url.path)"])
@@ -234,9 +233,6 @@ extension AppEnvironment {
                     row["session_id"] as String? ?? "",
                     row["timestamp"] as String? ?? "",
                     row["model_id"] as String? ?? "",
-                    row["turn_id"] as String? ?? "",
-                    row["billing_tier"] as String? ?? "",
-                    row["billing_tier_source"] as String? ?? "",
                     "\(row["input_tokens"] as Int64? ?? 0)",
                     "\(row["cached_input_tokens"] as Int64? ?? 0)",
                     "\(row["output_tokens"] as Int64? ?? 0)",

@@ -5,7 +5,7 @@
 ## 核心数据流
 
 1. 启动或扫描前，`DatabaseManager` / `ImportEngine` 会调用 `PricingService.seedCatalog`，确保 `pricing_catalog` 至少有内置模型价格。
-2. Codex 导入器读取 `~/.codex/sessions` / `archived_sessions` JSONL，把累计的 `token_count.info.total_token_usage` 转成每次增量；如果当前 `turn_context` 带有 `fast_mode` / `quick_mode` 标记，会同时写入该 turn 的 Fast / Standard 分类。
+2. Codex 导入器读取 `~/.codex/sessions` / `archived_sessions` JSONL，把累计的 `token_count.info.total_token_usage` 转成每次增量。
 3. Claude 导入器读取 `~/.claude/projects` 和 `~/.config/claude/projects` JSONL，把每条 `assistant.message.usage` 作为独立用量事件。
 4. 导入器写入 `sessions` 和 `usage_events`，新事件初始 `value_usd = 0`。
 5. `ScanController.runScan` 在 Codex 和 Claude 扫描都完成后，如果有文件变化，会调用一次 `PricingService.backfillAllValues`。
@@ -32,9 +32,6 @@
 | `value_usd` | 由价格表回填出的美元估值。 |
 | `model_inferred` | Codex 没有模型信息时 fallback 到 `gpt-5`，这里标记该金额是近似。 |
 | `provider_message_id` | Claude message id，用于增量重读时去重。 |
-| `turn_id` | Codex turn id，用于 CSV 导出和调试时关联同一轮对话。 |
-| `billing_tier` | Codex 计费档位：`fast`、`standard` 或 `unknown`。Claude 默认 `unknown`，不参与 Codex tier 展示。 |
-| `billing_tier_source` | Codex tier 来源：`jsonl`、`missing_marker`、`legacy`、`not_codex` 等。 |
 
 ### `pricing_catalog`
 
@@ -56,7 +53,7 @@
 
 LiteLLM 同步由 `LiteLLMPricingSource` 拉取 `model_prices_and_context_window.json`，再由 `PricingService.applyLiteLLMUpdate` 写入 `pricing_catalog`。当前策略是只更新 catalog 中已经存在、且 `price_source != 'local'` 的模型，不自动新增任意未知模型。这样可以避免把 LiteLLM 的大量无关 provider 直接塞进本地表，但也意味着新模型需要先加入 seed 或用户手工建行，之后 LiteLLM 才能持续刷新它。
 
-Codex Fast Mode 现在是 JSONL 标记优先、设置兜底：当 `billing_tier = 'fast'` 且模型在 `CodexFastMode.multipliers` 中时，`PricingService` 不使用原 `model_id`，而是匹配合成行 `<model_id>-fast`；当 `billing_tier = 'standard'` 时始终按基础价格计费；当 `billing_tier = 'unknown'` 时，才由 Settings 里的“未识别 Codex 按 Fast Mode 计费”开关决定是否使用 `*-fast` 行。当前 multiplier 在代码里维护，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。
+Codex Fast Mode 是一个全局设置。开启后，`PricingService` 对 `provider = 'codex'` 且模型在 `CodexFastMode.multipliers` 中的事件，不使用原 `model_id`，而是匹配合成行 `<model_id>-fast`。当前 multiplier 在代码里维护，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。
 
 ## Codex 计费公式
 
@@ -78,7 +75,7 @@ value_usd =
 - `input_tokens` 是 gross input，已经包含 cached input，所以标准输入只对 `input - cached` 计费。
 - `output_tokens` 已经包含 reasoning output；`reasoning_output_tokens` 是拆分字段，不额外计费，否则会重复计算。
 - 旧 Codex session 缺少模型时 fallback 到 `gpt-5`，并设置 `model_inferred = true`，UI 可提示该行是近似估算。
-- Fast Mode 不改变公式和 token 口径，只改变 `pricing_catalog` 的匹配行：JSONL 标记确认的 Fast 使用 `*-fast`；JSONL 标记确认的 Standard 使用基础行；未知档位按设置兜底。
+- 开启 Codex Fast Mode 时，上述公式不变，只是价格行换成合成的 `*-fast` 行。
 
 ## Claude 计费公式
 
@@ -141,10 +138,10 @@ UI 不重复实现计费公式。
 
 - 这是 API-equivalent spend，不是 Codex / Claude 订阅费用，也不一定等于供应商账单。
 - Long Context / 大上下文 tier 暂不纳入当前计费要求。QuotaMonitor 的输入源是本地 Codex / Claude 使用日志，而不是供应商账单；这些日志没有稳定记录每次请求是否触发 long-context tier。因此 `above_200k_input_price_per_million` 和 `above_200k_output_price_per_million` 目前只保存，不参与计费公式。这是估算边界，不是当前必须解决的计费缺口。
-- 区域、执行层和未支持服务层倍率暂不纳入当前计费要求。例如 regional processing、data residency、flex / batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要更完整的逐请求字段或账单侧数据才能准确还原；当前实现只对 Codex JSONL 能确认的 Fast vs Standard 做逐事件计价。
+- 区域、服务层和执行层倍率暂不纳入当前计费要求。例如 regional processing、data residency、priority / flex / batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要逐请求字段或账单侧数据才能准确还原；当前本地日志源不足以支持，所以不作为 QuotaMonitor 的计费目标。
 - LiteLLM 当前只更新已存在于本地 catalog 的模型；新模型需要 seed 或本地建行。
 - `price_source = 'local'` 的行不会被 LiteLLM 或 seed 覆盖。
-- 并非所有 Codex JSONL 都带有 `fast_mode` / `quick_mode` 标记；缺标记的事件保持 `unknown`，只能按用户的兜底设置估算，不能完全还原供应商账单。
+- Codex Fast Mode 是全局开关。Codex JSONL 不提供逐请求 Fast / Standard tier，项目无法判断某条事件实际走哪个 tier；因此只能由用户选择“全部按 Standard”或“全部按 Fast Mode”重算。混合历史无法自动还原，这是当前设计的真实局限，暂时无法解决。
 - Codex 缺模型的历史事件按 `gpt-5` 估算，`model_inferred = true`。
 - Claude 旧数据必须经过 v6 迁移后的重新扫描，才能从“全部按 5m cache write”升级为 1h / 5m 分开计价。
 

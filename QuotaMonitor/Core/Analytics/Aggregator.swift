@@ -49,13 +49,7 @@ struct ModelShare: Sendable, Identifiable, Equatable {
     let displayName: String
     var id: String { modelId }
     let valueUSD: Double
-    let standardValueUSD: Double
-    let fastValueUSD: Double
-    let unknownValueUSD: Double
     let tokens: Int64
-    let standardTokens: Int64
-    let fastTokens: Int64
-    let unknownTokens: Int64
     let eventCount: Int
 }
 
@@ -363,9 +357,6 @@ struct SessionDetail: Sendable, Equatable {
         let reasoningOutputTokens: Int64
         let totalTokens: Int64
         let valueUSD: Double
-        let turnId: String?
-        let billingTier: CodexBillingTier
-        let billingTierSource: CodexBillingTierSource
         /// True iff the parser inferred the model from the legacy fallback
         /// (no turn_context / payload model anywhere in the session). UI
         /// asterisks the cost so users know it's approximate.

@@ -321,10 +321,7 @@ actor ImportEngine {
                     cacheCreationTokens: 0,
                     provider: "codex",
                     modelInferred: delta.modelInferred,
-                    providerMessageId: nil,
-                    turnId: delta.turnId,
-                    billingTier: delta.billingTier.rawValue,
-                    billingTierSource: delta.billingTierSource.rawValue)
+                    providerMessageId: nil)
                 try event.insert(db)
             }
 

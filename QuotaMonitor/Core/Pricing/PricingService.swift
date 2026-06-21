@@ -52,12 +52,12 @@ struct PricingEntry: Sendable, Hashable {
     }
 }
 
-/// Codex Fast-Mode billing multipliers. Some Codex rollout JSONL rows carry
-/// `turn_context.payload.fast_mode` / `quick_mode` markers; QuotaMonitor uses
-/// those markers to classify event tiers when present. `CodexFastMode`
-/// supplies the synthetic `<model>-fast` catalog rows used for confirmed Fast
-/// events, while the `codexFastModeBilling` setting is only the fallback for
-/// unclassified rows whose tier could not be identified from JSONL.
+/// Codex Fast-Mode billing multipliers. The Codex CLI doesn't surface
+/// per-call tier info in its JSONL output, so we can't detect Fast vs
+/// Standard at import time. Instead the user flips one global toggle in
+/// Settings → Advanced → Codex CLI ("Bill as Fast Mode"). When ON, every
+/// usage_events row whose model_id is one of these keys gets repriced
+/// with its base price × the listed multiplier.
 ///
 /// **Why a hard-coded map, not catalog rows.** We seed synthetic
 /// `-fast` rows in `PricingSeed.entries` derived from these numbers so
@@ -427,11 +427,10 @@ enum PricingService {
     ///     at the catalog write rate, and 1-hour cache writes are billed at
     ///     2x base input. No subtraction needed.
     ///
-    /// Codex events whose model_id is in `CodexFastMode.multipliers` are
-    /// JOINed against the synthetic `<model>-fast` catalog row when the event
-    /// is explicitly marked Fast by the local rollout JSONL. Unknown-tier
-    /// events preserve the previous global fallback behavior controlled by
-    /// `codexFastModeBilling`.
+    /// When `codexFastModeBilling` is true, codex events whose model_id is in
+    /// `CodexFastMode.multipliers` are JOINed against the synthetic
+    /// `<model>-fast` catalog row instead of the base row, so the dollar
+    /// figure reflects the Fast-tier rate.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
@@ -486,18 +485,18 @@ enum PricingService {
     }
 
     /// SQL expression that resolves to the catalog `model_id` we should
-    /// price this event against. Explicit event-level Codex billing tier wins
-    /// over the global fallback:
-    ///   - `fast` uses `usage_events.model_id || '-fast'`
-    ///   - `standard` uses `usage_events.model_id`
-    ///   - `unknown` follows `codexFastModeBilling`
+    /// price this event against. When Fast-Mode is off (or the event
+    /// isn't codex / isn't a model with a Fast variant), it's just
+    /// `usage_events.model_id`. When Fast-Mode is on for a recognised
+    /// codex model, it becomes `usage_events.model_id || '-fast'`.
     ///
     /// We string-interpolate the model id list and the suffix because
     /// they're code-controlled (sourced from `CodexFastMode`), never
     /// user input. Single-quote escaping is unnecessary here, but the
     /// model id assertion below makes the assumption explicit.
     private static func effectiveModelIdSQL(codexFastModeBilling: Bool) -> String {
-        guard !CodexFastMode.multipliers.isEmpty else {
+        guard codexFastModeBilling,
+              !CodexFastMode.multipliers.isEmpty else {
             return "usage_events.model_id"
         }
         // Determinism + simpler diffs.
@@ -512,12 +511,6 @@ enum PricingService {
         CASE
           WHEN usage_events.provider = 'codex'
                AND usage_events.model_id IN (\(quoted))
-               AND usage_events.billing_tier = 'fast'
-          THEN usage_events.model_id || '\(suffix)'
-          WHEN usage_events.provider = 'codex'
-               AND usage_events.model_id IN (\(quoted))
-               AND usage_events.billing_tier = 'unknown'
-               AND \(codexFastModeBilling ? "1" : "0") = 1
           THEN usage_events.model_id || '\(suffix)'
           ELSE usage_events.model_id
         END

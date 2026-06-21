@@ -91,40 +91,26 @@ struct SessionDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L10n.modelsInSession).font(.headline)
                 ForEach(detail.modelBreakdown) { share in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(share.displayName)
-                                .font(.callout)
-                            Spacer()
-                            Text(share.valueUSD.formatted(.currency(code: "USD")))
-                                .font(.callout.monospacedDigit())
-                            Text("(\(share.eventCount))")
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        if let caption = share.billingSplitCaption(tokenFormatLocale: settings.tokenFormatLocale) {
-                            Text(caption)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                    HStack {
+                        Text(share.displayName)
+                            .font(.callout)
+                        Spacer()
+                        Text(share.valueUSD.formatted(.currency(code: "USD")))
+                            .font(.callout.monospacedDigit())
+                        Text("(\(share.eventCount))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
         } else if let only = detail.modelBreakdown.first {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Label(only.displayName, systemImage: "cpu")
-                        .font(.callout.weight(.medium))
-                    Spacer()
-                    Text(only.valueUSD.formatted(.currency(code: "USD")))
-                        .font(.callout.monospacedDigit())
-                        .foregroundStyle(.green)
-                }
-                if let caption = only.billingSplitCaption(tokenFormatLocale: settings.tokenFormatLocale) {
-                    Text(caption)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
+            HStack {
+                Label(only.displayName, systemImage: "cpu")
+                    .font(.callout.weight(.medium))
+                Spacer()
+                Text(only.valueUSD.formatted(.currency(code: "USD")))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.green)
             }
         }
     }
@@ -275,15 +261,6 @@ struct EventRow: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption2)
                         .foregroundStyle(.orange)
-                }
-                if let tierLabel = event.billingTierLabel {
-                    Text(tierLabel)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.12))
-                        .clipShape(Capsule())
                 }
             }
             .frame(width: 150, alignment: .leading)
@@ -473,50 +450,5 @@ struct EventRow: View {
     private var timestampShort: String {
         guard let d = ISO8601.parse(event.timestamp) else { return event.timestamp }
         return d.formatted(.dateTime.hour().minute().second())
-    }
-}
-
-extension ModelShare {
-    func billingSplitCaption(tokenFormatLocale: Locale) -> String? {
-        let pieces = [
-            billingSplitPiece(tier: .fast,
-                              tokens: fastTokens,
-                              valueUSD: fastValueUSD,
-                              tokenFormatLocale: tokenFormatLocale),
-            billingSplitPiece(tier: .standard,
-                              tokens: standardTokens,
-                              valueUSD: standardValueUSD,
-                              tokenFormatLocale: tokenFormatLocale),
-            billingSplitPiece(tier: .unknown,
-                              tokens: unknownTokens,
-                              valueUSD: unknownValueUSD,
-                              tokenFormatLocale: tokenFormatLocale)
-        ].compactMap { $0 }
-        guard !pieces.isEmpty else { return nil }
-        return pieces.joined(separator: " · ")
-    }
-
-    private func billingSplitPiece(
-        tier: CodexBillingTier,
-        tokens: Int64,
-        valueUSD: Double,
-        tokenFormatLocale: Locale
-    ) -> String? {
-        guard tokens != 0 || abs(valueUSD) > 0.000_001 else { return nil }
-        return L10n.codexBillingSplitPiece(
-            tier: tier,
-            tokens: tokens,
-            valueUSD: valueUSD,
-            tokenFormatLocale: tokenFormatLocale)
-    }
-}
-
-private extension SessionDetail.Event {
-    var billingTierLabel: String? {
-        guard provider == "codex" else { return nil }
-        switch billingTier {
-        case .fast, .standard, .unknown:
-            return L10n.codexBillingTierLabel(billingTier)
-        }
     }
 }
