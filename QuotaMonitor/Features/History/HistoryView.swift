@@ -215,6 +215,11 @@ private struct DayDetailView: View {
                     }
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    if let caption = share.billingSplitCaption(tokenFormatLocale: settings.tokenFormatLocale) {
+                        Text(caption)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(10)
                 .background(

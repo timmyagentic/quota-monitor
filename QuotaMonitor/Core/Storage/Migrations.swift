@@ -292,5 +292,36 @@ enum Migrations {
             try SessionMetadataMigration.reclassifyLegacyTitles(in: db)
             try SessionMetadataMigration.forceHeaderReread(in: db)
         }
+
+        // v12: persist Codex billing tier attribution.
+        //
+        // Existing rows and importers default to unknown/legacy until the
+        // Codex parser starts wiring turn-level trace data. Force a Codex-only
+        // reimport so old Codex events can be rebuilt once Task 5 writes these
+        // fields; Claude import_state rows are intentionally left alone.
+        migrator.registerMigration("v12-codex-billing-tier") { db in
+            try db.alter(table: "usage_events") { t in
+                t.add(column: "turn_id", .text)
+                t.add(column: "billing_tier", .text)
+                    .notNull().defaults(to: CodexBillingTier.unknown.rawValue)
+                t.add(column: "billing_tier_source", .text)
+                    .notNull().defaults(to: CodexBillingTierSource.legacy.rawValue)
+            }
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_usage_events_provider_billing_tier_timestamp
+                ON usage_events(provider, billing_tier, timestamp)
+                """)
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
+                   OR source_path LIKE '%/.codex/sessions/%'
+                   OR source_path LIKE '%/.codex/archived_sessions/%'
+                """)
+        }
     }
 }

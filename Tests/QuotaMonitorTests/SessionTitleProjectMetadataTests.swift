@@ -551,13 +551,16 @@ struct SessionTitleProjectMetadataTests {
             try conn.execute(sql: """
                 INSERT INTO usage_events
                   (session_id, timestamp, model_id,
+                   turn_id, billing_tier, billing_tier_source,
                    input_tokens, cached_input_tokens, output_tokens,
                    reasoning_output_tokens, total_tokens, value_usd,
                    provider, cache_creation_tokens, model_inferred)
                 VALUES
                   ('real-title', '2026-06-01T00:00:00Z', 'gpt-5.5',
+                   'turn-fast-export', 'fast', 'trace',
                    10, 0, 5, 0, 15, 0.01, 'codex', 0, 0),
                   ('project-only', '2026-06-01T00:01:00Z', 'gpt-5.5',
+                   NULL, 'unknown', 'legacy',
                    20, 0, 5, 0, 25, 0.02, 'codex', 0, 0)
                 """)
         }
@@ -568,12 +571,18 @@ struct SessionTitleProjectMetadataTests {
         let lines = try String(contentsOf: output, encoding: .utf8)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
-        #expect(lines.first == "id,session_id,timestamp,model_id,input,cached,output,reasoning,total,value_usd,title,agent")
+        #expect(lines.first == "id,session_id,timestamp,model_id,turn_id,billing_tier,billing_tier_source,input,cached,output,reasoning,total,value_usd,title,agent")
 
         let realTitleFields = lines[1].split(separator: ",", omittingEmptySubsequences: false).map(String.init)
         let projectOnlyFields = lines[2].split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-        #expect(realTitleFields[10] == "Split session titles from project metadata")
-        #expect(projectOnlyFields[10] == "project-name-fallback-demo")
+        #expect(realTitleFields[4] == "turn-fast-export")
+        #expect(realTitleFields[5] == "fast")
+        #expect(realTitleFields[6] == "trace")
+        #expect(realTitleFields[13] == "Split session titles from project metadata")
+        #expect(projectOnlyFields[4] == "")
+        #expect(projectOnlyFields[5] == "unknown")
+        #expect(projectOnlyFields[6] == "legacy")
+        #expect(projectOnlyFields[13] == "project-name-fallback-demo")
     }
 
     @Test("Codex scan persists real title and project metadata")

@@ -65,11 +65,35 @@ actor ImportEngine {
                 """)
             return Set(rows)
         }
+        let traceRecheckCodexPaths: Set<String>
+        if CodexServiceTierTraceStore.defaultDatabaseURL(codexHome: codexHome) != nil {
+            traceRecheckCodexPaths = try await database.pool.read { db in
+                let rows = try String.fetchAll(db, sql: """
+                    SELECT DISTINCT sessions.source_path
+                    FROM sessions
+                    JOIN usage_events
+                      ON usage_events.session_id = sessions.session_id
+                     AND usage_events.provider = 'codex'
+                    WHERE sessions.provider = 'codex'
+                      AND sessions.source_path IS NOT NULL
+                      AND usage_events.billing_tier_source IN (?, ?)
+                    """, arguments: [
+                    CodexBillingTierSource.traceUnavailable.rawValue,
+                    CodexBillingTierSource.traceMissing.rawValue
+                ])
+                return Set(rows)
+            }
+        } else {
+            traceRecheckCodexPaths = []
+        }
 
         var currentCodexPathsWithoutBackfillableProjectMetadata: [String] = []
         let changed = files.filter { file in
             guard let prior = priorState[file.path] else { return true }
             if prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs {
+                return true
+            }
+            if traceRecheckCodexPaths.contains(file.path) {
                 return true
             }
             if metadataIncompleteCodexPaths.contains(file.path),
@@ -85,6 +109,7 @@ actor ImportEngine {
             try await markCodexRolloutsWithoutBackfillableProjectMetadata(
                 currentCodexPathsWithoutBackfillableProjectMetadata)
         }
+        let billingLookup = loadCodexTurnBillingLookup(for: changed)
         await progress?(ScanProgressUpdate(
             provider: "codex",
             completedFiles: 0,
@@ -100,7 +125,8 @@ actor ImportEngine {
             do {
                 if let parsed = try RolloutParser.parse(
                     fileURL: file.url,
-                    fallbackSessionId: file.sessionIdHint
+                    fallbackSessionId: file.sessionIdHint,
+                    billingLookup: billingLookup
                 ) {
                     var enriched = parsed
                     if let metadata = codexMetadata[parsed.sessionId] {
@@ -321,7 +347,10 @@ actor ImportEngine {
                     cacheCreationTokens: 0,
                     provider: "codex",
                     modelInferred: delta.modelInferred,
-                    providerMessageId: nil)
+                    providerMessageId: nil,
+                    turnId: delta.turnId,
+                    billingTier: delta.billingTier.rawValue,
+                    billingTierSource: delta.billingTierSource.rawValue)
                 try event.insert(db)
             }
 
@@ -371,6 +400,27 @@ actor ImportEngine {
             return PersistCounts(
                 events: parsed.usageDeltas.count,
                 samples: parsed.rateLimitSamples.count)
+        }
+    }
+
+    private func loadCodexTurnBillingLookup(for changedFiles: [SessionFile]) -> CodexTurnBillingLookup {
+        guard !changedFiles.isEmpty else { return .unavailable }
+        guard let databaseURL = CodexServiceTierTraceStore.defaultDatabaseURL(codexHome: codexHome) else {
+            return .unavailable
+        }
+
+        let modifiedTimes = changedFiles.map { TimeInterval($0.fileMtimeMs) / 1_000 }
+        guard let earliest = modifiedTimes.min(), let latest = modifiedTimes.max() else {
+            return .unavailable
+        }
+
+        let padding: TimeInterval = 24 * 60 * 60
+        do {
+            return try CodexServiceTierTraceStore(databaseURL: databaseURL).loadLookup(
+                start: Date(timeIntervalSince1970: earliest - padding),
+                end: Date(timeIntervalSince1970: latest + padding))
+        } catch {
+            return .unavailable
         }
     }
 
