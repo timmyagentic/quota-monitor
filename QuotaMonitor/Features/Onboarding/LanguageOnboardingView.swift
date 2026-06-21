@@ -93,7 +93,7 @@ struct OnboardingView: View {
 
             VStack(spacing: 8) {
                 Button {
-                    loc.set(.english)
+                    chooseLanguage(.english)
                 } label: {
                     Label("Continue in English", systemImage: "checkmark.circle")
                         .frame(maxWidth: .infinity)
@@ -102,7 +102,7 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
 
                 Button {
-                    loc.set(.simplifiedChinese)
+                    chooseLanguage(.simplifiedChinese)
                 } label: {
                     Label("使用简体中文继续", systemImage: "checkmark.circle")
                         .frame(maxWidth: .infinity)
@@ -112,6 +112,11 @@ struct OnboardingView: View {
             }
             .padding(.horizontal, 8)
         }
+    }
+
+    private func chooseLanguage(_ language: LocalizationStore.Language) {
+        settings.markProviderOnboardingStarted()
+        loc.set(language)
     }
 
     // MARK: - provider step

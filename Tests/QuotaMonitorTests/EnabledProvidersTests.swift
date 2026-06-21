@@ -187,14 +187,33 @@ struct EnabledProvidersTests {
     }
 
     @Test
+    func languageOnlyExistingUserAfterBadLaunchRepairsFalseDoneFlag() {
+        let d = Self.freshDefaults()
+        // The released 0.2.34 build could launch an existing language-only
+        // profile, decide the reset gate should reopen provider onboarding,
+        // and persist providersDone=false before the user finished anything.
+        // The hotfix must repair that already-written false on the next launch.
+        d.set("zh-Hans", forKey: "app.language")
+        d.set(false, forKey: "onboarding.providersDone")
+
+        let store = SettingsStore(defaults: d, appVersion: "0.2.35")
+
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.35")
+    }
+
+    @Test
     func partialCurrentOnboardingStillNeedsProviderStep() {
         let d = Self.freshDefaults()
-        // Current builds write an explicit false before the user finishes
-        // the provider step. A language-only partial onboarding session is
-        // not an existing configured user and should still resume setup.
+        // Fixed builds mark the language-to-provider transition. That
+        // marker distinguishes a real interrupted fresh install from the
+        // 0.2.34 language-only repair state above.
         d.set("en", forKey: "app.language")
         d.set(false, forKey: "onboarding.providersDone")
-        let store = SettingsStore(defaults: d, appVersion: "0.2.33")
+        d.set(true, forKey: "onboarding.providerStepStarted")
+        let store = SettingsStore(defaults: d, appVersion: "0.2.35")
         #expect(store.needsProviderOnboarding)
         #expect(d.string(forKey: "onboarding.lastVersion") == nil)
     }

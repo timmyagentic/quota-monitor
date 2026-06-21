@@ -455,13 +455,16 @@ final class SettingsStore {
         let lastOnboarded = defaults.string(forKey: Keys.lastOnboardedVersion)
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
         let hasStoredLanguage = defaults.string(forKey: "app.language") != nil
-        // Language-only profiles come from pre-provider-onboarding builds.
-        // An explicit false still means the current onboarding was abandoned.
+        let providerStepStarted = defaults.bool(forKey: Keys.providerOnboardingStarted)
+        // Language-only profiles without the fixed-build provider-step marker
+        // come from pre-provider-onboarding builds, or from the 0.2.34 reset
+        // gate that persisted providersDone=false before the user could finish.
+        let languageOnlyLegacyProfile = hasStoredLanguage && !providerStepStarted
         let hasExistingConfiguration =
             storedDone == true
             || storedProviders != nil
             || storedInterval > 0
-            || (storedDone == nil && hasStoredLanguage)
+            || (storedDone != true && languageOnlyLegacyProfile)
         let resolvedDone: Bool
         if resetGate && hasExistingConfiguration {
             resolvedDone = true
@@ -472,6 +475,9 @@ final class SettingsStore {
             resolvedDone = baseDone && !resetGate
         }
         self.hasCompletedProviderOnboarding = resolvedDone
+        if resolvedDone {
+            defaults.removeObject(forKey: Keys.providerOnboardingStarted)
+        }
         defaults.set(resolvedDone, forKey: Keys.providerOnboardingDone)
     }
 
@@ -559,8 +565,18 @@ final class SettingsStore {
         if let appVersion {
             defaults.set(appVersion, forKey: Keys.lastOnboardedVersion)
         }
+        defaults.removeObject(forKey: Keys.providerOnboardingStarted)
         NotificationCenter.default.post(
             name: .quotaMonitorOnboardingCompleted, object: nil)
+    }
+
+    /// Mark that this build moved a fresh install from language selection
+    /// into provider onboarding. Older buggy releases never wrote this
+    /// marker, so the upgrade repair can distinguish their language-only
+    /// false flag from a genuinely interrupted fresh-install wizard.
+    func markProviderOnboardingStarted() {
+        guard !hasCompletedProviderOnboarding else { return }
+        defaults.set(true, forKey: Keys.providerOnboardingStarted)
     }
 
     /// Replace the enabled set wholesale (e.g. from the onboarding
@@ -657,6 +673,7 @@ final class SettingsStore {
         static let legacyMenuBarIconProvider = "settings.menuBarIconProvider"
         static let enabledProviders = "settings.enabledProviders"
         static let providerOnboardingDone = "onboarding.providersDone"
+        static let providerOnboardingStarted = "onboarding.providerStepStarted"
         static let lastOnboardedVersion = "onboarding.lastVersion"
     }
 }
