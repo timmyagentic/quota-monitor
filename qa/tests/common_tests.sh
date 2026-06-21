@@ -144,8 +144,43 @@ test_write_real_data_defaults_copies_user_preferences_without_overrides() {
     [[ "$mirror_to_file" == "1" ]] || fail "copied mirror-to-file was $mirror_to_file"
     grep -q '^copied_user_defaults=true$' "$report" \
         || fail "user defaults report did not record copied_user_defaults=true"
+    grep -q '^qa_overrides=none$' "$report" \
+        || fail "real-data defaults should not record QA overrides"
     grep -q '^safety_overrides=none$' "$report" \
         || fail "real-data defaults should not apply product-setting overrides"
+}
+
+test_write_real_data_defaults_accepts_language_override() {
+    local source_home target_home source_domain target_domain report
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-language-override.XXXXXX")"
+    target_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-target-language-override.XXXXXX")"
+    source_domain="dev.tjzhou.QuotaMonitor.SourceLanguageTest.$RANDOM.$$"
+    target_domain="dev.tjzhou.QuotaMonitor.TargetLanguageTest.$RANDOM.$$"
+    report="$target_home/user-defaults-shadow.txt"
+    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+
+    HOME="$source_home" defaults write "$source_domain" app.language -string en
+    HOME="$source_home" defaults write "$source_domain" settings.enabledProviders -array codex
+
+    QM_QA_LANGUAGE=zh-Hans qm_write_real_data_defaults \
+        "$target_home" \
+        "$target_domain" \
+        "$source_home" \
+        "$source_domain" \
+        "$report"
+
+    local language providers
+    language="$(HOME="$target_home" defaults read "$target_domain" app.language)"
+    providers="$(HOME="$target_home" defaults read "$target_domain" settings.enabledProviders)"
+
+    [[ "$language" == "zh-Hans" ]] || fail "real-data language override was $language"
+    grep -q 'codex' <<<"$providers" || fail "copied enabled provider missing after override: $providers"
+    grep -q '^copied_user_defaults=true$' "$report" \
+        || fail "language override report did not record copied_user_defaults=true"
+    grep -q '^qa_overrides=app.language=zh-Hans$' "$report" \
+        || fail "language override report did not record app.language override"
+    grep -q '^safety_overrides=none$' "$report" \
+        || fail "language override should not change safety overrides"
 }
 
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied() {
@@ -184,9 +219,9 @@ test_seed_fixtures() {
     assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
     assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
     assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-session.jsonl"
-    assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo/qa-claude-project-only.jsonl"
+    assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-billing-api/qa-claude-project-only.jsonl"
     assert_file "$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-config-session.jsonl"
-    grep -q 'Split session titles from project metadata' "$home/.codex/session_index.jsonl" \
+    grep -q 'Show Codex reset cards in the menu bar' "$home/.codex/session_index.jsonl" \
         || fail "Codex fixture metadata title missing from session_index"
 }
 
