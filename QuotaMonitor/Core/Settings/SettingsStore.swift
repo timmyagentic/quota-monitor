@@ -454,10 +454,14 @@ final class SettingsStore {
         }
         let lastOnboarded = defaults.string(forKey: Keys.lastOnboardedVersion)
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
+        let hasStoredLanguage = defaults.string(forKey: "app.language") != nil
+        // Language-only profiles come from pre-provider-onboarding builds.
+        // An explicit false still means the current onboarding was abandoned.
         let hasExistingConfiguration =
             storedDone == true
             || storedProviders != nil
             || storedInterval > 0
+            || (storedDone == nil && hasStoredLanguage)
         let resolvedDone: Bool
         if resetGate && hasExistingConfiguration {
             resolvedDone = true

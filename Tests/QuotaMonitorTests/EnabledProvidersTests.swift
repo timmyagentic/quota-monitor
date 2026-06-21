@@ -171,6 +171,22 @@ struct EnabledProvidersTests {
     }
 
     @Test
+    func languageOnlyExistingUserWithoutLastVersionSkipsOnboardingAndStampsCurrentVersion() {
+        let d = Self.freshDefaults()
+        // Builds before provider onboarding could have a valid language
+        // selection without ever writing provider arrays. That is still
+        // an existing user, not a fresh install.
+        d.set("zh-Hans", forKey: "app.language")
+
+        let store = SettingsStore(defaults: d, appVersion: "0.2.34")
+
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.34")
+    }
+
+    @Test
     func partialCurrentOnboardingStillNeedsProviderStep() {
         let d = Self.freshDefaults()
         // Current builds write an explicit false before the user finishes

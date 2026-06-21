@@ -30,6 +30,9 @@ window copy.
 
 ## [Unreleased]
 
+### Fixed
+- **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.
+
 ## [0.2.34] — 2026-06-21
 
 #### Summary
