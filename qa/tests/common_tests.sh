@@ -793,6 +793,61 @@ SQL
     [[ "$compat_count" == "1" ]] || fail "compat state row count was $compat_count"
 }
 
+test_copy_codex_usage_snapshot_copies_sessions_and_traces_without_credentials() {
+    local dir source_home target_home before after
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-codex-usage-shadow.XXXXXX")"
+    source_home="$dir/source"
+    target_home="$dir/target"
+    trap 'rm -rf "$dir"' RETURN
+
+    mkdir -p \
+        "$source_home/.codex/sessions/2026/06/21" \
+        "$source_home/.codex/archived_sessions" \
+        "$source_home/.codex/sqlite"
+    printf '{"id":"s1","thread_name":"Fast mode check"}\n' \
+        >"$source_home/.codex/session_index.jsonl"
+    printf '{"type":"session_meta","payload":{"id":"s1"}}\n' \
+        >"$source_home/.codex/sessions/2026/06/21/rollout-2026-06-21T00-00-00-s1.jsonl"
+    printf '{"type":"session_meta","payload":{"id":"archived"}}\n' \
+        >"$source_home/.codex/archived_sessions/rollout-2026-06-20T00-00-00-archived.jsonl"
+    sqlite3 "$source_home/.codex/logs_2.sqlite" >/dev/null <<'SQL'
+PRAGMA journal_mode=WAL;
+CREATE TABLE spans (id TEXT PRIMARY KEY);
+INSERT INTO spans (id) VALUES ('root-log');
+SQL
+    sqlite3 "$source_home/.codex/sqlite/logs_2.sqlite" >/dev/null <<'SQL'
+PRAGMA journal_mode=WAL;
+CREATE TABLE spans (id TEXT PRIMARY KEY);
+INSERT INTO spans (id) VALUES ('compat-log');
+SQL
+    printf 'secret-token' >"$source_home/.codex/auth.json"
+
+    before="$(qm_file_fingerprint "$source_home/.codex/logs_2.sqlite")"
+    qm_copy_codex_usage_snapshot "$source_home/.codex" "$target_home/.codex"
+    after="$(qm_file_fingerprint "$source_home/.codex/logs_2.sqlite")"
+
+    [[ "$before" == "$after" ]] || fail "source Codex trace DB fingerprint changed"
+    assert_file "$target_home/.codex/session_index.jsonl"
+    assert_file "$target_home/.codex/sessions/2026/06/21/rollout-2026-06-21T00-00-00-s1.jsonl"
+    assert_file "$target_home/.codex/archived_sessions/rollout-2026-06-20T00-00-00-archived.jsonl"
+    assert_file "$target_home/.codex/logs_2.sqlite"
+    assert_file "$target_home/.codex/sqlite/logs_2.sqlite"
+    [[ ! -e "$target_home/.codex/auth.json" ]] \
+        || fail "credential file was copied into real-data usage shadow"
+
+    local root_id compat_id root_journal compat_journal
+    root_id="$(sqlite3 "$target_home/.codex/logs_2.sqlite" 'SELECT id FROM spans;')"
+    compat_id="$(sqlite3 "$target_home/.codex/sqlite/logs_2.sqlite" 'SELECT id FROM spans;')"
+    root_journal="$(sqlite3 "$target_home/.codex/logs_2.sqlite" 'PRAGMA journal_mode;')"
+    compat_journal="$(sqlite3 "$target_home/.codex/sqlite/logs_2.sqlite" 'PRAGMA journal_mode;')"
+    [[ "$root_id" == "root-log" ]] || fail "root trace copy failed: $root_id"
+    [[ "$compat_id" == "compat-log" ]] || fail "compat trace copy failed: $compat_id"
+    [[ "$root_journal" == "delete" ]] \
+        || fail "root trace copy must be read-only friendly, got journal_mode=$root_journal"
+    [[ "$compat_journal" == "delete" ]] \
+        || fail "compat trace copy must be read-only friendly, got journal_mode=$compat_journal"
+}
+
 test_write_real_data_computer_qa_brief_documents_shadow_boundary() {
     local dir brief
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-real-data-qa-brief.XXXXXX")"
@@ -975,6 +1030,7 @@ test_warns_when_ax_snapshot_is_incomplete
 test_ax_snapshot_accepts_localized_settings_title
 test_copy_sqlite_snapshot_preserves_source
 test_copy_codex_metadata_snapshot_copies_only_safe_metadata
+test_copy_codex_usage_snapshot_copies_sessions_and_traces_without_credentials
 test_write_real_data_computer_qa_brief_documents_shadow_boundary
 test_assert_real_data_artifact_contract
 test_rejects_real_provider_path_leak

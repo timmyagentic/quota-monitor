@@ -51,7 +51,7 @@ final class LocalQAController {
                 exerciseSettings()
                 await pause(seconds: 0.8)
             case .wait:
-                await pause(seconds: 1.0)
+                await waitForScanIdle()
             case .snapshot:
                 writeSnapshot()
             case .quit:
@@ -65,6 +65,14 @@ final class LocalQAController {
     private func pause(seconds: Double) async {
         let nanos = UInt64(seconds * 1_000_000_000)
         try? await Task.sleep(nanoseconds: nanos)
+    }
+
+    private func waitForScanIdle(timeout: TimeInterval = 300) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while environment.isScanning && Date() < deadline {
+            await pause(seconds: 0.5)
+        }
+        await pause(seconds: 0.2)
     }
 
     private func exerciseSettings() {
