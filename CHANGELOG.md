@@ -34,12 +34,14 @@ window copy.
 - Codex now shows available reset cards and their expiration times in the menu bar
 - Claude live quota cards now keep their last numbers visible while waiting to refresh
 - Mac App Store preparation now has a local readiness check before any account setup
+- App Store builds can ask for local Codex and Claude history folders before importing
 - Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
 - History and Sessions now show real session titles, falling back to the project name only when no title exists
 
 ### Added
 - **Codex reset-card visibility.** The menu bar now shows how many Codex active reset cards are available and when the available cards expire.
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
+- **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
 
 ### Changed
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.

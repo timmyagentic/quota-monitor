@@ -39,6 +39,25 @@ extension AppEnvironment {
                 fields: ["reason": "onboarding"])
             return
         }
+        if DistributionChannel.current == .appStore {
+            let missing = HistoryRootAuthorizationStore.shared
+                .missingRequiredKinds(for: initialSnap.enabledProviders)
+            guard missing.isEmpty else {
+                let labels = missing.map(\.rawValue).joined(separator: ",")
+                lastError = L10n.historyFoldersNotAuthorized
+                DeveloperLog.eventRecord(
+                    "scan.run.skip",
+                    category: "scan",
+                    operation: parentOperation,
+                    trigger: trigger,
+                    result: "skipped",
+                    fields: [
+                        "reason": "history-roots-missing",
+                        "missing_roots": .string(labels)
+                    ])
+                return
+            }
+        }
         if let interval = minInterval, let last = lastScanAt,
            Date().timeIntervalSince(last) < interval {
             DeveloperLog.eventRecord(

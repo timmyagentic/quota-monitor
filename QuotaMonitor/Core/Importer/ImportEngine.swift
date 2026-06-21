@@ -11,7 +11,8 @@ import GRDB
 
 actor ImportEngine {
     private let database: DatabaseManager
-    private let codexHome: URL
+    private let codexHome: URL?
+    private let securityScopedAccess: any SecurityScopedResourceAccessing
 
     struct ScanReport: Sendable {
         let scannedFiles: Int
@@ -27,9 +28,15 @@ actor ImportEngine {
             importedRateLimitSamples: 0, errors: [])
     }
 
-    init(database: DatabaseManager, codexHome: URL = SessionScanner.defaultCodexHome()) {
+    init(
+        database: DatabaseManager,
+        codexHome: URL? = SessionScanner.defaultCodexHome(),
+        securityScopedAccess: any SecurityScopedResourceAccessing =
+            FoundationSecurityScopedResourceAccessing()
+    ) {
         self.database = database
         self.codexHome = codexHome
+        self.securityScopedAccess = securityScopedAccess
     }
 
     func performScan(progress: ScanProgressHandler? = nil) async throws -> ScanReport {
@@ -37,6 +44,13 @@ actor ImportEngine {
         try await database.pool.write { db in
             try PricingService.seedCatalog(in: db)
         }
+
+        guard let codexHome else {
+            return .empty
+        }
+
+        let scopedAccess = securityScopedAccess.access(codexHome)
+        defer { scopedAccess.stop() }
 
         let files = SessionScanner.scan(codexHome: codexHome)
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in

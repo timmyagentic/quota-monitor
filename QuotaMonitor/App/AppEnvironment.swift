@@ -166,6 +166,12 @@ final class AppEnvironment {
         }
     }
 
+    func reloadHistoryImportRoots() {
+        guard let db = database else { return }
+        importEngine = ImportEngine(database: db)
+        claudeEngine = ClaudeImportEngine(database: db)
+    }
+
     /// Boot the background rate-limit poller. Idempotent.
     ///
     /// Hard-gated on onboarding completion so a fresh-install user
