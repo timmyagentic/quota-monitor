@@ -42,11 +42,12 @@ qm_write_defaults() {
     local domain="${2:-dev.tjzhou.QuotaMonitor.QA}"
     local version
     version="$(qm_app_version)"
+    local language="${QM_QA_LANGUAGE:-en}"
 
     qm_assert_qa_defaults_suite "$domain" || return 1
 
     mkdir -p "$home/Library/Preferences"
-    HOME="$home" defaults write "$domain" app.language -string en
+    HOME="$home" defaults write "$domain" app.language -string "$language"
     HOME="$home" defaults write "$domain" onboarding.providersDone -bool true
     HOME="$home" defaults write "$domain" onboarding.lastVersion -string "$version"
     HOME="$home" defaults write "$domain" discoverability.firstRunPresentationShown -bool true
@@ -152,17 +153,22 @@ qm_real_data_computer_use_steps() {
         "open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,wait,snapshot"
 }
 
-qm_steps_include_quit() {
+qm_steps_include() {
     local steps="$1"
+    local wanted="$2"
     local part trimmed
     local -a parts
     IFS=',' read -r -a parts <<<"$steps"
     for part in "${parts[@]}"; do
         trimmed="${part#"${part%%[![:space:]]*}"}"
         trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-        [[ "$trimmed" == "quit" ]] && return 0
+        [[ "$trimmed" == "$wanted" ]] && return 0
     done
     return 1
+}
+
+qm_steps_include_quit() {
+    qm_steps_include "$1" "quit"
 }
 
 qm_app_artifacts_dir() {
@@ -472,6 +478,7 @@ qm_write_launch_config() {
     local output_dir="$4"
     local steps="$5"
     local codex_home="$6"
+    local mock_codex_reset_credits="${7:-false}"
 
     qm_assert_qa_defaults_suite "$defaults_suite" || return 1
 
@@ -491,6 +498,7 @@ qm_write_launch_config() {
         printf '  "codexHome": '
         qm_json_string "$codex_home"
         printf ',\n'
+        printf '  "mockCodexResetCredits": %s,\n' "$mock_codex_reset_credits"
         printf '  "steps": ['
 
         local first=1
@@ -739,6 +747,8 @@ qm_warn_incomplete_ax_snapshot() {
 
 qm_assert_artifact_contract() {
     local artifacts="$1"
+    local expected_language="${2:-en}"
+    local qa_steps="${3:-exercise-settings}"
     local state="${artifacts}/app-state.json"
     local db_counts="${artifacts}/db-counts.txt"
     local dev_log="${artifacts}/quotamonitor-dev.log"
@@ -759,23 +769,25 @@ qm_assert_artifact_contract() {
         echo "error: dashboard window was not captured in QA state" >&2
         return 1
     }
-    grep -Eq '"title"[[:space:]]*:[[:space:]]*"Settings"' "$state" || {
+    grep -Eq '"title"[[:space:]]*:[[:space:]]*"(Settings|设置)"' "$state" || {
         echo "error: settings window was not captured in QA state" >&2
         return 1
     }
-    grep -q '"exercise-settings"' "$state" || {
-        echo "error: settings exercise step was not captured in QA state" >&2
-        return 1
-    }
 
-    qm_assert_plutil_equals "$state" "settings.language" "en"
-    qm_assert_plutil_equals "$state" "settings.quotaDisplayMode" "remaining"
+    qm_assert_plutil_equals "$state" "settings.language" "$expected_language"
     qm_assert_plutil_equals "$state" "settings.menuBarLabelStyle" "emphasis"
-    qm_assert_plutil_equals "$state" "settings.showDockIconForWindows" "false"
     qm_assert_plutil_equals "$state" "settings.developerModeEnabled" "true"
-    qm_assert_plutil_equals "$state" "settings.pollIntervalSeconds" "900"
-    qm_assert_plutil_equals "$state" "settings.enabledProviders.0" "claude"
-    qm_assert_plutil_equals "$state" "settings.menuBarIconProviders.0" "claude"
+    if qm_steps_include "$qa_steps" "exercise-settings"; then
+        grep -q '"exercise-settings"' "$state" || {
+            echo "error: settings exercise step was not captured in QA state" >&2
+            return 1
+        }
+        qm_assert_plutil_equals "$state" "settings.quotaDisplayMode" "remaining"
+        qm_assert_plutil_equals "$state" "settings.showDockIconForWindows" "false"
+        qm_assert_plutil_equals "$state" "settings.pollIntervalSeconds" "900"
+        qm_assert_plutil_equals "$state" "settings.enabledProviders.0" "claude"
+        qm_assert_plutil_equals "$state" "settings.menuBarIconProviders.0" "claude"
+    fi
 
     [[ -f "$db_counts" ]] || {
         echo "error: missing db-counts artifact: $db_counts" >&2
@@ -802,10 +814,12 @@ qm_assert_artifact_contract() {
         echo "error: missing Developer Mode log artifact: $dev_log" >&2
         return 1
     }
-    grep -q '"event":"qa.settings.exercise"' "$dev_log" || {
-        echo "error: settings exercise event missing from Developer Mode log" >&2
-        return 1
-    }
+    if qm_steps_include "$qa_steps" "exercise-settings"; then
+        grep -q '"event":"qa.settings.exercise"' "$dev_log" || {
+            echo "error: settings exercise event missing from Developer Mode log" >&2
+            return 1
+        }
+    fi
     grep -q '"event":"qa.snapshot.write"' "$dev_log" || {
         echo "error: snapshot write event missing from Developer Mode log" >&2
         return 1

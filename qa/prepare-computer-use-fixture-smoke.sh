@@ -45,7 +45,8 @@ qm_write_launch_config \
     "$DEFAULTS_SUITE" \
     "$APP_ARTIFACTS" \
     "$QA_STEPS" \
-    "$CODEX_HOME"
+    "$CODEX_HOME" \
+    "true"
 qm_write_boundary_manifest \
     "$BOUNDARY_MANIFEST" \
     "fixture" \
@@ -88,7 +89,9 @@ SQL
 
 dev_log_has_qa_events() {
     [[ -f "$DEV_LOG" ]] || return 1
-    grep -q '"event":"qa.settings.exercise"' "$DEV_LOG" || return 1
+    if qm_steps_include "$QA_STEPS" "exercise-settings"; then
+        grep -q '"event":"qa.settings.exercise"' "$DEV_LOG" || return 1
+    fi
     grep -q '"event":"qa.snapshot.write"' "$DEV_LOG" || return 1
 }
 
@@ -123,7 +126,7 @@ if command -v osascript >/dev/null 2>&1; then
     fi
 fi
 
-qm_assert_artifact_contract "$ARTIFACTS"
+qm_assert_artifact_contract "$ARTIFACTS" "${QM_QA_LANGUAGE:-en}" "$QA_STEPS"
 qm_write_computer_qa_brief "$BRIEF" "$ARTIFACTS" "$QA_HOME" "$DEFAULTS_SUITE" "$ROOT_DIR"
 
 cat <<EOF

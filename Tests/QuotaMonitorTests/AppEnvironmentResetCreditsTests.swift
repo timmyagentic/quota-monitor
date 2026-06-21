@@ -53,6 +53,21 @@ struct AppEnvironmentResetCreditsTests {
         #expect(env.isRefreshingCodexResetCredits == false)
     }
 
+    @Test("local QA mock reset credits install a visible detailed snapshot")
+    func localQAMockResetCreditsInstallVisibleSnapshot() throws {
+        let now = try #require(ISO8601.parse("2026-06-21T09:00:00Z"))
+        let env = AppEnvironment(startBackgroundTasks: false)
+
+        env.installLocalQAMockCodexResetCredits(now: now)
+
+        let snapshot = try #require(env.latestCodexResetCredits)
+        #expect(snapshot.availableCount == 2)
+        #expect(snapshot.detailStatus == .complete)
+        #expect(snapshot.credits.count == 2)
+        #expect(snapshot.nextExpiration == now.addingTimeInterval(2 * 60 * 60))
+        #expect(snapshot.credits[1].expiresAt == now.addingTimeInterval(5 * 24 * 60 * 60))
+    }
+
     private func preserveSettings(keys: [String]) -> () -> Void {
         let defaults = UserDefaults.standard
         let oldValues = keys.map { ($0, defaults.object(forKey: $0)) }

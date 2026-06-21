@@ -7,6 +7,7 @@ import Foundation
 struct LocalQAConfiguration: Equatable {
     let outputDirectory: URL
     let steps: [LocalQAStep]
+    let mockCodexResetCredits: Bool
 
     init?(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -42,6 +43,7 @@ struct LocalQAConfiguration: Equatable {
             ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("QuotaMonitorQA", isDirectory: true)
         self.outputDirectory = output
+        self.mockCodexResetCredits = resolved.mockCodexResetCredits
     }
 }
 

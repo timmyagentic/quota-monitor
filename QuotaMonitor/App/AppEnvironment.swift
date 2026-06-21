@@ -526,6 +526,28 @@ final class AppEnvironment {
             capturedAt: capturedAt)
     }
 
+    func installLocalQAMockCodexResetCredits(now: Date = Date()) {
+        latestCodexResetCredits = CodexResetCreditsSnapshot(
+            capturedAt: now,
+            availableCount: 2,
+            credits: [
+                CodexResetCredit(
+                    grantedAt: now.addingTimeInterval(-60 * 60),
+                    expiresAt: now.addingTimeInterval(2 * 60 * 60)),
+                CodexResetCredit(
+                    grantedAt: now.addingTimeInterval(-24 * 60 * 60),
+                    expiresAt: now.addingTimeInterval(5 * 24 * 60 * 60)),
+            ],
+            detailStatus: .complete)
+        lastCodexResetCreditsError = nil
+        DeveloperLog.eventRecord(
+            "codex_reset_credits.qa_mock.install",
+            category: "poller",
+            trigger: "qa",
+            provider: "codex",
+            fields: ["available_count": .int(2)])
+    }
+
     func refreshCodexResetCredits(
         minInterval: TimeInterval? = nil,
         trigger: String = "manual",
