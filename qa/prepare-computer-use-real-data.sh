@@ -30,9 +30,20 @@ PROTECTION_REPORT="${ARTIFACTS}/real-data-protection.txt"
 SOURCE_HOME="${QM_QA_SOURCE_HOME:-$HOME}"
 SOURCE_DEFAULTS_DOMAIN="${QM_QA_SOURCE_DEFAULTS_DOMAIN:-dev.tjzhou.QuotaMonitor}"
 SOURCE_CODEX_HOME="${QM_QA_SOURCE_CODEX_HOME:-${CODEX_HOME:-${SOURCE_HOME}/.codex}}"
+MOCK_CODEX_RESET_CREDITS="${QM_QA_MOCK_CODEX_RESET_CREDITS:-false}"
 USER_DEFAULTS_REPORT="${ARTIFACTS}/user-defaults-shadow.txt"
 INSTALLED_APP_BUNDLE="$(qm_installed_app_bundle)"
 INSTALLED_APP_WAS_RUNNING="$(qm_installed_app_was_running "$INSTALLED_APP_BUNDLE")"
+
+case "$MOCK_CODEX_RESET_CREDITS" in
+    true|false) ;;
+    1) MOCK_CODEX_RESET_CREDITS=true ;;
+    0) MOCK_CODEX_RESET_CREDITS=false ;;
+    *)
+        echo "error: QM_QA_MOCK_CODEX_RESET_CREDITS must be true or false" >&2
+        exit 1
+        ;;
+esac
 
 mkdir -p "$QA_HOME" "$ARTIFACTS" "$APP_ARTIFACTS"
 qm_write_computer_use_cleanup \
@@ -68,7 +79,8 @@ qm_write_launch_config \
     "$DEFAULTS_SUITE" \
     "$APP_ARTIFACTS" \
     "$QA_STEPS" \
-    "$CODEX_HOME"
+    "$CODEX_HOME" \
+    "$MOCK_CODEX_RESET_CREDITS"
 qm_write_boundary_manifest \
     "$BOUNDARY_MANIFEST" \
     "real-data-shadow" \

@@ -88,6 +88,7 @@ qm_write_real_data_defaults() {
     local source_domain="$4"
     local report_path="$5"
     local copied="false"
+    local qa_overrides="none"
 
     qm_assert_qa_defaults_suite "$domain" || return 1
 
@@ -99,6 +100,11 @@ qm_write_real_data_defaults() {
         copied="true"
     fi
 
+    if [[ "$copied" == "true" && -n "${QM_QA_LANGUAGE:-}" ]]; then
+        HOME="$home" defaults write "$domain" app.language -string "$QM_QA_LANGUAGE"
+        qa_overrides="app.language=${QM_QA_LANGUAGE}"
+    fi
+
     {
         printf 'source_home=%s\n' "$source_home"
         printf 'source_domain=%s\n' "$source_domain"
@@ -106,6 +112,7 @@ qm_write_real_data_defaults() {
         printf 'target_domain=%s\n' "$domain"
         printf 'copy_requested=1\n'
         printf 'copied_user_defaults=%s\n' "$copied"
+        printf 'qa_overrides=%s\n' "$qa_overrides"
         printf 'safety_overrides=none\n'
     } >"$report_path"
 
@@ -119,17 +126,17 @@ qm_seed_fixtures() {
 
     local codex_dir="$home/.codex/sessions/qa"
     local claude_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor"
-    local claude_fallback_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo"
+    local claude_fallback_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-billing-api"
     local claude_config_dir="$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor"
 
     mkdir -p "$codex_dir" "$claude_dir" "$claude_fallback_dir" "$claude_config_dir" "$home/.codex/archived_sessions"
 
-    cp "${root}/Tests/QuotaMonitorTests/Fixtures/Rollout/cli_0_40_with_cwd.jsonl" \
+    cp "${root}/qa/fixtures/qa-codex-session.jsonl" \
         "$codex_dir/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
     cp "${root}/qa/fixtures/qa-codex-project-only.jsonl" \
         "$codex_dir/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
     cat >"$home/.codex/session_index.jsonl" <<'JSON'
-{"id":"019aa0fd-1111-7000-8000-aaaaaaaaaaaa","thread_name":"Split session titles from project metadata","updated_at":"2026-06-01T00:00:03Z"}
+{"id":"019aa0fd-1111-7000-8000-aaaaaaaaaaaa","thread_name":"Show Codex reset cards in the menu bar","updated_at":"2026-06-20T10:16:03Z"}
 JSON
     cp "${root}/qa/fixtures/qa-claude-session.jsonl" \
         "$claude_dir/qa-claude-session.jsonl"
@@ -401,7 +408,7 @@ qm_write_computer_qa_brief() {
         printf '3. Use Computer Use only for local UI reading/clicking. Ask before destructive UI actions such as uninstall, deleting files, changing system settings, or transmitting credentials.\n\n'
         printf '## Walkthrough\n\n'
         printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data and no empty primary panels.'
-        printf '%s\n' '- Sessions: switch to Sessions, search "Split session titles" to see real session titles, then search "project-name-fallback-demo" to see the project-name fallback row without an "Untitled session" label.'
+        printf '%s\n' '- Sessions: switch to Sessions, search "Show Codex reset cards" to see real session titles, then search "billing-api" to see the project-name fallback row without an "Untitled session" label.'
         printf '%s\n' '- History: switch to History, select a populated day, and verify rollups plus per-session details are readable.'
         printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
         printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'
