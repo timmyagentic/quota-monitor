@@ -196,12 +196,35 @@ struct EnabledProvidersTests {
         d.set("zh-Hans", forKey: "app.language")
         d.set(false, forKey: "onboarding.providersDone")
 
-        let store = SettingsStore(defaults: d, appVersion: "0.2.35")
+        let store = SettingsStore(
+            defaults: d,
+            appVersion: "0.2.35",
+            hasExistingAppData: { true })
 
         #expect(store.needsProviderOnboarding == false)
         #expect(store.enabledProviders == ["codex", "claude"])
         #expect(d.bool(forKey: "onboarding.providersDone"))
         #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.35")
+    }
+
+    @Test
+    func fresh034LanguageOnlyPartialWithoutDataStillNeedsProviderStep() {
+        let d = Self.freshDefaults()
+        // A brand-new 0.2.34 install could choose a language and quit before
+        // provider onboarding. That state has no fixed-build marker, but also
+        // no prior app data, so it should resume setup instead of being
+        // silently repaired as an existing user.
+        d.set("zh-Hans", forKey: "app.language")
+        d.set(false, forKey: "onboarding.providersDone")
+
+        let store = SettingsStore(
+            defaults: d,
+            appVersion: "0.2.35",
+            hasExistingAppData: { false })
+
+        #expect(store.needsProviderOnboarding)
+        #expect(d.bool(forKey: "onboarding.providersDone") == false)
+        #expect(d.string(forKey: "onboarding.lastVersion") == nil)
     }
 
     @Test

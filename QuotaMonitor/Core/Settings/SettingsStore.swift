@@ -330,7 +330,8 @@ final class SettingsStore {
     nonisolated static let knownIconProviders: Set<String> = ["codex", "claude"]
 
     init(defaults: UserDefaults = .standard,
-         appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) {
+         appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+         hasExistingAppData: () -> Bool = SettingsStore.defaultExistingAppDataExists) {
         self.defaults = defaults
         self.appVersion = appVersion
         let storedInterval = defaults.integer(forKey: Keys.pollInterval)
@@ -456,10 +457,17 @@ final class SettingsStore {
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
         let hasStoredLanguage = defaults.string(forKey: "app.language") != nil
         let providerStepStarted = defaults.bool(forKey: Keys.providerOnboardingStarted)
-        // Language-only profiles without the fixed-build provider-step marker
-        // come from pre-provider-onboarding builds, or from the 0.2.34 reset
-        // gate that persisted providersDone=false before the user could finish.
-        let languageOnlyLegacyProfile = hasStoredLanguage && !providerStepStarted
+        let languageOnlyLegacyProfile: Bool
+        if hasStoredLanguage && !providerStepStarted {
+            // Missing done flag: pre-provider-onboarding language choice.
+            // False done flag: only repair when prior app data proves this
+            // was an existing install hit by 0.2.34, not a brand-new user
+            // who quit between language and provider setup.
+            languageOnlyLegacyProfile = storedDone == nil
+                || (storedDone == false && hasExistingAppData())
+        } else {
+            languageOnlyLegacyProfile = false
+        }
         let hasExistingConfiguration =
             storedDone == true
             || storedProviders != nil
@@ -641,6 +649,14 @@ final class SettingsStore {
             return stored
         }
         return true
+    }
+
+    private nonisolated static func defaultExistingAppDataExists() -> Bool {
+        let db = DatabaseManager.defaultURL()
+        let fm = FileManager.default
+        return ["", "-wal", "-shm"].contains { suffix in
+            fm.fileExists(atPath: db.path + suffix)
+        }
     }
 
     struct Snapshot: Sendable {
