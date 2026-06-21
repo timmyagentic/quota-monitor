@@ -24,6 +24,9 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+- 已经选过语言的老用户更新后不再重复进入 Landing Page
+
 ### 修复
 - **更新后不会再让只保存过语言的老用户重复进入 Landing Page。** 已保存语言选择的现有安装，即使旧版本从未写入 Provider 引导标记，现在也会跳过 Landing Page。
 
