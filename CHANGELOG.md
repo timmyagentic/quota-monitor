@@ -31,12 +31,14 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+- Codex now shows available reset cards and their expiration times in the menu bar
 - Claude live quota cards now keep their last numbers visible while waiting to refresh
 - Mac App Store preparation now has a local readiness check before any account setup
 - Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
 - History and Sessions now show real session titles, falling back to the project name only when no title exists
 
 ### Added
+- **Codex reset-card visibility.** The menu bar now shows how many Codex active reset cards are available and when the available cards expire.
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
 
 ### Changed
