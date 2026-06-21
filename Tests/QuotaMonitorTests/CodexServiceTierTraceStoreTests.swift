@@ -189,7 +189,7 @@ struct CodexServiceTierTraceStoreTests {
             directory: codexHome,
             rows: [
                 TraceRow(
-                    ts: 1_820_000_100,
+                    ts: 1_781_949_690,
                     tsNanos: 10,
                     body: Self.requestTraceBody(turnID: "turn-fast", serviceTier: "priority", model: "gpt-5.5"))
             ])
@@ -210,6 +210,46 @@ struct CodexServiceTierTraceStoreTests {
         #expect(rows.map { $0["billing_tier"] as String } == ["fast", "standard"])
         #expect(rows.map { $0["billing_tier_source"] as String } == ["trace", "trace"])
         #expect(rows.map { $0["total_tokens"] as Int64 } == [1_100, 550])
+    }
+
+    @Test("import scan uses rollout event timestamps instead of file modification date for trace lookup")
+    func importScanUsesEventTimestampsInsteadOfModificationDateForTraceLookup() async throws {
+        let database = try Self.makeQuotaMonitorDatabase()
+        let codexHome = try Self.makeTemporaryDirectory()
+        let sessionsDirectory = codexHome.appending(path: "sessions/2026/06/20", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
+        let rolloutURL = sessionsDirectory.appending(path: "rollout-2026-06-20T10-00-00-test-session.jsonl")
+        try Self.writeCodexRollout(
+            to: rolloutURL,
+            fastTurnID: "turn-fast",
+            missingTurnID: "turn-miss")
+        try Self.setModificationDate(
+            Date(timeIntervalSince1970: 1_893_456_000),
+            for: rolloutURL)
+        _ = try Self.makeLogsDatabase(
+            directory: codexHome,
+            rows: [
+                TraceRow(
+                    ts: 1_781_949_690,
+                    tsNanos: 10,
+                    body: Self.requestTraceBody(turnID: "turn-fast", serviceTier: "priority", model: "gpt-5.5"))
+            ])
+
+        let report = try await ImportEngine(database: database, codexHome: codexHome).performScan()
+        #expect(report.changedFiles == 1)
+        #expect(report.importedEvents == 2)
+
+        let rows = try await database.pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT turn_id, billing_tier, billing_tier_source
+                FROM usage_events
+                ORDER BY timestamp ASC, id ASC
+                """)
+        }
+
+        #expect(rows.map { $0["turn_id"] as String? } == ["turn-fast", "turn-miss"])
+        #expect(rows.map { $0["billing_tier"] as String } == ["fast", "standard"])
+        #expect(rows.map { $0["billing_tier_source"] as String } == ["trace", "trace"])
     }
 
     @Test("import scan rechecks rows that were imported while trace database was unavailable")
@@ -234,7 +274,7 @@ struct CodexServiceTierTraceStoreTests {
             directory: codexHome,
             rows: [
                 TraceRow(
-                    ts: 1_820_000_100,
+                    ts: 1_781_949_690,
                     tsNanos: 10,
                     body: Self.requestTraceBody(turnID: "turn-fast", serviceTier: "priority", model: "gpt-5.5"))
             ])

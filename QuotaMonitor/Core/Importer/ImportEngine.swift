@@ -409,19 +409,55 @@ actor ImportEngine {
             return .unavailable
         }
 
-        let modifiedTimes = changedFiles.map { TimeInterval($0.fileMtimeMs) / 1_000 }
-        guard let earliest = modifiedTimes.min(), let latest = modifiedTimes.max() else {
-            return .unavailable
+        let eventWindows = changedFiles.compactMap { file in
+            try? RolloutParser.traceLookupWindow(fileURL: file.url)
+        }
+        guard !eventWindows.isEmpty else {
+            return CodexTurnBillingLookup(available: true, tracesByTurnID: [:])
         }
 
         let padding: TimeInterval = 24 * 60 * 60
+        let windows = coalescedTraceLookupWindows(eventWindows, padding: padding)
         do {
-            return try CodexServiceTierTraceStore(databaseURL: databaseURL).loadLookup(
-                start: Date(timeIntervalSince1970: earliest - padding),
-                end: Date(timeIntervalSince1970: latest + padding))
+            let traceStore = CodexServiceTierTraceStore(databaseURL: databaseURL)
+            var tracesByTurnID: [String: CodexTurnBillingTrace] = [:]
+            for window in windows {
+                let lookup = try traceStore.loadLookup(start: window.start, end: window.end)
+                tracesByTurnID.merge(lookup.tracesByTurnID) { _, newer in newer }
+            }
+            return CodexTurnBillingLookup(available: true, tracesByTurnID: tracesByTurnID)
         } catch {
             return .unavailable
         }
+    }
+
+    private func coalescedTraceLookupWindows(
+        _ windows: [RolloutTraceLookupWindow],
+        padding: TimeInterval
+    ) -> [RolloutTraceLookupWindow] {
+        let padded = windows
+            .map { window in
+                RolloutTraceLookupWindow(
+                    start: window.start.addingTimeInterval(-padding),
+                    end: window.end.addingTimeInterval(padding))
+            }
+            .sorted { $0.start < $1.start }
+
+        var result: [RolloutTraceLookupWindow] = []
+        for window in padded {
+            guard let last = result.last else {
+                result.append(window)
+                continue
+            }
+            if window.start <= last.end {
+                result[result.count - 1] = RolloutTraceLookupWindow(
+                    start: last.start,
+                    end: max(last.end, window.end))
+            } else {
+                result.append(window)
+            }
+        }
+        return result
     }
 
     // MARK: - reconcile session tree

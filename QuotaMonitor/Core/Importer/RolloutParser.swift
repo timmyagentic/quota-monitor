@@ -70,7 +70,32 @@ struct RateLimitSampleDraft {
     let remainingPercent: Double
 }
 
+struct RolloutTraceLookupWindow: Sendable, Equatable {
+    let start: Date
+    let end: Date
+}
+
 enum RolloutParser {
+
+    static func traceLookupWindow(fileURL: URL) throws -> RolloutTraceLookupWindow? {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+
+        var earliest: Date?
+        var latest: Date?
+        for line in try LineReader(handle: handle) {
+            guard let event = RolloutEvent.decode(line: line),
+                  let timestamp = traceLookupTimestamp(from: event),
+                  let date = ISO8601.parse(timestamp)
+            else { continue }
+
+            if earliest.map({ date < $0 }) ?? true { earliest = date }
+            if latest.map({ date > $0 }) ?? true { latest = date }
+        }
+
+        guard let earliest, let latest else { return nil }
+        return RolloutTraceLookupWindow(start: earliest, end: latest)
+    }
 
     /// Parse a full rollout file. Returns nil if no session_id can be resolved.
     static func parse(
@@ -210,6 +235,17 @@ enum RolloutParser {
     private static func nonEmptyTurnId(_ turnId: String) -> String? {
         let trimmed = turnId.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func traceLookupTimestamp(from event: RolloutEvent) -> String? {
+        switch event {
+        case .sessionMeta(let meta, let timestamp):
+            return timestamp ?? meta.timestamp
+        case .turnContext(_, let timestamp),
+             .tokenCount(_, let timestamp),
+             .other(_, let timestamp):
+            return timestamp
+        }
     }
 
     private static func usageDelta(
