@@ -40,6 +40,9 @@ extension MenuBarContentView {
                         QuotaRow(title: extra.limitName, window: win, accent: .blue)
                     }
                 }
+                if let resetCredits = env.latestCodexResetCredits {
+                    CodexResetCreditsRow(snapshot: resetCredits)
+                }
             }
         } else if let quota = env.dashboardSnapshot?.codexQuota,
                   quota.primary != nil || quota.secondary != nil {
@@ -50,7 +53,12 @@ extension MenuBarContentView {
                 if let secondary = quota.secondary {
                     QuotaRow(title: L10n.quotaCardTitle7d, window: secondary, accent: .blue)
                 }
+                if let resetCredits = env.latestCodexResetCredits {
+                    CodexResetCreditsRow(snapshot: resetCredits)
+                }
             }
+        } else if let resetCredits = env.latestCodexResetCredits {
+            CodexResetCreditsRow(snapshot: resetCredits)
         } else if env.isRefreshingRateLimits {
             ProgressView().controlSize(.small)
                 .frame(maxWidth: .infinity, alignment: .leading)
