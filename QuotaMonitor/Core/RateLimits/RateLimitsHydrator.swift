@@ -108,7 +108,8 @@ enum RateLimitsHydrator {
                         meteredFeature: nil,
                         primary: pair.primary,
                         secondary: pair.secondary)
-                })
+                },
+                resetCreditsAvailable: nil)
         }
     }
 }
