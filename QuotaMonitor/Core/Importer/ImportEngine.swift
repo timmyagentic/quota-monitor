@@ -76,10 +76,11 @@ actor ImportEngine {
                      AND usage_events.provider = 'codex'
                     WHERE sessions.provider = 'codex'
                       AND sessions.source_path IS NOT NULL
-                      AND usage_events.billing_tier_source IN (?, ?)
+                      AND usage_events.billing_tier_source IN (?, ?, ?)
                     """, arguments: [
                     CodexBillingTierSource.traceUnavailable.rawValue,
-                    CodexBillingTierSource.traceMissing.rawValue
+                    CodexBillingTierSource.traceMissing.rawValue,
+                    CodexBillingTierSource.traceMissingStandardFallback.rawValue
                 ])
                 return Set(rows)
             }

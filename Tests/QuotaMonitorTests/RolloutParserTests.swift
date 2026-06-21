@@ -236,7 +236,7 @@ struct RolloutParserTests {
         let delta = try #require(parsed.usageDeltas.first)
         #expect(delta.turnId == "turn-missing")
         #expect(delta.billingTier == .standard)
-        #expect(delta.billingTierSource == .trace)
+        #expect(delta.billingTierSource == .traceMissingStandardFallback)
     }
 
     @Test("turn_context without turn id clears previous turn id")

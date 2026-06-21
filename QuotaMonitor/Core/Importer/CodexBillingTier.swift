@@ -12,6 +12,7 @@ enum CodexBillingTierSource: String, Codable, Sendable {
     case missingTurnID = "missing_turn_id"
     case traceUnavailable = "trace_unavailable"
     case traceMissing = "trace_missing"
+    case traceMissingStandardFallback = "trace_missing_standard_fallback"
     case legacy
     case notCodex = "not_codex"
 }
@@ -35,7 +36,9 @@ struct CodexTurnBillingLookup: Sendable {
         guard available else { return (.unknown, .traceUnavailable) }
         guard let turnID, !turnID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return (.unknown, .missingTurnID) }
-        guard let trace = tracesByTurnID[turnID] else { return (.standard, .trace) }
+        guard let trace = tracesByTurnID[turnID] else {
+            return (.standard, .traceMissingStandardFallback)
+        }
         return (trace.tier, trace.source)
     }
 }

@@ -69,7 +69,7 @@ struct CodexServiceTierTraceStoreTests {
 
         let missing = lookup.classify(turnID: "missing")
         #expect(missing.tier == .standard)
-        #expect(missing.source == .trace)
+        #expect(missing.source == .traceMissingStandardFallback)
     }
 
     @Test("request priority wins and completed default tier is ignored")
@@ -122,7 +122,9 @@ struct CodexServiceTierTraceStoreTests {
 
         #expect(lookup.classify(turnID: "turn-json").tier == .fast)
         #expect(lookup.classify(turnID: "wrong-return").tier == .standard)
+        #expect(lookup.classify(turnID: "wrong-return").source == .traceMissingStandardFallback)
         #expect(lookup.classify(turnID: "wrong-dot").tier == .standard)
+        #expect(lookup.classify(turnID: "wrong-dot").source == .traceMissingStandardFallback)
     }
 
     @Test("legitimate prefix turn id wins over JSON turn id")
@@ -141,6 +143,7 @@ struct CodexServiceTierTraceStoreTests {
         #expect(lookup.classify(turnID: "turn-prefix").tier == .fast)
         #expect(lookup.classify(turnID: "turn-prefix").source == .trace)
         #expect(lookup.classify(turnID: "turn-json").tier == .standard)
+        #expect(lookup.classify(turnID: "turn-json").source == .traceMissingStandardFallback)
     }
 
     @Test("default database URL prefers root logs_2")
@@ -208,7 +211,10 @@ struct CodexServiceTierTraceStoreTests {
 
         #expect(rows.map { $0["turn_id"] as String? } == ["turn-fast", "turn-miss"])
         #expect(rows.map { $0["billing_tier"] as String } == ["fast", "standard"])
-        #expect(rows.map { $0["billing_tier_source"] as String } == ["trace", "trace"])
+        #expect(rows.map { $0["billing_tier_source"] as String } == [
+            "trace",
+            "trace_missing_standard_fallback"
+        ])
         #expect(rows.map { $0["total_tokens"] as Int64 } == [1_100, 550])
     }
 
@@ -249,7 +255,10 @@ struct CodexServiceTierTraceStoreTests {
 
         #expect(rows.map { $0["turn_id"] as String? } == ["turn-fast", "turn-miss"])
         #expect(rows.map { $0["billing_tier"] as String } == ["fast", "standard"])
-        #expect(rows.map { $0["billing_tier_source"] as String } == ["trace", "trace"])
+        #expect(rows.map { $0["billing_tier_source"] as String } == [
+            "trace",
+            "trace_missing_standard_fallback"
+        ])
     }
 
     @Test("import scan rechecks rows that were imported while trace database was unavailable")
@@ -293,7 +302,71 @@ struct CodexServiceTierTraceStoreTests {
 
         #expect(rows.map { $0["turn_id"] as String? } == ["turn-fast", "turn-miss"])
         #expect(rows.map { $0["billing_tier"] as String } == ["fast", "standard"])
-        #expect(rows.map { $0["billing_tier_source"] as String } == ["trace", "trace"])
+        #expect(rows.map { $0["billing_tier_source"] as String } == [
+            "trace",
+            "trace_missing_standard_fallback"
+        ])
+    }
+
+    @Test("import scan rechecks Standard fallback rows when trace later appears")
+    func importScanRechecksStandardFallbackRowsWhenTraceLaterAppears() async throws {
+        let database = try Self.makeQuotaMonitorDatabase()
+        let codexHome = try Self.makeTemporaryDirectory()
+        let sessionsDirectory = codexHome.appending(path: "sessions/2026/06/20", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: sessionsDirectory, withIntermediateDirectories: true)
+        let rolloutURL = sessionsDirectory.appending(path: "rollout-2026-06-20T10-00-00-test-session.jsonl")
+        try Self.writeCodexRollout(
+            to: rolloutURL,
+            fastTurnID: "turn-late-fast",
+            missingTurnID: "turn-still-missing")
+        _ = try Self.makeLogsDatabase(directory: codexHome, rows: [])
+
+        let firstReport = try await ImportEngine(database: database, codexHome: codexHome).performScan()
+        #expect(firstReport.changedFiles == 1)
+
+        var rows = try await database.pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT turn_id, billing_tier, billing_tier_source
+                FROM usage_events
+                ORDER BY timestamp ASC, id ASC
+                """)
+        }
+
+        #expect(rows.map { $0["billing_tier"] as String } == ["standard", "standard"])
+        #expect(rows.map { $0["billing_tier_source"] as String } == [
+            "trace_missing_standard_fallback",
+            "trace_missing_standard_fallback"
+        ])
+
+        try Self.insertTraceRows(
+            into: codexHome.appending(path: "logs_2.sqlite"),
+            rows: [
+                TraceRow(
+                    ts: 1_781_949_690,
+                    tsNanos: 10,
+                    body: Self.requestTraceBody(
+                        turnID: "turn-late-fast",
+                        serviceTier: "priority",
+                        model: "gpt-5.5"))
+            ])
+
+        let secondReport = try await ImportEngine(database: database, codexHome: codexHome).performScan()
+        #expect(secondReport.changedFiles == 1)
+
+        rows = try await database.pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT turn_id, billing_tier, billing_tier_source
+                FROM usage_events
+                ORDER BY timestamp ASC, id ASC
+                """)
+        }
+
+        #expect(rows.map { $0["turn_id"] as String? } == ["turn-late-fast", "turn-still-missing"])
+        #expect(rows.map { $0["billing_tier"] as String } == ["fast", "standard"])
+        #expect(rows.map { $0["billing_tier_source"] as String } == [
+            "trace",
+            "trace_missing_standard_fallback"
+        ])
     }
 
     @Test("import scan succeeds with unavailable trace lookup when trace database is missing")
@@ -395,6 +468,36 @@ struct CodexServiceTierTraceStoreTests {
         return databaseURL
         #else
         return URL(filePath: "/tmp/unavailable-\(UUID().uuidString).sqlite")
+        #endif
+    }
+
+    private static func insertTraceRows(into databaseURL: URL, rows: [TraceRow]) throws {
+        #if canImport(SQLite3)
+        var db: OpaquePointer?
+        guard sqlite3_open(databaseURL.path, &db) == SQLITE_OK, let db else {
+            throw TestDatabaseError.openFailed
+        }
+        defer { sqlite3_close(db) }
+
+        for row in rows {
+            let sql = """
+            INSERT INTO logs (ts, ts_nanos, level, target, feedback_log_body)
+            VALUES (?, ?, 'INFO', 'codex', ?);
+            """
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+                throw TestDatabaseError.prepareFailed
+            }
+            defer { sqlite3_finalize(statement) }
+
+            sqlite3_bind_int64(statement, 1, row.ts)
+            sqlite3_bind_int64(statement, 2, row.tsNanos)
+            sqlite3_bind_text(statement, 3, row.body, -1, SQLITE_TRANSIENT)
+
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw TestDatabaseError.insertFailed
+            }
+        }
         #endif
     }
 
