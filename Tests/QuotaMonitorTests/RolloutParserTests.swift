@@ -195,6 +195,101 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 30])
     }
 
+    // MARK: - Codex service tier trace tagging
+
+    @Test("turn_id tags fast tier without changing token totals")
+    func turnIDTagsFastTierWithoutChangingTokenTotals() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-fast"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let lookup = CodexTurnBillingLookup(
+            available: true,
+            tracesByTurnID: [
+                "turn-fast": CodexTurnBillingTrace(
+                    tier: .fast,
+                    source: .trace,
+                    modelId: "gpt-5.5",
+                    timestamp: nil)
+            ])
+        let parsed = try #require(try RolloutParser.parse(fileURL: url, billingLookup: lookup))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-fast")
+        #expect(delta.billingTier == .fast)
+        #expect(delta.billingTierSource == .trace)
+    }
+
+    @Test("missing priority trace leaves tier standard without changing token totals")
+    func missingPriorityTraceLeavesTierStandardWithoutChangingTokenTotals() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-missing"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let lookup = CodexTurnBillingLookup(available: true, tracesByTurnID: [:])
+        let parsed = try #require(try RolloutParser.parse(fileURL: url, billingLookup: lookup))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-missing")
+        #expect(delta.billingTier == .standard)
+        #expect(delta.billingTierSource == .traceMissingStandardFallback)
+    }
+
+    @Test("turn_context without turn id clears previous turn id")
+    func turnContextWithoutTurnIDClearsPreviousTurnID() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-fast"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let lookup = CodexTurnBillingLookup(
+            available: true,
+            tracesByTurnID: [
+                "turn-fast": CodexTurnBillingTrace(
+                    tier: .fast,
+                    source: .trace,
+                    modelId: "gpt-5.5",
+                    timestamp: nil)
+            ])
+        let parsed = try #require(try RolloutParser.parse(fileURL: url, billingLookup: lookup))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == nil)
+        #expect(delta.billingTier == .unknown)
+        #expect(delta.billingTierSource == .missingTurnID)
+    }
+
+    @Test("camelCase turnId is decoded")
+    func camelCaseTurnIDIsDecoded() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turnId":"turn-camel"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let lookup = CodexTurnBillingLookup(
+            available: true,
+            tracesByTurnID: [
+                "turn-camel": CodexTurnBillingTrace(
+                    tier: .standard,
+                    source: .trace,
+                    modelId: "gpt-5.5",
+                    timestamp: nil)
+            ])
+        let parsed = try #require(try RolloutParser.parse(fileURL: url, billingLookup: lookup))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-camel")
+        #expect(delta.billingTier == .standard)
+        #expect(delta.billingTierSource == .trace)
+    }
+
     // MARK: - legacy fallback
 
     @Test("subagent without turn_context: legacy gpt-5 fallback, modelInferred=true")

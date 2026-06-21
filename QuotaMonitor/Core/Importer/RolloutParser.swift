@@ -46,11 +46,14 @@ struct ParsedSession {
 struct UsageDelta {
     let timestamp: String
     let modelId: String
+    let turnId: String?
     let inputTokens: Int64
     let cachedInputTokens: Int64
     let outputTokens: Int64
     let reasoningOutputTokens: Int64
     let totalTokens: Int64
+    let billingTier: CodexBillingTier
+    let billingTierSource: CodexBillingTierSource
     /// True iff `modelId` was inferred via the legacy fallback (no
     /// `turn_context` ever set the model in this session). Surfaced in UI
     /// so the user knows the cost is approximate.
@@ -67,10 +70,39 @@ struct RateLimitSampleDraft {
     let remainingPercent: Double
 }
 
+struct RolloutTraceLookupWindow: Sendable, Equatable {
+    let start: Date
+    let end: Date
+}
+
 enum RolloutParser {
 
+    static func traceLookupWindow(fileURL: URL) throws -> RolloutTraceLookupWindow? {
+        let handle = try FileHandle(forReadingFrom: fileURL)
+        defer { try? handle.close() }
+
+        var earliest: Date?
+        var latest: Date?
+        for line in try LineReader(handle: handle) {
+            guard let event = RolloutEvent.decode(line: line),
+                  let timestamp = traceLookupTimestamp(from: event),
+                  let date = ISO8601.parse(timestamp)
+            else { continue }
+
+            if earliest.map({ date < $0 }) ?? true { earliest = date }
+            if latest.map({ date > $0 }) ?? true { latest = date }
+        }
+
+        guard let earliest, let latest else { return nil }
+        return RolloutTraceLookupWindow(start: earliest, end: latest)
+    }
+
     /// Parse a full rollout file. Returns nil if no session_id can be resolved.
-    static func parse(fileURL: URL, fallbackSessionId: String? = nil) throws -> ParsedSession? {
+    static func parse(
+        fileURL: URL,
+        fallbackSessionId: String? = nil,
+        billingLookup: CodexTurnBillingLookup = .unavailable
+    ) throws -> ParsedSession? {
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
 
@@ -83,6 +115,7 @@ enum RolloutParser {
         var cwd: String?
         var currentModel: String?
         var currentModelIsFallback = false
+        var currentTurnId: String?
         var seenModels: Set<String> = []
         var latestPlanType: String?
 
@@ -106,6 +139,7 @@ enum RolloutParser {
                 if cwd == nil, let metaCwd = meta.cwd, !metaCwd.isEmpty { cwd = metaCwd }
 
             case .turnContext(let tc, _):
+                currentTurnId = tc.turnId.flatMap(Self.nonEmptyTurnId)
                 if let model = tc.model {
                     let normalized = NormalizeModelId(model)
                     currentModel = normalized
@@ -141,6 +175,7 @@ enum RolloutParser {
                 }
                 seenModels.insert(resolvedModel)
 
+                let classification = billingLookup.classify(turnID: currentTurnId)
                 let delta = usageDelta(
                     from: info,
                     previousTotal: &previousUsage,
@@ -149,11 +184,14 @@ enum RolloutParser {
                     deltas.append(UsageDelta(
                         timestamp: timestamp,
                         modelId: resolvedModel,
+                        turnId: currentTurnId,
                         inputTokens: delta.inputTokens,
                         cachedInputTokens: delta.cachedInputTokens,
                         outputTokens: delta.outputTokens,
                         reasoningOutputTokens: delta.reasoningOutputTokens,
                         totalTokens: delta.totalTokens,
+                        billingTier: classification.tier,
+                        billingTierSource: classification.source,
                         modelInferred: inferred))
                 }
                 updatedAt = timestamp
@@ -193,6 +231,22 @@ enum RolloutParser {
     }
 
     // MARK: - delta logic
+
+    private static func nonEmptyTurnId(_ turnId: String) -> String? {
+        let trimmed = turnId.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func traceLookupTimestamp(from event: RolloutEvent) -> String? {
+        switch event {
+        case .sessionMeta(let meta, let timestamp):
+            return timestamp ?? meta.timestamp
+        case .turnContext(_, let timestamp),
+             .tokenCount(_, let timestamp),
+             .other(_, let timestamp):
+            return timestamp
+        }
+    }
 
     private static func usageDelta(
         from info: TokenCountInfo,

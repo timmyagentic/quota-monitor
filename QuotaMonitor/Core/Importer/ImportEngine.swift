@@ -65,11 +65,36 @@ actor ImportEngine {
                 """)
             return Set(rows)
         }
+        let traceRecheckCodexPaths: Set<String>
+        if CodexServiceTierTraceStore.defaultDatabaseURL(codexHome: codexHome) != nil {
+            traceRecheckCodexPaths = try await database.pool.read { db in
+                let rows = try String.fetchAll(db, sql: """
+                    SELECT DISTINCT sessions.source_path
+                    FROM sessions
+                    JOIN usage_events
+                      ON usage_events.session_id = sessions.session_id
+                     AND usage_events.provider = 'codex'
+                    WHERE sessions.provider = 'codex'
+                      AND sessions.source_path IS NOT NULL
+                      AND usage_events.billing_tier_source IN (?, ?, ?)
+                    """, arguments: [
+                    CodexBillingTierSource.traceUnavailable.rawValue,
+                    CodexBillingTierSource.traceMissing.rawValue,
+                    CodexBillingTierSource.traceMissingStandardFallback.rawValue
+                ])
+                return Set(rows)
+            }
+        } else {
+            traceRecheckCodexPaths = []
+        }
 
         var currentCodexPathsWithoutBackfillableProjectMetadata: [String] = []
         let changed = files.filter { file in
             guard let prior = priorState[file.path] else { return true }
             if prior.fileSize != file.fileSize || prior.fileMtimeMs != file.fileMtimeMs {
+                return true
+            }
+            if traceRecheckCodexPaths.contains(file.path) {
                 return true
             }
             if metadataIncompleteCodexPaths.contains(file.path),
@@ -85,6 +110,7 @@ actor ImportEngine {
             try await markCodexRolloutsWithoutBackfillableProjectMetadata(
                 currentCodexPathsWithoutBackfillableProjectMetadata)
         }
+        let billingLookup = loadCodexTurnBillingLookup(for: changed)
         await progress?(ScanProgressUpdate(
             provider: "codex",
             completedFiles: 0,
@@ -100,7 +126,8 @@ actor ImportEngine {
             do {
                 if let parsed = try RolloutParser.parse(
                     fileURL: file.url,
-                    fallbackSessionId: file.sessionIdHint
+                    fallbackSessionId: file.sessionIdHint,
+                    billingLookup: billingLookup
                 ) {
                     var enriched = parsed
                     if let metadata = codexMetadata[parsed.sessionId] {
@@ -321,7 +348,10 @@ actor ImportEngine {
                     cacheCreationTokens: 0,
                     provider: "codex",
                     modelInferred: delta.modelInferred,
-                    providerMessageId: nil)
+                    providerMessageId: nil,
+                    turnId: delta.turnId,
+                    billingTier: delta.billingTier.rawValue,
+                    billingTierSource: delta.billingTierSource.rawValue)
                 try event.insert(db)
             }
 
@@ -372,6 +402,63 @@ actor ImportEngine {
                 events: parsed.usageDeltas.count,
                 samples: parsed.rateLimitSamples.count)
         }
+    }
+
+    private func loadCodexTurnBillingLookup(for changedFiles: [SessionFile]) -> CodexTurnBillingLookup {
+        guard !changedFiles.isEmpty else { return .unavailable }
+        guard let databaseURL = CodexServiceTierTraceStore.defaultDatabaseURL(codexHome: codexHome) else {
+            return .unavailable
+        }
+
+        let eventWindows = changedFiles.compactMap { file in
+            try? RolloutParser.traceLookupWindow(fileURL: file.url)
+        }
+        guard !eventWindows.isEmpty else {
+            return CodexTurnBillingLookup(available: true, tracesByTurnID: [:])
+        }
+
+        let padding: TimeInterval = 24 * 60 * 60
+        let windows = coalescedTraceLookupWindows(eventWindows, padding: padding)
+        do {
+            let traceStore = CodexServiceTierTraceStore(databaseURL: databaseURL)
+            var tracesByTurnID: [String: CodexTurnBillingTrace] = [:]
+            for window in windows {
+                let lookup = try traceStore.loadLookup(start: window.start, end: window.end)
+                tracesByTurnID.merge(lookup.tracesByTurnID) { _, newer in newer }
+            }
+            return CodexTurnBillingLookup(available: true, tracesByTurnID: tracesByTurnID)
+        } catch {
+            return .unavailable
+        }
+    }
+
+    private func coalescedTraceLookupWindows(
+        _ windows: [RolloutTraceLookupWindow],
+        padding: TimeInterval
+    ) -> [RolloutTraceLookupWindow] {
+        let padded = windows
+            .map { window in
+                RolloutTraceLookupWindow(
+                    start: window.start.addingTimeInterval(-padding),
+                    end: window.end.addingTimeInterval(padding))
+            }
+            .sorted { $0.start < $1.start }
+
+        var result: [RolloutTraceLookupWindow] = []
+        for window in padded {
+            guard let last = result.last else {
+                result.append(window)
+                continue
+            }
+            if window.start <= last.end {
+                result[result.count - 1] = RolloutTraceLookupWindow(
+                    start: last.start,
+                    end: max(last.end, window.end))
+            } else {
+                result.append(window)
+            }
+        }
+        return result
     }
 
     // MARK: - reconcile session tree

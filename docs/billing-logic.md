@@ -5,7 +5,7 @@
 ## 核心数据流
 
 1. 启动或扫描前，`DatabaseManager` / `ImportEngine` 会调用 `PricingService.seedCatalog`，确保 `pricing_catalog` 至少有内置模型价格。
-2. Codex 导入器读取 `~/.codex/sessions` / `archived_sessions` JSONL，把累计的 `token_count.info.total_token_usage` 转成每次增量。
+2. Codex 导入器读取 `~/.codex/sessions` / `archived_sessions` JSONL，把累计的 `token_count.info.total_token_usage` 转成每次增量；如果本机 `logs_2.sqlite` 有对应 `response.create` request trace，会同时写入该 turn 是否请求了 Fast / Priority service tier。
 3. Claude 导入器读取 `~/.claude/projects` 和 `~/.config/claude/projects` JSONL，把每条 `assistant.message.usage` 作为独立用量事件。
 4. 导入器写入 `sessions` 和 `usage_events`，新事件初始 `value_usd = 0`。
 5. `ScanController.runScan` 在 Codex 和 Claude 扫描都完成后，如果有文件变化，会调用一次 `PricingService.backfillAllValues`。
@@ -32,6 +32,9 @@
 | `value_usd` | 由价格表回填出的美元估值。 |
 | `model_inferred` | Codex 没有模型信息时 fallback 到 `gpt-5`，这里标记该金额是近似。 |
 | `provider_message_id` | Claude message id，用于增量重读时去重。 |
+| `turn_id` | Codex turn id，用于把 JSONL token_count 和本机 trace 中的响应对象关联起来。 |
+| `billing_tier` | Codex 计费档位：`fast`、`standard` 或 `unknown`。Claude 默认 `unknown`，不参与 Codex tier 展示。 |
+| `billing_tier_source` | Codex tier 来源：`trace`、`trace_unsupported`、`trace_unavailable`、`missing_turn_id`、`legacy` 等。 |
 
 ### `pricing_catalog`
 
@@ -53,7 +56,7 @@
 
 LiteLLM 同步由 `LiteLLMPricingSource` 拉取 `model_prices_and_context_window.json`，再由 `PricingService.applyLiteLLMUpdate` 写入 `pricing_catalog`。当前策略是只更新 catalog 中已经存在、且 `price_source != 'local'` 的模型，不自动新增任意未知模型。这样可以避免把 LiteLLM 的大量无关 provider 直接塞进本地表，但也意味着新模型需要先加入 seed 或用户手工建行，之后 LiteLLM 才能持续刷新它。
 
-Codex Fast Mode 是一个全局设置。开启后，`PricingService` 对 `provider = 'codex'` 且模型在 `CodexFastMode.multipliers` 中的事件，不使用原 `model_id`，而是匹配合成行 `<model_id>-fast`。当前 multiplier 在代码里维护，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。
+Codex Fast Mode 现在是 trace-first、fallback-second：当 `billing_tier = 'fast'` 且模型在 `CodexFastMode.multipliers` 中时，`PricingService` 不使用原 `model_id`，而是匹配合成行 `<model_id>-fast`；当 `billing_tier = 'standard'` 时始终按基础价格计费；当 `billing_tier = 'unknown'` 时，才由 Settings 里的“未识别 Codex 按 Fast Mode 计费”开关决定是否使用 `*-fast` 行。当前 multiplier 在代码里维护，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。分类口径跟随 Agent Signal Bar：trace DB 可读时，只有 `response.create` request trace 上的 `service_tier` / `preferred_service_tier` 为 `fast` 或 `priority` 才标记 Fast；没有命中 Fast / Priority request 的 turn 归 Standard。
 
 ## Codex 计费公式
 
@@ -75,7 +78,7 @@ value_usd =
 - `input_tokens` 是 gross input，已经包含 cached input，所以标准输入只对 `input - cached` 计费。
 - `output_tokens` 已经包含 reasoning output；`reasoning_output_tokens` 是拆分字段，不额外计费，否则会重复计算。
 - 旧 Codex session 缺少模型时 fallback 到 `gpt-5`，并设置 `model_inferred = true`，UI 可提示该行是近似估算。
-- 开启 Codex Fast Mode 时，上述公式不变，只是价格行换成合成的 `*-fast` 行。
+- Fast Mode 不改变公式和 token 口径，只改变 `pricing_catalog` 的匹配行：trace-confirmed Fast 使用 `*-fast`；Standard 使用基础行；trace 数据库不可用或缺 turn id 时的未知档位按设置兜底。request trace 里出现 `flex`、`scale`、`auto` 等当前没有精确定价支持的 tier 时，会记录为 `trace_unsupported`，不会被 Fast 兜底误提升。
 
 ## Claude 计费公式
 
@@ -138,10 +141,10 @@ UI 不重复实现计费公式。
 
 - 这是 API-equivalent spend，不是 Codex / Claude 订阅费用，也不一定等于供应商账单。
 - Long Context / 大上下文 tier 暂不纳入当前计费要求。QuotaMonitor 的输入源是本地 Codex / Claude 使用日志，而不是供应商账单；这些日志没有稳定记录每次请求是否触发 long-context tier。因此 `above_200k_input_price_per_million` 和 `above_200k_output_price_per_million` 目前只保存，不参与计费公式。这是估算边界，不是当前必须解决的计费缺口。
-- 区域、服务层和执行层倍率暂不纳入当前计费要求。例如 regional processing、data residency、priority / flex / batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要逐请求字段或账单侧数据才能准确还原；当前本地日志源不足以支持，所以不作为 QuotaMonitor 的计费目标。
+- 区域、执行层和未支持服务层倍率暂不纳入当前计费要求。例如 regional processing、data residency、flex / batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要更完整的逐请求字段或账单侧数据才能准确还原；当前实现只对 Codex response trace 能确认的 Priority/Fast vs Default/Standard 做逐事件计价。
 - LiteLLM 当前只更新已存在于本地 catalog 的模型；新模型需要 seed 或本地建行。
 - `price_source = 'local'` 的行不会被 LiteLLM 或 seed 覆盖。
-- Codex Fast Mode 是全局开关。Codex JSONL 不提供逐请求 Fast / Standard tier，项目无法判断某条事件实际走哪个 tier；因此只能由用户选择“全部按 Standard”或“全部按 Fast Mode”重算。混合历史无法自动还原，这是当前设计的真实局限，暂时无法解决。
+- Codex JSONL 本身不提供逐请求 Fast / Standard tier；QuotaMonitor 只能在本机 `logs_2.sqlite` 仍保留 request trace，且 trace 中存在同一个 `turn_id` 的 `response.create.service_tier` 或 `preferred_service_tier` 时识别 Fast / Priority。缺 turn id、trace 数据库不可用、或实际 tier 未受支持的行仍是边界情况，不能完全还原供应商账单。
 - Codex 缺模型的历史事件按 `gpt-5` 估算，`model_inferred = true`。
 - Claude 旧数据必须经过 v6 迁移后的重新扫描，才能从“全部按 5m cache write”升级为 1h / 5m 分开计价。
 

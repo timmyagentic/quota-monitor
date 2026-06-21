@@ -77,7 +77,9 @@ struct PricingValueBackfillTests {
         output: Int64, cacheCreation: Int64 = 0,
         cacheCreation5m: Int64 = 0,
         cacheCreation1h: Int64 = 0,
-        seedValueUSD: Double = -1
+        seedValueUSD: Double = -1,
+        billingTier: String = "unknown",
+        billingTierSource: String = "legacy"
     ) throws {
         let stamp = "2026-04-29T10:00:00Z"
         let sid = "s-\(UUID().uuidString)"
@@ -100,14 +102,15 @@ struct PricingValueBackfillTests {
                  reasoning_output_tokens, total_tokens, value_usd,
                  provider, cache_creation_tokens,
                  cache_creation_5m_tokens, cache_creation_1h_tokens,
-                 model_inferred)
-                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0)
+                 model_inferred, billing_tier, billing_tier_source)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                 """, arguments: [
                     sid, stamp, modelId,
                     input, cached, output,
                     input + output + cacheCreation,
                     seedValueUSD,
-                    provider, cacheCreation, cacheCreation5m, cacheCreation1h
+                    provider, cacheCreation, cacheCreation5m, cacheCreation1h,
+                    billingTier, billingTierSource
                 ])
         }
     }
@@ -333,8 +336,8 @@ struct PricingValueBackfillTests {
 
     // MARK: - codex Fast-Mode billing remaps to -fast catalog row
 
-    @Test("codex Fast-Mode: gpt-5.5 event reprices against gpt-5.5-fast catalog row")
-    func codexFastModeRoutesToFastVariant() throws {
+    @Test("codex Fast-Mode fallback: unknown-tier gpt-5.5 event reprices against gpt-5.5-fast catalog row")
+    func codexFastModeRoutesUnknownTierToFastVariant() throws {
         let db = try makeDatabase()
         // Standard rate (matches base PricingSeed shape; numbers chosen
         // so the maths is hand-verifiable).
@@ -376,6 +379,107 @@ struct PricingValueBackfillTests {
         let backToStandard = try valueUSD(in: db)
         #expect(abs(backToStandard[0] - 35.00) < 1e-6,
                 "toggling Fast-Mode off must restore standard pricing")
+    }
+
+    @Test("event-level fast prices as Fast with fallback off")
+    func eventLevelFastPricesAsFastWithFallbackOff() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             billingTier: "fast")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 87.50) < 1e-6,
+                "event-level fast expected 87.50 with fallback off, got \(values[0])")
+    }
+
+    @Test("explicit standard ignores global Fast fallback")
+    func explicitStandardIgnoresGlobalFallback() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             billingTier: "standard")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 35.00) < 1e-6,
+                "explicit standard expected 35.00 with fallback on, got \(values[0])")
+    }
+
+    @Test("unknown tier uses standard pricing when fallback off")
+    func unknownUsesStandardWhenFallbackOff() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             billingTier: "unknown")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 35.00) < 1e-6,
+                "unknown tier expected 35.00 with fallback off, got \(values[0])")
+    }
+
+    @Test("unknown tier uses Fast pricing when fallback on")
+    func unknownUsesFastWhenFallbackOn() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             billingTier: "unknown")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 87.50) < 1e-6,
+                "unknown tier expected 87.50 with fallback on, got \(values[0])")
+    }
+
+    @Test("unsupported trace tier does not use Fast fallback")
+    func unsupportedTraceTierDoesNotUseFastFallback() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             billingTier: "unknown",
+                             billingTierSource: "trace_unsupported")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 35.00) < 1e-6,
+                "unsupported trace tier must not be promoted by Fast fallback, got \(values[0])")
     }
 
     @Test("codex Fast-Mode: only listed models reroute; gpt-5-codex stays on its own row")

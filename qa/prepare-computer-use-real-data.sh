@@ -18,6 +18,7 @@ ARTIFACTS="${QM_QA_ARTIFACTS:-${ROOT_DIR}/.build/qa-artifacts/${RUN_ID}-computer
 APP_ARTIFACTS="$(qm_app_artifacts_dir "$QA_HOME")"
 DEFAULTS_SUITE="${QM_QA_DEFAULTS_SUITE:-dev.tjzhou.QuotaMonitor.RealDataQA.${RUN_ID}.$$}"
 STATE_JSON="${APP_ARTIFACTS}/app-state.json"
+STATE_WAIT_ATTEMPTS="${QM_QA_STATE_WAIT_ATTEMPTS:-420}"
 DB_PATH="${QA_HOME}/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
 DEV_LOG="${QA_HOME}/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log"
 QA_CONFIG="${ARTIFACTS}/qa-config.json"
@@ -57,7 +58,7 @@ qm_write_real_data_defaults \
     exit 1
 }
 mkdir -p "$QA_HOME/.codex" "$QA_HOME/.claude" "$QA_HOME/.config/claude"
-qm_copy_codex_metadata_snapshot "$SOURCE_CODEX_HOME" "$QA_HOME/.codex"
+qm_copy_codex_usage_snapshot "$SOURCE_CODEX_HOME" "$QA_HOME/.codex"
 
 USER_DEFAULTS_POLICY="copied-user-defaults"
 
@@ -86,7 +87,7 @@ export QUOTAMONITOR_QA_CONFIG="$QA_CONFIG"
 
 "${ROOT_DIR}/script/build_and_run.sh" --qa
 
-qm_retry_until 30 1 test -f "$STATE_JSON" || {
+qm_retry_until "$STATE_WAIT_ATTEMPTS" 1 test -f "$STATE_JSON" || {
     echo "error: real-data QA state was not written: $STATE_JSON" >&2
     exit 1
 }

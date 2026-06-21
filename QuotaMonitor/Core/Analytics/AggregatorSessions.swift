@@ -129,7 +129,8 @@ extension Aggregator {
                    input_tokens, cached_input_tokens,
                    cache_creation_5m_tokens, cache_creation_1h_tokens,
                    output_tokens, reasoning_output_tokens,
-                   total_tokens, value_usd, model_inferred
+                   total_tokens, value_usd, turn_id,
+                   billing_tier, billing_tier_source, model_inferred
             FROM usage_events
             WHERE session_id = ?
             ORDER BY timestamp ASC, id ASC
@@ -147,6 +148,9 @@ extension Aggregator {
                 reasoningOutputTokens: row["reasoning_output_tokens"] ?? 0,
                 totalTokens: row["total_tokens"] ?? 0,
                 valueUSD: row["value_usd"] ?? 0,
+                turnId: row["turn_id"],
+                billingTier: CodexBillingTier(rawValue: row["billing_tier"] ?? "") ?? .unknown,
+                billingTierSource: CodexBillingTierSource(rawValue: row["billing_tier_source"] ?? "") ?? .legacy,
                 modelInferred: row["model_inferred"] ?? false)
         }
 
@@ -155,7 +159,13 @@ extension Aggregator {
               ue.model_id,
               COALESCE(pc.display_name, ue.model_id) AS display_name,
               SUM(ue.value_usd)     AS value_usd,
+              SUM(CASE WHEN ue.provider = 'codex' AND ue.billing_tier = 'standard' THEN ue.value_usd ELSE 0 END) AS standard_value_usd,
+              SUM(CASE WHEN ue.provider = 'codex' AND ue.billing_tier = 'fast' THEN ue.value_usd ELSE 0 END) AS fast_value_usd,
+              SUM(CASE WHEN ue.provider = 'codex' AND ue.billing_tier = 'unknown' THEN ue.value_usd ELSE 0 END) AS unknown_value_usd,
               SUM(ue.total_tokens)  AS tokens,
+              SUM(CASE WHEN ue.provider = 'codex' AND ue.billing_tier = 'standard' THEN ue.total_tokens ELSE 0 END) AS standard_tokens,
+              SUM(CASE WHEN ue.provider = 'codex' AND ue.billing_tier = 'fast' THEN ue.total_tokens ELSE 0 END) AS fast_tokens,
+              SUM(CASE WHEN ue.provider = 'codex' AND ue.billing_tier = 'unknown' THEN ue.total_tokens ELSE 0 END) AS unknown_tokens,
               COUNT(*)              AS event_count
             FROM usage_events ue
             LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id
@@ -167,7 +177,13 @@ extension Aggregator {
                 modelId: row["model_id"] ?? "unknown",
                 displayName: row["display_name"] ?? "Unknown",
                 valueUSD: row["value_usd"] ?? 0,
+                standardValueUSD: row["standard_value_usd"] ?? 0,
+                fastValueUSD: row["fast_value_usd"] ?? 0,
+                unknownValueUSD: row["unknown_value_usd"] ?? 0,
                 tokens: row["tokens"] ?? 0,
+                standardTokens: row["standard_tokens"] ?? 0,
+                fastTokens: row["fast_tokens"] ?? 0,
+                unknownTokens: row["unknown_tokens"] ?? 0,
                 eventCount: row["event_count"] ?? 0)
         }
 

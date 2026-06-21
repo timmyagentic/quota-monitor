@@ -77,6 +77,21 @@ struct SessionMetaPayload: Decodable {
 
 struct TurnContextPayload: Decodable {
     let model: String?
+    let turnId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case turnId
+        case turnIdSnake = "turn_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        turnId =
+            try container.decodeIfPresent(String.self, forKey: .turnIdSnake)
+            ?? container.decodeIfPresent(String.self, forKey: .turnId)
+    }
 }
 
 // MARK: - event_msg / token_count

@@ -242,6 +242,63 @@ qm_copy_codex_metadata_snapshot() {
     fi
 }
 
+qm_copy_directory_snapshot() {
+    local source_dir="$1"
+    local target_dir="$2"
+
+    [[ -d "$source_dir" ]] || return 0
+    rm -rf "$target_dir"
+    mkdir -p "$(dirname "$target_dir")"
+    cp -R "$source_dir" "$target_dir"
+}
+
+qm_make_sqlite_snapshot_readonly_friendly() {
+    local database="$1"
+
+    [[ -f "$database" ]] || return 0
+    sqlite3 "$database" 'PRAGMA journal_mode=DELETE;' >/dev/null
+    rm -f "${database}-shm" "${database}-wal"
+}
+
+qm_copy_codex_usage_snapshot() {
+    local source_codex_home="$1"
+    local target_codex_home="$2"
+
+    mkdir -p "$target_codex_home"
+    qm_copy_codex_metadata_snapshot "$source_codex_home" "$target_codex_home"
+
+    qm_copy_directory_snapshot \
+        "${source_codex_home}/sessions" \
+        "${target_codex_home}/sessions"
+    qm_copy_directory_snapshot \
+        "${source_codex_home}/archived_sessions" \
+        "${target_codex_home}/archived_sessions"
+
+    local copied_root_logs=false
+    if [[ -f "${source_codex_home}/logs_2.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/logs_2.sqlite" \
+            "${target_codex_home}/logs_2.sqlite"
+        qm_make_sqlite_snapshot_readonly_friendly \
+            "${target_codex_home}/logs_2.sqlite"
+        copied_root_logs=true
+    fi
+
+    if [[ -f "${source_codex_home}/sqlite/logs_2.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/sqlite/logs_2.sqlite" \
+            "${target_codex_home}/sqlite/logs_2.sqlite"
+        qm_make_sqlite_snapshot_readonly_friendly \
+            "${target_codex_home}/sqlite/logs_2.sqlite"
+    elif [[ "$copied_root_logs" == "true" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/logs_2.sqlite" \
+            "${target_codex_home}/sqlite/logs_2.sqlite"
+        qm_make_sqlite_snapshot_readonly_friendly \
+            "${target_codex_home}/sqlite/logs_2.sqlite"
+    fi
+}
+
 qm_installed_app_bundle() {
     printf '%s\n' "${QM_QA_INSTALLED_APP_BUNDLE:-/Applications/QuotaMonitor.app}"
 }
@@ -442,6 +499,7 @@ qm_write_real_data_computer_qa_brief() {
         printf '## Data Boundary\n\n'
         printf '%s\n' '- The source database was copied with a SQLite backup into the QA home before launch.'
         printf '%s\n' '- QuotaMonitor UserDefaults are copied into the isolated QA suite without changing product-visible preferences.'
+        printf '%s\n' '- Codex sessions, archived sessions, and trace SQLite files are copied into the QA Codex home so importer behavior can be tested without reading the real ~/.codex live.'
         printf '%s\n' '- Do not copy real Codex or Claude credentials into this profile.'
         printf '%s\n' '- CODEX_HOME points at the QA home, not the real ~/.codex directory.'
         printf '%s\n' '- Live external sources are disabled in Local QA, so the app should not request real Claude credentials.'

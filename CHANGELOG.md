@@ -31,6 +31,7 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+- Codex Fast Mode costs are now split from Standard usage when local trace data can identify them
 - Claude live quota cards now keep their last numbers visible while waiting to refresh
 - Mac App Store preparation now has a local readiness check before any account setup
 - Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
@@ -40,6 +41,7 @@ window copy.
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
 
 ### Changed
+- **Codex Fast Mode billing uses detected tiers first.** Codex imports now read local trace metadata to split Standard, Fast, and unknown usage, while the existing Fast Mode setting only reprices unclassified events.
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
 
 ### Fixed
