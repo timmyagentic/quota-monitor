@@ -45,12 +45,16 @@ struct AggregatorTests {
         sessionId: String,
         daysAgo: Double,
         valueUSD: Double,
-        tokens: Int64 = 1000
+        tokens: Int64 = 1000,
+        turnId: String? = nil,
+        billingTier: CodexBillingTier = .unknown,
+        billingTierSource: CodexBillingTierSource = .legacy
     ) throws {
         try seedEvent(
             in: db, provider: provider, sessionId: sessionId,
             at: Date().addingTimeInterval(-daysAgo * 86400),
-            valueUSD: valueUSD, tokens: tokens)
+            valueUSD: valueUSD, tokens: tokens, turnId: turnId,
+            billingTier: billingTier, billingTierSource: billingTierSource)
     }
 
     /// Same as the `daysAgo:` overload but pins an absolute timestamp — used by
@@ -61,7 +65,10 @@ struct AggregatorTests {
         sessionId: String,
         at when: Date,
         valueUSD: Double,
-        tokens: Int64 = 1000
+        tokens: Int64 = 1000,
+        turnId: String? = nil,
+        billingTier: CodexBillingTier = .unknown,
+        billingTierSource: CodexBillingTierSource = .legacy
     ) throws {
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
@@ -86,10 +93,12 @@ struct AggregatorTests {
                 (session_id, timestamp, model_id,
                  input_tokens, cached_input_tokens, output_tokens,
                  reasoning_output_tokens, total_tokens, value_usd,
-                 provider, cache_creation_tokens, model_inferred)
-                VALUES (?, ?, 'gpt-5', ?, 0, 0, 0, ?, ?, ?, 0, 0)
+                 provider, cache_creation_tokens, model_inferred,
+                 turn_id, billing_tier, billing_tier_source)
+                VALUES (?, ?, 'gpt-5', ?, 0, 0, 0, ?, ?, ?, 0, 0, ?, ?, ?)
                 """, arguments: [
-                    sessionId, stamp, tokens, tokens, valueUSD, provider
+                    sessionId, stamp, tokens, tokens, valueUSD, provider,
+                    turnId, billingTier.rawValue, billingTierSource.rawValue
                 ])
         }
     }
@@ -114,6 +123,28 @@ struct AggregatorTests {
                     usedPercent, max(0, 100 - usedPercent)
                 ])
         }
+    }
+
+    private func expectModelShareSplits(
+        _ share: ModelShare,
+        standardValueUSD: Double,
+        fastValueUSD: Double,
+        unknownValueUSD: Double,
+        standardTokens: Int64,
+        fastTokens: Int64,
+        unknownTokens: Int64
+    ) {
+        let totalValueUSD = standardValueUSD + fastValueUSD + unknownValueUSD
+        let totalTokens = standardTokens + fastTokens + unknownTokens
+
+        #expect(abs(share.valueUSD - totalValueUSD) < 0.0001)
+        #expect(share.tokens == totalTokens)
+        #expect(abs(share.standardValueUSD - standardValueUSD) < 0.0001)
+        #expect(abs(share.fastValueUSD - fastValueUSD) < 0.0001)
+        #expect(abs(share.unknownValueUSD - unknownValueUSD) < 0.0001)
+        #expect(share.standardTokens == standardTokens)
+        #expect(share.fastTokens == fastTokens)
+        #expect(share.unknownTokens == unknownTokens)
     }
 
     // MARK: - per-provider rollups
@@ -325,6 +356,192 @@ struct AggregatorTests {
         let total = shares.reduce(0) { $0 + $1.valueUSD }
         #expect(abs(total - 7.00) < 0.0001,
                 "today's $5 + 10d-old $2 are inside [now-30d, now); 40d-old $99 is not")
+    }
+
+    @Test("fetchModelShares returns billing-tier value and token splits")
+    func modelShares_includeBillingTierSplits() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "standard",
+            daysAgo: 1, valueUSD: 35.00, tokens: 100,
+            billingTier: .standard, billingTierSource: .jsonl)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "fast",
+            daysAgo: 1, valueUSD: 87.50, tokens: 200,
+            billingTier: .fast, billingTierSource: .jsonl)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "unknown",
+            daysAgo: 1, valueUSD: 35.00, tokens: 300,
+            billingTier: .unknown, billingTierSource: .missingMarker)
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(db: conn, provider: .codex)
+        }
+
+        let share = try #require(shares.first { $0.modelId == "gpt-5" })
+        expectModelShareSplits(
+            share,
+            standardValueUSD: 35.00,
+            fastValueUSD: 87.50,
+            unknownValueUSD: 35.00,
+            standardTokens: 100,
+            fastTokens: 200,
+            unknownTokens: 300)
+    }
+
+    @Test("fetchModelShares keeps non-Codex totals but zeroes billing-tier splits")
+    func modelShares_zeroBillingTierSplitsForNonCodex() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "claude", sessionId: "claude-unknown",
+            daysAgo: 1, valueUSD: 12.50, tokens: 123,
+            billingTier: .unknown, billingTierSource: .notCodex)
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(db: conn, provider: .claude)
+        }
+
+        let share = try #require(shares.first { $0.modelId == "gpt-5" })
+        #expect(abs(share.valueUSD - 12.50) < 0.0001)
+        #expect(share.tokens == 123)
+        #expect(abs(share.standardValueUSD) < 0.0001)
+        #expect(abs(share.fastValueUSD) < 0.0001)
+        #expect(abs(share.unknownValueUSD) < 0.0001)
+        #expect(share.standardTokens == 0)
+        #expect(share.fastTokens == 0)
+        #expect(share.unknownTokens == 0)
+    }
+
+    @Test("windowed fetchModelShares returns billing-tier value and token splits")
+    func windowedModelShares_includeBillingTierSplits() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "window-standard",
+            daysAgo: 1, valueUSD: 35.00, tokens: 100,
+            billingTier: .standard, billingTierSource: .jsonl)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "window-fast",
+            daysAgo: 2, valueUSD: 87.50, tokens: 200,
+            billingTier: .fast, billingTierSource: .jsonl)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "window-unknown",
+            daysAgo: 3, valueUSD: 35.00, tokens: 300,
+            billingTier: .unknown, billingTierSource: .missingMarker)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "window-outside",
+            daysAgo: 45, valueUSD: 999.00, tokens: 900,
+            billingTier: .fast, billingTierSource: .jsonl)
+
+        let shares = try db.pool.read { conn in
+            try Aggregator.fetchModelShares(
+                db: conn, provider: .codex, sinceDays: 30, untilDaysAgo: 0)
+        }
+
+        let share = try #require(shares.first { $0.modelId == "gpt-5" })
+        expectModelShareSplits(
+            share,
+            standardValueUSD: 35.00,
+            fastValueUSD: 87.50,
+            unknownValueUSD: 35.00,
+            standardTokens: 100,
+            fastTokens: 200,
+            unknownTokens: 300)
+    }
+
+    @Test("fetchSessionDetail model breakdown returns billing-tier value and token splits")
+    func sessionDetailModelBreakdown_includesBillingTierSplits() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "session-splits",
+            daysAgo: 1, valueUSD: 35.00, tokens: 100,
+            billingTier: .standard, billingTierSource: .jsonl)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "session-splits",
+            daysAgo: 1, valueUSD: 87.50, tokens: 200,
+            billingTier: .fast, billingTierSource: .jsonl)
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "session-splits",
+            daysAgo: 1, valueUSD: 35.00, tokens: 300,
+            billingTier: .unknown, billingTierSource: .missingMarker)
+
+        let detail = try db.pool.read { conn in
+            try Aggregator.fetchSessionDetail(db: conn, sessionId: "session-splits")
+        }
+
+        let share = try #require(detail?.modelBreakdown.first { $0.modelId == "gpt-5" })
+        expectModelShareSplits(
+            share,
+            standardValueUSD: 35.00,
+            fastValueUSD: 87.50,
+            unknownValueUSD: 35.00,
+            standardTokens: 100,
+            fastTokens: 200,
+            unknownTokens: 300)
+    }
+
+    @Test("fetchSessionDetail keeps non-Codex totals but zeroes billing-tier splits")
+    func sessionDetailModelBreakdown_zeroBillingTierSplitsForNonCodex() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "claude", sessionId: "claude-session-splits",
+            daysAgo: 1, valueUSD: 12.50, tokens: 123,
+            billingTier: .unknown, billingTierSource: .notCodex)
+
+        let detail = try db.pool.read { conn in
+            try Aggregator.fetchSessionDetail(db: conn, sessionId: "claude-session-splits")
+        }
+
+        let share = try #require(detail?.modelBreakdown.first { $0.modelId == "gpt-5" })
+        #expect(abs(share.valueUSD - 12.50) < 0.0001)
+        #expect(share.tokens == 123)
+        #expect(abs(share.standardValueUSD) < 0.0001)
+        #expect(abs(share.fastValueUSD) < 0.0001)
+        #expect(abs(share.unknownValueUSD) < 0.0001)
+        #expect(share.standardTokens == 0)
+        #expect(share.fastTokens == 0)
+        #expect(share.unknownTokens == 0)
+    }
+
+    @Test("fetchDayDetail keeps non-Codex totals but zeroes billing-tier splits")
+    func dayDetailModelBreakdown_zeroBillingTierSplitsForNonCodex() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "claude", sessionId: "claude-day-splits",
+            daysAgo: 1, valueUSD: 12.50, tokens: 123,
+            billingTier: .unknown, billingTierSource: .notCodex)
+
+        let detail = try db.pool.read { conn in
+            let day = try #require(Aggregator.fetchDays(db: conn, provider: .claude).first)
+            return try Aggregator.fetchDayDetail(db: conn, day: day.day, provider: .claude)
+        }
+
+        let share = try #require(detail?.modelBreakdown.first { $0.modelId == "gpt-5" })
+        #expect(abs(share.valueUSD - 12.50) < 0.0001)
+        #expect(share.tokens == 123)
+        #expect(abs(share.standardValueUSD) < 0.0001)
+        #expect(abs(share.fastValueUSD) < 0.0001)
+        #expect(abs(share.unknownValueUSD) < 0.0001)
+        #expect(share.standardTokens == 0)
+        #expect(share.fastTokens == 0)
+        #expect(share.unknownTokens == 0)
+    }
+
+    @Test("fetchSessionDetail returns event billing metadata")
+    func sessionDetailEvents_includeBillingMetadata() throws {
+        let db = try makeDatabase()
+        try seedEvent(
+            in: db, provider: "codex", sessionId: "session-meta",
+            daysAgo: 1, valueUSD: 1.25, turnId: "turn-fast",
+            billingTier: .fast, billingTierSource: .jsonl)
+
+        let detail = try db.pool.read { conn in
+            try Aggregator.fetchSessionDetail(db: conn, sessionId: "session-meta")
+        }
+
+        let event = try #require(detail?.events.first)
+        #expect(event.turnId == "turn-fast")
+        #expect(event.billingTier == .fast)
+        #expect(event.billingTierSource == .jsonl)
     }
 
     @Test("fetchModelShares prior window [now-60d, now-30d) excludes the recent 30d")

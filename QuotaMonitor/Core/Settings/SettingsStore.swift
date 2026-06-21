@@ -107,15 +107,14 @@ final class SettingsStore {
         didSet { defaults.set(tokenUnitLanguage.rawValue,
                               forKey: Keys.tokenUnitLanguage) }
     }
-    /// Global override for Codex CLI billing tier. Codex's JSONL output
-    /// does not record whether a given turn used Fast Mode, so we can't
-    /// auto-detect per call. When ON, the value-backfill SQL routes
-    /// every event for the models listed in `CodexFastMode.multipliers`
-    /// (currently GPT-5.5 → 2.5×, GPT-5.4 → 2.0×) to a synthetic
-    /// `<model>-fast` catalog row so the dollar figure reflects the
-    /// Fast-tier rate. Toggling re-runs `backfillAllValues` so history
-    /// is recomputed end-to-end — a flip changes every prior chart and
-    /// the menu-bar headline immediately.
+    /// Fallback for Codex events whose tier could not be identified from
+    /// local rollout JSONL fast_mode / quick_mode markers. Explicit Fast
+    /// and Standard event tiers are priced independently of this setting;
+    /// when ON, only unknown-tier events for models listed in
+    /// `CodexFastMode.multipliers` are routed to the synthetic
+    /// `<model>-fast` catalog row. Toggling re-runs
+    /// `backfillAllValues` so the affected unclassified history is
+    /// recomputed and visible in charts/menu-bar totals immediately.
     ///
     /// Default OFF: most Codex users are on Standard, and we don't want
     /// to silently inflate the $ for someone who never enabled Fast

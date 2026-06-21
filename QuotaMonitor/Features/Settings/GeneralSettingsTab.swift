@@ -56,10 +56,9 @@ struct GeneralSettingsTab: View {
                 }
             }
 
-            // Codex Fast-Mode billing. Codex CLI's JSONL doesn't record
-            // per-call tier, so this is a global toggle that re-prices
-            // all GPT-5.5 / GPT-5.4 events at the Fast rate (2.5x / 2x)
-            // including history. Only shown when Codex is tracked.
+            // Codex Fast-Mode billing. QuotaMonitor tags Codex rows from
+            // rollout JSONL fast_mode / quick_mode markers when present;
+            // this toggle is only the fallback for unclassified rows.
             if settings.enabledProviders.contains("codex") {
                 Section(L10n.sectionCodexBilling) {
                     Toggle(L10n.codexFastModeBillingLabel,

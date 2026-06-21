@@ -647,20 +647,42 @@ enum L10n {
         t(en: "How often Codex's local rate-limit quota is fetched. Claude's quota is polled separately every 2 hours and isn't affected by this.",
           zh: "多久从本地 Codex 拉取一次速率限制配额。Claude 的配额由独立的 2 小时间隔拉取，不受此设置影响。")
     }
-    // Codex Fast-Mode billing — Codex CLI's JSONL doesn't surface tier
-    // per turn, so the user toggles their account-wide billing mode
-    // here. Help copy intentionally hides the per-model multipliers;
-    // users only need to know the toggle is global because per-call
-    // tier isn't observable.
+    // Codex Fast-Mode billing — rollout JSONL fast_mode / quick_mode
+    // markers can tag turns with Fast or Standard tier. This setting keeps
+    // the existing storage key but is now only a fallback for rows whose
+    // tier remains unclassified.
     static var sectionCodexBilling: String {
         t(en: "Codex Billing", zh: "Codex 计费")
     }
     static var codexFastModeBillingLabel: String {
-        t(en: "Codex Bill as Fast Mode", zh: "Codex 按 Fast Mode 计费")
+        t(en: "Bill unclassified Codex as Fast Mode",
+          zh: "未识别的 Codex 按 Fast Mode 计费")
     }
     static var codexFastModeBillingHelp: String {
-        t(en: "Codex doesn't tag each request with its billing tier, so this toggle applies to your whole account — including history. Turn it on if you regularly use Fast Mode.",
-          zh: "Codex 不会标记每次请求的计费档位，所以这里只能按账户整体估算费用，切换后历史记录会同步重算。如果长期使用 Fast Mode 就打开。")
+        t(en: "QuotaMonitor detects Fast usage from local Codex history markers when present. This fallback only affects Codex events whose tier could not be identified.",
+          zh: "QuotaMonitor 会在本地 Codex 历史标记存在时识别 Fast 用量。这个兜底开关只影响无法识别档位的 Codex 事件。")
+    }
+    static func codexBillingTierLabel(_ tier: CodexBillingTier) -> String {
+        switch tier {
+        case .fast:
+            return t(en: "Fast", zh: "快速")
+        case .standard:
+            return t(en: "Standard", zh: "标准")
+        case .unknown:
+            return t(en: "Unknown", zh: "未知")
+        }
+    }
+    static func codexBillingSplitPiece(
+        tier: CodexBillingTier,
+        tokens: Int64,
+        valueUSD: Double,
+        tokenFormatLocale: Locale
+    ) -> String {
+        let tierLabel = codexBillingTierLabel(tier)
+        let tokenText = tokens.formatted(.number.locale(tokenFormatLocale))
+        let valueText = valueUSD.formatted(.currency(code: "USD").locale(Locale(identifier: "en_US")))
+        return t(en: "\(tierLabel) \(tokenText) tokens / \(valueText)",
+                 zh: "\(tierLabel) \(tokenText) 个 token / \(valueText)")
     }
     static var sectionDatabase: String { t(en: "Database", zh: "数据库") }
     static var sectionExport: String { t(en: "Export", zh: "导出") }

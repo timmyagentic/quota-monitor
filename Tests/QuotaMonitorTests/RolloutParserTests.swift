@@ -195,6 +195,118 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 30])
     }
 
+    // MARK: - Codex Fast Mode JSONL tagging
+
+    @Test("fast_mode true tags Fast without changing token totals")
+    func fastModeTrueTagsFastWithoutChangingTokenTotals() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-fast","fast_mode":true}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-fast")
+        #expect(delta.billingTier == .fast)
+        #expect(delta.billingTierSource == .jsonl)
+    }
+
+    @Test("quick_mode true tags Fast for codex-pacer compatibility")
+    func quickModeTrueTagsFastForPacerCompatibility() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-quick","quick_mode":true}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-quick")
+        #expect(delta.billingTier == .fast)
+        #expect(delta.billingTierSource == .jsonl)
+    }
+
+    @Test("fast_mode false tags Standard and ignores fallback")
+    func fastModeFalseTagsStandard() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-standard","fast_mode":false}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-standard")
+        #expect(delta.billingTier == .standard)
+        #expect(delta.billingTierSource == .jsonl)
+    }
+
+    @Test("missing fast marker leaves tier unknown without changing token totals")
+    func missingFastMarkerLeavesTierUnknownWithoutChangingTokenTotals() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-missing"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-missing")
+        #expect(delta.billingTier == .unknown)
+        #expect(delta.billingTierSource == .missingMarker)
+    }
+
+    @Test("turn_context without fast marker clears previous marker")
+    func turnContextWithoutFastMarkerClearsPreviousMarker() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-fast","fast_mode":true}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turn_id":"turn-unmarked"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-unmarked")
+        #expect(delta.billingTier == .unknown)
+        #expect(delta.billingTierSource == .missingMarker)
+    }
+
+    @Test("camelCase turnId is decoded")
+    func camelCaseTurnIDIsDecoded() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turnId":"turn-camel"}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [1100])
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-camel")
+        #expect(delta.billingTier == .unknown)
+        #expect(delta.billingTierSource == .missingMarker)
+    }
+
+    @Test("camelCase fastMode is decoded")
+    func camelCaseFastModeIsDecoded() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5","turnId":"turn-camel-fast","fastMode":true}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1100}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        let delta = try #require(parsed.usageDeltas.first)
+        #expect(delta.turnId == "turn-camel-fast")
+        #expect(delta.billingTier == .fast)
+        #expect(delta.billingTierSource == .jsonl)
+    }
+
     // MARK: - legacy fallback
 
     @Test("subagent without turn_context: legacy gpt-5 fallback, modelInferred=true")
