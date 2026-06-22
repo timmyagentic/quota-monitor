@@ -30,8 +30,6 @@ window copy.
 
 ## [Unreleased]
 
-## [0.2.35] — 2026-06-21
-
 #### Summary
 - Existing installs that already picked a language no longer see the Landing Page again after updating
 
