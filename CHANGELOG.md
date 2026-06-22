@@ -31,7 +31,11 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+- Contributors now have a concise setup guide for project layout and local checks
 - Existing installs that already picked a language no longer see the Landing Page again after updating
+
+### Added
+- **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
 
 ### Fixed
 - **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.
