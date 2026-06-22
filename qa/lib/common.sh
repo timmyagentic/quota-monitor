@@ -42,11 +42,12 @@ qm_write_defaults() {
     local domain="${2:-dev.tjzhou.QuotaMonitor.QA}"
     local version
     version="$(qm_app_version)"
+    local language="${QM_QA_LANGUAGE:-en}"
 
     qm_assert_qa_defaults_suite "$domain" || return 1
 
     mkdir -p "$home/Library/Preferences"
-    HOME="$home" defaults write "$domain" app.language -string en
+    HOME="$home" defaults write "$domain" app.language -string "$language"
     HOME="$home" defaults write "$domain" onboarding.providersDone -bool true
     HOME="$home" defaults write "$domain" onboarding.lastVersion -string "$version"
     HOME="$home" defaults write "$domain" discoverability.firstRunPresentationShown -bool true
@@ -87,6 +88,7 @@ qm_write_real_data_defaults() {
     local source_domain="$4"
     local report_path="$5"
     local copied="false"
+    local qa_overrides="none"
 
     qm_assert_qa_defaults_suite "$domain" || return 1
 
@@ -98,6 +100,11 @@ qm_write_real_data_defaults() {
         copied="true"
     fi
 
+    if [[ "$copied" == "true" && -n "${QM_QA_LANGUAGE:-}" ]]; then
+        HOME="$home" defaults write "$domain" app.language -string "$QM_QA_LANGUAGE"
+        qa_overrides="app.language=${QM_QA_LANGUAGE}"
+    fi
+
     {
         printf 'source_home=%s\n' "$source_home"
         printf 'source_domain=%s\n' "$source_domain"
@@ -105,6 +112,7 @@ qm_write_real_data_defaults() {
         printf 'target_domain=%s\n' "$domain"
         printf 'copy_requested=1\n'
         printf 'copied_user_defaults=%s\n' "$copied"
+        printf 'qa_overrides=%s\n' "$qa_overrides"
         printf 'safety_overrides=none\n'
     } >"$report_path"
 
@@ -118,17 +126,17 @@ qm_seed_fixtures() {
 
     local codex_dir="$home/.codex/sessions/qa"
     local claude_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor"
-    local claude_fallback_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo"
+    local claude_fallback_dir="$home/.claude/projects/-Volumes-SamsungDisk-Code-billing-api"
     local claude_config_dir="$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor"
 
     mkdir -p "$codex_dir" "$claude_dir" "$claude_fallback_dir" "$claude_config_dir" "$home/.codex/archived_sessions"
 
-    cp "${root}/Tests/QuotaMonitorTests/Fixtures/Rollout/cli_0_40_with_cwd.jsonl" \
+    cp "${root}/qa/fixtures/qa-codex-session.jsonl" \
         "$codex_dir/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
     cp "${root}/qa/fixtures/qa-codex-project-only.jsonl" \
         "$codex_dir/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
     cat >"$home/.codex/session_index.jsonl" <<'JSON'
-{"id":"019aa0fd-1111-7000-8000-aaaaaaaaaaaa","thread_name":"Split session titles from project metadata","updated_at":"2026-06-01T00:00:03Z"}
+{"id":"019aa0fd-1111-7000-8000-aaaaaaaaaaaa","thread_name":"Show Codex reset cards in the menu bar","updated_at":"2026-06-20T10:16:03Z"}
 JSON
     cp "${root}/qa/fixtures/qa-claude-session.jsonl" \
         "$claude_dir/qa-claude-session.jsonl"
@@ -152,17 +160,22 @@ qm_real_data_computer_use_steps() {
         "open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,wait,snapshot"
 }
 
-qm_steps_include_quit() {
+qm_steps_include() {
     local steps="$1"
+    local wanted="$2"
     local part trimmed
     local -a parts
     IFS=',' read -r -a parts <<<"$steps"
     for part in "${parts[@]}"; do
         trimmed="${part#"${part%%[![:space:]]*}"}"
         trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-        [[ "$trimmed" == "quit" ]] && return 0
+        [[ "$trimmed" == "$wanted" ]] && return 0
     done
     return 1
+}
+
+qm_steps_include_quit() {
+    qm_steps_include "$1" "quit"
 }
 
 qm_app_artifacts_dir() {
@@ -395,7 +408,7 @@ qm_write_computer_qa_brief() {
         printf '3. Use Computer Use only for local UI reading/clicking. Ask before destructive UI actions such as uninstall, deleting files, changing system settings, or transmitting credentials.\n\n'
         printf '## Walkthrough\n\n'
         printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data and no empty primary panels.'
-        printf '%s\n' '- Sessions: switch to Sessions, search "Split session titles" to see real session titles, then search "project-name-fallback-demo" to see the project-name fallback row without an "Untitled session" label.'
+        printf '%s\n' '- Sessions: switch to Sessions, search "Show Codex reset cards" to see real session titles, then search "billing-api" to see the project-name fallback row without an "Untitled session" label.'
         printf '%s\n' '- History: switch to History, select a populated day, and verify rollups plus per-session details are readable.'
         printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
         printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'
@@ -472,6 +485,7 @@ qm_write_launch_config() {
     local output_dir="$4"
     local steps="$5"
     local codex_home="$6"
+    local mock_codex_reset_credits="${7:-false}"
 
     qm_assert_qa_defaults_suite "$defaults_suite" || return 1
 
@@ -491,6 +505,7 @@ qm_write_launch_config() {
         printf '  "codexHome": '
         qm_json_string "$codex_home"
         printf ',\n'
+        printf '  "mockCodexResetCredits": %s,\n' "$mock_codex_reset_credits"
         printf '  "steps": ['
 
         local first=1
@@ -739,6 +754,8 @@ qm_warn_incomplete_ax_snapshot() {
 
 qm_assert_artifact_contract() {
     local artifacts="$1"
+    local expected_language="${2:-en}"
+    local qa_steps="${3:-exercise-settings}"
     local state="${artifacts}/app-state.json"
     local db_counts="${artifacts}/db-counts.txt"
     local dev_log="${artifacts}/quotamonitor-dev.log"
@@ -759,23 +776,25 @@ qm_assert_artifact_contract() {
         echo "error: dashboard window was not captured in QA state" >&2
         return 1
     }
-    grep -Eq '"title"[[:space:]]*:[[:space:]]*"Settings"' "$state" || {
+    grep -Eq '"title"[[:space:]]*:[[:space:]]*"(Settings|设置)"' "$state" || {
         echo "error: settings window was not captured in QA state" >&2
         return 1
     }
-    grep -q '"exercise-settings"' "$state" || {
-        echo "error: settings exercise step was not captured in QA state" >&2
-        return 1
-    }
 
-    qm_assert_plutil_equals "$state" "settings.language" "en"
-    qm_assert_plutil_equals "$state" "settings.quotaDisplayMode" "remaining"
+    qm_assert_plutil_equals "$state" "settings.language" "$expected_language"
     qm_assert_plutil_equals "$state" "settings.menuBarLabelStyle" "emphasis"
-    qm_assert_plutil_equals "$state" "settings.showDockIconForWindows" "false"
     qm_assert_plutil_equals "$state" "settings.developerModeEnabled" "true"
-    qm_assert_plutil_equals "$state" "settings.pollIntervalSeconds" "900"
-    qm_assert_plutil_equals "$state" "settings.enabledProviders.0" "claude"
-    qm_assert_plutil_equals "$state" "settings.menuBarIconProviders.0" "claude"
+    if qm_steps_include "$qa_steps" "exercise-settings"; then
+        grep -q '"exercise-settings"' "$state" || {
+            echo "error: settings exercise step was not captured in QA state" >&2
+            return 1
+        }
+        qm_assert_plutil_equals "$state" "settings.quotaDisplayMode" "remaining"
+        qm_assert_plutil_equals "$state" "settings.showDockIconForWindows" "false"
+        qm_assert_plutil_equals "$state" "settings.pollIntervalSeconds" "900"
+        qm_assert_plutil_equals "$state" "settings.enabledProviders.0" "claude"
+        qm_assert_plutil_equals "$state" "settings.menuBarIconProviders.0" "claude"
+    fi
 
     [[ -f "$db_counts" ]] || {
         echo "error: missing db-counts artifact: $db_counts" >&2
@@ -802,10 +821,12 @@ qm_assert_artifact_contract() {
         echo "error: missing Developer Mode log artifact: $dev_log" >&2
         return 1
     }
-    grep -q '"event":"qa.settings.exercise"' "$dev_log" || {
-        echo "error: settings exercise event missing from Developer Mode log" >&2
-        return 1
-    }
+    if qm_steps_include "$qa_steps" "exercise-settings"; then
+        grep -q '"event":"qa.settings.exercise"' "$dev_log" || {
+            echo "error: settings exercise event missing from Developer Mode log" >&2
+            return 1
+        }
+    fi
     grep -q '"event":"qa.snapshot.write"' "$dev_log" || {
         echo "error: snapshot write event missing from Developer Mode log" >&2
         return 1

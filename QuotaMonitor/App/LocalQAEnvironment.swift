@@ -7,6 +7,7 @@ struct LocalQAResolvedConfiguration: Equatable {
     let outputDirectory: URL?
     let codexHomeDirectory: URL?
     let steps: [String]?
+    let mockCodexResetCredits: Bool
 }
 
 enum LocalQAEnvironment {
@@ -15,6 +16,7 @@ enum LocalQAEnvironment {
     static let defaultsSuiteKey = "QUOTAMONITOR_QA_DEFAULTS_SUITE"
     static let outputDirectoryKey = "QUOTAMONITOR_QA_OUTPUT_DIR"
     static let stepsKey = "QUOTAMONITOR_QA_STEPS"
+    static let mockCodexResetCreditsKey = "QUOTAMONITOR_QA_MOCK_CODEX_RESET_CREDITS"
     static let codexHomeKey = "CODEX_HOME"
     static let configArgument = "--quotamonitor-qa-config"
     static let configBase64Argument = "--quotamonitor-qa-config-base64"
@@ -38,7 +40,8 @@ enum LocalQAEnvironment {
             defaultsSuite: qaDefaultsSuite(environment[defaultsSuiteKey]),
             outputDirectory: directoryURL(environment[outputDirectoryKey]),
             codexHomeDirectory: directoryURL(environment[codexHomeKey]),
-            steps: stepNames(environment[stepsKey]))
+            steps: stepNames(environment[stepsKey]),
+            mockCodexResetCredits: boolValue(environment[mockCodexResetCreditsKey]))
     }
 
     static func isActive(
@@ -204,7 +207,8 @@ enum LocalQAEnvironment {
             defaultsSuite: qaDefaultsSuite(decoded.defaultsSuite),
             outputDirectory: directoryURL(decoded.outputDirectory),
             codexHomeDirectory: directoryURL(decoded.codexHome),
-            steps: decoded.steps?.compactMap { nonEmpty($0) })
+            steps: decoded.steps?.compactMap { nonEmpty($0) },
+            mockCodexResetCredits: decoded.mockCodexResetCredits ?? false)
     }
 
     private static func launchConfigurationValue(
@@ -253,6 +257,15 @@ enum LocalQAEnvironment {
             .compactMap { nonEmpty(String($0)) }
     }
 
+    private static func boolValue(_ raw: String?) -> Bool {
+        switch nonEmpty(raw)?.lowercased() {
+        case "1", "true", "yes", "on":
+            return true
+        default:
+            return false
+        }
+    }
+
     private struct LaunchConfigurationFile: Decodable {
         let mode: Bool?
         let home: String?
@@ -260,5 +273,6 @@ enum LocalQAEnvironment {
         let outputDirectory: String?
         let codexHome: String?
         let steps: [String]?
+        let mockCodexResetCredits: Bool?
     }
 }

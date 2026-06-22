@@ -63,6 +63,7 @@ struct LocalQAConfigurationTests {
           "defaultsSuite": "dev.tjzhou.QuotaMonitor.QATest",
           "codexHome": "/tmp/qm-qa-home/.codex",
           "outputDirectory": "/tmp/qm-qa-artifacts",
+          "mockCodexResetCredits": true,
           "steps": ["open-dashboard", "exercise-settings", "snapshot", "quit"]
         }
         """)
@@ -73,6 +74,7 @@ struct LocalQAConfigurationTests {
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa-artifacts")
         #expect(config.steps == [.openDashboard, .exerciseSettings, .snapshot, .quit])
+        #expect(config.mockCodexResetCredits)
     }
 
     @Test("Parses inline base64 QA launch config without file IO")
@@ -95,6 +97,7 @@ struct LocalQAConfigurationTests {
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa-inline-artifacts")
         #expect(config.steps == [.exerciseSettings, .snapshot])
+        #expect(config.mockCodexResetCredits == false)
     }
 
     @Test("Rejects unknown QA steps instead of silently skipping them")

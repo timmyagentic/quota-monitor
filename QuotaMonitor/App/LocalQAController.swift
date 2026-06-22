@@ -26,6 +26,10 @@ final class LocalQAController {
             at: configuration.outputDirectory,
             withIntermediateDirectories: true)
 
+        if configuration.mockCodexResetCredits {
+            environment.installLocalQAMockCodexResetCredits()
+        }
+
         await pause(seconds: 0.8)
         for step in configuration.steps {
             switch step {

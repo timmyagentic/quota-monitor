@@ -182,7 +182,7 @@ Grant Accessibility permission to the terminal/Codex host app if this fails.
 Codex fixture data comes from:
 
 ```text
-Tests/QuotaMonitorTests/Fixtures/Rollout/cli_0_40_with_cwd.jsonl
+qa/fixtures/qa-codex-session.jsonl
 qa/fixtures/qa-codex-project-only.jsonl
 ```
 
@@ -195,9 +195,8 @@ qa/fixtures/qa-claude-project-only.jsonl
 
 The expected isolated import result is at least two Codex sessions, two Claude
 sessions, usage events for both providers, and Codex JSONL rate-limit samples.
-For session-title screenshots, search `Split session titles` to see a real
-session title and `project-name-fallback-demo` to see the project-name fallback
-row.
+For session-title screenshots, search `Show Codex reset cards` to see a real
+session title and `billing-api` to see the project-name fallback row.
 
 ## Computer Use QA
 

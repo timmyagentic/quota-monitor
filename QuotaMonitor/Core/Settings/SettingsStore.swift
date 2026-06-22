@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Observation
 
 // Cross-feature settings backed by UserDefaults.
@@ -330,7 +331,8 @@ final class SettingsStore {
     nonisolated static let knownIconProviders: Set<String> = ["codex", "claude"]
 
     init(defaults: UserDefaults = .standard,
-         appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) {
+         appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+         hasExistingAppData: () -> Bool = SettingsStore.defaultExistingAppDataExists) {
         self.defaults = defaults
         self.appVersion = appVersion
         let storedInterval = defaults.integer(forKey: Keys.pollInterval)
@@ -454,10 +456,24 @@ final class SettingsStore {
         }
         let lastOnboarded = defaults.string(forKey: Keys.lastOnboardedVersion)
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
+        let hasStoredLanguage = defaults.string(forKey: "app.language") != nil
+        let providerStepStarted = defaults.bool(forKey: Keys.providerOnboardingStarted)
+        let languageOnlyLegacyProfile: Bool
+        if hasStoredLanguage && !providerStepStarted {
+            // Missing done flag: pre-provider-onboarding language choice.
+            // False done flag: only repair when prior app data proves this
+            // was an existing install hit by 0.2.34, not a brand-new user
+            // who quit between language and provider setup.
+            languageOnlyLegacyProfile = storedDone == nil
+                || (storedDone == false && hasExistingAppData())
+        } else {
+            languageOnlyLegacyProfile = false
+        }
         let hasExistingConfiguration =
             storedDone == true
             || storedProviders != nil
             || storedInterval > 0
+            || (storedDone != true && languageOnlyLegacyProfile)
         let resolvedDone: Bool
         if resetGate && hasExistingConfiguration {
             resolvedDone = true
@@ -468,6 +484,9 @@ final class SettingsStore {
             resolvedDone = baseDone && !resetGate
         }
         self.hasCompletedProviderOnboarding = resolvedDone
+        if resolvedDone {
+            defaults.removeObject(forKey: Keys.providerOnboardingStarted)
+        }
         defaults.set(resolvedDone, forKey: Keys.providerOnboardingDone)
     }
 
@@ -555,8 +574,18 @@ final class SettingsStore {
         if let appVersion {
             defaults.set(appVersion, forKey: Keys.lastOnboardedVersion)
         }
+        defaults.removeObject(forKey: Keys.providerOnboardingStarted)
         NotificationCenter.default.post(
             name: .quotaMonitorOnboardingCompleted, object: nil)
+    }
+
+    /// Mark that this build moved a fresh install from language selection
+    /// into provider onboarding. Older buggy releases never wrote this
+    /// marker, so the upgrade repair can distinguish their language-only
+    /// false flag from a genuinely interrupted fresh-install wizard.
+    func markProviderOnboardingStarted() {
+        guard !hasCompletedProviderOnboarding else { return }
+        defaults.set(true, forKey: Keys.providerOnboardingStarted)
     }
 
     /// Replace the enabled set wholesale (e.g. from the onboarding
@@ -623,6 +652,40 @@ final class SettingsStore {
         return true
     }
 
+    private nonisolated static func defaultExistingAppDataExists() -> Bool {
+        existingAppDataExists(databaseURL: DatabaseManager.defaultURL())
+    }
+
+    nonisolated static func existingAppDataExists(databaseURL db: URL) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: db.path) else { return false }
+        do {
+            var config = Configuration()
+            config.readonly = true
+            let queue = try DatabaseQueue(path: db.path, configuration: config)
+            return try queue.read { conn in
+                try tableHasRows("usage_events", in: conn)
+                    || tableHasRows("rate_limit_samples", in: conn)
+            }
+        } catch {
+            return false
+        }
+    }
+
+    private nonisolated static func tableHasRows(
+        _ table: String,
+        in db: Database
+    ) throws -> Bool {
+        let exists = try Int.fetchOne(db, sql: """
+            SELECT 1
+            FROM sqlite_master
+            WHERE type = 'table' AND name = ?
+            LIMIT 1
+            """, arguments: [table]) != nil
+        guard exists else { return false }
+        return try Int.fetchOne(db, sql: "SELECT 1 FROM \(table) LIMIT 1") != nil
+    }
+
     struct Snapshot: Sendable {
         let pollIntervalSeconds: Int
         let keychainPolicy: KeychainPolicy
@@ -653,6 +716,7 @@ final class SettingsStore {
         static let legacyMenuBarIconProvider = "settings.menuBarIconProvider"
         static let enabledProviders = "settings.enabledProviders"
         static let providerOnboardingDone = "onboarding.providersDone"
+        static let providerOnboardingStarted = "onboarding.providerStepStarted"
         static let lastOnboardedVersion = "onboarding.lastVersion"
     }
 }

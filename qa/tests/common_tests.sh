@@ -91,6 +91,19 @@ test_accepts_custom_qa_defaults_suite() {
     [[ "$language" == "en" ]] || fail "custom QA defaults suite was not written: $language"
 }
 
+test_write_defaults_accepts_language_override() {
+    local home domain
+    home="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-language.XXXXXX")"
+    domain="dev.tjzhou.QuotaMonitor.LanguageQA.$RANDOM.$$"
+    trap 'HOME="$home" defaults delete "$domain" >/dev/null 2>&1 || true; rm -rf "$home"' RETURN
+
+    QM_QA_LANGUAGE=zh-Hans qm_write_defaults "$home" "$domain"
+
+    local language
+    language="$(HOME="$home" defaults read "$domain" app.language)"
+    [[ "$language" == "zh-Hans" ]] || fail "language override was $language"
+}
+
 test_write_real_data_defaults_copies_user_preferences_without_overrides() {
     local source_home target_home source_domain target_domain report
     source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-defaults.XXXXXX")"
@@ -131,8 +144,43 @@ test_write_real_data_defaults_copies_user_preferences_without_overrides() {
     [[ "$mirror_to_file" == "1" ]] || fail "copied mirror-to-file was $mirror_to_file"
     grep -q '^copied_user_defaults=true$' "$report" \
         || fail "user defaults report did not record copied_user_defaults=true"
+    grep -q '^qa_overrides=none$' "$report" \
+        || fail "real-data defaults should not record QA overrides"
     grep -q '^safety_overrides=none$' "$report" \
         || fail "real-data defaults should not apply product-setting overrides"
+}
+
+test_write_real_data_defaults_accepts_language_override() {
+    local source_home target_home source_domain target_domain report
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-language-override.XXXXXX")"
+    target_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-target-language-override.XXXXXX")"
+    source_domain="dev.tjzhou.QuotaMonitor.SourceLanguageTest.$RANDOM.$$"
+    target_domain="dev.tjzhou.QuotaMonitor.TargetLanguageTest.$RANDOM.$$"
+    report="$target_home/user-defaults-shadow.txt"
+    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+
+    HOME="$source_home" defaults write "$source_domain" app.language -string en
+    HOME="$source_home" defaults write "$source_domain" settings.enabledProviders -array codex
+
+    QM_QA_LANGUAGE=zh-Hans qm_write_real_data_defaults \
+        "$target_home" \
+        "$target_domain" \
+        "$source_home" \
+        "$source_domain" \
+        "$report"
+
+    local language providers
+    language="$(HOME="$target_home" defaults read "$target_domain" app.language)"
+    providers="$(HOME="$target_home" defaults read "$target_domain" settings.enabledProviders)"
+
+    [[ "$language" == "zh-Hans" ]] || fail "real-data language override was $language"
+    grep -q 'codex' <<<"$providers" || fail "copied enabled provider missing after override: $providers"
+    grep -q '^copied_user_defaults=true$' "$report" \
+        || fail "language override report did not record copied_user_defaults=true"
+    grep -q '^qa_overrides=app.language=zh-Hans$' "$report" \
+        || fail "language override report did not record app.language override"
+    grep -q '^safety_overrides=none$' "$report" \
+        || fail "language override should not change safety overrides"
 }
 
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied() {
@@ -171,9 +219,9 @@ test_seed_fixtures() {
     assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-00-00-019aa0fd-1111-7000-8000-aaaaaaaaaaaa.jsonl"
     assert_file "$home/.codex/sessions/qa/rollout-2026-06-01T00-03-00-019aa0fd-2222-7000-8000-bbbbbbbbbbbb.jsonl"
     assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-session.jsonl"
-    assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-project-name-fallback-demo/qa-claude-project-only.jsonl"
+    assert_file "$home/.claude/projects/-Volumes-SamsungDisk-Code-billing-api/qa-claude-project-only.jsonl"
     assert_file "$home/.config/claude/projects/-Volumes-SamsungDisk-Code-quota-monitor/qa-claude-config-session.jsonl"
-    grep -q 'Split session titles from project metadata' "$home/.codex/session_index.jsonl" \
+    grep -q 'Show Codex reset cards in the menu bar' "$home/.codex/session_index.jsonl" \
         || fail "Codex fixture metadata title missing from session_index"
 }
 
@@ -189,7 +237,8 @@ test_write_launch_config() {
         "dev.tjzhou.QuotaMonitor.QATest" \
         "$dir/artifacts" \
         "open-dashboard,snapshot,quit" \
-        "$dir/home/.codex"
+        "$dir/home/.codex" \
+        "true"
 
     plutil -convert json -o /dev/null "$config" >/dev/null
     grep -q '"mode": true' "$config" || fail "mode flag missing from launch config"
@@ -198,6 +247,8 @@ test_write_launch_config() {
         || fail "defaults suite missing from launch config"
     grep -q '"outputDirectory": "' "$config" || fail "output directory missing from launch config"
     grep -q '"codexHome": "' "$config" || fail "codex home missing from launch config"
+    grep -q '"mockCodexResetCredits": true' "$config" \
+        || fail "mock Codex reset credits flag missing from launch config"
     grep -q '"open-dashboard"' "$config" || fail "first QA step missing from launch config"
     grep -q '"snapshot"' "$config" || fail "snapshot QA step missing from launch config"
     grep -q '"quit"' "$config" || fail "quit QA step missing from launch config"
@@ -331,6 +382,14 @@ test_steps_include_quit_detects_exact_step() {
         || fail "quit step with whitespace was not detected"
     if qm_steps_include_quit "open-dashboard,acquit,snapshot"; then
         fail "substring containing quit was incorrectly detected"
+    fi
+}
+
+test_steps_include_detects_named_step() {
+    qm_steps_include "open-dashboard, show-popover ,snapshot" "show-popover" \
+        || fail "named step with whitespace was not detected"
+    if qm_steps_include "open-dashboard,not-show-popover,snapshot" "show-popover"; then
+        fail "substring containing named step was incorrectly detected"
     fi
 }
 
@@ -640,6 +699,72 @@ TEXT
     qm_assert_artifact_contract "$dir"
 }
 
+test_assert_artifact_contract_accepts_visual_fixture_steps() {
+    local dir
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-visual-artifacts.XXXXXX")"
+    trap 'rm -rf "$dir"' RETURN
+
+    cat >"$dir/app-state.json" <<'JSON'
+{
+  "bundleIdentifier": "dev.tjzhou.QuotaMonitor",
+  "databasePath": "/tmp/qm/quotamonitor.sqlite",
+  "developerLogPath": "/tmp/qm/quotamonitor-dev.log",
+  "generatedAt": "2026-06-02T00:00:00Z",
+  "menuBar": {
+    "claudeEvents": 1,
+    "claudeSessions": 1,
+    "claudeTokens": 1740,
+    "codexEvents": 2,
+    "codexSessions": 1,
+    "codexTokens": 290
+  },
+  "pid": 123,
+  "qaSteps": ["open-settings", "show-popover", "snapshot"],
+  "settings": {
+    "developerModeEnabled": true,
+    "enabledProviders": ["claude", "codex"],
+    "language": "zh-Hans",
+    "menuBarIconProviders": ["claude", "codex"],
+    "menuBarLabelStyle": "emphasis",
+    "pollIntervalSeconds": 300,
+    "quotaDisplayMode": "used",
+    "showDockIconForWindows": true
+  },
+  "statusItemVisibility": "visible",
+  "windows": [
+    {"identifier": "dashboard", "isKeyWindow": false, "isVisible": true, "title": "Quota Monitor"},
+    {"identifier": "settings", "isKeyWindow": true, "isVisible": true, "title": "设置"}
+  ]
+}
+JSON
+    cat >"$dir/db-counts.txt" <<'TEXT'
+provider  sessions
+--------  --------
+claude    1
+codex     1
+provider  events  tokens
+--------  ------  ------
+claude    1       1740
+codex     2       290
+source_kind  bucket     samples
+-----------  ---------  -------
+jsonl        primary    1
+jsonl        secondary  1
+TEXT
+    printf '{"event":"qa.snapshot.write","result":"success"}\n' >"$dir/quotamonitor-dev.log"
+    printf 'PNGDATA' >"$dir/screen.png"
+    printf 'Window: Quota Monitor\nWindow: 设置\n' >"$dir/ax-tree.txt"
+    qm_write_boundary_manifest \
+        "$dir/qa-boundary.json" \
+        "fixture" \
+        "/tmp/qm" \
+        "dev.tjzhou.QuotaMonitor.QA.Test" \
+        "/tmp/qm/.codex" \
+        "/tmp/qm/Library/Application Support/QuotaMonitor/QAArtifacts"
+
+    qm_assert_artifact_contract "$dir" "zh-Hans" "open-settings,show-popover,snapshot"
+}
+
 test_assert_artifact_contract_allows_incomplete_ax_with_warning() {
     local dir
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-artifacts-ax-warning.XXXXXX")"
@@ -946,6 +1071,7 @@ test_refuses_installed_app_defaults_suite
 test_accepts_custom_qa_defaults_suite
 test_write_real_data_defaults_copies_user_preferences_without_overrides
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied
+test_write_defaults_accepts_language_override
 test_seed_fixtures
 test_write_launch_config
 test_write_launch_config_rejects_installed_app_defaults_suite
@@ -956,6 +1082,7 @@ test_default_steps_include_settings_exercise
 test_computer_use_steps_keep_app_open
 test_real_data_computer_use_steps_preserve_user_settings
 test_steps_include_quit_detects_exact_step
+test_steps_include_detects_named_step
 test_app_artifacts_dir_lives_under_qa_home
 test_static_entrypoint_does_not_launch_app
 test_obsolete_local_e2e_entrypoint_is_removed
@@ -970,6 +1097,7 @@ test_write_computer_use_cleanup_script_restores_installed_app
 test_computer_qa_brief_includes_exact_app_target
 test_real_data_computer_qa_brief_includes_exact_app_target
 test_assert_artifact_contract
+test_assert_artifact_contract_accepts_visual_fixture_steps
 test_assert_artifact_contract_allows_incomplete_ax_with_warning
 test_warns_when_ax_snapshot_is_incomplete
 test_ax_snapshot_accepts_localized_settings_title

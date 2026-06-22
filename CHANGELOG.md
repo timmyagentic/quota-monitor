@@ -32,18 +32,33 @@ window copy.
 
 #### Summary
 - Contributors now have a concise setup guide for project layout and local checks
-- Mac App Store preparation now has a local readiness check before any account setup
+- Existing installs that already picked a language no longer see the Landing Page again after updating
+
+### Added
+- **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
+
+### Fixed
+- **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.
+
+## [0.2.34] — 2026-06-21
+
+#### Summary
+- Codex now shows available reset cards and their expiration times in the menu bar
+- Claude live quota cards now keep their last numbers visible while waiting to refresh
+- Existing settings now stay intact after update repairs, preserving configured providers and menu-bar preferences
 - Claude credential disk cache now stays enabled by default when unset, reducing repeated Keychain prompts after local rebuilds
 - History and Sessions now show real session titles, falling back to the project name only when no title exists
 
 ### Added
-- **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
+- **Codex reset-card visibility.** The menu bar now shows how many Codex active reset cards are available and when the available cards expire.
 - **Mac App Store readiness check.** The project now has a documented local preflight for an App Store-friendly build, so future store work can be evaluated before any account or release-credential changes.
 
 ### Changed
 - **Claude credential disk cache defaults on when unset.** New installs and existing users without a saved preference now get the Claude credentials disk cache enabled and persisted by default, reducing repeated macOS Keychain prompts after local rebuilds; users who turn the setting off keep that explicit choice across later updates.
 
 ### Fixed
+- **Update repairs preserve settings.** Existing installs that already configured providers or menu-bar preferences now keep those choices when the app repairs older onboarding state.
+- **Claude live quota refreshes stay readable.** When Claude temporarily delays live quota refreshes, the menu bar keeps the last successful quota snapshot visible and labels when it will try again.
 - **Session rows show clearer titles.** History, Sessions, and Session Detail now keep project folder names as secondary metadata, use real session titles when available, and fall back to the project name instead of “Untitled session” when no title exists.
 
 ## [0.2.33] — 2026-06-15

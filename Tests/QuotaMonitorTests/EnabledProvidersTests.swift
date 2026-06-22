@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import QuotaMonitor
 
@@ -171,14 +172,98 @@ struct EnabledProvidersTests {
     }
 
     @Test
+    func languageOnlyExistingUserWithoutLastVersionSkipsOnboardingAndStampsCurrentVersion() {
+        let d = Self.freshDefaults()
+        // Builds before provider onboarding could have a valid language
+        // selection without ever writing provider arrays. That is still
+        // an existing user, not a fresh install.
+        d.set("zh-Hans", forKey: "app.language")
+
+        let store = SettingsStore(defaults: d, appVersion: "0.2.34")
+
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.34")
+    }
+
+    @Test
+    func languageOnlyExistingUserAfterBadLaunchRepairsFalseDoneFlag() {
+        let d = Self.freshDefaults()
+        // The released 0.2.34 build could launch an existing language-only
+        // profile, decide the reset gate should reopen provider onboarding,
+        // and persist providersDone=false before the user finished anything.
+        // The hotfix must repair that already-written false on the next launch.
+        d.set("zh-Hans", forKey: "app.language")
+        d.set(false, forKey: "onboarding.providersDone")
+
+        let store = SettingsStore(
+            defaults: d,
+            appVersion: "0.2.35",
+            hasExistingAppData: { true })
+
+        #expect(store.needsProviderOnboarding == false)
+        #expect(store.enabledProviders == ["codex", "claude"])
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.35")
+    }
+
+    @Test
+    func fresh034LanguageOnlyPartialWithoutDataStillNeedsProviderStep() {
+        let d = Self.freshDefaults()
+        // A brand-new 0.2.34 install could choose a language and quit before
+        // provider onboarding. That state has no fixed-build marker, but also
+        // no prior app data, so it should resume setup instead of being
+        // silently repaired as an existing user.
+        d.set("zh-Hans", forKey: "app.language")
+        d.set(false, forKey: "onboarding.providersDone")
+
+        let store = SettingsStore(
+            defaults: d,
+            appVersion: "0.2.35",
+            hasExistingAppData: { false })
+
+        #expect(store.needsProviderOnboarding)
+        #expect(d.bool(forKey: "onboarding.providersDone") == false)
+        #expect(d.string(forKey: "onboarding.lastVersion") == nil)
+    }
+
+    @Test
+    func existingAppDataDetectorRequiresActualRowsNotJustAnEmptyDatabase() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-onboarding-footprint-\(UUID().uuidString)",
+                                    isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("quotamonitor.sqlite")
+        let manager = try DatabaseManager(url: url)
+
+        #expect(SettingsStore.existingAppDataExists(databaseURL: url) == false)
+
+        try manager.pool.write { db in
+            try db.execute(sql: """
+                INSERT INTO rate_limit_samples (
+                    source_kind, bucket, sample_timestamp, resets_at,
+                    used_percent, remaining_percent
+                )
+                VALUES ('live', 'primary', '2026-06-21T00:00:00Z',
+                        '2026-06-21T05:00:00Z', 10, 90)
+                """)
+        }
+
+        #expect(SettingsStore.existingAppDataExists(databaseURL: url))
+    }
+
+    @Test
     func partialCurrentOnboardingStillNeedsProviderStep() {
         let d = Self.freshDefaults()
-        // Current builds write an explicit false before the user finishes
-        // the provider step. A language-only partial onboarding session is
-        // not an existing configured user and should still resume setup.
+        // Fixed builds mark the language-to-provider transition. That
+        // marker distinguishes a real interrupted fresh install from the
+        // 0.2.34 language-only repair state above.
         d.set("en", forKey: "app.language")
         d.set(false, forKey: "onboarding.providersDone")
-        let store = SettingsStore(defaults: d, appVersion: "0.2.33")
+        d.set(true, forKey: "onboarding.providerStepStarted")
+        let store = SettingsStore(defaults: d, appVersion: "0.2.35")
         #expect(store.needsProviderOnboarding)
         #expect(d.string(forKey: "onboarding.lastVersion") == nil)
     }

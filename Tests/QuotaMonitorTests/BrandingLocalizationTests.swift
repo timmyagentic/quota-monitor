@@ -25,4 +25,43 @@ struct BrandingLocalizationTests {
         #expect(body.contains("Branding.appCodeName"))
         #expect(!body.contains("\"QuotaMonitor \\(version)"))
     }
+
+    @Test("Claude live quota rate-limit copy is precise and avoids Chinese spacing bug")
+    func claudeLiveQuotaRateLimitCopyIsPrecise() {
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            L10n.claudeRateLimitedRetryIn("5 分钟", lastUpdated: "11:24")
+        }
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            L10n.claudeRateLimitedRetryIn("5 min", lastUpdated: "11:24")
+        }
+
+        #expect(zh == "Claude live quota 接口被限速，约 5 分钟后重试 · 上次更新 11:24")
+        #expect(!zh.contains("分钟 后"))
+        #expect(en == "Claude live quota API rate limited, retry in 5 min · updated 11:24")
+    }
+
+    @Test("Codex reset-card copy is concise in both languages")
+    func codexResetCardCopy() {
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (
+                L10n.codexResetCardsTitle,
+                L10n.codexResetCardsAvailable(2),
+                L10n.codexResetCardsNoActive
+            )
+        }
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            (
+                L10n.codexResetCardsTitle,
+                L10n.codexResetCardsAvailable(2),
+                L10n.codexResetCardsNoActive
+            )
+        }
+
+        #expect(zh.0 == "主动重置卡")
+        #expect(zh.1 == "剩余 2 次")
+        #expect(zh.2 == "无可用卡片")
+        #expect(en.0 == "Reset cards")
+        #expect(en.1 == "2 available")
+        #expect(en.2 == "No active cards")
+    }
 }
