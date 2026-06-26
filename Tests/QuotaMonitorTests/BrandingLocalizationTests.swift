@@ -64,4 +64,17 @@ struct BrandingLocalizationTests {
         #expect(en.1 == "2 available")
         #expect(en.2 == "No active cards")
     }
+
+    @Test("Claude Sonnet-only quota title is explicit")
+    func claudeSonnetOnlyQuotaTitleIsExplicit() {
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            L10n.quotaCardTitle7dSonnet
+        }
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            L10n.quotaCardTitle7dSonnet
+        }
+
+        #expect(zh == "7 天 · Sonnet only")
+        #expect(en == "7-day · Sonnet only")
+    }
 }

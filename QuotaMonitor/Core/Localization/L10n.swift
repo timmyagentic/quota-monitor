@@ -147,7 +147,7 @@ enum L10n {
     static var quotaCardTitle5h: String { t(en: "5-hour", zh: "5 小时") }
     static var quotaCardTitle7d: String { t(en: "7-day", zh: "7 天") }
     static var quotaCardTitle7dOpus: String { t(en: "7-day · Opus", zh: "7 天 · Opus") }
-    static var quotaCardTitle7dSonnet: String { t(en: "7-day · Sonnet", zh: "7 天 · Sonnet") }
+    static var quotaCardTitle7dSonnet: String { t(en: "7-day · Sonnet only", zh: "7 天 · Sonnet only") }
 
     static var codexSignInPrompt: String {
         t(en: "Sign in via codex CLI to see live quotas",

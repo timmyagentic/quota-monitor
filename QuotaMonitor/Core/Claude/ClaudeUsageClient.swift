@@ -302,9 +302,13 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         // heuristic: a value <= 1.5 is treated as a 0..1 ratio (so 0.42
         // → 42%), anything larger is already a percent.
         // Tests in `ClaudeUsageDecoderTests` lock this with real fixtures.
-        func mkWindow(_ w: WindowWire?, duration: TimeInterval) -> ClaudeUsageSnapshot.Window? {
+        func mkWindow(
+            _ w: WindowWire?,
+            duration: TimeInterval,
+            fallbackReset: String? = nil
+        ) -> ClaudeUsageSnapshot.Window? {
             guard let w else { return nil }
-            let resetStr = w.resets_at ?? w.reset_at
+            let resetStr = w.resets_at ?? w.reset_at ?? fallbackReset
             guard let reset = parseDate(resetStr) else { return nil }
             let raw: Double
             if let u = w.utilization {
@@ -323,8 +327,14 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             tier: wire.rate_limit_tier,
             fiveHour:    mkWindow(wire.five_hour,        duration: 5 * 3600),
             sevenDay:    mkWindow(wire.seven_day,        duration: 7 * 86400),
-            sevenDayOpus:   mkWindow(wire.seven_day_opus,   duration: 7 * 86400),
-            sevenDaySonnet: mkWindow(wire.seven_day_sonnet, duration: 7 * 86400))
+            sevenDayOpus:   mkWindow(
+                wire.seven_day_opus,
+                duration: 7 * 86400,
+                fallbackReset: wire.seven_day?.resets_at ?? wire.seven_day?.reset_at),
+            sevenDaySonnet: mkWindow(
+                wire.seven_day_sonnet,
+                duration: 7 * 86400,
+                fallbackReset: wire.seven_day?.resets_at ?? wire.seven_day?.reset_at))
     }
 
     // MARK: - Credential loading

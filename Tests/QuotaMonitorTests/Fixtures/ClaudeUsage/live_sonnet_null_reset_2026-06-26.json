@@ -1,0 +1,30 @@
+{
+  "_comment": "Sanitized live shape from 2026-06-26. Anthropic exposed seven_day_sonnet with utilization but null resets_at; the scoped weekly limit shares the plain seven_day reset window.",
+  "five_hour": {
+    "utilization": 21.0,
+    "resets_at": "2026-06-26T18:19:59.883035+00:00"
+  },
+  "seven_day": {
+    "utilization": 3.0,
+    "resets_at": "2026-07-01T01:59:59.883057+00:00"
+  },
+  "seven_day_opus": null,
+  "seven_day_sonnet": {
+    "utilization": 0.0,
+    "resets_at": null
+  },
+  "limits": [
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 0,
+      "resets_at": null,
+      "scope": {
+        "model": {
+          "display_name": "Sonnet"
+        }
+      },
+      "is_active": false
+    }
+  ]
+}
