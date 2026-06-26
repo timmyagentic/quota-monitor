@@ -100,7 +100,7 @@ extension MenuBarContentView {
         VStack(alignment: .leading, spacing: 6) {
             claudeRateLimitNotice()
             if let usage = env.latestClaudeUsage,
-               usage.fiveHour != nil || usage.staleFiveHour != nil || usage.sevenDay != nil {
+               ClaudeProviderQuotaVisibility.hasRenderableOAuthRows(usage) {
                 claudeOAuthInner(usage: usage)
             } else {
                 claudeFallbackInner(stats: stats, blocks: blocks)
@@ -187,13 +187,13 @@ extension MenuBarContentView {
             if let w = usage.sevenDay {
                 QuotaRow(title: L10n.quotaCardTitle7d, window: w, accent: .orange)
             }
-            // Model-specific 7d quotas (Pro/Max only). Render only when
-            // present and non-trivial so Free / lower-tier users don't
-            // see empty rows.
-            if let w = usage.sevenDayOpus, w.usedPercent > 0.5 {
+            // Model-specific 7d quotas. Presence of a decoded window
+            // means the API exposed that quota for this account; lower
+            // tiers omit the field, so nil is the hide condition.
+            if let w = usage.sevenDayOpus {
                 QuotaRow(title: L10n.quotaCardTitle7dOpus, window: w, accent: .orange)
             }
-            if let w = usage.sevenDaySonnet, w.usedPercent > 0.5 {
+            if let w = usage.sevenDaySonnet {
                 QuotaRow(title: L10n.quotaCardTitle7dSonnet, window: w, accent: .orange)
             }
         }

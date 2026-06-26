@@ -93,6 +93,15 @@ struct ClaudeUsageDecoderTests {
         #expect(abs((snap.sevenDaySonnet?.usedPercent ?? 0) - 9.8) < 0.0001)
     }
 
+    @Test("live Sonnet-only weekly quota can inherit the all-model weekly reset")
+    func liveSonnetOnly_nullReset_usesSevenDayReset() throws {
+        let data = try loadFixture("live_sonnet_null_reset_2026-06-26")
+        let snap = try ClaudeUsageClient.decode(data: data, capturedAt: capturedAt)
+
+        #expect(abs((snap.sevenDaySonnet?.usedPercent ?? -1) - 0.0) < 0.0001)
+        #expect(snap.sevenDaySonnet?.resetAt == snap.sevenDay?.resetAt)
+    }
+
     @Test("legacy `used_percent` + `reset_at` keys still decode")
     func legacyUsedPercent_andResetAt_stillDecode() throws {
         let data = try loadFixture("legacy_used_percent")

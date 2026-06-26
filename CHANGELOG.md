@@ -31,10 +31,12 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+- Claude cards now show Sonnet-only weekly quota when your plan exposes it
 - Contributors now have a concise setup guide for project layout and local checks
 - Existing installs that already picked a language no longer see the Landing Page again after updating
 
 ### Added
+- **Claude Sonnet-only quota row.** The menu-bar Claude card now shows the Sonnet-only weekly quota when Anthropic exposes that window for the account, including scoped weekly payloads that inherit the all-model weekly reset, while plans without that quota stay uncluttered.
 - **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
 
 ### Fixed
