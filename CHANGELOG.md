@@ -33,12 +33,14 @@ window copy.
 #### Summary
 - Contributors now have a concise setup guide for project layout and local checks
 - Existing installs that already picked a language no longer see the Landing Page again after updating
+- Long-time users who got stuck on the setup screen after an update (with their usage meters frozen) are now recognized and taken straight to the app
 
 ### Added
 - **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
 
 ### Fixed
 - **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.
+- **Existing installs stranded mid-setup are repaired.** A user with real usage history left at `providerStepStarted=true` / `providersDone=false` by a bad upgrade launch is now recognized as an existing user and skips provider onboarding, instead of being re-gated on every launch — which silently froze live quota polling.
 
 ## [0.2.34] — 2026-06-21
 

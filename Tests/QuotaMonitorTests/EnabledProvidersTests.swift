@@ -101,7 +101,9 @@ struct EnabledProvidersTests {
     @Test
     func freshInstallNeedsProviderOnboarding() {
         let d = Self.freshDefaults()
-        let store = SettingsStore(defaults: d)
+        // A fresh install has no usage history; pin that explicitly so the
+        // test doesn't depend on the host machine's real database.
+        let store = SettingsStore(defaults: d, hasExistingAppData: { false })
         #expect(store.needsProviderOnboarding)
     }
 
@@ -259,13 +261,35 @@ struct EnabledProvidersTests {
         let d = Self.freshDefaults()
         // Fixed builds mark the language-to-provider transition. That
         // marker distinguishes a real interrupted fresh install from the
-        // 0.2.34 language-only repair state above.
+        // 0.2.34 language-only repair state above. A fresh install has no
+        // prior usage data, so pin that explicitly rather than depend on
+        // the host machine's real database.
         d.set("en", forKey: "app.language")
         d.set(false, forKey: "onboarding.providersDone")
         d.set(true, forKey: "onboarding.providerStepStarted")
-        let store = SettingsStore(defaults: d, appVersion: "0.2.35")
+        let store = SettingsStore(
+            defaults: d, appVersion: "0.2.35", hasExistingAppData: { false })
         #expect(store.needsProviderOnboarding)
         #expect(d.string(forKey: "onboarding.lastVersion") == nil)
+    }
+
+    @Test
+    func existingUserMidProviderStepWithDataRepairsStuckOnboarding() {
+        let d = Self.freshDefaults()
+        // The bad-launch bug could also strand an *existing* user (real
+        // usage history) with providerStepStarted=true + providersDone=false
+        // — e.g. a forced re-onboarding they never completed. Real app data
+        // proves they are not a fresh install, so they must be repaired past
+        // onboarding instead of being gated (which silently freezes live
+        // polling) on every launch.
+        d.set("zh-Hans", forKey: "app.language")
+        d.set(false, forKey: "onboarding.providersDone")
+        d.set(true, forKey: "onboarding.providerStepStarted")
+        let store = SettingsStore(
+            defaults: d, appVersion: "0.2.35", hasExistingAppData: { true })
+        #expect(store.needsProviderOnboarding == false)
+        #expect(d.bool(forKey: "onboarding.providersDone"))
+        #expect(d.string(forKey: "onboarding.lastVersion") == "0.2.35")
     }
 
     @Test
