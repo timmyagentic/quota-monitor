@@ -252,11 +252,16 @@ extension MenuBarContentView {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            if let err = env.lastClaudeUsageError, env.latestClaudeUsage == nil {
-                // Only nag the user when we have NO usable snapshot at all.
-                // A stale `lastClaudeUsageError` left over from a transient
-                // 429 / network blip would otherwise sit forever next to a
-                // perfectly fine 5h+7d block, contradicting itself.
+            if let err = env.lastClaudeUsageError,
+               env.latestClaudeUsage == nil
+                || ClaudeUsageClient.isAuthClassErrorDescription(err) {
+                // Show the hint when we have NO usable snapshot at all, OR
+                // when the failure is a *persistent* auth error (expired/
+                // revoked token, missing creds, bad scope) — in that case the
+                // displayed numbers are stale and the user must act, so the
+                // hint belongs next to them. Transient 429 / network blips
+                // are still suppressed while a snapshot is up, so a momentary
+                // failure doesn't contradict a perfectly fine 5h+7d block.
                 Text(claudeErrorHint(err))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)

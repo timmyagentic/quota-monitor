@@ -921,7 +921,12 @@ final class AppEnvironment {
             operation: parentOperation,
             trigger: trigger,
             provider: "claude")
-        Task { await cp.pollOnce() }
+        // The explicit Refresh button (trigger == "manual") bypasses the
+        // poller's 60s spam gap so a click always re-polls; the 429 cooldown
+        // is still honoured inside `pollOnce`. Throttled popover/scan
+        // refreshes keep the gap.
+        let force = trigger == "manual"
+        Task { await cp.pollOnce(force: force) }
     }
 
     /// Load the menu-bar snapshot. Always queries both providers + the

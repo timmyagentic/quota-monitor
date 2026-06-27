@@ -126,6 +126,37 @@ struct ClaudeUsagePollerTests {
         #expect(results.all.count == 1)
     }
 
+    @Test("force bypasses the minimumGap so the Refresh button always polls")
+    func force_bypassesMinimumGap() async throws {
+        let mock = MockFetcher(script: [.success(emptySnapshot())])
+        let db = try makeDatabase()
+        let results = ResultBox()
+        let poller = makePoller(fetcher: mock, db: db, results: results)
+
+        await poller.pollOnce()
+        await poller.pollOnce(force: true)  // manual Refresh < 60s later
+
+        let calls = await mock.callCount
+        #expect(calls == 2, "force must bypass the 60s spam gap")
+    }
+
+    @Test("force still respects an active 429 cooldown")
+    func force_respectsRateLimitCooldown() async throws {
+        let mock = MockFetcher(script: [
+            .failure(ClaudeUsageClient.FetchError.rateLimited(retryAfter: nil)),
+            .success(emptySnapshot()),
+        ])
+        let db = try makeDatabase()
+        let results = ResultBox()
+        let poller = makePoller(fetcher: mock, db: db, results: results)
+
+        await poller.pollOnce()             // 429 → cooldown set (fetch #1)
+        await poller.pollOnce(force: true)  // must stay blocked by the cooldown
+
+        let calls = await mock.callCount
+        #expect(calls == 1, "force must NOT punch through a 429 cooldown")
+    }
+
     // MARK: - 2. 429 ladder
 
     @Test("first 429: short 5-min backoff, no UI failure surface")
