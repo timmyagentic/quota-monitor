@@ -33,9 +33,13 @@ window copy.
 #### Summary
 - Contributors now have a concise setup guide for project layout and local checks
 - Existing installs that already picked a language no longer see the Landing Page again after updating
+- The Claude usage meter now refreshes about every 10 minutes instead of every 2 hours, so it stays current
 
 ### Added
 - **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
+
+### Changed
+- **Claude live usage refreshes ~every 10 minutes (was 2 hours).** The scheduled `/api/oauth/usage` poll cadence drops from 7200s to 600s so the 5h/7d quota meter stays current; the existing 429 cooldown ladder (5 min → 30 min, honouring `Retry-After`) still backs off automatically if the endpoint rate-limits us.
 
 ### Fixed
 - **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.
