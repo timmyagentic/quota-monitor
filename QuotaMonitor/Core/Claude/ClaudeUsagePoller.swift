@@ -22,10 +22,19 @@ import GRDB
 actor ClaudeUsagePoller {
     /// Min seconds between any two `pollOnce()` invocations, including
     /// programmatic / manual ones. Just enough to absorb double-clicks
-    /// or accidental rapid retries — the real cadence guard is the 2 h
+    /// or accidental rapid retries — the real cadence guard is the
     /// scheduled `interval`, and the real rate-limit defense is
     /// `cooldownUntil`.
     static let minimumGap: Duration = .seconds(60)
+
+    /// Default scheduled cadence for the live `/api/oauth/usage` poll.
+    /// 10 minutes keeps the 5h/7d quota meter fresh (the old value was
+    /// 2 h, which left the meter stale for hours). Polling the endpoint
+    /// this often is safe because the 429 cooldown ladder (`cooldownUntil`,
+    /// 5 min → 30 min, honouring `Retry-After`) backs off automatically if
+    /// Anthropic edge-rate-limits us — the same approach other clients of
+    /// this endpoint use.
+    static let defaultInterval: Duration = .seconds(600)
 
     private let client: any ClaudeUsageFetching
     private let database: DatabaseManager
@@ -60,7 +69,7 @@ actor ClaudeUsagePoller {
     init(
         client: any ClaudeUsageFetching = ClaudeUsageClient(),
         database: DatabaseManager,
-        interval: Duration = .seconds(7200),
+        interval: Duration = ClaudeUsagePoller.defaultInterval,
         onSnapshot: @escaping @Sendable (Result<ClaudeUsageSnapshot, any Error>) async -> Void,
         onCooldownChange: @escaping @Sendable (Date?) async -> Void = { _ in }
     ) {
@@ -102,6 +111,7 @@ actor ClaudeUsagePoller {
     var _consecutiveRateLimitsForTest: Int { consecutiveRateLimits }
     var _consecutiveAuthFailuresForTest: Int { consecutiveAuthFailures }
     var _cooldownUntilForTest: Date? { cooldownUntil }
+    var _intervalForTest: Duration { interval }
     /// Back-compat derived value: seconds between the latest poll
     /// attempt and the cooldown deadline it produced. Returns nil when
     /// either is missing or the cooldown has already elapsed. Lets
@@ -135,7 +145,7 @@ actor ClaudeUsagePoller {
     /// attempt. Auth failures stretch the cadence to 30 min; an active
     /// 429 cooldown collapses it to "until the cooldown lifts" so we
     /// recover as soon as the server lets us. With no special state,
-    /// returns the configured `interval` (default 2 h).
+    /// returns the configured `interval` (default 10 min).
     private func scheduledSleepDuration() -> Duration {
         let base = consecutiveAuthFailures >= 1 ? Duration.seconds(1800) : interval
         guard let cooldownUntil else { return base }
