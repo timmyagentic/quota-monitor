@@ -77,6 +77,29 @@ struct ClaudeFileWatchTests {
             home: URL(fileURLWithPath: "/tmp/qm-home"), exists: { _ in false })
         #expect(dirs.isEmpty)
     }
+
+    // MARK: - start() success reporting
+
+    @Test("start() reports failure when there is nothing to watch")
+    func startFailsWithNoDirectories() {
+        let watcher = ClaudeFileWatcher(directories: []) {}
+        // Failure must be reported so the caller doesn't retain a dead watcher
+        // and can retry later (e.g. once a transcript directory appears).
+        #expect(watcher.start() == false)
+    }
+
+    @Test("start() reports success for a real directory and is idempotent")
+    func startSucceedsForRealDirectory() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("qm-fsw-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let watcher = ClaudeFileWatcher(directories: [dir]) {}
+        #expect(watcher.start() == true)
+        #expect(watcher.start() == true)  // already running → still success
+        watcher.stop()
+    }
 }
 
 /// A `~/.claude` write that lands while a scan is already running must not be

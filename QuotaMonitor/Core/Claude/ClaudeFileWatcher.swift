@@ -45,12 +45,18 @@ final class ClaudeFileWatcher {
         self.onChange = onChange
     }
 
-    /// Begin watching. No-op if already started or if there's nothing to
-    /// watch. The FSEvents callback only ever reads the immutable
-    /// `onChange` closure (bridged via the stream context), so it is safe
-    /// to fire on the watcher's background queue.
-    func start() {
-        guard stream == nil, !directories.isEmpty else { return }
+    /// Begin watching. Returns `true` only when a stream is actually active
+    /// afterwards — `false` if there's nothing to watch or FSEvents stream
+    /// creation/start fails (a transient resource failure, etc.). The caller
+    /// must not retain the watcher on `false`, so a later retry can try again
+    /// instead of being blocked by a non-nil-but-dead watcher. Already-started
+    /// is treated as success. The FSEvents callback only ever reads the
+    /// immutable `onChange` closure (bridged via the stream context), so it is
+    /// safe to fire on the watcher's background queue.
+    @discardableResult
+    func start() -> Bool {
+        if stream != nil { return true }
+        guard !directories.isEmpty else { return false }
         var context = FSEventStreamContext(
             version: 0,
             info: Unmanaged.passUnretained(self).toOpaque(),
@@ -71,14 +77,15 @@ final class ClaudeFileWatcher {
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             latency,
             FSEventStreamCreateFlags(kFSEventStreamCreateFlagNoDefer)
-        ) else { return }
+        ) else { return false }
         FSEventStreamSetDispatchQueue(created, queue)
         guard FSEventStreamStart(created) else {
             FSEventStreamInvalidate(created)
             FSEventStreamRelease(created)
-            return
+            return false
         }
         stream = created
+        return true
     }
 
     func stop() {

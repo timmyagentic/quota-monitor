@@ -453,7 +453,18 @@ final class AppEnvironment {
                 self?.triggerClaudeFileWatchScan()
             }
         }
-        watcher.start()
+        // Only retain the watcher if a stream is actually active. On failure
+        // we drop it so the `claudeFileWatcher == nil` guard above lets the
+        // next refresh retry, rather than being stuck on a dead watcher.
+        guard watcher.start() else {
+            DeveloperLog.eventRecord(
+                "claude_file_watch.start.skip",
+                category: "scan",
+                provider: "claude",
+                result: "failed",
+                fields: ["reason": "stream-start-failed"])
+            return
+        }
         self.claudeFileWatcher = watcher
         DeveloperLog.eventRecord(
             "claude_file_watch.start",
