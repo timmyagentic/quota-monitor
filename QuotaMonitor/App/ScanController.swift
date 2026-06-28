@@ -40,7 +40,11 @@ extension AppEnvironment {
                 fields: ["reason": "onboarding"])
             return
         }
-        if let interval = minInterval, let last = lastScanAt,
+        // Throttle against the last scan *of the same scope* — a Claude-only
+        // watcher scan must not throttle the full popover scan (which imports
+        // Codex too), and vice-versa.
+        let throttleKey = Self.scanThrottleKey(forRequested: providers)
+        if let interval = minInterval, let last = lastScanAtByScope[throttleKey],
            Date().timeIntervalSince(last) < interval {
             DeveloperLog.eventRecord(
                 "scan.run.skip",
@@ -50,6 +54,7 @@ extension AppEnvironment {
                 result: "skipped",
                 fields: [
                     "reason": "throttled",
+                    "scan_scope": .string(throttleKey),
                     "min_interval_seconds": .double(interval),
                     "elapsed_seconds": .double(Date().timeIntervalSince(last))
                 ])
@@ -148,7 +153,7 @@ extension AppEnvironment {
                 }
                 await MainActor.run {
                     self.lastScanReport = merged
-                    self.lastScanAt = Date()
+                    self.lastScanAtByScope[throttleKey] = Date()
                 }
                 DeveloperLog.finishOperation(
                     op,

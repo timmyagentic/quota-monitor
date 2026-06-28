@@ -30,6 +30,25 @@ struct ClaudeFileWatchTests {
             requested: ["claude"], enabled: ["codex"]) == [])
     }
 
+    // MARK: - scan throttle scope
+
+    @Test("nil / empty requested scope buckets into the shared full-scan throttle")
+    func throttleKeyAllForFullScan() {
+        #expect(AppEnvironment.scanThrottleKey(forRequested: nil) == "all")
+        #expect(AppEnvironment.scanThrottleKey(forRequested: []) == "all")
+    }
+
+    @Test("a scoped scan gets its own throttle key, independent of the full scan")
+    func throttleKeyScopedIsIndependent() {
+        let claudeKey = AppEnvironment.scanThrottleKey(forRequested: ["claude"])
+        let fullKey = AppEnvironment.scanThrottleKey(forRequested: nil)
+        #expect(claudeKey == "claude")
+        // The crux of the fix: a Claude-only watcher scan throttles against a
+        // different key than the popover's full scan, so frequent ~/.claude
+        // writes can't starve Codex imports by tripping the full-scan throttle.
+        #expect(claudeKey != fullKey)
+    }
+
     // MARK: - watched directories
 
     @Test("watches the existing Claude roots under the resolved home")

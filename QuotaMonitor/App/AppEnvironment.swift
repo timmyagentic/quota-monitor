@@ -105,9 +105,22 @@ final class AppEnvironment {
     /// to-back file scans and three subprocess calls.
     ///
     /// Not `private` so ScanController (an extension in another file)
-    /// can stamp `lastScanAt` after a successful scan.
+    /// can stamp these after a successful scan.
     var lastRateLimitsRefreshAt: Date?
-    var lastScanAt: Date?
+    /// Throttle timestamps keyed by scan **scope** (see `scanThrottleKey`),
+    /// not a single global clock. A Claude-only file-watch scan and the
+    /// popover's full (all-providers) scan have independent throttles, so a
+    /// burst of `~/.claude` writes can't starve Codex imports: a watcher scan
+    /// no longer stamps the timestamp the full scan throttles against.
+    var lastScanAtByScope: [String: Date] = [:]
+
+    /// Bucket a scan's *requested* provider scope into a throttle key. `nil`
+    /// (every enabled provider — the popover/manual full scan) is "all";
+    /// a scoped request (e.g. the watcher's `["claude"]`) gets its own key.
+    nonisolated static func scanThrottleKey(forRequested providers: Set<String>?) -> String {
+        guard let providers, !providers.isEmpty else { return "all" }
+        return providers.sorted().joined(separator: ",")
+    }
 
     /// Top-level provider filter applied to dashboard / sessions / history.
     /// Defaults to `.all` (union view).
