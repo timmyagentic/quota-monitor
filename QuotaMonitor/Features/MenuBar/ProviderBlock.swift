@@ -254,7 +254,7 @@ extension MenuBarContentView {
             }
             if let err = env.lastClaudeUsageError,
                env.latestClaudeUsage == nil
-                || ClaudeUsageClient.isAuthClassErrorDescription(err) {
+                || env.lastClaudeUsageErrorIsAuthClass {
                 // Show the hint when we have NO usable snapshot at all, OR
                 // when the failure is a *persistent* auth error (expired/
                 // revoked token, missing creds, bad scope) — in that case the

@@ -68,6 +68,21 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
                 return "Anthropic /usage transport error: \(e)"
             }
         }
+
+        /// Persistent auth failure (expired/revoked token, missing creds,
+        /// bad scope) vs a transient 429 / network / HTTP blip. The menu bar
+        /// uses this to surface an actionable re-login hint instead of
+        /// leaving stale numbers up. Classified on the typed case — never by
+        /// re-parsing the description, whose `.http` form embeds the server
+        /// body and could otherwise false-match an auth keyword.
+        var isAuthClass: Bool {
+            switch self {
+            case .noCredentials, .unauthorized, .insufficientScope:
+                return true
+            case .rateLimited, .http, .malformed, .transport:
+                return false
+            }
+        }
     }
 
     private let session: URLSession
@@ -117,6 +132,13 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// the keychain query would require UI / returns auth-class errors.
     /// Stops us from asking again in this process.
     private var keychainBlocked = false
+    /// Single-flight guard for the direct refresh grant. Concurrent
+    /// `fetch()` calls (e.g. a manual Refresh overlapping a scheduled poll)
+    /// can both reach `performDirectRefresh` across the network suspension;
+    /// without this they would fire two refresh-token grants and the second
+    /// would burn the just-rotated refresh token. Concurrent callers await
+    /// the same in-flight task instead.
+    private var inFlightRefresh: Task<StoredCredentials?, Never>?
 
     init(
         session: URLSession = .shared,
@@ -439,7 +461,27 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// private cache (carrying over the source's scopes), and return it.
     /// Returns nil when no refresher is configured or the refresh fails.
     /// Never touches `~/.claude` or Claude Code's Keychain.
+    /// Single-flight wrapper around `doDirectRefresh`. The check-then-set of
+    /// `inFlightRefresh` runs with no suspension point between, so two
+    /// concurrent callers can't both create a grant: the first installs the
+    /// task, the second awaits it.
     private func performDirectRefresh(
+        refreshToken: String,
+        candidates: [StoredCredentials]
+    ) async -> StoredCredentials? {
+        if let existing = inFlightRefresh {
+            return await existing.value
+        }
+        let task = Task<StoredCredentials?, Never> { [refreshToken, candidates] in
+            await self.doDirectRefresh(refreshToken: refreshToken, candidates: candidates)
+        }
+        inFlightRefresh = task
+        let result = await task.value
+        inFlightRefresh = nil
+        return result
+    }
+
+    private func doDirectRefresh(
         refreshToken: String,
         candidates: [StoredCredentials]
     ) async -> StoredCredentials? {
@@ -465,8 +507,11 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
                 scopes: scopes,
                 refreshToken: refreshed.refreshToken)
         } catch {
+            // Log only the error TYPE to OSLog — never the server response
+            // body, which `RefreshError.http`'s description embeds. The
+            // sanitized DeveloperLog file path keeps the detail.
             Log.poller.error(
-                "claude token refresh failed: \(String(describing: error), privacy: .public)")
+                "claude token refresh failed: \(String(describing: type(of: error)), privacy: .public)")
             DeveloperLog.eventRecord(
                 "claude_token.refresh.fail",
                 level: .error,
@@ -615,20 +660,6 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     static func isExpired(_ creds: StoredCredentials, now: Date = Date()) -> Bool {
         guard let expMs = creds.expiresAtMs else { return false }
         return now.timeIntervalSince1970 >= (expMs / 1000.0 - 60)
-    }
-
-    /// Whether a stored `lastClaudeUsageError` string (the `String(describing:)`
-    /// of a `FetchError`) is a *persistent* auth failure — expired/revoked
-    /// token, missing credentials, or insufficient scope. The UI uses this to
-    /// surface an actionable hint instead of leaving stale numbers up, while
-    /// still ignoring transient 429 / network blips. Matches both the case
-    /// names and the human-readable descriptions.
-    static func isAuthClassErrorDescription(_ raw: String) -> Bool {
-        let s = raw.lowercased()
-        return s.contains("unauthorized")
-            || s.contains("token rejected") || s.contains("expired or revoked")
-            || s.contains("nocredentials") || s.contains("no claude code credentials")
-            || s.contains("insufficientscope") || s.contains("user:profile")
     }
 
     /// Outcome of inspecting the candidate credential sources.

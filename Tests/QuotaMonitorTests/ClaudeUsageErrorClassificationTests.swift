@@ -15,8 +15,7 @@ struct ClaudeUsageErrorClassificationTests {
     func authClassErrors() {
         let authErrors: [FetchError] = [.unauthorized, .noCredentials, .insufficientScope]
         for err in authErrors {
-            #expect(ClaudeUsageClient.isAuthClassErrorDescription(String(describing: err)),
-                    "\(err) should be auth-class")
+            #expect(err.isAuthClass, "\(err) should be auth-class")
         }
     }
 
@@ -26,10 +25,13 @@ struct ClaudeUsageErrorClassificationTests {
             .rateLimited(retryAfter: 60),
             .http(500, "server error"),
             .malformed("bad json"),
+            // Regression: a non-auth HTTP error whose body echoes an auth
+            // keyword must NOT be classified as auth-class. The old
+            // description-substring matcher false-matched this.
+            .http(503, "<html>503 unauthorized upstream</html>"),
         ]
         for err in transient {
-            #expect(!ClaudeUsageClient.isAuthClassErrorDescription(String(describing: err)),
-                    "\(err) should NOT be auth-class")
+            #expect(!err.isAuthClass, "\(err) should NOT be auth-class")
         }
     }
 }

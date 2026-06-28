@@ -67,10 +67,4 @@ enum ClaudeOAuthCache {
                 "failed to write Claude OAuth cache: \(error.localizedDescription, privacy: .public)")
         }
     }
-
-    /// Remove the cache (e.g. after the server rejects the cached token as
-    /// revoked, so a stale entry can't keep shadowing fresher sources).
-    static func clear(fileURL: URL = defaultFileURL()) {
-        try? FileManager.default.removeItem(at: fileURL)
-    }
 }
