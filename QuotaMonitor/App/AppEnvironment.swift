@@ -38,6 +38,12 @@ final class AppEnvironment {
     /// user can see *why* their Claude block is empty (no creds, expired
     /// token, scope problem). Cleared on the next successful poll.
     var lastClaudeUsageError: String?
+    /// Whether `lastClaudeUsageError` is a *persistent* auth failure
+    /// (expired/revoked token, missing creds, bad scope) vs a transient
+    /// 429 / network blip. Computed from the typed `FetchError` (not by
+    /// re-parsing the string), so the menu bar surfaces a re-login hint
+    /// next to stale numbers only when the user actually must act.
+    var lastClaudeUsageErrorIsAuthClass = false
     /// When non-nil and in the future, the Claude `/usage` endpoint is
     /// in a 429 cooldown — manual Refresh clicks are silently dropped
     /// until this time elapses. The menu bar reads this to render an
@@ -335,8 +341,11 @@ final class AppEnvironment {
                         self.latestClaudeUsage = snap.preservingStaleFiveHour(
                             from: self.latestClaudeUsage)
                         self.lastClaudeUsageError = nil
+                        self.lastClaudeUsageErrorIsAuthClass = false
                     case .failure(let err):
                         self.lastClaudeUsageError = String(describing: err)
+                        self.lastClaudeUsageErrorIsAuthClass =
+                            (err as? ClaudeUsageClient.FetchError)?.isAuthClass ?? false
                     }
                 }
             },
@@ -346,6 +355,7 @@ final class AppEnvironment {
                     self.latestClaudeUsageCooldownUntil = until
                     if until != nil {
                         self.lastClaudeUsageError = nil
+                        self.lastClaudeUsageErrorIsAuthClass = false
                     }
                 }
             }
@@ -374,6 +384,7 @@ final class AppEnvironment {
         self.claudeUsagePoller = nil
         self.latestClaudeUsage = nil
         self.lastClaudeUsageError = nil
+        self.lastClaudeUsageErrorIsAuthClass = false
         self.latestClaudeUsageCooldownUntil = nil
         Task { await cp.stop() }
     }
@@ -921,7 +932,12 @@ final class AppEnvironment {
             operation: parentOperation,
             trigger: trigger,
             provider: "claude")
-        Task { await cp.pollOnce() }
+        // The explicit Refresh button (trigger == "manual") bypasses the
+        // poller's 60s spam gap so a click always re-polls; the 429 cooldown
+        // is still honoured inside `pollOnce`. Throttled popover/scan
+        // refreshes keep the gap.
+        let force = trigger == "manual"
+        Task { await cp.pollOnce(force: force) }
     }
 
     /// Load the menu-bar snapshot. Always queries both providers + the

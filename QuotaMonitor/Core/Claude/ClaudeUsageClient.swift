@@ -6,16 +6,18 @@ import LocalAuthentication
 /// the official `claude` CLI's quota meter and is the only source of
 /// truth for Pro / Max plan usage.
 ///
-/// **Refresh policy.** This client never refreshes the access token
-/// itself. When the local token is expired (or the server returns 401),
-/// we delegate the actual OAuth refresh to the user's `claude` CLI by
-/// spawning it via `ClaudeCLIRefreshTrigger`. The CLI rotates the
-/// refresh token in the system Keychain, then we re-read the freshest
-/// access token. Rationale: refresh tokens **rotate** server-side; if
-/// both the CLI and CodexMonitor refresh independently, whoever loses
-/// the race ends up holding a revoked refresh token and breaks the
-/// other process for hours. Letting the CLI own the refresh keeps the
-/// CLI working, and we just consume what it produces.
+/// **Refresh policy.** When the local token is expired (or the server
+/// returns 401), this client refreshes the access token itself via
+/// `ClaudeTokenRefresher` (a direct OAuth refresh-token grant), exactly
+/// like the official `claude` CLI does. The rotated credentials are stored
+/// in QuotaMonitor's **own** private cache (`ClaudeOAuthCache`) — never
+/// written back to `~/.claude/.credentials.json` or Claude Code's Keychain
+/// item — so a refresh can never strand the real `claude` login. Rationale:
+/// the previous approach (spawn `claude --version` and wait for the Keychain
+/// to update) does not actually rotate the token in current Claude Code, so
+/// an expired token could never recover. Refresh tokens **rotate**
+/// server-side, so QuotaMonitor prefers its own cached refresh token and
+/// only bootstraps from Claude Code's token once.
 ///
 /// Credential lookup order:
 ///   1. `~/.claude/.credentials.json` (file written by Claude Code CLI
@@ -66,11 +68,34 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
                 return "Anthropic /usage transport error: \(e)"
             }
         }
+
+        /// Persistent auth failure (expired/revoked token, missing creds,
+        /// bad scope) vs a transient 429 / network / HTTP blip. The menu bar
+        /// uses this to surface an actionable re-login hint instead of
+        /// leaving stale numbers up. Classified on the typed case — never by
+        /// re-parsing the description, whose `.http` form embeds the server
+        /// body and could otherwise false-match an auth keyword.
+        var isAuthClass: Bool {
+            switch self {
+            case .noCredentials, .unauthorized, .insufficientScope:
+                return true
+            case .rateLimited, .http, .malformed, .transport:
+                return false
+            }
+        }
     }
 
     private let session: URLSession
     private let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
-    private let refreshTrigger: ClaudeCLIRefreshTrigger
+    /// Performs the direct OAuth refresh-token grant. `nil` disables direct
+    /// refresh (the token is then used until it 401s, surfacing `.unauthorized`).
+    private let tokenRefresher: ClaudeTokenRefresher?
+    /// Where refreshed credentials are cached. Injected in tests.
+    private let oauthCacheURL: URL
+    /// Test seam: overrides the real file + Keychain readers with a scripted
+    /// candidate list so credential wiring can be tested without touching
+    /// `~/.claude` or the real Keychain. `nil` in production.
+    private let externalCredentialSources: (@Sendable () async -> [StoredCredentials])?
     private let claudeCodeVersionProvider: @Sendable () -> String?
 
     /// Parsed credentials regardless of expiry. Kept in a struct (not a
@@ -82,6 +107,10 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         /// older captures didn't include it.
         let expiresAtMs: Double?
         let scopes: [String]?
+        /// OAuth refresh token. Lets us mint a fresh access token directly
+        /// (see `ClaudeTokenRefresher`) instead of waiting on the `claude`
+        /// CLI. Optional — Keychain blobs and old captures may omit it.
+        let refreshToken: String?
     }
 
     /// In-process token cache. Set on the first successful read; cleared
@@ -103,17 +132,33 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// the keychain query would require UI / returns auth-class errors.
     /// Stops us from asking again in this process.
     private var keychainBlocked = false
+    /// Single-flight guard for the direct refresh grant. Concurrent
+    /// `fetch()` calls (e.g. a manual Refresh overlapping a scheduled poll)
+    /// can both reach `performDirectRefresh` across the network suspension;
+    /// without this they would fire two refresh-token grants and the second
+    /// would burn the just-rotated refresh token. Concurrent callers await
+    /// the same in-flight task instead.
+    private var inFlightRefresh: Task<StoredCredentials?, Never>?
 
     init(
         session: URLSession = .shared,
-        refreshTrigger: ClaudeCLIRefreshTrigger = ClaudeCLIRefreshTrigger.shared,
+        tokenRefresher: ClaudeTokenRefresher? = ClaudeTokenRefresher(),
+        oauthCacheURL: URL = ClaudeOAuthCache.defaultFileURL(),
+        externalCredentialSources: (@Sendable () async -> [StoredCredentials])? = nil,
         claudeCodeVersionProvider: @escaping @Sendable () -> String? = {
             ClaudeCodeVersionDetector.detectVersion()
         }
     ) {
         self.session = session
-        self.refreshTrigger = refreshTrigger
+        self.tokenRefresher = tokenRefresher
+        self.oauthCacheURL = oauthCacheURL
+        self.externalCredentialSources = externalCredentialSources
         self.claudeCodeVersionProvider = claudeCodeVersionProvider
+    }
+
+    /// Test accessor for the private credential loader.
+    func _loadAccessTokenForTest() async throws -> String? {
+        try await loadAccessToken()
     }
 
     /// One-shot fetch. Caller decides retry / scheduling.
@@ -129,9 +174,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             throw FetchError.noCredentials
         }
-        // Version detection may execute `claude --version`, which can refresh
-        // credentials. Do it before reading the bearer so the request uses the
-        // freshest token available after any CLI side effect.
+        // Resolve the Claude Code version for the User-Agent. (Token freshness
+        // is handled by `loadAccessToken`'s direct refresh, not by any CLI
+        // side effect.)
         let userAgent = Self.claudeCodeUserAgent(versionString: claudeCodeVersionProvider())
         guard let token = try await loadAccessToken() else {
             throw FetchError.noCredentials
@@ -164,17 +209,18 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             return try Self.decode(data: data, capturedAt: Date())
         case 401:
             // Server says the token is bad. Blacklist the exact token so
-            // the next `loadAccessToken` call doesn't keep handing it
-            // back from the locally-fresh file shortcut, and drop the
-            // cache. Then ask the CLI to refresh once. If that doesn't
-            // produce a fresher token (CLI not installed, refresh-cooldown
-            // active, RT revoked → user must re-login) we surface
-            // .unauthorized.
+            // `loadAccessToken` won't keep handing it back from the
+            // locally-fresh shortcut, and drop the in-process cache. Then
+            // retry once: `loadAccessToken` now sees every source as
+            // unusable and performs a direct refresh. If that can't produce
+            // a fresher token (no refresh token, or the refresh itself
+            // fails → RT revoked, user must re-login) we surface
+            // `.unauthorized`.
             if let bad = cachedToken {
                 rejectedTokens.insert(bad)
             }
             cachedToken = nil
-            if !retryAfterRefresh, await refreshTrigger.triggerRefreshIfAllowed() {
+            if !retryAfterRefresh {
                 return try await fetchInternal(retryAfterRefresh: true)
             }
             throw FetchError.unauthorized
@@ -329,82 +375,190 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
 
     // MARK: - Credential loading
 
-    /// File-first, keychain-fallback. Returns nil only when neither source
-    /// yielded a token (caller turns it into `.noCredentials`).
+    /// Resolve a usable access token. Priority order:
+    ///   1. QuotaMonitor's own refreshed cache (`ClaudeOAuthCache`).
+    ///   2. `~/.claude/.credentials.json` (cheap, no Keychain prompt).
+    ///   3. Claude Code's Keychain item (read non-interactively).
     ///
-    /// **Expired-token path.** When the local token is expired we ask the
-    /// CLI to refresh (synchronously, with a short timeout — see
-    /// `ClaudeCLIRefreshTrigger`). On success we re-read; on failure we
-    /// surface whatever stale token we had so the eventual 401 path can
-    /// fail explicitly rather than silently returning nil.
+    /// **Expired-token path.** When every source is expired or has been
+    /// server-rejected this run, perform a direct OAuth refresh
+    /// (`ClaudeTokenRefresher`) using the highest-priority refresh token and
+    /// persist the result to the private cache. On refresh failure we return
+    /// the best stale token so the eventual 401 path surfaces a real
+    /// `.unauthorized` instead of silently returning nil.
     private func loadAccessToken() async throws -> String? {
         if let cached = cachedToken {
             return cached
         }
 
-        // Strictly file-first. The Keychain read is what triggers
-        // macOS's password prompt when the running binary's code
-        // signature doesn't match the item's ACL — and ad-hoc dev
-        // rebuilds invalidate that ACL on every launch. So skip the
-        // Keychain entirely when the file already holds a fresh,
-        // not-server-rejected token.
-        let fileCreds = Self.readStoredCredentialsFile()
-        if let f = fileCreds, isUsable(f) {
-            cachedToken = f.accessToken
-            return f.accessToken
+        // 1. Our own refreshed cache holds the freshest token we minted.
+        let cacheCreds = ClaudeOAuthCache.load(fileURL: oauthCacheURL)
+        if let c = cacheCreds, isUsable(c) {
+            cachedToken = c.accessToken
+            return c.accessToken
         }
 
-        // File missing, locally stale, or carrying a token the server
-        // has already 401'd. Consult the Keychain — the CLI writes
-        // refreshes there, so it may hold a newer token even when the
-        // file looks locally fresh.
-        let kcCreds = await readKeychainCredsIfAllowed()
-        if let k = kcCreds, isUsable(k) {
-            cachedToken = k.accessToken
-            return k.accessToken
-        }
+        // 2 & 3. External sources (Claude Code's file, then Keychain). In
+        // production these are read lazily so a usable file token never
+        // triggers a Keychain prompt; tests script them via the seam.
+        var candidates: [StoredCredentials] = []
+        if let c = cacheCreds { candidates.append(c) }
 
-        // Both stale (or only one source exists and it's stale). Ask the
-        // CLI to refresh. The trigger handles its own coalescing and
-        // cooldown — multiple concurrent expired-token detections share
-        // a single `claude` invocation.
-        if fileCreds != nil || kcCreds != nil {
-            if let exp = (fileCreds ?? kcCreds)?.expiresAtMs {
-                Log.poller.info("claude token expired (\(exp, privacy: .public)ms), asking CLI to refresh")
-                DeveloperLog.eventRecord(
-                    "claude_credentials.expired",
-                    category: "poller",
-                    provider: "claude",
-                    fields: ["expires_at_ms": .double(exp)])
+        if let override = externalCredentialSources {
+            let external = await override()
+            for e in external where isUsable(e) {
+                cachedToken = e.accessToken
+                return e.accessToken
             }
-            if await refreshTrigger.triggerRefreshIfAllowed() {
-                // Re-read after the CLI updates the Keychain (and
-                // possibly the file). Same file-first ordering — if the
-                // CLI rewrote the file we don't need to touch the
-                // Keychain again.
-                if let f = Self.readStoredCredentialsFile(), isUsable(f) {
-                    cachedToken = f.accessToken
-                    return f.accessToken
-                }
-                if let k = await readKeychainCredsIfAllowed(), isUsable(k) {
-                    cachedToken = k.accessToken
-                    return k.accessToken
-                }
-            }
-            // Refresh blocked or didn't help. Return whatever stale
-            // token we have so the caller can hit the server and
-            // surface a real `unauthorized`.
-            if let f = fileCreds {
+            candidates.append(contentsOf: external)
+        } else {
+            // Strictly file-first. The Keychain read is what triggers
+            // macOS's password prompt when the running binary's code
+            // signature doesn't match the item's ACL — so skip it entirely
+            // when the file already holds a fresh, not-rejected token.
+            let fileCreds = Self.readStoredCredentialsFile()
+            if let f = fileCreds, isUsable(f) {
                 cachedToken = f.accessToken
                 return f.accessToken
             }
-            if let k = kcCreds {
+            let kcCreds = await readKeychainCredsIfAllowed()
+            if let k = kcCreds, isUsable(k) {
                 cachedToken = k.accessToken
                 return k.accessToken
             }
+            if let f = fileCreds { candidates.append(f) }
+            if let k = kcCreds { candidates.append(k) }
         }
 
+        // Nothing usable. Try a direct refresh; fall back to a stale token
+        // so the server can surface a real `.unauthorized`.
+        guard !candidates.isEmpty else { return nil }
+
+        if let exp = candidates.first?.expiresAtMs {
+            DeveloperLog.eventRecord(
+                "claude_credentials.expired",
+                category: "poller",
+                provider: "claude",
+                fields: ["expires_at_ms": .double(exp)])
+        }
+
+        if case .mustRefresh(let refreshToken) = Self.resolveToken(
+            candidates: candidates, rejected: rejectedTokens),
+           let refreshed = await performDirectRefresh(
+            refreshToken: refreshToken, candidates: candidates) {
+            cachedToken = refreshed.accessToken
+            return refreshed.accessToken
+        }
+
+        if let stale = candidates.first {
+            cachedToken = stale.accessToken
+            return stale.accessToken
+        }
         return nil
+    }
+
+    /// Mint a fresh access token from `refreshToken`, persist it to the
+    /// private cache (carrying over the source's scopes), and return it.
+    /// Returns nil when no refresher is configured or the refresh fails.
+    /// Never touches `~/.claude` or Claude Code's Keychain.
+    /// Single-flight wrapper around `doDirectRefresh`. The check-then-set of
+    /// `inFlightRefresh` runs with no suspension point between, so two
+    /// concurrent callers can't both create a grant: the first installs the
+    /// task, the second awaits it.
+    private func performDirectRefresh(
+        refreshToken: String,
+        candidates: [StoredCredentials]
+    ) async -> StoredCredentials? {
+        if let existing = inFlightRefresh {
+            return await existing.value
+        }
+        let task = Task<StoredCredentials?, Never> { [refreshToken, candidates] in
+            await self.doDirectRefresh(refreshToken: refreshToken, candidates: candidates)
+        }
+        inFlightRefresh = task
+        let result = await task.value
+        inFlightRefresh = nil
+        return result
+    }
+
+    private func doDirectRefresh(
+        refreshToken: String,
+        candidates: [StoredCredentials]
+    ) async -> StoredCredentials? {
+        guard let refresher = tokenRefresher else { return nil }
+
+        // Distinct refresh tokens to try, highest-priority first: the one
+        // `resolveToken` picked, then any others the candidate sources carry.
+        // A revoked *cached* refresh token must not permanently block recovery
+        // — if it 4xxes we drop the poisoned cache and fall through to the
+        // lower-priority file / Keychain refresh token in the same pass.
+        var ordered: [String] = []
+        var seen = Set<String>()
+        for rt in [refreshToken] + candidates.compactMap(\.refreshToken)
+        where !rt.isEmpty && seen.insert(rt).inserted {
+            ordered.append(rt)
+        }
+
+        for rt in ordered {
+            let scopes = candidates.first { $0.refreshToken == rt }?.scopes
+            do {
+                let refreshed = try await refresher.refresh(refreshToken: rt)
+                ClaudeOAuthCache.save(refreshed, scopes: scopes, fileURL: oauthCacheURL)
+                // The freshly-minted token is valid again even if a prior token
+                // was rejected earlier this run.
+                rejectedTokens.remove(refreshed.accessToken)
+                Log.poller.info(
+                    "claude token refreshed directly (expires \(refreshed.expiresAtMs, privacy: .public)ms)")
+                DeveloperLog.eventRecord(
+                    "claude_token.refresh.finish",
+                    category: "poller",
+                    provider: "claude",
+                    result: "success",
+                    fields: ["expires_at_ms": .double(refreshed.expiresAtMs)])
+                return StoredCredentials(
+                    accessToken: refreshed.accessToken,
+                    expiresAtMs: refreshed.expiresAtMs,
+                    scopes: scopes,
+                    refreshToken: refreshed.refreshToken)
+            } catch {
+                // Log only the error TYPE to OSLog — never the server response
+                // body, which `RefreshError.http`'s description embeds. The
+                // sanitized DeveloperLog file path keeps the detail.
+                Log.poller.error(
+                    "claude token refresh failed: \(String(describing: type(of: error)), privacy: .public)")
+                DeveloperLog.eventRecord(
+                    "claude_token.refresh.fail",
+                    level: .error,
+                    category: "poller",
+                    provider: "claude",
+                    result: "failure",
+                    message: String(describing: error),
+                    fields: ["error_type": .string(String(describing: type(of: error)))])
+
+                let definitive = Self.isDefinitiveRefreshFailure(error)
+                // A definitively-rejected *cached* refresh token is poison —
+                // delete the cache so it stops shadowing valid lower-priority
+                // sources on the next poll (and this pass).
+                if definitive, ClaudeOAuthCache.load(fileURL: oauthCacheURL)?.refreshToken == rt {
+                    ClaudeOAuthCache.clear(fileURL: oauthCacheURL)
+                }
+                // Transient failures (network / 5xx) shouldn't burn through the
+                // other refresh tokens — bail and let the next poll retry. Only
+                // a definitive rejection justifies trying the next token.
+                if !definitive { return nil }
+            }
+        }
+        return nil
+    }
+
+    /// A refresh failure the server will keep rejecting (a 4xx such as
+    /// `invalid_grant`), as opposed to a transient network / 5xx blip we
+    /// should simply retry later.
+    static func isDefinitiveRefreshFailure(_ error: any Error) -> Bool {
+        if case ClaudeTokenRefresher.RefreshError.http(let code, _) = error {
+            return (400..<500).contains(code)
+        }
+        return false
     }
 
     /// A credential is usable when it's not locally expired AND its
@@ -540,9 +694,43 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// Returns true when the stored credentials are within 60s of expiry
     /// (or already past). Tokens with no `expiresAtMs` are treated as
     /// fresh — older CLI captures didn't include the field.
-    static func isExpired(_ creds: StoredCredentials) -> Bool {
+    static func isExpired(_ creds: StoredCredentials, now: Date = Date()) -> Bool {
         guard let expMs = creds.expiresAtMs else { return false }
-        return Date().timeIntervalSince1970 >= (expMs / 1000.0 - 60)
+        return now.timeIntervalSince1970 >= (expMs / 1000.0 - 60)
+    }
+
+    /// Outcome of inspecting the candidate credential sources.
+    enum TokenResolution: Equatable {
+        /// A usable (unexpired, not server-rejected) access token.
+        case ready(String)
+        /// Every candidate is unusable, but here's the highest-priority
+        /// refresh token to mint a fresh one with.
+        case mustRefresh(String)
+        /// Nothing usable and no refresh token to recover with.
+        case unavailable
+    }
+
+    /// Pure decision used by `loadAccessToken`. `candidates` are the
+    /// credential sources in priority order (QM cache → file → Keychain).
+    /// Picks the first usable token; failing that, the first refresh token;
+    /// failing that, `.unavailable`. Preferring the highest-priority refresh
+    /// token means we re-use QuotaMonitor's own (cache) rotation chain and
+    /// only bootstrap from Claude Code's token when we have none of our own.
+    static func resolveToken(
+        candidates: [StoredCredentials],
+        rejected: Set<String>,
+        now: Date = Date()
+    ) -> TokenResolution {
+        for creds in candidates
+        where !isExpired(creds, now: now) && !rejected.contains(creds.accessToken) {
+            return .ready(creds.accessToken)
+        }
+        for creds in candidates {
+            if let rt = creds.refreshToken, !rt.isEmpty {
+                return .mustRefresh(rt)
+            }
+        }
+        return .unavailable
     }
 
     /// Parse the canonical `{"claudeAiOauth": {...}}` wrapper. Used by
@@ -551,6 +739,7 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         struct Wrapper: Decodable {
             struct Inner: Decodable {
                 let accessToken: String?
+                let refreshToken: String?
                 let expiresAt: Double?
                 let scopes: [String]?
             }
@@ -563,7 +752,8 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         return StoredCredentials(
             accessToken: access,
             expiresAtMs: inner.expiresAt,
-            scopes: inner.scopes)
+            scopes: inner.scopes,
+            refreshToken: inner.refreshToken)
     }
 
     /// Resolve `~/.claude/.credentials.json`.

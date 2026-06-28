@@ -145,12 +145,15 @@ actor ClaudeUsagePoller {
         return .seconds(max(1.0, remaining))
     }
 
-    func pollOnce() async {
+    /// `force` bypasses the 60-second spam gap so the explicit Refresh
+    /// button always re-polls. It does NOT bypass the 429 cooldown — a real
+    /// rate-limit must still be honoured, or the button would earn more 429s.
+    func pollOnce(force: Bool = false) async {
         let now = Date()
-        // 60-second spam gap. Applies to scheduled and manual callers
-        // alike. The endpoint's edge rate limit has no useful response
-        // to sub-minute polling beyond silent 429s.
-        if let last = lastAttemptAt {
+        // 60-second spam gap. Applies to scheduled and (non-forced) manual
+        // callers alike. The endpoint's edge rate limit has no useful
+        // response to sub-minute polling beyond silent 429s.
+        if !force, let last = lastAttemptAt {
             let elapsed = now.timeIntervalSince(last)
             let gapSec = Double(Self.minimumGap.components.seconds)
             if elapsed < gapSec {

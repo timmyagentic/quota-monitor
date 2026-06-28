@@ -34,6 +34,7 @@ window copy.
 - Contributors now have a concise setup guide for project layout and local checks
 - Existing installs that already picked a language no longer see the Landing Page again after updating
 - Long-time users who got stuck on the setup screen after an update (with their usage meters frozen) are now recognized and taken straight to the app
+- Claude live usage keeps updating on its own instead of freezing when its sign-in token expires, and Refresh re-checks Claude right away
 
 ### Added
 - **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
@@ -41,6 +42,9 @@ window copy.
 ### Fixed
 - **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.
 - **Existing installs stranded mid-setup are repaired.** A user with real usage history left at `providerStepStarted=true` / `providersDone=false` by a bad upgrade launch is now recognized as an existing user and skips provider onboarding, instead of being re-gated on every launch — which silently froze live quota polling.
+- **Claude live usage no longer freezes when its token expires.** QuotaMonitor now refreshes the Claude access token itself instead of relying on a `claude` CLI side effect that stopped working, so the 5h/7d meters keep updating once the token lapses.
+- **Refreshed Claude tokens stay private.** Rotated tokens are kept in QuotaMonitor's own cache and are never written back to your Claude Code credentials, so a refresh can't disrupt the `claude` CLI's own login.
+- **Clearer Claude sign-in state and a more responsive Refresh.** When a refresh genuinely fails (token revoked) the menu bar shows a re-login hint instead of leaving stale numbers, and the Refresh button now bypasses the 60-second poll gap so a click always re-checks Claude.
 
 ## [0.2.34] — 2026-06-21
 
