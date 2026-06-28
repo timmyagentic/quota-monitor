@@ -36,9 +36,11 @@ window copy.
 - Long-time users who got stuck on the setup screen after an update (with their usage meters frozen) are now recognized and taken straight to the app
 - Claude live usage keeps updating on its own instead of freezing when its sign-in token expires, and Refresh re-checks Claude right away
 - The Claude usage meter now refreshes about every 10 minutes instead of every 2 hours, so it stays current
+- Claude usage and cost now update the moment you use Claude Code, without opening the menu
 
 ### Added
 - **Contributor guide.** Added a concise repository guide covering project layout, common commands, testing expectations, and contribution steps.
+- **Claude usage updates live as you work.** QuotaMonitor watches your Claude transcript folder and refreshes local Claude usage/cost the moment Claude Code writes to it, instead of only when the menu is opened. The rescan is Claude-only and throttled, so it never re-parses Codex history and can't scan on every small append.
 
 ### Changed
 - **Claude live usage refreshes ~every 10 minutes (was 2 hours).** The scheduled `/api/oauth/usage` poll cadence drops from 7200s to 600s so the 5h/7d quota meter stays current; the existing 429 cooldown ladder (5 min → 30 min, honouring `Retry-After`) still backs off automatically if the endpoint rate-limits us.

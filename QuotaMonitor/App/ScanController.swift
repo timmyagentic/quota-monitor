@@ -11,6 +11,7 @@ extension AppEnvironment {
     /// user expressing explicit intent should never be silently throttled.
     func runScan(
         minInterval: TimeInterval? = nil,
+        providers: Set<String>? = nil,
         trigger: String = "manual",
         parentOperation: DeveloperLogOperation? = nil
     ) {
@@ -80,6 +81,11 @@ extension AppEnvironment {
                 let claude = self.claudeEngine
                 let snap = SettingsStore.snapshot()
                 let enabled = snap.enabledProviders
+                // A requested scope (e.g. the Claude file-watcher's
+                // ["claude"]) is intersected with the enabled set so a
+                // ~/.claude write never triggers Codex's whole-file re-parse.
+                let scanProviders = Self.resolveScanProviders(
+                    requested: providers, enabled: enabled)
                 let fastMode = snap.codexFastModeBilling
                 DeveloperLog.eventRecord(
                     "scan.providers",
@@ -88,6 +94,7 @@ extension AppEnvironment {
                     trigger: trigger,
                     fields: [
                         "enabled_providers": .string(enabled.sorted().joined(separator: ",")),
+                        "scan_providers": .string(scanProviders.sorted().joined(separator: ",")),
                         "codex_fast_mode_billing": .bool(fastMode)
                     ])
                 let progressHandler: ScanProgressHandler = { [weak self] update in
@@ -107,7 +114,7 @@ extension AppEnvironment {
                     // them in Settings. Returning `.empty` keeps the merge +
                     // backfill logic below identical regardless of which
                     // providers are active.
-                    async let codexReport = enabled.contains("codex")
+                    async let codexReport = scanProviders.contains("codex")
                         ? engine.performScan(progress: progressHandler)
                         : ImportEngine.ScanReport.empty
                     // Run the Claude scan as its own task so the optional-
@@ -115,7 +122,7 @@ extension AppEnvironment {
                     // awkwardly with `async let` (we hit a case where the
                     // call appeared to be skipped silently).
                     let claudeTask = Task { () async throws -> ImportEngine.ScanReport in
-                        guard enabled.contains("claude"), let claude else {
+                        guard scanProviders.contains("claude"), let claude else {
                             return .empty
                         }
                         return try await claude.performScan(progress: progressHandler)
@@ -249,6 +256,18 @@ extension AppEnvironment {
             }
             return count
         }
+    }
+
+    /// Intersect a requested provider scope with the user's enabled
+    /// providers. `nil` means "scan everything enabled" (the default
+    /// for refresh/popover/manual). The Claude file-watcher passes
+    /// `["claude"]` so reacting to a `~/.claude` write only runs the
+    /// cheap incremental Claude import, never Codex's whole-file re-parse.
+    nonisolated static func resolveScanProviders(
+        requested: Set<String>?, enabled: Set<String>
+    ) -> Set<String> {
+        guard let requested else { return enabled }
+        return enabled.intersection(requested)
     }
 
     nonisolated static func mergeScanReports(

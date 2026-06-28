@@ -123,6 +123,13 @@ final class AppEnvironment {
     var claudeEngine: ClaudeImportEngine?
     private var poller: RateLimitPoller?
     private var claudeUsagePoller: ClaudeUsagePoller?
+    /// Watches `~/.claude/projects` and triggers a Claude-only rescan on
+    /// write, so local usage/cost stays current without opening the popover.
+    private var claudeFileWatcher: ClaudeFileWatcher?
+    /// Throttle for file-watch-triggered scans. The Claude import is cheap
+    /// (incremental byte-offset read), so this can be short — it just stops
+    /// a chatty session from scanning on every keystroke-sized append.
+    static let claudeFileWatchScanMinInterval: TimeInterval = 5
     private let codexResetCreditsClient: any CodexResetCreditsFetching
     private var lastCodexResetCreditsRefreshAttemptAt: Date?
     let pricingSource = LiteLLMPricingSource()
@@ -208,6 +215,7 @@ final class AppEnvironment {
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
             }
+            ensureClaudeFileWatcher()
             guard LocalQAEnvironment.allowsExternalDataSources() else {
                 DeveloperLog.eventRecord(
                     "poller.background.start.skip",
@@ -390,6 +398,56 @@ final class AppEnvironment {
         Task { await cp.stop() }
     }
 
+    /// Start the Claude transcript file-watcher. Self-gating + idempotent:
+    /// no-op in Local QA (scans there are driven by scripted steps), when
+    /// Claude is disabled / onboarding isn't done, when no Claude directory
+    /// exists yet, or when it's already running. On a write it triggers a
+    /// **Claude-only** rescan, throttled and routed through `runScan`'s
+    /// `isScanning` guard so a busy session can't cause a scan storm and
+    /// Codex is never re-parsed.
+    private func ensureClaudeFileWatcher() {
+        guard claudeFileWatcher == nil else { return }
+        guard LocalQAEnvironment.allowsExternalDataSources() else { return }
+        let snap = SettingsStore.snapshot()
+        guard snap.hasCompletedProviderOnboarding,
+              snap.enabledProviders.contains("claude") else { return }
+        let dirs = ClaudeFileWatcher.watchedDirectories(
+            home: LocalQAEnvironment.homeDirectory())
+        guard !dirs.isEmpty else {
+            DeveloperLog.eventRecord(
+                "claude_file_watch.start.skip",
+                category: "scan",
+                provider: "claude",
+                result: "skipped",
+                fields: ["reason": "no-claude-directory"])
+            return
+        }
+        let watcher = ClaudeFileWatcher(directories: dirs) { [weak self] in
+            Task { @MainActor in
+                self?.runScan(
+                    minInterval: Self.claudeFileWatchScanMinInterval,
+                    providers: ["claude"],
+                    trigger: "claude-file-watch")
+            }
+        }
+        watcher.start()
+        self.claudeFileWatcher = watcher
+        DeveloperLog.eventRecord(
+            "claude_file_watch.start",
+            category: "scan",
+            provider: "claude",
+            result: "success",
+            fields: ["watched_dirs": .int(dirs.count)])
+    }
+
+    private func stopClaudeFileWatcher() {
+        guard claudeFileWatcher != nil else { return }
+        claudeFileWatcher?.stop()
+        self.claudeFileWatcher = nil
+        DeveloperLog.eventRecord(
+            "claude_file_watch.stop", category: "scan", provider: "claude")
+    }
+
     /// React to a change in `SettingsStore.enabledProviders` — start /
     /// stop the matching pollers, snap the dashboard provider filter
     /// off any disabled provider, and refresh menu bar + dashboard so
@@ -404,6 +462,7 @@ final class AppEnvironment {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             stopCodexPoller()
             stopClaudePoller()
+            stopClaudeFileWatcher()
             DeveloperLog.eventRecord(
                 "settings.enabled_providers.apply.skip_live_sources",
                 category: "settings",
@@ -423,8 +482,10 @@ final class AppEnvironment {
             }
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
+                ensureClaudeFileWatcher()
             } else {
                 stopClaudePoller()
+                stopClaudeFileWatcher()
             }
         } catch {
             self.lastError = String(describing: error)
