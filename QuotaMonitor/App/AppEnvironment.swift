@@ -79,6 +79,10 @@ final class AppEnvironment {
     /// fires exactly one trailing Claude-only rescan. At most one queued
     /// re-run regardless of how many writes arrived during the window.
     private var claudeFileWatchScanPending = false
+    /// Single in-flight timer for the throttle-with-trailing watcher path (a
+    /// write that lands inside the throttle window). Coalesces a burst into one
+    /// trailing scan; cancelled when the watcher stops.
+    private var claudeFileWatchTrailingTask: Task<Void, Never>?
     var isLoadingDashboard = false
     /// Internal re-entrancy guard for `refreshPricingFromLiteLLM`. Not
     /// observed by any view — opted out of `@Observable` tracking so it
@@ -459,11 +463,17 @@ final class AppEnvironment {
             fields: ["watched_dirs": .int(dirs.count)])
     }
 
-    /// Entry point for a Claude transcript write. When a scan is already
-    /// running we can't drop the event (the append may post-date the
-    /// importer's read of that file), so we mark a trailing rescan that the
-    /// in-flight scan's `defer` will fire. Otherwise we scan now, throttled so
-    /// a burst of small appends can't cause a scan storm.
+    /// Entry point for a Claude transcript write. Throttle-with-**trailing**
+    /// semantics so no append is ever dropped:
+    ///   - A scan is already running → mark a pending rescan that the in-flight
+    ///     scan's `defer` fires (the append may post-date the importer's read).
+    ///   - We scanned < `claudeFileWatchScanMinInterval` ago → don't drop it;
+    ///     arm a single timer to scan once the throttle window expires. (A bare
+    ///     `runScan(minInterval:)` would return `throttled` and lose the event
+    ///     if it was the last append in a burst.)
+    ///   - Otherwise → scan now. The leading scan + the trailing timer give a
+    ///     scan at most every ~5s during continuous writes, never starving like
+    ///     a pure trailing debounce would.
     @MainActor
     func triggerClaudeFileWatchScan() {
         guard !isScanning else {
@@ -476,10 +486,31 @@ final class AppEnvironment {
                 result: "coalesced")
             return
         }
-        runScan(
-            minInterval: Self.claudeFileWatchScanMinInterval,
-            providers: ["claude"],
-            trigger: "claude-file-watch")
+        let key = Self.scanThrottleKey(forRequested: ["claude"])
+        let interval = Self.claudeFileWatchScanMinInterval
+        if let last = lastScanAtByScope[key] {
+            let elapsed = Date().timeIntervalSince(last)
+            if elapsed < interval {
+                scheduleClaudeFileWatchTrailingScan(after: interval - elapsed)
+                return
+            }
+        }
+        runScan(providers: ["claude"], trigger: "claude-file-watch")
+    }
+
+    /// Arm a single timer that re-evaluates `triggerClaudeFileWatchScan` once
+    /// the throttle window expires. Coalesced: extra writes during the window
+    /// no-op rather than stacking timers, so a burst still yields one trailing
+    /// scan. Cancelled on watcher stop.
+    @MainActor
+    private func scheduleClaudeFileWatchTrailingScan(after delay: TimeInterval) {
+        guard claudeFileWatchTrailingTask == nil else { return }
+        claudeFileWatchTrailingTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            self.claudeFileWatchTrailingTask = nil
+            self.triggerClaudeFileWatchScan()
+        }
     }
 
     /// Fire the trailing Claude-only rescan queued by a write that arrived
@@ -497,10 +528,23 @@ final class AppEnvironment {
     /// currently queued. Not used in production.
     var _claudeFileWatchScanPendingForTest: Bool { claudeFileWatchScanPending }
 
+    /// Test seam: whether the throttle-window trailing timer is armed. Not
+    /// used in production.
+    var _claudeFileWatchHasTrailingTaskForTest: Bool { claudeFileWatchTrailingTask != nil }
+
+    /// Test seam: cancel the trailing timer so a test doesn't leave a 5s sleep
+    /// running. Not used in production.
+    func _cancelClaudeFileWatchTrailingTaskForTest() {
+        claudeFileWatchTrailingTask?.cancel()
+        claudeFileWatchTrailingTask = nil
+    }
+
     private func stopClaudeFileWatcher() {
         guard claudeFileWatcher != nil else { return }
         claudeFileWatcher?.stop()
         self.claudeFileWatcher = nil
+        claudeFileWatchTrailingTask?.cancel()
+        claudeFileWatchTrailingTask = nil
         DeveloperLog.eventRecord(
             "claude_file_watch.stop", category: "scan", provider: "claude")
     }
@@ -633,6 +677,12 @@ final class AppEnvironment {
             trigger: trigger,
             parentOperation: op)
         refreshClaudeUsage(trigger: trigger, parentOperation: op)
+        // Retry watcher startup here (idempotent + self-gating): a user who
+        // enabled Claude before Claude Code had created ~/.claude/projects
+        // gets no watcher at launch, and nothing else would start one until
+        // relaunch / toggling the provider. Each refresh re-attempts cheaply
+        // and installs it once the transcript directory finally exists.
+        ensureClaudeFileWatcher()
         runScan(
             minInterval: throttle ? 20 : nil,
             trigger: trigger,

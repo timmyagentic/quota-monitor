@@ -136,4 +136,25 @@ struct ClaudeFileWatchCoalescingTests {
             #expect(!env._claudeFileWatchScanPendingForTest)
         }
     }
+
+    @Test("a write inside the throttle window arms a trailing scan, not a drop")
+    func throttledWriteArmsTrailingScan() {
+        withOnboardingIncomplete {
+            let env = AppEnvironment(startBackgroundTasks: false)
+            // Pretend a Claude-scope scan just completed.
+            env.lastScanAtByScope[AppEnvironment.scanThrottleKey(forRequested: ["claude"])] = Date()
+            #expect(!env._claudeFileWatchHasTrailingTaskForTest)
+
+            env.triggerClaudeFileWatchScan()  // write < 5s after the last scan
+            #expect(env._claudeFileWatchHasTrailingTaskForTest,
+                    "a throttled watcher write must arm a trailing scan, not vanish")
+            #expect(!env._claudeFileWatchScanPendingForTest)
+
+            // A second write inside the window coalesces — still one timer.
+            env.triggerClaudeFileWatchScan()
+            #expect(env._claudeFileWatchHasTrailingTaskForTest)
+
+            env._cancelClaudeFileWatchTrailingTaskForTest()  // don't leak a 5s sleep
+        }
+    }
 }
