@@ -29,7 +29,7 @@ final class AppEnvironment {
     var latestCodexResetCredits: CodexResetCreditsSnapshot?
     var lastCodexResetCreditsError: String?
     /// Live Anthropic OAuth `/api/oauth/usage` snapshot, polled every
-    /// 2 h by `ClaudeUsagePoller` and on-demand by the Refresh button
+    /// ~10 min by `ClaudeUsagePoller` and on-demand by the Refresh button
     /// (subject to the poller's own 60 s spam gap + 429 cooldown).
     /// Mirrors `latestRateLimits` so the menu bar can render Codex +
     /// Claude blocks symmetrically.
@@ -293,9 +293,10 @@ final class AppEnvironment {
     }
 
     /// Boot just the Claude OAuth `/usage` poller. Independent lifecycle
-    /// from the Codex poller — same transport pattern, but a much slower
-    /// cadence: Anthropic edge-rate-limits this endpoint, so we hit it
-    /// at most every 2 hours on the scheduled path. The menu-bar
+    /// from the Codex poller — same transport pattern, on a ~10 min
+    /// scheduled cadence (`ClaudeUsagePoller.defaultInterval`). Anthropic
+    /// edge-rate-limits this endpoint, so the 429 cooldown ladder backs
+    /// off automatically if we get limited. The menu-bar
     /// Refresh button calls `pollOnce()` via `refreshClaudeUsage()`
     /// too; the poller's own 60 s spam gap + 429 cooldown keep that
     /// safe.
@@ -332,7 +333,7 @@ final class AppEnvironment {
         DeveloperLog.eventRecord("poller.claude.start", category: "poller", provider: "claude")
         let cp = ClaudeUsagePoller(
             database: db,
-            interval: .seconds(7200),
+            interval: ClaudeUsagePoller.defaultInterval,
             onSnapshot: { [weak self] result in
                 await MainActor.run {
                     guard let self else { return }
@@ -468,9 +469,9 @@ final class AppEnvironment {
             Task { await p.updateInterval(.seconds(snap.pollIntervalSeconds)) }
         }
         // Deliberately NOT propagating `pollIntervalSeconds` to the Claude
-        // poller: its endpoint is edge-rate-limited, the user's "every
-        // 5 min" Codex preference would just earn 429s. It stays at the
-        // 2 h cadence set in `startBackgroundPolling()`.
+        // poller: its endpoint is edge-rate-limited and shares no semantics
+        // with the Codex window. It stays on its own fixed cadence
+        // (`ClaudeUsagePoller.defaultInterval`) set in `startBackgroundPolling()`.
     }
 
     // MARK: - actions

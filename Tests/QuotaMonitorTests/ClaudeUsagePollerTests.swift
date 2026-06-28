@@ -157,6 +157,18 @@ struct ClaudeUsagePollerTests {
         #expect(calls == 1, "force must NOT punch through a 429 cooldown")
     }
 
+    // MARK: - 1b. scheduled cadence
+
+    @Test("default Claude /usage cadence is 10 minutes, not the old 2h")
+    func defaultCadenceIsTenMinutes() async throws {
+        // Shortened from 7200s so the live 5h/7d quota meter is at most ~10
+        // minutes stale (the 429 cooldown ladder still defends the endpoint).
+        #expect(ClaudeUsagePoller.defaultInterval == .seconds(600))
+        let db = try makeDatabase()
+        let poller = ClaudeUsagePoller(database: db, onSnapshot: { _ in })
+        #expect(await poller._intervalForTest == .seconds(600))
+    }
+
     // MARK: - 2. 429 ladder
 
     @Test("first 429: short 5-min backoff, no UI failure surface")
