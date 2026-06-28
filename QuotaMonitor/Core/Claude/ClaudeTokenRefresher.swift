@@ -96,18 +96,32 @@ actor ClaudeTokenRefresher {
         refreshToken: String,
         clientID: String = ClaudeTokenRefresher.defaultClientID
     ) -> URLRequest {
-        var components = URLComponents()
-        components.queryItems = [
-            URLQueryItem(name: "grant_type", value: "refresh_token"),
-            URLQueryItem(name: "refresh_token", value: refreshToken),
-            URLQueryItem(name: "client_id", value: clientID),
-        ]
+        let body = formURLEncoded([
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refreshToken),
+            ("client_id", clientID),
+        ])
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = (components.percentEncodedQuery ?? "").data(using: .utf8)
+        request.httpBody = Data(body.utf8)
         return request
+    }
+
+    /// Build an `application/x-www-form-urlencoded` body. We do NOT use
+    /// `URLComponents.percentEncodedQuery`: it leaves `+` literal, but form
+    /// decoders read `+` as a space — so a refresh token containing `+`
+    /// (Anthropic tokens are base64-ish) would arrive corrupted and the grant
+    /// would 400. Percent-encode against the RFC 3986 *unreserved* set only,
+    /// which forces `+` → `%2B` and space → `%20`.
+    static func formURLEncoded(_ pairs: [(String, String)]) -> String {
+        let unreserved = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        func enc(_ s: String) -> String {
+            s.addingPercentEncoding(withAllowedCharacters: unreserved) ?? s
+        }
+        return pairs.map { "\(enc($0.0))=\(enc($0.1))" }.joined(separator: "&")
     }
 
     static func parseRefreshResponse(

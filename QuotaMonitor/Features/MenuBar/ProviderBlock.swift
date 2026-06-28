@@ -102,6 +102,16 @@ extension MenuBarContentView {
             if let usage = env.latestClaudeUsage,
                usage.fiveHour != nil || usage.staleFiveHour != nil || usage.sevenDay != nil {
                 claudeOAuthInner(usage: usage)
+                // A token revoked / de-scoped *after* a successful poll leaves
+                // a stale snapshot up, so this branch (not the fallback) is what
+                // renders. Surface the persistent auth hint next to the now-
+                // stale numbers so the user knows to re-login. Transient 429 /
+                // network blips are NOT shown here — they don't contradict the
+                // displayed rows and would just be noise.
+                if let err = env.lastClaudeUsageError,
+                   env.lastClaudeUsageErrorIsAuthClass {
+                    claudeErrorHintText(err)
+                }
             } else {
                 claudeFallbackInner(stats: stats, blocks: blocks)
             }
@@ -252,23 +262,22 @@ extension MenuBarContentView {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            if let err = env.lastClaudeUsageError,
-               env.latestClaudeUsage == nil
-                || env.lastClaudeUsageErrorIsAuthClass {
-                // Show the hint when we have NO usable snapshot at all, OR
-                // when the failure is a *persistent* auth error (expired/
-                // revoked token, missing creds, bad scope) — in that case the
-                // displayed numbers are stale and the user must act, so the
-                // hint belongs next to them. Transient 429 / network blips
-                // are still suppressed while a snapshot is up, so a momentary
-                // failure doesn't contradict a perfectly fine 5h+7d block.
-                Text(claudeErrorHint(err))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(2)
-                    .help(err)
+            // This view only renders when there is no usable snapshot, so
+            // any error here explains the empty block — show it unconditionally.
+            if let err = env.lastClaudeUsageError {
+                claudeErrorHintText(err)
             }
         }
+    }
+
+    /// One-liner re-login / error hint under the Claude block.
+    @ViewBuilder
+    func claudeErrorHintText(_ raw: String) -> some View {
+        Text(claudeErrorHint(raw))
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .lineLimit(2)
+            .help(raw)
     }
 
     /// Map the verbose `String(describing:)` form of `ClaudeUsageClient.FetchError`

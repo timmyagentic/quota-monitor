@@ -31,6 +31,15 @@ enum ClaudeOAuthCache {
         return ClaudeUsageClient.parseCredentials(jsonData: data)
     }
 
+    /// Delete the cache file. Called when the cached refresh token is
+    /// definitively rejected (4xx invalid_grant) — otherwise a poisoned cache
+    /// would shadow the still-valid file / Keychain tokens forever, since the
+    /// cache is the highest-priority source. Best-effort; a missing file is
+    /// not an error.
+    static func clear(fileURL: URL = defaultFileURL()) {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
     /// Persist refreshed credentials. Atomic write, clamped to 0600. Errors
     /// are logged but never thrown — a failed cache write must not break the
     /// in-memory token the caller is about to use.

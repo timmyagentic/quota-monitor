@@ -25,6 +25,20 @@ struct ClaudeTokenRefresherTests {
         #expect(body.contains("client_id=\(ClaudeTokenRefresher.defaultClientID)"))
     }
 
+    @Test("Reserved characters in the refresh token are form-encoded")
+    func refreshRequestEncodesReservedChars() throws {
+        // A `+` must be sent as `%2B`: form decoders read a literal `+` as a
+        // space, which would corrupt a base64-ish refresh token and 400 the
+        // grant. `&`, `=`, `/` and space must likewise be escaped.
+        let request = ClaudeTokenRefresher.makeRefreshRequest(
+            refreshToken: "ab+cd/ef=gh&ij kl")
+        let body = try #require(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+
+        #expect(body.contains("refresh_token=ab%2Bcd%2Fef%3Dgh%26ij%20kl"))
+        // No raw `+` anywhere — neither as the token's `+` nor as an encoded space.
+        #expect(!body.contains("+"))
+    }
+
     @Test("A successful refresh response parses tokens and computes expiry")
     func parseRefreshSuccess() throws {
         let json = Data("""

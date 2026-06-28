@@ -486,42 +486,79 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         candidates: [StoredCredentials]
     ) async -> StoredCredentials? {
         guard let refresher = tokenRefresher else { return nil }
-        let scopes = candidates.first { $0.refreshToken == refreshToken }?.scopes
-        do {
-            let refreshed = try await refresher.refresh(refreshToken: refreshToken)
-            ClaudeOAuthCache.save(refreshed, scopes: scopes, fileURL: oauthCacheURL)
-            // The freshly-minted token is valid again even if a prior token
-            // was rejected earlier this run.
-            rejectedTokens.remove(refreshed.accessToken)
-            Log.poller.info(
-                "claude token refreshed directly (expires \(refreshed.expiresAtMs, privacy: .public)ms)")
-            DeveloperLog.eventRecord(
-                "claude_token.refresh.finish",
-                category: "poller",
-                provider: "claude",
-                result: "success",
-                fields: ["expires_at_ms": .double(refreshed.expiresAtMs)])
-            return StoredCredentials(
-                accessToken: refreshed.accessToken,
-                expiresAtMs: refreshed.expiresAtMs,
-                scopes: scopes,
-                refreshToken: refreshed.refreshToken)
-        } catch {
-            // Log only the error TYPE to OSLog — never the server response
-            // body, which `RefreshError.http`'s description embeds. The
-            // sanitized DeveloperLog file path keeps the detail.
-            Log.poller.error(
-                "claude token refresh failed: \(String(describing: type(of: error)), privacy: .public)")
-            DeveloperLog.eventRecord(
-                "claude_token.refresh.fail",
-                level: .error,
-                category: "poller",
-                provider: "claude",
-                result: "failure",
-                message: String(describing: error),
-                fields: ["error_type": .string(String(describing: type(of: error)))])
-            return nil
+
+        // Distinct refresh tokens to try, highest-priority first: the one
+        // `resolveToken` picked, then any others the candidate sources carry.
+        // A revoked *cached* refresh token must not permanently block recovery
+        // — if it 4xxes we drop the poisoned cache and fall through to the
+        // lower-priority file / Keychain refresh token in the same pass.
+        var ordered: [String] = []
+        var seen = Set<String>()
+        for rt in [refreshToken] + candidates.compactMap(\.refreshToken)
+        where !rt.isEmpty && seen.insert(rt).inserted {
+            ordered.append(rt)
         }
+
+        for rt in ordered {
+            let scopes = candidates.first { $0.refreshToken == rt }?.scopes
+            do {
+                let refreshed = try await refresher.refresh(refreshToken: rt)
+                ClaudeOAuthCache.save(refreshed, scopes: scopes, fileURL: oauthCacheURL)
+                // The freshly-minted token is valid again even if a prior token
+                // was rejected earlier this run.
+                rejectedTokens.remove(refreshed.accessToken)
+                Log.poller.info(
+                    "claude token refreshed directly (expires \(refreshed.expiresAtMs, privacy: .public)ms)")
+                DeveloperLog.eventRecord(
+                    "claude_token.refresh.finish",
+                    category: "poller",
+                    provider: "claude",
+                    result: "success",
+                    fields: ["expires_at_ms": .double(refreshed.expiresAtMs)])
+                return StoredCredentials(
+                    accessToken: refreshed.accessToken,
+                    expiresAtMs: refreshed.expiresAtMs,
+                    scopes: scopes,
+                    refreshToken: refreshed.refreshToken)
+            } catch {
+                // Log only the error TYPE to OSLog — never the server response
+                // body, which `RefreshError.http`'s description embeds. The
+                // sanitized DeveloperLog file path keeps the detail.
+                Log.poller.error(
+                    "claude token refresh failed: \(String(describing: type(of: error)), privacy: .public)")
+                DeveloperLog.eventRecord(
+                    "claude_token.refresh.fail",
+                    level: .error,
+                    category: "poller",
+                    provider: "claude",
+                    result: "failure",
+                    message: String(describing: error),
+                    fields: ["error_type": .string(String(describing: type(of: error)))])
+
+                let definitive = Self.isDefinitiveRefreshFailure(error)
+                // A definitively-rejected *cached* refresh token is poison —
+                // delete the cache so it stops shadowing valid lower-priority
+                // sources on the next poll (and this pass).
+                if definitive, ClaudeOAuthCache.load(fileURL: oauthCacheURL)?.refreshToken == rt {
+                    ClaudeOAuthCache.clear(fileURL: oauthCacheURL)
+                }
+                // Transient failures (network / 5xx) shouldn't burn through the
+                // other refresh tokens — bail and let the next poll retry. Only
+                // a definitive rejection justifies trying the next token.
+                if !definitive { return nil }
+            }
+        }
+        return nil
+    }
+
+    /// A refresh failure the server will keep rejecting (a 4xx such as
+    /// `invalid_grant`), as opposed to a transient network / 5xx blip we
+    /// should simply retry later.
+    static func isDefinitiveRefreshFailure(_ error: any Error) -> Bool {
+        if case ClaudeTokenRefresher.RefreshError.http(let code, _) = error {
+            return (400..<500).contains(code)
+        }
+        return false
     }
 
     /// A credential is usable when it's not locally expired AND its
