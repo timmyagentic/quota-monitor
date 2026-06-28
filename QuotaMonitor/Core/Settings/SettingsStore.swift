@@ -458,6 +458,10 @@ final class SettingsStore {
         let resetGate = Self.shouldResetOnboarding(lastOnboarded: lastOnboarded)
         let hasStoredLanguage = defaults.string(forKey: "app.language") != nil
         let providerStepStarted = defaults.bool(forKey: Keys.providerOnboardingStarted)
+        // Real usage history (usage_events / rate_limit_samples rows) is the
+        // ground truth for "this is an existing user, not a fresh install".
+        // Read once; a fresh install's database is empty.
+        let hasAppData = hasExistingAppData()
         let languageOnlyLegacyProfile: Bool
         if hasStoredLanguage && !providerStepStarted {
             // Missing done flag: pre-provider-onboarding language choice.
@@ -465,7 +469,7 @@ final class SettingsStore {
             // was an existing install hit by 0.2.34, not a brand-new user
             // who quit between language and provider setup.
             languageOnlyLegacyProfile = storedDone == nil
-                || (storedDone == false && hasExistingAppData())
+                || (storedDone == false && hasAppData)
         } else {
             languageOnlyLegacyProfile = false
         }
@@ -474,6 +478,11 @@ final class SettingsStore {
             || storedProviders != nil
             || storedInterval > 0
             || (storedDone != true && languageOnlyLegacyProfile)
+            // An existing user can also be stranded mid-provider-step
+            // (providerStepStarted=true, providersDone=false) by a bad
+            // launch. Real app data outranks that marker — gating such a
+            // user on every launch silently freezes live polling.
+            || hasAppData
         let resolvedDone: Bool
         if resetGate && hasExistingConfiguration {
             resolvedDone = true
