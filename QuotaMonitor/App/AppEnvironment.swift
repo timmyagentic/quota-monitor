@@ -70,6 +70,19 @@ final class AppEnvironment {
     var isRefreshingRateLimits = false
     var isRefreshingCodexResetCredits = false
     var isScanning = false
+    /// Coalescing flag for the Claude file-watcher. A `~/.claude` write that
+    /// lands while a scan is already running can't just rely on `runScan`'s
+    /// `isScanning` early-return: if the append happened after the importer
+    /// already read that JSONL file, that FSEvents notification would be lost
+    /// and the menu bar could stay stale until the next write / manual
+    /// refresh. So a write-during-scan sets this; the in-flight scan's `defer`
+    /// fires exactly one trailing Claude-only rescan. At most one queued
+    /// re-run regardless of how many writes arrived during the window.
+    private var claudeFileWatchScanPending = false
+    /// Single in-flight timer for the throttle-with-trailing watcher path (a
+    /// write that lands inside the throttle window). Coalesces a burst into one
+    /// trailing scan; cancelled when the watcher stops.
+    private var claudeFileWatchTrailingTask: Task<Void, Never>?
     var isLoadingDashboard = false
     /// Internal re-entrancy guard for `refreshPricingFromLiteLLM`. Not
     /// observed by any view — opted out of `@Observable` tracking so it
@@ -96,9 +109,22 @@ final class AppEnvironment {
     /// to-back file scans and three subprocess calls.
     ///
     /// Not `private` so ScanController (an extension in another file)
-    /// can stamp `lastScanAt` after a successful scan.
+    /// can stamp these after a successful scan.
     var lastRateLimitsRefreshAt: Date?
-    var lastScanAt: Date?
+    /// Throttle timestamps keyed by scan **scope** (see `scanThrottleKey`),
+    /// not a single global clock. A Claude-only file-watch scan and the
+    /// popover's full (all-providers) scan have independent throttles, so a
+    /// burst of `~/.claude` writes can't starve Codex imports: a watcher scan
+    /// no longer stamps the timestamp the full scan throttles against.
+    var lastScanAtByScope: [String: Date] = [:]
+
+    /// Bucket a scan's *requested* provider scope into a throttle key. `nil`
+    /// (every enabled provider — the popover/manual full scan) is "all";
+    /// a scoped request (e.g. the watcher's `["claude"]`) gets its own key.
+    nonisolated static func scanThrottleKey(forRequested providers: Set<String>?) -> String {
+        guard let providers, !providers.isEmpty else { return "all" }
+        return providers.sorted().joined(separator: ",")
+    }
 
     /// Top-level provider filter applied to dashboard / sessions / history.
     /// Defaults to `.all` (union view).
@@ -123,6 +149,13 @@ final class AppEnvironment {
     var claudeEngine: ClaudeImportEngine?
     private var poller: RateLimitPoller?
     private var claudeUsagePoller: ClaudeUsagePoller?
+    /// Watches `~/.claude/projects` and triggers a Claude-only rescan on
+    /// write, so local usage/cost stays current without opening the popover.
+    private var claudeFileWatcher: ClaudeFileWatcher?
+    /// Throttle for file-watch-triggered scans. The Claude import is cheap
+    /// (incremental byte-offset read), so this can be short — it just stops
+    /// a chatty session from scanning on every keystroke-sized append.
+    static let claudeFileWatchScanMinInterval: TimeInterval = 5
     private let codexResetCreditsClient: any CodexResetCreditsFetching
     private var lastCodexResetCreditsRefreshAttemptAt: Date?
     let pricingSource = LiteLLMPricingSource()
@@ -208,6 +241,7 @@ final class AppEnvironment {
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
             }
+            ensureClaudeFileWatcher()
             guard LocalQAEnvironment.allowsExternalDataSources() else {
                 DeveloperLog.eventRecord(
                     "poller.background.start.skip",
@@ -390,6 +424,142 @@ final class AppEnvironment {
         Task { await cp.stop() }
     }
 
+    /// Start the Claude transcript file-watcher. Self-gating + idempotent:
+    /// no-op in Local QA (scans there are driven by scripted steps), when
+    /// Claude is disabled / onboarding isn't done, when no Claude directory
+    /// exists yet, or when it's already running. On a write it triggers a
+    /// **Claude-only** rescan, throttled and routed through `runScan`'s
+    /// `isScanning` guard so a busy session can't cause a scan storm and
+    /// Codex is never re-parsed.
+    private func ensureClaudeFileWatcher() {
+        guard claudeFileWatcher == nil else { return }
+        guard LocalQAEnvironment.allowsExternalDataSources() else { return }
+        let snap = SettingsStore.snapshot()
+        guard snap.hasCompletedProviderOnboarding,
+              snap.enabledProviders.contains("claude") else { return }
+        let dirs = ClaudeFileWatcher.watchedDirectories(
+            home: LocalQAEnvironment.homeDirectory())
+        guard !dirs.isEmpty else {
+            DeveloperLog.eventRecord(
+                "claude_file_watch.start.skip",
+                category: "scan",
+                provider: "claude",
+                result: "skipped",
+                fields: ["reason": "no-claude-directory"])
+            return
+        }
+        let watcher = ClaudeFileWatcher(directories: dirs) { [weak self] in
+            Task { @MainActor in
+                self?.triggerClaudeFileWatchScan()
+            }
+        }
+        // Only retain the watcher if a stream is actually active. On failure
+        // we drop it so the `claudeFileWatcher == nil` guard above lets the
+        // next refresh retry, rather than being stuck on a dead watcher.
+        guard watcher.start() else {
+            DeveloperLog.eventRecord(
+                "claude_file_watch.start.skip",
+                category: "scan",
+                provider: "claude",
+                result: "failed",
+                fields: ["reason": "stream-start-failed"])
+            return
+        }
+        self.claudeFileWatcher = watcher
+        DeveloperLog.eventRecord(
+            "claude_file_watch.start",
+            category: "scan",
+            provider: "claude",
+            result: "success",
+            fields: ["watched_dirs": .int(dirs.count)])
+    }
+
+    /// Entry point for a Claude transcript write. Throttle-with-**trailing**
+    /// semantics so no append is ever dropped:
+    ///   - A scan is already running → mark a pending rescan that the in-flight
+    ///     scan's `defer` fires (the append may post-date the importer's read).
+    ///   - We scanned < `claudeFileWatchScanMinInterval` ago → don't drop it;
+    ///     arm a single timer to scan once the throttle window expires. (A bare
+    ///     `runScan(minInterval:)` would return `throttled` and lose the event
+    ///     if it was the last append in a burst.)
+    ///   - Otherwise → scan now. The leading scan + the trailing timer give a
+    ///     scan at most every ~5s during continuous writes, never starving like
+    ///     a pure trailing debounce would.
+    @MainActor
+    func triggerClaudeFileWatchScan() {
+        guard !isScanning else {
+            claudeFileWatchScanPending = true
+            DeveloperLog.eventRecord(
+                "claude_file_watch.scan.coalesced",
+                category: "scan",
+                trigger: "claude-file-watch",
+                provider: "claude",
+                result: "coalesced")
+            return
+        }
+        let key = Self.scanThrottleKey(forRequested: ["claude"])
+        let interval = Self.claudeFileWatchScanMinInterval
+        if let last = lastScanAtByScope[key] {
+            let elapsed = Date().timeIntervalSince(last)
+            if elapsed < interval {
+                scheduleClaudeFileWatchTrailingScan(after: interval - elapsed)
+                return
+            }
+        }
+        runScan(providers: ["claude"], trigger: "claude-file-watch")
+    }
+
+    /// Arm a single timer that re-evaluates `triggerClaudeFileWatchScan` once
+    /// the throttle window expires. Coalesced: extra writes during the window
+    /// no-op rather than stacking timers, so a burst still yields one trailing
+    /// scan. Cancelled on watcher stop.
+    @MainActor
+    private func scheduleClaudeFileWatchTrailingScan(after delay: TimeInterval) {
+        guard claudeFileWatchTrailingTask == nil else { return }
+        claudeFileWatchTrailingTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
+            self.claudeFileWatchTrailingTask = nil
+            self.triggerClaudeFileWatchScan()
+        }
+    }
+
+    /// Fire the trailing Claude-only rescan queued by a write that arrived
+    /// mid-scan, if any. Called from `runScan`'s `defer` once `isScanning`
+    /// clears. Throttle-free on purpose: it's coalesced to at most one run per
+    /// scan, so it represents real un-imported bytes rather than spam.
+    @MainActor
+    func runPendingClaudeFileWatchScanIfNeeded() {
+        guard claudeFileWatchScanPending else { return }
+        claudeFileWatchScanPending = false
+        runScan(providers: ["claude"], trigger: "claude-file-watch-trailing")
+    }
+
+    /// Test seam: whether a coalesced trailing Claude file-watch rescan is
+    /// currently queued. Not used in production.
+    var _claudeFileWatchScanPendingForTest: Bool { claudeFileWatchScanPending }
+
+    /// Test seam: whether the throttle-window trailing timer is armed. Not
+    /// used in production.
+    var _claudeFileWatchHasTrailingTaskForTest: Bool { claudeFileWatchTrailingTask != nil }
+
+    /// Test seam: cancel the trailing timer so a test doesn't leave a 5s sleep
+    /// running. Not used in production.
+    func _cancelClaudeFileWatchTrailingTaskForTest() {
+        claudeFileWatchTrailingTask?.cancel()
+        claudeFileWatchTrailingTask = nil
+    }
+
+    private func stopClaudeFileWatcher() {
+        guard claudeFileWatcher != nil else { return }
+        claudeFileWatcher?.stop()
+        self.claudeFileWatcher = nil
+        claudeFileWatchTrailingTask?.cancel()
+        claudeFileWatchTrailingTask = nil
+        DeveloperLog.eventRecord(
+            "claude_file_watch.stop", category: "scan", provider: "claude")
+    }
+
     /// React to a change in `SettingsStore.enabledProviders` — start /
     /// stop the matching pollers, snap the dashboard provider filter
     /// off any disabled provider, and refresh menu bar + dashboard so
@@ -404,6 +574,7 @@ final class AppEnvironment {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             stopCodexPoller()
             stopClaudePoller()
+            stopClaudeFileWatcher()
             DeveloperLog.eventRecord(
                 "settings.enabled_providers.apply.skip_live_sources",
                 category: "settings",
@@ -423,8 +594,10 @@ final class AppEnvironment {
             }
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
+                ensureClaudeFileWatcher()
             } else {
                 stopClaudePoller()
+                stopClaudeFileWatcher()
             }
         } catch {
             self.lastError = String(describing: error)
@@ -515,6 +688,12 @@ final class AppEnvironment {
             trigger: trigger,
             parentOperation: op)
         refreshClaudeUsage(trigger: trigger, parentOperation: op)
+        // Retry watcher startup here (idempotent + self-gating): a user who
+        // enabled Claude before Claude Code had created ~/.claude/projects
+        // gets no watcher at launch, and nothing else would start one until
+        // relaunch / toggling the provider. Each refresh re-attempts cheaply
+        // and installs it once the transcript directory finally exists.
+        ensureClaudeFileWatcher()
         runScan(
             minInterval: throttle ? 20 : nil,
             trigger: trigger,
