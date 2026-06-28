@@ -59,3 +59,62 @@ struct ClaudeFileWatchTests {
         #expect(dirs.isEmpty)
     }
 }
+
+/// A `~/.claude` write that lands while a scan is already running must not be
+/// dropped: if the append post-dates the importer's read of that file, that
+/// FSEvents notification is the only signal for those bytes. So it's coalesced
+/// into exactly one trailing rescan that fires when the in-flight scan ends.
+@MainActor
+@Suite("Claude file-watch scan coalescing")
+struct ClaudeFileWatchCoalescingTests {
+
+    /// Keep `runScan` from touching real services when the trailing rescan
+    /// fires: with onboarding marked incomplete it returns at the gate.
+    private func withOnboardingIncomplete(_ body: () -> Void) {
+        let defaults = UserDefaults.standard
+        let key = "onboarding.providersDone"
+        let old = defaults.object(forKey: key)
+        defaults.set(false, forKey: key)
+        defer { if let old { defaults.set(old, forKey: key) } else { defaults.removeObject(forKey: key) } }
+        body()
+    }
+
+    @Test("a write during a scan is queued, not dropped")
+    func writeDuringScanIsQueued() {
+        withOnboardingIncomplete {
+            let env = AppEnvironment(startBackgroundTasks: false)
+            env.isScanning = true
+
+            env.triggerClaudeFileWatchScan()
+            #expect(env._claudeFileWatchScanPendingForTest,
+                    "a mid-scan write must be queued as a trailing rescan")
+        }
+    }
+
+    @Test("multiple writes during a scan coalesce into one trailing rescan")
+    func multipleWritesCoalesce() {
+        withOnboardingIncomplete {
+            let env = AppEnvironment(startBackgroundTasks: false)
+            env.isScanning = true
+            env.triggerClaudeFileWatchScan()
+            env.triggerClaudeFileWatchScan()
+            env.triggerClaudeFileWatchScan()
+            #expect(env._claudeFileWatchScanPendingForTest)
+
+            // The in-flight scan ends → exactly one trailing rescan is consumed.
+            env.isScanning = false
+            env.runPendingClaudeFileWatchScanIfNeeded()
+            #expect(!env._claudeFileWatchScanPendingForTest,
+                    "the queued rescan must be consumed exactly once")
+        }
+    }
+
+    @Test("no queued rescan stays a no-op")
+    func noPendingIsNoop() {
+        withOnboardingIncomplete {
+            let env = AppEnvironment(startBackgroundTasks: false)
+            env.runPendingClaudeFileWatchScanIfNeeded()
+            #expect(!env._claudeFileWatchScanPendingForTest)
+        }
+    }
+}

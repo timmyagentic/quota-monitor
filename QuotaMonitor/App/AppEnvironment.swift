@@ -70,6 +70,15 @@ final class AppEnvironment {
     var isRefreshingRateLimits = false
     var isRefreshingCodexResetCredits = false
     var isScanning = false
+    /// Coalescing flag for the Claude file-watcher. A `~/.claude` write that
+    /// lands while a scan is already running can't just rely on `runScan`'s
+    /// `isScanning` early-return: if the append happened after the importer
+    /// already read that JSONL file, that FSEvents notification would be lost
+    /// and the menu bar could stay stale until the next write / manual
+    /// refresh. So a write-during-scan sets this; the in-flight scan's `defer`
+    /// fires exactly one trailing Claude-only rescan. At most one queued
+    /// re-run regardless of how many writes arrived during the window.
+    private var claudeFileWatchScanPending = false
     var isLoadingDashboard = false
     /// Internal re-entrancy guard for `refreshPricingFromLiteLLM`. Not
     /// observed by any view — opted out of `@Observable` tracking so it
@@ -424,10 +433,7 @@ final class AppEnvironment {
         }
         let watcher = ClaudeFileWatcher(directories: dirs) { [weak self] in
             Task { @MainActor in
-                self?.runScan(
-                    minInterval: Self.claudeFileWatchScanMinInterval,
-                    providers: ["claude"],
-                    trigger: "claude-file-watch")
+                self?.triggerClaudeFileWatchScan()
             }
         }
         watcher.start()
@@ -439,6 +445,44 @@ final class AppEnvironment {
             result: "success",
             fields: ["watched_dirs": .int(dirs.count)])
     }
+
+    /// Entry point for a Claude transcript write. When a scan is already
+    /// running we can't drop the event (the append may post-date the
+    /// importer's read of that file), so we mark a trailing rescan that the
+    /// in-flight scan's `defer` will fire. Otherwise we scan now, throttled so
+    /// a burst of small appends can't cause a scan storm.
+    @MainActor
+    func triggerClaudeFileWatchScan() {
+        guard !isScanning else {
+            claudeFileWatchScanPending = true
+            DeveloperLog.eventRecord(
+                "claude_file_watch.scan.coalesced",
+                category: "scan",
+                trigger: "claude-file-watch",
+                provider: "claude",
+                result: "coalesced")
+            return
+        }
+        runScan(
+            minInterval: Self.claudeFileWatchScanMinInterval,
+            providers: ["claude"],
+            trigger: "claude-file-watch")
+    }
+
+    /// Fire the trailing Claude-only rescan queued by a write that arrived
+    /// mid-scan, if any. Called from `runScan`'s `defer` once `isScanning`
+    /// clears. Throttle-free on purpose: it's coalesced to at most one run per
+    /// scan, so it represents real un-imported bytes rather than spam.
+    @MainActor
+    func runPendingClaudeFileWatchScanIfNeeded() {
+        guard claudeFileWatchScanPending else { return }
+        claudeFileWatchScanPending = false
+        runScan(providers: ["claude"], trigger: "claude-file-watch-trailing")
+    }
+
+    /// Test seam: whether a coalesced trailing Claude file-watch rescan is
+    /// currently queued. Not used in production.
+    var _claudeFileWatchScanPendingForTest: Bool { claudeFileWatchScanPending }
 
     private func stopClaudeFileWatcher() {
         guard claudeFileWatcher != nil else { return }
