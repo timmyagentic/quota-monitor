@@ -39,6 +39,8 @@ parses backticks in the heredoc body as legacy command substitution
 even with a quoted delimiter — and the regex for `code` spans needs
 literal backticks. Putting it in a .py file sidesteps the issue.
 """
+from __future__ import annotations
+
 import argparse
 import re
 import sys
