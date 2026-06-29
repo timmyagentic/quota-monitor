@@ -182,24 +182,11 @@ struct MenuBarContentView: View {
                 .font(.headline)
             Spacer()
             if updater.updateAvailability.isVisible {
-                persistentUpdateBadge
+                PersistentUpdateBadge(style: .menu)
             }
             if env.isLoadingMenuBar {
                 ProgressView().controlSize(.small)
             }
         }
-    }
-
-    private var persistentUpdateBadge: some View {
-        Button {
-            updater.installAvailableUpdate()
-        } label: {
-            Image(systemName: "arrow.down.circle.fill")
-                .symbolRenderingMode(.hierarchical)
-        }
-        .buttonStyle(.borderless)
-        .foregroundStyle(.orange)
-        .help(L10n.updateBadgeHelp(updater.updateAvailability.version))
-        .accessibilityLabel(L10n.updateBadgeTitle(updater.updateAvailability.version))
     }
 }

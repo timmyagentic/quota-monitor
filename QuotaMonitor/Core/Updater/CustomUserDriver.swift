@@ -41,11 +41,13 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     var isUpdateWindowVisible: Bool { windowController.isWindowVisible }
 
     func installAvailableUpdateIfPossible() -> Bool {
-        guard installReplyIsActive, let install = state.onInstall else { return false }
+        guard installReplyIsActive, state.onInstall != nil else { return false }
         switch state.phase {
         case .updateAvailable, .readyToInstall:
             windowController.show()
-            install()
+            // `fireInstall()` consumes the sibling reply closures, so a window
+            // close right after this can't fire a second `.dismiss` reply.
+            state.fireInstall()
             return true
         default:
             return false

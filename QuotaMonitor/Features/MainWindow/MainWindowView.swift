@@ -48,7 +48,7 @@ struct MainWindowView: View {
 
             if updater.updateAvailability.isVisible {
                 ToolbarItem(placement: .primaryAction) {
-                    persistentUpdateBadge
+                    PersistentUpdateBadge(style: .toolbar)
                 }
             }
 
@@ -82,19 +82,6 @@ struct MainWindowView: View {
         }
         // Demote-on-close is owned by `AppWindowController.windowWillClose`
         // now that this is an AppKit-hosted window.
-    }
-
-    private var persistentUpdateBadge: some View {
-        Button {
-            updater.installAvailableUpdate()
-        } label: {
-            Label(L10n.updateBadgeTitle(updater.updateAvailability.version),
-                  systemImage: "arrow.down.circle.fill")
-        }
-        .labelStyle(.iconOnly)
-        .foregroundStyle(.orange)
-        .help(L10n.updateBadgeHelp(updater.updateAvailability.version))
-        .accessibilityLabel(L10n.updateBadgeTitle(updater.updateAvailability.version))
     }
 
     @ViewBuilder

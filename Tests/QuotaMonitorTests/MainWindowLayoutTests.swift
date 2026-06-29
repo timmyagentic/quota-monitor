@@ -14,17 +14,19 @@ struct MainWindowLayoutTests {
         #expect(!source.contains("line.3.horizontal.decrease.circle"))
     }
 
-    @Test("Available updates stay visible from main and menu surfaces")
+    @Test("Available updates stay visible from main and menu surfaces via the shared badge")
     func persistentUpdateBadgeIsExposedOnPrimarySurfaces() throws {
         let mainWindow = try Self.source(named: "QuotaMonitor/Features/MainWindow/MainWindowView.swift")
         let menuBar = try Self.source(named: "QuotaMonitor/Features/MenuBar/MenuBarContentView.swift")
+        let badge = try Self.source(named: "QuotaMonitor/Features/Shared/PersistentUpdateBadge.swift")
         let windowManager = try Self.source(named: "QuotaMonitor/App/WindowManager.swift")
         let statusItemController = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
 
-        #expect(mainWindow.contains("persistentUpdateBadge"))
-        #expect(mainWindow.contains("updater.installAvailableUpdate()"))
-        #expect(menuBar.contains("persistentUpdateBadge"))
-        #expect(menuBar.contains("updater.installAvailableUpdate()"))
+        // Both primary surfaces render the one shared component…
+        #expect(mainWindow.contains("PersistentUpdateBadge("))
+        #expect(menuBar.contains("PersistentUpdateBadge("))
+        // …and the install action lives in that single shared place.
+        #expect(badge.contains("updater.installAvailableUpdate()"))
         #expect(windowManager.contains(".environment(updater)"))
         #expect(statusItemController.contains(".environment(updater)"))
     }
