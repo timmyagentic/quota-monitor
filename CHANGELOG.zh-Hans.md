@@ -37,6 +37,7 @@ appcast 中按系统语言切换的双语更新说明。
 
 ### 变更
 - **Claude 实时用量约每 10 分钟刷新一次（原为 2 小时）。** 计划轮询 `/api/oauth/usage` 的间隔从 7200 秒降到 600 秒，让 5 小时/7 天配额表盘保持及时；现有的 429 退避梯度（5 分钟 → 30 分钟，遵循 `Retry-After`）仍会在被限流时自动退避。
+- **移除无用的 Claude CLI 刷新触发器（内部）。** 自 QuotaMonitor 改为通过直接 OAuth grant 自行刷新 Claude 令牌后，老的 `claude --version` spawn 刷新路径（`ClaudeCLIRefreshTrigger`）就再没被使用过；现已连同它的退避 / Keychain 轮询逻辑一并删除。仍然需要的 `claude` 二进制定位辅助函数挪到了专用的 `ClaudeBinaryLocator`，仅用于检测 Claude Code 版本。对用户无任何行为变化。
 
 ### 修复
 - **更新后不会再让只保存过语言的老用户重复进入 Landing Page。** 已保存语言选择的现有安装，即使旧版本从未写入 Provider 引导标记，现在也会跳过 Landing Page。
