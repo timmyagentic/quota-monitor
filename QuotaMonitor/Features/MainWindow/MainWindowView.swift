@@ -3,6 +3,7 @@ import SwiftUI
 struct MainWindowView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(SettingsStore.self) private var settings
+    @Environment(UpdaterController.self) private var updater
     @State private var tab: Tab = .dashboard
     /// Bumped by the toolbar Reload button. Folded into the inner view's
     /// `.id(...)` so any tab the user is looking at gets re-mounted, which
@@ -45,6 +46,12 @@ struct MainWindowView: View {
                 .fixedSize()
             }
 
+            if updater.updateAvailability.isVisible {
+                ToolbarItem(placement: .primaryAction) {
+                    persistentUpdateBadge
+                }
+            }
+
             // Reload — right. Bumps `reloadToken` so the inner view's
             // `.id(...)` changes, which re-mounts whatever tab the user
             // is on and re-fires its `.task`:
@@ -75,6 +82,19 @@ struct MainWindowView: View {
         }
         // Demote-on-close is owned by `AppWindowController.windowWillClose`
         // now that this is an AppKit-hosted window.
+    }
+
+    private var persistentUpdateBadge: some View {
+        Button {
+            updater.installAvailableUpdate()
+        } label: {
+            Label(L10n.updateBadgeTitle(updater.updateAvailability.version),
+                  systemImage: "arrow.down.circle.fill")
+        }
+        .labelStyle(.iconOnly)
+        .foregroundStyle(.orange)
+        .help(L10n.updateBadgeHelp(updater.updateAvailability.version))
+        .accessibilityLabel(L10n.updateBadgeTitle(updater.updateAvailability.version))
     }
 
     @ViewBuilder

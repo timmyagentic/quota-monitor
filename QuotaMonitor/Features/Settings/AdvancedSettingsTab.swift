@@ -44,6 +44,19 @@ struct AdvancedSettingsTab: View {
                 // control for end users (vs. provider polling cadence
                 // / database paths / pricing which are power-user knobs).
                 Section(L10n.sectionUpdates) {
+                    if updater.updateAvailability.isVisible {
+                        HStack(spacing: 8) {
+                            Label(L10n.updateBadgeTitle(updater.updateAvailability.version),
+                                  systemImage: "arrow.down.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Spacer()
+                            Button(updateActionTitle) {
+                                updater.installAvailableUpdate()
+                            }
+                        }
+                    }
+
                     // Automatic-check toggle. Two-way bound through the
                     // wrapper so flipping it both updates Sparkle's
                     // schedule and persists to UserDefaults under
@@ -274,6 +287,12 @@ struct AdvancedSettingsTab: View {
         formatter.locale = LocalizationStore.activeLanguage.locale
         formatter.unitsStyle = .short
         return L10n.lastRefreshed(formatter.localizedString(for: date, relativeTo: Date()))
+    }
+
+    private var updateActionTitle: String {
+        updater.updateAvailability.primaryAction == .installAndRelaunch
+            ? L10n.updateInstallAndRelaunch
+            : L10n.updateInstallButton
     }
 
     private var lastCheckedLabel: String {

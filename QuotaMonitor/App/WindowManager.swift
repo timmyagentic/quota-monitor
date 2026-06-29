@@ -165,7 +165,8 @@ final class WindowManager {
         case "dashboard":
             settingsTabSelection = nil
             root = AnyView(HostedWindow(content: MainWindowView())
-                .environment(env).environment(loc).environment(settings))
+                .environment(env).environment(loc).environment(settings)
+                .environment(updater))
             config = WindowConfig(
                 resizable: true,
                 initialContentSize: NSSize(width: 980, height: 680),

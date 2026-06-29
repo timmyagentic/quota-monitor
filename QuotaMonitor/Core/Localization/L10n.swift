@@ -708,6 +708,19 @@ enum L10n {
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
+    static func updateBadgeTitle(_ version: String?) -> String {
+        if let version, !version.isEmpty {
+            return t(en: "Update to \(version)", zh: "更新到 \(version)")
+        }
+        return t(en: "Update available", zh: "有可用更新")
+    }
+    static func updateBadgeHelp(_ version: String?) -> String {
+        if let version, !version.isEmpty {
+            return t(en: "Install \(Branding.appCodeName) \(version)",
+                     zh: "安装 \(Branding.appCodeName) \(version)")
+        }
+        return t(en: "Install the available update", zh: "安装可用更新")
+    }
 
     // MARK: - update window (custom Sparkle UI)
 

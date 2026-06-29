@@ -17,12 +17,18 @@ import OSLog
 final class CustomUserDriver: NSObject, SPUUserDriver {
 
     private let state = UpdateWindowState()
+    private let updateAvailability: PersistentUpdateAvailability
     private let onUpdateWindowClosed: @MainActor () -> Void
+    private var installReplyIsActive = false
     private lazy var windowController = UpdateWindowController(
         state: state,
         onWindowClosed: onUpdateWindowClosed)
 
-    init(onUpdateWindowClosed: @escaping @MainActor () -> Void = {}) {
+    init(
+        updateAvailability: PersistentUpdateAvailability = PersistentUpdateAvailability(),
+        onUpdateWindowClosed: @escaping @MainActor () -> Void = {}
+    ) {
+        self.updateAvailability = updateAvailability
         self.onUpdateWindowClosed = onUpdateWindowClosed
         super.init()
     }
@@ -33,6 +39,18 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     /// builds no `NSWindow` until `show()`, so this stays false (and cheap)
     /// until an update is actually presented.
     var isUpdateWindowVisible: Bool { windowController.isWindowVisible }
+
+    func installAvailableUpdateIfPossible() -> Bool {
+        guard installReplyIsActive, let install = state.onInstall else { return false }
+        switch state.phase {
+        case .updateAvailable, .readyToInstall:
+            windowController.show()
+            install()
+            return true
+        default:
+            return false
+        }
+    }
 
     private static let log = Logger(
         subsystem: Log.subsystem, category: "updater")
@@ -81,7 +99,11 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         let s = self.state
         s.reset()
 
-        s.newVersion = appcastItem.displayVersionString
+        let displayVersion = appcastItem.displayVersionString
+        updateAvailability.markAvailable(version: displayVersion)
+        installReplyIsActive = true
+
+        s.newVersion = displayVersion
         s.currentVersion = Bundle.main.infoDictionary?[
             "CFBundleShortVersionString"] as? String ?? "?"
         s.isCritical = appcastItem.isCriticalUpdate
@@ -97,9 +119,20 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
 
         s.phase = .updateAvailable
 
-        s.onInstall = { reply(.install) }
-        s.onSkip    = { reply(.skip) }
-        s.onDismiss = { reply(.dismiss) }
+        s.onInstall = { [weak self] in
+            self?.installReplyIsActive = false
+            reply(.install)
+        }
+        s.onSkip    = { [weak self, updateAvailability] in
+            self?.installReplyIsActive = false
+            updateAvailability.clear()
+            reply(.skip)
+        }
+        s.onDismiss = { [weak self, updateAvailability] in
+            self?.installReplyIsActive = false
+            updateAvailability.markDismissed()
+            reply(.dismiss)
+        }
 
         windowController.show()
     }
@@ -128,6 +161,8 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         _ error: Error,
         acknowledgement: @escaping () -> Void
     ) {
+        updateAvailability.clear()
+        installReplyIsActive = false
         state.reset()
         state.phase = .upToDate
         state.onAcknowledge = acknowledgement
@@ -146,6 +181,7 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         _ error: Error,
         acknowledgement: @escaping () -> Void
     ) {
+        installReplyIsActive = false
         state.reset()
         state.phase = .error(error.localizedDescription)
         state.onAcknowledge = acknowledgement
@@ -179,10 +215,23 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     }
 
     func showReady(toInstallAndRelaunch reply: @escaping (SPUUserUpdateChoice) -> Void) {
+        updateAvailability.markReadyToInstall(version: state.newVersion)
+        installReplyIsActive = true
         state.phase = .readyToInstall
-        state.onInstall = { reply(.install) }
-        state.onDismiss = { reply(.dismiss) }
-        state.onSkip    = { reply(.skip) }
+        state.onInstall = { [weak self] in
+            self?.installReplyIsActive = false
+            reply(.install)
+        }
+        state.onDismiss = { [weak self, updateAvailability] in
+            self?.installReplyIsActive = false
+            updateAvailability.markDismissed()
+            reply(.dismiss)
+        }
+        state.onSkip    = { [weak self, updateAvailability] in
+            self?.installReplyIsActive = false
+            updateAvailability.clear()
+            reply(.skip)
+        }
     }
 
     func showInstallingUpdate(
@@ -196,12 +245,15 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         _ relaunched: Bool,
         acknowledgement: @escaping () -> Void
     ) {
+        updateAvailability.clear()
+        installReplyIsActive = false
         state.phase = .done
         acknowledgement()
         windowController.close()
     }
 
     func dismissUpdateInstallation() {
+        installReplyIsActive = false
         state.reset()
         windowController.close()
     }

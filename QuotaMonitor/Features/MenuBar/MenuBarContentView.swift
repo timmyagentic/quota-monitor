@@ -10,6 +10,7 @@ import AppKit
 struct MenuBarContentView: View {
     @Environment(AppEnvironment.self) var env
     @Environment(SettingsStore.self) var settings
+    @Environment(UpdaterController.self) private var updater
     private let windowActions: @MainActor (AppEnvironment) -> MenuBarWindowActions
 
     init(windowActions: @escaping @MainActor (AppEnvironment) -> MenuBarWindowActions = MenuBarWindowActions.live) {
@@ -180,9 +181,25 @@ struct MenuBarContentView: View {
             Text(Branding.appDisplayName)
                 .font(.headline)
             Spacer()
+            if updater.updateAvailability.isVisible {
+                persistentUpdateBadge
+            }
             if env.isLoadingMenuBar {
                 ProgressView().controlSize(.small)
             }
         }
+    }
+
+    private var persistentUpdateBadge: some View {
+        Button {
+            updater.installAvailableUpdate()
+        } label: {
+            Image(systemName: "arrow.down.circle.fill")
+                .symbolRenderingMode(.hierarchical)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.orange)
+        .help(L10n.updateBadgeHelp(updater.updateAvailability.version))
+        .accessibilityLabel(L10n.updateBadgeTitle(updater.updateAvailability.version))
     }
 }

@@ -24,6 +24,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let popover: NSPopover
     private let env: AppEnvironment
     private let settings: SettingsStore
+    private let updater: UpdaterController
 
     /// Invoked when the display configuration changes (external monitor,
     /// resolution, notch) so the owner can re-run the clip check.
@@ -31,9 +32,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     init(env: AppEnvironment,
          localization: LocalizationStore,
-         settings: SettingsStore) {
+         settings: SettingsStore,
+         updater: UpdaterController) {
         self.env = env
         self.settings = settings
+        self.updater = updater
         self.statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength)
         self.popover = NSPopover()
@@ -54,6 +57,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 .environment(env)
                 .environment(localization)
                 .environment(settings)
+                .environment(updater)
                 .environment(\.locale, localization.locale))
 
         NotificationCenter.default.addObserver(

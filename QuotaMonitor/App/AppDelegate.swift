@@ -32,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         WindowManager.shared.configure(updater: updater)
 
         let controller = StatusItemController(
-            env: env, localization: loc, settings: settings)
+            env: env, localization: loc, settings: settings, updater: updater)
         controller.onScreenChange = { [weak self] in
             self?.enforceClipFallback()
         }
