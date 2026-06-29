@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.36] — 2026-06-29
+
 #### Summary
 - Contributors now have a concise setup guide for project layout and local checks
 - Existing installs that already picked a language no longer see the Landing Page again after updating
