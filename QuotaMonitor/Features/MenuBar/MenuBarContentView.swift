@@ -10,6 +10,7 @@ import AppKit
 struct MenuBarContentView: View {
     @Environment(AppEnvironment.self) var env
     @Environment(SettingsStore.self) var settings
+    @Environment(UpdaterController.self) private var updater
     private let windowActions: @MainActor (AppEnvironment) -> MenuBarWindowActions
 
     init(windowActions: @escaping @MainActor (AppEnvironment) -> MenuBarWindowActions = MenuBarWindowActions.live) {
@@ -180,6 +181,9 @@ struct MenuBarContentView: View {
             Text(Branding.appDisplayName)
                 .font(.headline)
             Spacer()
+            if updater.updateAvailability.isVisible {
+                PersistentUpdateBadge(style: .menu)
+            }
             if env.isLoadingMenuBar {
                 ProgressView().controlSize(.small)
             }

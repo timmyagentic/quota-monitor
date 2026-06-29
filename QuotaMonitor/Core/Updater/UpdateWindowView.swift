@@ -215,13 +215,13 @@ struct UpdateWindowView: View {
         case .error:
             HStack {
                 Spacer()
-                Button(L10n.done) { state.onAcknowledge?() }
+                Button(L10n.done) { state.fireAcknowledge() }
                     .buttonStyle(.borderedProminent)
             }
         case .downloading:
             HStack {
                 Spacer()
-                Button(L10n.cancel) { state.onCancel?() }
+                Button(L10n.cancel) { state.fireCancel() }
                     .buttonStyle(.bordered)
             }
         default:
@@ -231,15 +231,15 @@ struct UpdateWindowView: View {
 
     private var actionButtons: some View {
         HStack {
-            Button(L10n.updateSkipButton) { state.onSkip?() }
+            Button(L10n.updateSkipButton) { state.fireSkip() }
                 .buttonStyle(.bordered)
             Spacer()
-            Button(L10n.updateLaterButton) { state.onDismiss?() }
+            Button(L10n.updateLaterButton) { state.fireDismiss() }
                 .buttonStyle(.bordered)
             Button(state.phase == .readyToInstall
                    ? L10n.updateInstallAndRelaunch
                    : L10n.updateInstallButton) {
-                state.onInstall?()
+                state.fireInstall()
             }
             .buttonStyle(.borderedProminent)
         }

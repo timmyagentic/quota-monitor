@@ -3,6 +3,7 @@ import SwiftUI
 struct MainWindowView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(SettingsStore.self) private var settings
+    @Environment(UpdaterController.self) private var updater
     @State private var tab: Tab = .dashboard
     /// Bumped by the toolbar Reload button. Folded into the inner view's
     /// `.id(...)` so any tab the user is looking at gets re-mounted, which
@@ -43,6 +44,12 @@ struct MainWindowView: View {
                 .labelStyle(.titleAndIcon)
                 .labelsHidden()
                 .fixedSize()
+            }
+
+            if updater.updateAvailability.isVisible {
+                ToolbarItem(placement: .primaryAction) {
+                    PersistentUpdateBadge(style: .toolbar)
+                }
             }
 
             // Reload — right. Bumps `reloadToken` so the inner view's

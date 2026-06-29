@@ -47,6 +47,8 @@ final class UpdaterController {
     /// Bound to a `Toggle` in Advanced settings.
     var automaticallyChecksForUpdates: Bool = true
 
+    let updateAvailability: PersistentUpdateAvailability
+
     @ObservationIgnored
     private let updater: SPUUpdater?
 
@@ -56,7 +58,12 @@ final class UpdaterController {
     @ObservationIgnored
     private var cancellables: Set<AnyCancellable> = []
 
-    init(onUpdateWindowClosed: @escaping @MainActor () -> Void = {}) {
+    init(
+        updateAvailability: PersistentUpdateAvailability = PersistentUpdateAvailability(),
+        onUpdateWindowClosed: @escaping @MainActor () -> Void = {}
+    ) {
+        self.updateAvailability = updateAvailability
+
         if DistributionChannel.current == .appStore {
             self.updater = nil
             self.userDriver = nil
@@ -68,6 +75,7 @@ final class UpdaterController {
         }
 
         let driver = CustomUserDriver(
+            updateAvailability: updateAvailability,
             onUpdateWindowClosed: onUpdateWindowClosed)
         self.userDriver = driver
 
@@ -127,6 +135,21 @@ final class UpdaterController {
     /// Sparkle dedups internally.
     func checkNow() {
         updater?.checkForUpdates()
+    }
+
+    /// Primary action for the persistent update badge. If the Sparkle user
+    /// driver still has an active install reply, use it immediately; otherwise
+    /// ask Sparkle to re-check, which re-opens the update window for the known
+    /// available version.
+    func installAvailableUpdate() {
+        guard updateAvailability.isVisible else {
+            checkNow()
+            return
+        }
+        if userDriver?.installAvailableUpdateIfPossible() == true {
+            return
+        }
+        checkNow()
     }
 
     /// Persist the user's automatic-check preference. Writes through

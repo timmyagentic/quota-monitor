@@ -90,6 +90,37 @@ final class UpdateWindowState {
     /// Acknowledges an error / not-found state.
     var onAcknowledge: (() -> Void)?
 
+    // MARK: - Firing replies (consume-once)
+
+    /// Send the user's choice to Sparkle exactly once.
+    ///
+    /// Sparkle's `SPUUserUpdateChoice` reply must be called a single time per
+    /// interaction. The action closure is captured, *all* reply closures are
+    /// cleared, and only then is the captured closure invoked — so a later
+    /// `handleWindowClose()` (e.g. the user closing the still-open window after
+    /// the persistent badge already fired install) finds nil handlers and
+    /// cannot send a second, conflicting reply.
+    func fireInstall()     { consume(\.onInstall) }
+    func fireSkip()        { consume(\.onSkip) }
+    func fireDismiss()     { consume(\.onDismiss) }
+    func fireCancel()      { consume(\.onCancel) }
+    func fireAcknowledge() { consume(\.onAcknowledge) }
+
+    private func consume(_ handler: KeyPath<UpdateWindowState, (() -> Void)?>) {
+        let action = self[keyPath: handler]
+        clearActionHandlers()
+        action?()
+    }
+
+    /// Drop every reply closure so none can fire again.
+    private func clearActionHandlers() {
+        onInstall = nil
+        onSkip = nil
+        onDismiss = nil
+        onCancel = nil
+        onAcknowledge = nil
+    }
+
     // MARK: - Helpers
 
     /// Translate a user-initiated window close (the title-bar close button)
@@ -105,19 +136,14 @@ final class UpdateWindowState {
     func handleWindowClose() {
         switch phase {
         case .checking, .downloading, .extracting:
-            onCancel?()
+            fireCancel()
         case .updateAvailable, .readyToInstall:
-            onDismiss?()
+            fireDismiss()
         case .error, .upToDate:
-            onAcknowledge?()
+            fireAcknowledge()
         case .idle, .installing, .done:
-            break   // no reply is owed to Sparkle in these phases
+            clearActionHandlers()   // no reply is owed to Sparkle in these phases
         }
-        onInstall = nil
-        onSkip = nil
-        onDismiss = nil
-        onCancel = nil
-        onAcknowledge = nil
     }
 
     /// Reset all mutable state back to defaults. Called before showing a
@@ -132,10 +158,6 @@ final class UpdateWindowState {
         totalBytes = 0
         downloadedBytes = 0
         extractionProgress = 0
-        onInstall = nil
-        onSkip = nil
-        onDismiss = nil
-        onCancel = nil
-        onAcknowledge = nil
+        clearActionHandlers()
     }
 }
