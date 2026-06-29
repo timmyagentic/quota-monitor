@@ -44,6 +44,7 @@ window copy.
 
 ### Changed
 - **Claude live usage refreshes ~every 10 minutes (was 2 hours).** The scheduled `/api/oauth/usage` poll cadence drops from 7200s to 600s so the 5h/7d quota meter stays current; the existing 429 cooldown ladder (5 min → 30 min, honouring `Retry-After`) still backs off automatically if the endpoint rate-limits us.
+- **Removed the dead Claude CLI refresh trigger (internal).** The legacy `claude --version` spawn-to-refresh path (`ClaudeCLIRefreshTrigger`) has been unused since QuotaMonitor began refreshing the Claude token itself via a direct OAuth grant; it and its cooldown / Keychain-polling machinery are deleted. The still-needed `claude` binary-location helpers moved to a focused `ClaudeBinaryLocator` used only for Claude Code version detection. No user-facing behaviour change.
 
 ### Fixed
 - **Update onboarding no longer repeats for language-only profiles.** Existing installs that had already saved a language choice now skip the Landing Page even if older builds never wrote provider onboarding markers.

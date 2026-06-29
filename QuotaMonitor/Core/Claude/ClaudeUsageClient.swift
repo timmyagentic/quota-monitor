@@ -985,12 +985,12 @@ enum ClaudeCodeVersionDetector {
         guard LocalQAEnvironment.allowsExternalDataSources() else { return nil }
         let env = augmentedEnvironment()
         let home = env["HOME"] ?? NSHomeDirectory()
-        guard let binary = ClaudeCLIRefreshTrigger.resolveClaudeBinary(
+        guard let binary = ClaudeBinaryLocator.resolveClaudeBinary(
             explicitOverride: env["CLAUDE_BINARY"],
             home: home,
             loginShellPath: discoverClaudeViaLoginShell(environment: env),
             path: env["PATH"] ?? "",
-            desktopBundlePath: ClaudeCLIRefreshTrigger.discoverClaudeDesktopBundle(
+            desktopBundlePath: ClaudeBinaryLocator.discoverClaudeDesktopBundle(
                 home: home,
                 isExecutable: FileManager.default.isExecutableFile(atPath:)),
             isExecutable: FileManager.default.isExecutableFile(atPath:))
