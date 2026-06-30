@@ -49,7 +49,11 @@ final class HistoryRootAuthorizationStore: @unchecked Sendable {
 
     func authorize(kind: HistoryRootKind, url: URL) throws {
         let bookmark = try url.bookmarkData(
-            options: [.withSecurityScope],
+            // The App Store entitlement is `…files.user-selected.read-only`, so
+            // the persisted bookmark must be created read-only too — a plain
+            // `.withSecurityScope` bookmark requests read-write scope the
+            // entitlement can't grant and fails to persist in the sandbox.
+            options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
             includingResourceValuesForKeys: nil,
             relativeTo: nil)
         defaults.set(bookmark, forKey: bookmarkKey(for: kind))
@@ -85,7 +89,7 @@ final class HistoryRootAuthorizationStore: @unchecked Sendable {
             let didStart = url.startAccessingSecurityScopedResource()
             defer { if didStart { url.stopAccessingSecurityScopedResource() } }
             if let refreshed = try? url.bookmarkData(
-                options: [.withSecurityScope],
+                options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                 includingResourceValuesForKeys: nil,
                 relativeTo: nil) {
                 defaults.set(refreshed, forKey: bookmarkKey(for: kind))
@@ -96,7 +100,22 @@ final class HistoryRootAuthorizationStore: @unchecked Sendable {
     }
 
     func missingRequiredKinds(for providers: Set<String>) -> [HistoryRootKind] {
-        requiredKinds(for: providers).filter { resolvedURL(for: $0) == nil }
+        var missing: [HistoryRootKind] = []
+        if providers.contains("codex"), resolvedURL(for: .codexHome) == nil {
+            missing.append(.codexHome)
+        }
+        if providers.contains("claude") {
+            // Claude imports from either the primary `~/.claude/projects` or the
+            // alternate `~/.config/claude/projects` (`ClaudeImportEngine.defaultRoots`
+            // scans whichever is bookmarked), so authorizing either one is enough.
+            // Only report the primary kind as missing when neither is granted.
+            let claudeAuthorized = resolvedURL(for: .claudeProjects) != nil
+                || resolvedURL(for: .claudeConfigProjects) != nil
+            if !claudeAuthorized {
+                missing.append(.claudeProjects)
+            }
+        }
+        return missing
     }
 
     /// The subset of `providers` whose required history folders are all
@@ -106,17 +125,6 @@ final class HistoryRootAuthorizationStore: @unchecked Sendable {
     /// A provider with no folder requirement counts as authorized.
     func authorizedProviders(from providers: Set<String>) -> Set<String> {
         Set(providers.filter { missingRequiredKinds(for: [$0]).isEmpty })
-    }
-
-    func requiredKinds(for providers: Set<String>) -> [HistoryRootKind] {
-        var kinds: [HistoryRootKind] = []
-        if providers.contains("codex") {
-            kinds.append(.codexHome)
-        }
-        if providers.contains("claude") {
-            kinds.append(.claudeProjects)
-        }
-        return kinds
     }
 
     private func bookmarkKey(for kind: HistoryRootKind) -> String {

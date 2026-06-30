@@ -108,6 +108,25 @@ struct HistoryRootAuthorizationTests {
         #expect(store.authorizedProviders(from: ["mystery"]) == ["mystery"])
     }
 
+    @Test("Granting only the alternate Claude config root authorizes Claude")
+    func alternateClaudeRootAuthorizesClaude() throws {
+        let defaults = try freshDefaults()
+        defer { defaults.defaults.removePersistentDomain(forName: defaults.suiteName) }
+        let store = HistoryRootAuthorizationStore(defaults: defaults.defaults)
+
+        let altDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-auth-claude-config-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: altDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: altDir) }
+
+        // The optional alternate picker grants only `~/.config/claude/projects`;
+        // that alone must authorize Claude even though `.claudeProjects` is unset.
+        try store.authorize(kind: .claudeConfigProjects, url: altDir)
+
+        #expect(store.missingRequiredKinds(for: ["claude"]).isEmpty)
+        #expect(store.authorizedProviders(from: ["claude"]) == ["claude"])
+    }
+
     @Test("History root store persists selected directory paths")
     func historyRootStorePersistsSelectedPaths() throws {
         let defaults = try freshDefaults()
