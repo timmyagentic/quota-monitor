@@ -30,6 +30,12 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+- Contributors get an architecture guide that maps the app's structure and the gotchas to watch for when editing it
+
+### Added
+- **Architecture guide (`CLAUDE.md`).** Added a concise architecture map covering the `AppEnvironment` hub, the two data planes, and common editing pitfalls, complementing the existing contributor guide.
+
 ## [0.2.36] — 2026-06-29
 
 #### Summary
