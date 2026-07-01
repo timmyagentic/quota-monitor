@@ -205,6 +205,29 @@ final class AppEnvironment {
         }
     }
 
+    func reloadHistoryImportRoots() {
+        guard let db = database else { return }
+        importEngine = ImportEngine(database: db)
+        claudeEngine = ClaudeImportEngine(database: db)
+        // Rebuild the Claude file-watcher against the new roots so a mid-session
+        // folder grant/clear (App Store) starts/stops live watching instead of
+        // staying pinned to the roots captured at launch. Stop then re-ensure —
+        // both are self-gating on enabled/appStore/roots, so Developer ID just
+        // re-installs the same HOME watcher.
+        stopClaudeFileWatcher()
+        ensureClaudeFileWatcher()
+    }
+
+    /// Settings entry point for a history-folder grant/clear: rebuild the
+    /// import engines against the new authorized roots AND re-import right
+    /// away, so a folder picked in Settings → Advanced takes effect without
+    /// waiting for the next popover scan. (Onboarding picks several folders
+    /// then scans once at finish, so it uses the plain `reloadHistoryImportRoots`.)
+    func reloadHistoryImportRootsAndRescan() {
+        reloadHistoryImportRoots()
+        runScan(minInterval: 0)
+    }
+
     /// Boot the background rate-limit poller. Idempotent.
     ///
     /// Hard-gated on onboarding completion so a fresh-install user
@@ -437,8 +460,20 @@ final class AppEnvironment {
         let snap = SettingsStore.snapshot()
         guard snap.hasCompletedProviderOnboarding,
               snap.enabledProviders.contains("claude") else { return }
-        let dirs = ClaudeFileWatcher.watchedDirectories(
-            home: LocalQAEnvironment.homeDirectory())
+        let dirs: [URL]
+        let scopedAccess: (any SecurityScopedResourceAccessing)?
+        if DistributionChannel.current == .appStore {
+            // App Store: watch the authorized bookmark roots (the same set the
+            // importer scans), holding their security scope for the stream's
+            // lifetime. Don't fileExists-filter — a scoped path can read as
+            // missing until its scope is opened, which the watcher does itself.
+            dirs = ClaudeImportEngine.defaultRoots()
+            scopedAccess = FoundationSecurityScopedResourceAccessing()
+        } else {
+            dirs = ClaudeFileWatcher.watchedDirectories(
+                home: LocalQAEnvironment.homeDirectory())
+            scopedAccess = nil
+        }
         guard !dirs.isEmpty else {
             DeveloperLog.eventRecord(
                 "claude_file_watch.start.skip",
@@ -448,7 +483,10 @@ final class AppEnvironment {
                 fields: ["reason": "no-claude-directory"])
             return
         }
-        let watcher = ClaudeFileWatcher(directories: dirs) { [weak self] in
+        let watcher = ClaudeFileWatcher(
+            directories: dirs,
+            securityScopedAccess: scopedAccess
+        ) { [weak self] in
             Task { @MainActor in
                 self?.triggerClaudeFileWatchScan()
             }

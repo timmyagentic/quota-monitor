@@ -18,6 +18,10 @@ Expected local smoke evidence:
 - The signed app entitlements include `com.apple.security.app-sandbox = true`.
 - `com.apple.security.network.client = true` remains present for HTTPS quota
   and pricing requests.
+- `com.apple.security.files.user-selected.read-only = true` and
+  `com.apple.security.files.bookmarks.app-scope = true` are present so local
+  Codex / Claude history imports can use user-selected folders with persistent
+  security-scoped bookmarks.
 - The Developer ID-only `allow-dyld-environment-variables` entitlement is not
   present.
 - `SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`,
@@ -61,26 +65,32 @@ Expected evidence:
 ## Current Feasibility Result
 
 The repository can produce a local Mac App Store-shaped `.app` smoke artifact:
-it is sandbox-signed and carries an app-store distribution marker, while the
-existing Developer ID source plist and release scripts remain unchanged.
+it is sandbox-signed, carries an app-store distribution marker, and routes local
+Codex / Claude history import roots through user-selected security-scoped
+bookmarks. The existing Developer ID source plist and release scripts remain
+unchanged.
 
 This is not yet a production-ready App Store submission. It proves a build-time
 separation point and exposes the remaining product and review risks.
 
 ## Remaining Review Risks
 
-1. Local history access still assumes direct reads from `~/.codex`,
-   `~/.claude`, and `~/.config/claude`. A real Mac App Store build should move
-   this to user-selected folders with security-scoped bookmarks, or remove local
-   history scanning from the App Store variant.
+1. The security-scoped bookmark flow is covered by local tests and a smoke
+   entitlement check, but still needs a manual pass from a signed App Store
+   artifact: fresh launch, choose folders, relaunch, import, and verify stale
+   bookmark behavior.
 2. Live Codex quota checks currently spawn a user-installed `codex` binary.
    That is high-risk for App Review and sandbox behavior; the App Store variant
    should either disable that path or replace it with an App Store-safe API
    flow.
-3. Claude credential refresh currently shells through `claude` and can read a
-   non-interactive Keychain item. That should be reviewed for App Store policy
-   and likely disabled unless a user-facing, reviewable credential flow is
-   designed.
+3. Claude credential *reading* still relies on App-Store-incompatible access.
+   QuotaMonitor now refreshes the token itself via a direct OAuth grant (a
+   network call — sandbox-safe), but to bootstrap a token it still reads
+   `~/.claude/.credentials.json` (outside the sandbox container) and the
+   `Claude Code-credentials` Keychain item by spawning `/usr/bin/security`, and
+   separately spawns the `claude` binary to detect the Code version. Those
+   reads — not the refresh — need an App-Store-safe path (e.g. a user-selected
+   credential flow) or disabling.
 4. Sparkle is runtime-disabled and its update plist keys are removed from the
    app-store artifact, but the SwiftPM target still links and embeds Sparkle in
    this spike because the existing app code depends on update-window types. A
@@ -89,11 +99,20 @@ separation point and exposes the remaining product and review risks.
 5. A real App Store Connect upload still needs App Store metadata, a privacy
    policy URL, a bundle/app record decision, an App Store provisioning profile,
    and review notes that explain the data sources and sandbox permissions.
+6. Data continuity for a user moving from the Developer ID build to the App
+   Store build is unaddressed. `DatabaseManager` migrates the legacy
+   `~/Library/Application Support/CodexMonitor/*.sqlite` on first launch, but in
+   the sandbox `Application Support` is redirected into the app container, so the
+   Developer-ID-written database (outside the container) is neither readable nor
+   migratable — an App Store install would silently start from an empty history.
+   A migration path (e.g. a user-selected import of the old database) is needed
+   before the two builds can be presented as the same product.
 
 ## Recommended Next Steps
 
-1. Add a user-facing folder authorization flow for Codex and Claude history
-   roots, backed by security-scoped bookmarks.
+1. Manually validate the folder authorization flow from a signed App Store
+   smoke build, including persistence of security-scoped bookmarks after
+   relaunch.
 2. Add a compile-time App Store target or package variant that removes Sparkle
    from target dependencies instead of only disabling it at runtime.
 3. Decide whether the App Store product should support live Codex/Claude quota

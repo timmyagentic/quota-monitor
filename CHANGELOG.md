@@ -30,6 +30,12 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+- App Store builds can ask for local Codex and Claude history folders before importing
+
+### Added
+- **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
+
 ## [0.2.37] — 2026-07-01
 
 #### Summary

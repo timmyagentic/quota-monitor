@@ -24,6 +24,12 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+- App Store 版本导入前可以要求选择本地 Codex 和 Claude 历史目录
+
+### 新增
+- **App Store 历史目录授权。** App Store 版本现在会为你选择的 Codex 和 Claude 历史目录保存只读 security-scoped bookmark，让本地历史导入可以留在 macOS 沙盒边界内。
+
 ## [0.2.37] — 2026-07-01
 
 #### Summary

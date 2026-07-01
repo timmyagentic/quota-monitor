@@ -40,6 +40,33 @@ extension AppEnvironment {
                 fields: ["reason": "onboarding"])
             return
         }
+        // App Store sandbox builds can only read history folders the user has
+        // explicitly authorized (security-scoped bookmarks). Abort the scan
+        // ONLY when *no* enabled provider is authorized — otherwise we scope
+        // the scan to the authorized subset below, so an authorized Codex
+        // keeps importing while Claude still awaits a folder grant (and vice
+        // versa). Developer ID builds skip this branch entirely.
+        if DistributionChannel.current == .appStore {
+            let authorized = HistoryRootAuthorizationStore.shared
+                .authorizedProviders(from: initialSnap.enabledProviders)
+            if Self.appStoreScanShouldAbort(isAppStore: true, authorized: authorized) {
+                let missing = HistoryRootAuthorizationStore.shared
+                    .missingRequiredKinds(for: initialSnap.enabledProviders)
+                let labels = missing.map(\.rawValue).joined(separator: ",")
+                lastError = L10n.historyFoldersNotAuthorized
+                DeveloperLog.eventRecord(
+                    "scan.run.skip",
+                    category: "scan",
+                    operation: parentOperation,
+                    trigger: trigger,
+                    result: "skipped",
+                    fields: [
+                        "reason": "history-roots-missing",
+                        "missing_roots": .string(labels)
+                    ])
+                return
+            }
+        }
         // Throttle against the last scan *of the same scope* — a Claude-only
         // watcher scan must not throttle the full popover scan (which imports
         // Codex too), and vice-versa.
@@ -93,8 +120,18 @@ extension AppEnvironment {
                 // A requested scope (e.g. the Claude file-watcher's
                 // ["claude"]) is intersected with the enabled set so a
                 // ~/.claude write never triggers Codex's whole-file re-parse.
-                let scanProviders = Self.resolveScanProviders(
+                let requestedScope = Self.resolveScanProviders(
                     requested: providers, enabled: enabled)
+                // In App Store builds, further restrict to providers whose
+                // history folder is authorized — the unauthorized ones are
+                // simply skipped this run (not aborted), matching the gate above.
+                let isAppStore = DistributionChannel.current == .appStore
+                let scanProviders = Self.appStoreScanProviders(
+                    requested: requestedScope,
+                    authorized: isAppStore
+                        ? HistoryRootAuthorizationStore.shared.authorizedProviders(from: enabled)
+                        : [],
+                    isAppStore: isAppStore)
                 let fastMode = snap.codexFastModeBilling
                 DeveloperLog.eventRecord(
                     "scan.providers",
@@ -154,6 +191,11 @@ extension AppEnvironment {
                 await MainActor.run {
                     self.lastScanReport = merged
                     self.lastScanAtByScope[throttleKey] = Date()
+                    // A resolved-but-unopenable App Store bookmark imported
+                    // nothing silently; tell the user to re-select the folder.
+                    if merged.scopeUnavailable {
+                        self.lastError = L10n.historyFolderScopeUnavailable
+                    }
                 }
                 DeveloperLog.finishOperation(
                     op,
@@ -288,7 +330,23 @@ extension AppEnvironment {
             importedSessions: a.importedSessions + b.importedSessions,
             importedEvents: a.importedEvents + b.importedEvents,
             importedRateLimitSamples: a.importedRateLimitSamples + b.importedRateLimitSamples,
-            errors: a.errors + b.errors)
+            errors: a.errors + b.errors,
+            scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
+    }
+
+    /// Pure App Store scan-scope decisions, extracted so they can be unit-tested
+    /// without the full `runScan` machinery. Developer ID builds are never
+    /// scoped or aborted.
+    nonisolated static func appStoreScanShouldAbort(
+        isAppStore: Bool, authorized: Set<String>
+    ) -> Bool {
+        isAppStore && authorized.isEmpty
+    }
+
+    nonisolated static func appStoreScanProviders(
+        requested: Set<String>, authorized: Set<String>, isAppStore: Bool
+    ) -> Set<String> {
+        isAppStore ? requested.intersection(authorized) : requested
     }
 
     func beginScanProgress() -> UUID {

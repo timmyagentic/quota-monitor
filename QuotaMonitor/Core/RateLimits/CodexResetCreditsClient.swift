@@ -10,6 +10,7 @@ actor CodexResetCreditsClient: CodexResetCreditsFetching {
     enum FetchError: Error, CustomStringConvertible, Equatable {
         case disabledInLocalQA
         case noCredentials
+        case folderNotAuthorized
         case http(Int, String)
         case malformed(String)
         case transport(String)
@@ -20,6 +21,8 @@ actor CodexResetCreditsClient: CodexResetCreditsFetching {
                 return "Codex reset credits are disabled in local QA"
             case .noCredentials:
                 return "No Codex ChatGPT credentials found (run `codex login`)"
+            case .folderNotAuthorized:
+                return "Codex history folder not authorized — choose it in Settings"
             case .http(let code, let body):
                 return "Codex reset credits HTTP \(code): \(body.prefix(120))"
             case .malformed(let message):
@@ -30,26 +33,51 @@ actor CodexResetCreditsClient: CodexResetCreditsFetching {
         }
     }
 
-    private let authFileURL: URL
+    /// Resolves the Codex history folder **per fetch** (not captured at init):
+    /// Developer ID returns `~/.codex`; App Store returns the security-scoped
+    /// bookmark folder once granted, or nil until then. Resolving lazily means a
+    /// mid-session folder grant is honored without reconstructing the client.
+    private let codexHomeProvider: @Sendable () -> URL?
+    private let securityScopedAccess: any SecurityScopedResourceAccessing
     private let endpoint: URL
     private let loader: DataLoader
 
     init(
-        authFileURL: URL = SessionScanner.defaultCodexHome()
-            .appendingPathComponent("auth.json", isDirectory: false),
+        codexHomeProvider: @escaping @Sendable () -> URL? = {
+            SessionScanner.defaultCodexHome()
+        },
         endpoint: URL = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!,
+        securityScopedAccess: any SecurityScopedResourceAccessing =
+            FoundationSecurityScopedResourceAccessing(),
         loader: @escaping DataLoader = { request in
             try await URLSession.shared.data(for: request)
         }
     ) {
-        self.authFileURL = authFileURL
+        self.codexHomeProvider = codexHomeProvider
         self.endpoint = endpoint
+        self.securityScopedAccess = securityScopedAccess
         self.loader = loader
     }
 
     func fetchResetCredits() async throws -> CodexResetCreditsSnapshot {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             throw FetchError.disabledInLocalQA
+        }
+        // Resolve the folder now, not at init, so an App Store folder granted
+        // after launch is picked up. Read `auth.json` while holding the folder's
+        // security scope (a no-op for the Developer ID real path).
+        guard let codexHome = codexHomeProvider() else {
+            throw FetchError.folderNotAuthorized
+        }
+        let authFileURL = codexHome.appendingPathComponent("auth.json", isDirectory: false)
+        let access = securityScopedAccess.access(codexHome)
+        defer { access.stop() }
+        // App Store: the bookmark resolved but its scope wouldn't open (folder
+        // moved/revoked). Report that distinctly instead of a misleading
+        // "run codex login". Developer ID paths are non-scoped (didStart=false
+        // is normal there), so only gate this in App Store mode.
+        if DistributionChannel.current == .appStore, !access.didStart {
+            throw FetchError.folderNotAuthorized
         }
         let auth = try Self.loadAuth(from: authFileURL)
         var request = URLRequest(url: endpoint)

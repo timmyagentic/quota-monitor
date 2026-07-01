@@ -100,6 +100,39 @@ struct ClaudeFileWatchTests {
         #expect(watcher.start() == true)  // already running → still success
         watcher.stop()
     }
+
+    @Test("start()/stop() balance the injected security scope for every root")
+    func balancesInjectedSecurityScope() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("qm-fsw-scope-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // App Store watches bookmark roots and must hold their scope for the
+        // stream's lifetime: opened on start(), released on stop().
+        let access = RecordingScopeAccess()
+        let watcher = ClaudeFileWatcher(
+            directories: [dir], securityScopedAccess: access) {}
+        #expect(watcher.start() == true)
+        #expect(access.events == ["start:\(dir.path)"])
+        watcher.stop()
+        #expect(access.events == ["start:\(dir.path)", "stop:\(dir.path)"])
+    }
+}
+
+private final class RecordingScopeAccess:
+    SecurityScopedResourceAccessing, @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var recorded: [String] = []
+    var events: [String] { lock.withLock { recorded } }
+    func access(_ url: URL) -> SecurityScopedResourceAccess {
+        record("start:\(url.path)")
+        return SecurityScopedResourceAccess(url: url, didStart: true) { [weak self] in
+            self?.record("stop:\(url.path)")
+        }
+    }
+    private func record(_ event: String) { lock.withLock { recorded.append(event) } }
 }
 
 /// A `~/.claude` write that lands while a scan is already running must not be

@@ -20,6 +20,18 @@ class MacAppStoreReadinessTests(unittest.TestCase):
 
         self.assertIs(entitlements["com.apple.security.app-sandbox"], True)
         self.assertIs(entitlements["com.apple.security.network.client"], True)
+        self.assertIs(
+            entitlements["com.apple.security.files.user-selected.read-only"],
+            True,
+        )
+        self.assertIs(
+            entitlements["com.apple.security.files.bookmarks.app-scope"],
+            True,
+        )
+        self.assertNotIn(
+            "com.apple.security.files.user-selected.read-write",
+            entitlements,
+        )
         self.assertNotIn(
             "com.apple.security.cs.allow-dyld-environment-variables",
             entitlements,
@@ -62,6 +74,36 @@ class MacAppStoreReadinessTests(unittest.TestCase):
         self.assertIn("not uploaded", doc)
         self.assertIn("security-scoped bookmarks", doc)
         self.assertIn("Sparkle", doc)
+
+    def test_history_importers_do_not_use_network_clients(self):
+        importer_sources = [
+            "QuotaMonitor/Core/Importer/SessionScanner.swift",
+            "QuotaMonitor/Core/Importer/ImportEngine.swift",
+            "QuotaMonitor/Core/Importer/ClaudeImportEngine.swift",
+            "QuotaMonitor/Core/Importer/RolloutParser.swift",
+        ]
+        forbidden_network_symbols = [
+            "URLSession",
+            "Network.framework",
+            "NWConnection",
+            "AppServerClient",
+            "ClaudeUsageClient",
+            "RateLimitPoller",
+            "ClaudeUsagePoller",
+        ]
+
+        combined = "\n".join(self.read_text(path) for path in importer_sources)
+        for symbol in forbidden_network_symbols:
+            self.assertNotIn(symbol, combined)
+
+    def test_database_default_stays_in_application_support_container(self):
+        storage = self.read_text("QuotaMonitor/Core/Storage/DatabaseManager.swift")
+
+        self.assertIn("applicationSupportDirectory", storage)
+        self.assertIn("QuotaMonitor", storage)
+        self.assertIn("quotamonitor.sqlite", storage)
+        self.assertNotIn(".codex", storage)
+        self.assertNotIn(".claude", storage)
 
 
 if __name__ == "__main__":

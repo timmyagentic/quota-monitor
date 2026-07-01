@@ -47,26 +47,68 @@ import GRDB
 actor ClaudeImportEngine {
     private let database: DatabaseManager
     private let claudeRoots: [URL]
+    private let securityScopedAccess: any SecurityScopedResourceAccessing
 
     init(database: DatabaseManager,
-         claudeRoots: [URL] = ClaudeImportEngine.defaultRoots()) {
+         claudeRoots: [URL] = ClaudeImportEngine.defaultRoots(),
+         securityScopedAccess: any SecurityScopedResourceAccessing =
+            FoundationSecurityScopedResourceAccessing()) {
         self.database = database
         self.claudeRoots = claudeRoots
+        self.securityScopedAccess = securityScopedAccess
     }
 
     /// Resolve the directories where Claude Code stores rollouts —
     /// both legacy (`~/.claude/projects`) and new
     /// (`~/.config/claude/projects`). Non-existent directories are
     /// silently ignored — `scan()` just returns an empty list.
-    static func defaultRoots() -> [URL] {
-        let home = LocalQAEnvironment.homeDirectory()
-        return [
+    static func defaultRoots(
+        distribution: DistributionChannel = .current,
+        authorizations: HistoryRootAuthorizationStore = .shared,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [URL] {
+        if LocalQAEnvironment.isActive(environment: environment, arguments: arguments) {
+            return legacyDefaultRoots(
+                home: LocalQAEnvironment.homeDirectory(
+                    environment: environment,
+                    arguments: arguments))
+        }
+
+        if distribution == .appStore {
+            return [
+                authorizations.resolvedURL(for: .claudeProjects),
+                authorizations.resolvedURL(for: .claudeConfigProjects),
+            ].compactMap(\.self)
+        }
+
+        return legacyDefaultRoots(
+            home: LocalQAEnvironment.homeDirectory(
+                environment: environment,
+                arguments: arguments))
+    }
+
+    private static func legacyDefaultRoots(home: URL) -> [URL] {
+        [
             home.appendingPathComponent(".claude/projects", isDirectory: true),
             home.appendingPathComponent(".config/claude/projects", isDirectory: true),
         ]
     }
 
     func performScan(progress: ScanProgressHandler? = nil) async throws -> ImportEngine.ScanReport {
+        let scopedAccesses = claudeRoots.map { securityScopedAccess.access($0) }
+        defer { scopedAccesses.reversed().forEach { $0.stop() } }
+
+        // App Store: a resolved bookmark whose scope wouldn't open (moved/
+        // revoked folder) would enumerate to nothing. Flag it so the user is
+        // told to re-select rather than seeing a silently-empty Claude import.
+        let scopeUnavailable = DistributionChannel.current == .appStore
+            && scopedAccesses.contains { !$0.didStart }
+        let scopeErrors = scopeUnavailable
+            ? scopedAccesses.filter { !$0.didStart }
+                .map { "claude history folder scope unavailable: \($0.url.path)" }
+            : []
+
         let files = scanFiles()
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)
@@ -223,7 +265,8 @@ actor ClaudeImportEngine {
             importedSessions: importedSessionIds.count,
             importedEvents: importedEvents,
             importedRateLimitSamples: 0,    // Claude rollouts don't carry rate-limit samples.
-            errors: errors)
+            errors: errors + scopeErrors,
+            scopeUnavailable: scopeUnavailable)
     }
 
     // MARK: - scan
