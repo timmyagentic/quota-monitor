@@ -37,6 +37,7 @@ struct MigrationsTests {
         arguments: [
             "v7-claude-shared-session-reread",
             "v8-claude-last-snapshot-reread",
+            "v12-claude-cross-day-delta-reread",
         ])
     func claudeRereadMigrationResetsImportState(migrationId: String) throws {
         let url = try temporaryDatabaseURL()

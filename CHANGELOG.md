@@ -32,9 +32,13 @@ window copy.
 
 #### Summary
 - Contributors get an architecture guide that maps the app's structure and the gotchas to watch for when editing it
+- Claude usage around midnight no longer makes a previous day's Dashboard total keep changing while you keep working
 
 ### Added
 - **Architecture guide (`CLAUDE.md`).** Added a concise architecture map covering the `AppEnvironment` hub, the two data planes, and common editing pitfalls, complementing the existing contributor guide.
+
+### Fixed
+- **Claude daily usage stays stable after midnight.** When Claude Code finishes streaming a message after the local day changes, QuotaMonitor now keeps the earlier day's total fixed, records only the newly observed token delta on the later day, and rebuilds existing local Claude usage once after upgrade.
 
 ## [0.2.36] — 2026-06-29
 

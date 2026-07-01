@@ -292,5 +292,23 @@ enum Migrations {
             try SessionMetadataMigration.reclassifyLegacyTitles(in: db)
             try SessionMetadataMigration.forceHeaderReread(in: db)
         }
+
+        // v12: Claude streaming snapshots can cross a local-day boundary.
+        // Importer versions before v12 updated the original
+        // (session_id, provider_message_id) row wholesale when a later
+        // snapshot arrived, which could rewrite the previous day's Dashboard
+        // usage after midnight. Force one full Claude re-read under the
+        // day-delta importer so existing rows are rebuilt into stable local
+        // day buckets.
+        migrator.registerMigration("v12-claude-cross-day-delta-reread") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0
+                WHERE source_path LIKE '%/.claude/projects/%'
+                   OR source_path LIKE '%/.config/claude/projects/%'
+                """)
+        }
     }
 }
