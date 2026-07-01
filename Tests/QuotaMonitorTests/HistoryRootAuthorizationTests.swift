@@ -249,6 +249,16 @@ struct HistoryRootAuthorizationTests {
             == "/root/.codex")
         #expect(HistoryRootKind.codexHome.resolveSelectedFolder(
             URL(fileURLWithPath: "/tmp/random"), directoryExists: codexExists) == nil)
+        // A fresh, EMPTY `.codex` (no sessions imported yet) is accepted by name.
+        #expect(HistoryRootKind.codexHome.resolveSelectedFolder(
+            URL(fileURLWithPath: "/home/user/.codex"), directoryExists: { _ in false })?.path
+            == "/home/user/.codex")
+        // A parent pick resolves to an existing (even empty) `.codex` child.
+        let childOnly: Set<String> = ["/home/user/.codex"]
+        #expect(HistoryRootKind.codexHome.resolveSelectedFolder(
+            URL(fileURLWithPath: "/home/user"),
+            directoryExists: { childOnly.contains($0.path) })?.path
+            == "/home/user/.codex")
 
         let claudeDirs: Set<String> = ["/home/.claude/projects"]
         let claudeExists: (URL) -> Bool = { claudeDirs.contains($0.path) }

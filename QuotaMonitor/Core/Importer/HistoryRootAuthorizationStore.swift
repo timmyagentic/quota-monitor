@@ -27,13 +27,18 @@ enum HistoryRootKind: String, CaseIterable, Sendable, Identifiable {
         }
         switch self {
         case .codexHome:
-            if directoryExists(child(url, "sessions"))
+            // Accept the Codex home by NAME (a fresh `.codex` may not have
+            // `sessions`/`archived_sessions` yet) or by content.
+            if url.lastPathComponent == ".codex"
+                || directoryExists(child(url, "sessions"))
                 || directoryExists(child(url, "archived_sessions")) {
                 return url
             }
-            // Tolerate a parent pick: accept `<pick>/.codex` if it holds them.
+            // Tolerate a parent pick: resolve to a `<pick>/.codex` child if it
+            // exists (even when empty) or already holds session folders.
             let dotCodex = child(url, ".codex")
-            if directoryExists(child(dotCodex, "sessions"))
+            if directoryExists(dotCodex)
+                || directoryExists(child(dotCodex, "sessions"))
                 || directoryExists(child(dotCodex, "archived_sessions")) {
                 return dotCodex
             }
