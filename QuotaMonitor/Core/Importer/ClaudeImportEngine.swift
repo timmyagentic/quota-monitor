@@ -930,7 +930,14 @@ enum ClaudeRolloutParser {
 
         let delta = snapshot.tokenCounts.subtracting(baseline)
         guard !delta.isZero else { return nil }
-        return snapshot.replacingTokenCounts(delta, messageId: deltaMessageId)
+        let deltaEvent = snapshot.replacingTokenCounts(
+            delta, messageId: deltaMessageId)
+        guard let existingDelta = existingEvents.first(where: {
+            $0.messageId == deltaMessageId
+        }) else {
+            return deltaEvent
+        }
+        return preferredSnapshot(candidate: deltaEvent, existing: existingDelta)
     }
 
     fileprivate static func preferredSnapshot(

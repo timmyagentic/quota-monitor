@@ -253,6 +253,13 @@ struct ClaudeRolloutParserIncrementalTests {
                 ts: "2026-06-30T12:00:00.000Z",
                 input: 100,
                 output: 50
+            ) + "\n"
+            + assistantLine(
+                sid: "S1",
+                msgId: "m1",
+                ts: "2026-06-30T12:01:00.000Z",
+                input: 100,
+                output: 45
             ) + "\n")
 
         let out = try ClaudeRolloutParser.parse(fileURL: url)
@@ -548,6 +555,35 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect((rows[1]["input_tokens"] as Int64?) == 0)
         #expect((rows[1]["output_tokens"] as Int64?) == 40)
         #expect((rows[1]["total_tokens"] as Int64?) == 40)
+
+        try append(main, assistantLine(
+            sid: sid,
+            msgId: "m1",
+            ts: "2026-06-30T12:01:00.000Z",
+            input: 100,
+            output: 45
+        ) + "\n")
+        let lowerReport = try await engine.performScan()
+        #expect(lowerReport.importedEvents == 0)
+
+        let stableRows = try await db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT timestamp, input_tokens, output_tokens, total_tokens
+                FROM usage_events
+                WHERE session_id = ?
+                ORDER BY timestamp ASC, id ASC
+                """, arguments: [sid])
+        }
+
+        #expect(stableRows.count == 2)
+        guard stableRows.count == 2 else {
+            Issue.record("expected two stored usage rows, got \(stableRows.count)")
+            return
+        }
+        #expect((stableRows[1]["timestamp"] as String?) == "2026-06-30T12:00:00.000Z")
+        #expect((stableRows[1]["input_tokens"] as Int64?) == 0)
+        #expect((stableRows[1]["output_tokens"] as Int64?) == 40)
+        #expect((stableRows[1]["total_tokens"] as Int64?) == 40)
     }
 
     @Test("a failed read after a session reset is retried on the next scan")
