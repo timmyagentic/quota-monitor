@@ -49,7 +49,7 @@ extension AppEnvironment {
         if DistributionChannel.current == .appStore {
             let authorized = HistoryRootAuthorizationStore.shared
                 .authorizedProviders(from: initialSnap.enabledProviders)
-            guard !authorized.isEmpty else {
+            if Self.appStoreScanShouldAbort(isAppStore: true, authorized: authorized) {
                 let missing = HistoryRootAuthorizationStore.shared
                     .missingRequiredKinds(for: initialSnap.enabledProviders)
                 let labels = missing.map(\.rawValue).joined(separator: ",")
@@ -125,10 +125,13 @@ extension AppEnvironment {
                 // In App Store builds, further restrict to providers whose
                 // history folder is authorized — the unauthorized ones are
                 // simply skipped this run (not aborted), matching the gate above.
-                let scanProviders: Set<String> = DistributionChannel.current == .appStore
-                    ? requestedScope.intersection(
-                        HistoryRootAuthorizationStore.shared.authorizedProviders(from: enabled))
-                    : requestedScope
+                let isAppStore = DistributionChannel.current == .appStore
+                let scanProviders = Self.appStoreScanProviders(
+                    requested: requestedScope,
+                    authorized: isAppStore
+                        ? HistoryRootAuthorizationStore.shared.authorizedProviders(from: enabled)
+                        : [],
+                    isAppStore: isAppStore)
                 let fastMode = snap.codexFastModeBilling
                 DeveloperLog.eventRecord(
                     "scan.providers",
@@ -188,6 +191,11 @@ extension AppEnvironment {
                 await MainActor.run {
                     self.lastScanReport = merged
                     self.lastScanAtByScope[throttleKey] = Date()
+                    // A resolved-but-unopenable App Store bookmark imported
+                    // nothing silently; tell the user to re-select the folder.
+                    if merged.scopeUnavailable {
+                        self.lastError = L10n.historyFolderScopeUnavailable
+                    }
                 }
                 DeveloperLog.finishOperation(
                     op,
@@ -322,7 +330,23 @@ extension AppEnvironment {
             importedSessions: a.importedSessions + b.importedSessions,
             importedEvents: a.importedEvents + b.importedEvents,
             importedRateLimitSamples: a.importedRateLimitSamples + b.importedRateLimitSamples,
-            errors: a.errors + b.errors)
+            errors: a.errors + b.errors,
+            scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
+    }
+
+    /// Pure App Store scan-scope decisions, extracted so they can be unit-tested
+    /// without the full `runScan` machinery. Developer ID builds are never
+    /// scoped or aborted.
+    nonisolated static func appStoreScanShouldAbort(
+        isAppStore: Bool, authorized: Set<String>
+    ) -> Bool {
+        isAppStore && authorized.isEmpty
+    }
+
+    nonisolated static func appStoreScanProviders(
+        requested: Set<String>, authorized: Set<String>, isAppStore: Bool
+    ) -> Set<String> {
+        isAppStore ? requested.intersection(authorized) : requested
     }
 
     func beginScanProgress() -> UUID {

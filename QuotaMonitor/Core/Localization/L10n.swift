@@ -919,6 +919,18 @@ enum L10n {
         t(en: "Folder authorization failed: \(err)",
           zh: "目录授权失败：\(err)")
     }
+    static var historyFolderScopeUnavailable: String {
+        t(en: "Can't read an authorized history folder anymore — it may have moved. Re-select it in Settings.",
+          zh: "无法再读取已授权的历史目录（可能已被移动）。请在设置中重新选择。")
+    }
+    static var historyFolderWrongCodex: String {
+        t(en: "That folder doesn't look like a Codex history folder (no sessions or archived_sessions inside). Pick your .codex folder.",
+          zh: "该文件夹不像 Codex 历史目录（里面没有 sessions 或 archived_sessions）。请选择你的 .codex 文件夹。")
+    }
+    static var historyFolderWrongClaude: String {
+        t(en: "That folder doesn't look like a Claude history folder. Pick the projects folder (e.g. .claude/projects).",
+          zh: "该文件夹不像 Claude 历史目录。请选择 projects 文件夹（例如 .claude/projects）。")
+    }
 
     // MARK: - settings · tracked tools
 

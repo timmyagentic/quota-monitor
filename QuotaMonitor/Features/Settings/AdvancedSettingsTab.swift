@@ -28,6 +28,10 @@ struct AdvancedSettingsTab: View {
     @State private var pricingErrorMessage: String?
     @State private var showingUninstallConfirm = false
     @State private var showingPricingSheet = false
+    /// Bumped on every history-folder grant/clear so all picker rows re-evaluate
+    /// their state (e.g. the primary Claude row drops its "Required" note once
+    /// the interchangeable alternate is granted).
+    @State private var historyGrantVersion = 0
 
     var body: some View {
         @Bindable var settings = settings
@@ -145,17 +149,23 @@ struct AdvancedSettingsTab: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if showCodex {
-                        HistoryRootPickerRow(kind: .codexHome) {
+                        HistoryRootPickerRow(kind: .codexHome,
+                                             refreshToken: historyGrantVersion) {
                             env.reloadHistoryImportRootsAndRescan()
+                            historyGrantVersion += 1
                         }
                     }
                     if showClaude {
-                        HistoryRootPickerRow(kind: .claudeProjects) {
+                        HistoryRootPickerRow(kind: .claudeProjects,
+                                             refreshToken: historyGrantVersion) {
                             env.reloadHistoryImportRootsAndRescan()
+                            historyGrantVersion += 1
                         }
                         HistoryRootPickerRow(kind: .claudeConfigProjects,
-                                             required: false) {
+                                             required: false,
+                                             refreshToken: historyGrantVersion) {
                             env.reloadHistoryImportRootsAndRescan()
+                            historyGrantVersion += 1
                         }
                     }
                 }

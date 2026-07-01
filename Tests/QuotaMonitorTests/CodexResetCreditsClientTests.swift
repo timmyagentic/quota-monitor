@@ -29,8 +29,9 @@ struct CodexResetCreditsClientTests {
             var request: URLRequest?
         }
         let box = RequestBox()
+        let authDir = authFile.deletingLastPathComponent()
         let client = CodexResetCreditsClient(
-            authFileURL: authFile,
+            codexHomeProvider: { authDir },
             endpoint: endpoint,
             loader: { request in
                 box.request = request
@@ -79,7 +80,10 @@ struct CodexResetCreditsClientTests {
     @Test("missing auth file surfaces noCredentials")
     func missingAuthFile() async throws {
         let client = CodexResetCreditsClient(
-            authFileURL: FileManager.default.temporaryDirectory.appendingPathComponent("missing-auth.json"),
+            codexHomeProvider: {
+                FileManager.default.temporaryDirectory
+                    .appendingPathComponent("qm-missing-\(UUID().uuidString)", isDirectory: true)
+            },
             endpoint: URL(string: "https://example.test/reset")!,
             loader: { _ in
                 Issue.record("loader must not run without auth")
@@ -92,5 +96,40 @@ struct CodexResetCreditsClientTests {
         } catch let error as CodexResetCreditsClient.FetchError {
             #expect(error == .noCredentials)
         }
+    }
+
+    @Test("resolves the auth folder per fetch so a later grant is honored")
+    func resolvesAuthFolderLazily() async throws {
+        final class Box: @unchecked Sendable { var dir: URL? }
+        let box = Box()
+        let endpoint = URL(string: "https://example.test/reset")!
+        let client = CodexResetCreditsClient(
+            codexHomeProvider: { box.dir },
+            endpoint: endpoint,
+            loader: { _ in
+                let response = HTTPURLResponse(
+                    url: endpoint, statusCode: 200, httpVersion: nil, headerFields: nil)!
+                let body = """
+                {"available_count": 1, "credits": [
+                  {"status": "available", "expires_at": "2026-07-12T00:16:55.107346Z"}
+                ]}
+                """
+                return (Data(body.utf8), response)
+            })
+
+        // No folder granted yet → the client reports the folder isn't authorized
+        // instead of pinning a bad path at init.
+        do {
+            _ = try await client.fetchResetCredits()
+            Issue.record("expected folderNotAuthorized")
+        } catch let error as CodexResetCreditsClient.FetchError {
+            #expect(error == .folderNotAuthorized)
+        }
+
+        // Grant the folder afterward; the SAME client now succeeds (proves the
+        // auth path is resolved per fetch, not captured at construction).
+        box.dir = try makeAuthFile().deletingLastPathComponent()
+        let snapshot = try await client.fetchResetCredits()
+        #expect(snapshot.availableCount == 1)
     }
 }

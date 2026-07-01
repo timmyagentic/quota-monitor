@@ -97,6 +97,16 @@ actor ClaudeImportEngine {
         let scopedAccesses = claudeRoots.map { securityScopedAccess.access($0) }
         defer { scopedAccesses.reversed().forEach { $0.stop() } }
 
+        // App Store: a resolved bookmark whose scope wouldn't open (moved/
+        // revoked folder) would enumerate to nothing. Flag it so the user is
+        // told to re-select rather than seeing a silently-empty Claude import.
+        let scopeUnavailable = DistributionChannel.current == .appStore
+            && scopedAccesses.contains { !$0.didStart }
+        let scopeErrors = scopeUnavailable
+            ? scopedAccesses.filter { !$0.didStart }
+                .map { "claude history folder scope unavailable: \($0.url.path)" }
+            : []
+
         let files = scanFiles()
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)
@@ -253,7 +263,8 @@ actor ClaudeImportEngine {
             importedSessions: importedSessionIds.count,
             importedEvents: importedEvents,
             importedRateLimitSamples: 0,    // Claude rollouts don't carry rate-limit samples.
-            errors: errors)
+            errors: errors + scopeErrors,
+            scopeUnavailable: scopeUnavailable)
     }
 
     // MARK: - scan

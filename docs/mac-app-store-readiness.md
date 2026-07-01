@@ -99,6 +99,14 @@ separation point and exposes the remaining product and review risks.
 5. A real App Store Connect upload still needs App Store metadata, a privacy
    policy URL, a bundle/app record decision, an App Store provisioning profile,
    and review notes that explain the data sources and sandbox permissions.
+6. Data continuity for a user moving from the Developer ID build to the App
+   Store build is unaddressed. `DatabaseManager` migrates the legacy
+   `~/Library/Application Support/CodexMonitor/*.sqlite` on first launch, but in
+   the sandbox `Application Support` is redirected into the app container, so the
+   Developer-ID-written database (outside the container) is neither readable nor
+   migratable — an App Store install would silently start from an empty history.
+   A migration path (e.g. a user-selected import of the old database) is needed
+   before the two builds can be presented as the same product.
 
 ## Recommended Next Steps
 

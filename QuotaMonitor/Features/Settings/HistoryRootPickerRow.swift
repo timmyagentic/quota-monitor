@@ -5,6 +5,10 @@ struct HistoryRootPickerRow: View {
     let kind: HistoryRootKind
     var required: Bool = true
     var showsClearButton: Bool = true
+    /// Bumped by the parent whenever ANY history folder is granted/cleared, so
+    /// a sibling row (e.g. the interchangeable alternate Claude root) can
+    /// refresh its "Required" state without reopening Settings.
+    var refreshToken: Int = 0
     var onChange: () -> Void = { }
 
     @State private var displayPath: String?
@@ -37,7 +41,7 @@ struct HistoryRootPickerRow: View {
                     }
                 }
             }
-            if required, displayPath == nil {
+            if showsRequiredWarning {
                 Text(L10n.historyFolderRequired)
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -49,6 +53,28 @@ struct HistoryRootPickerRow: View {
             }
         }
         .onAppear { reload() }
+        .onChange(of: refreshToken) { reload() }
+    }
+
+    /// The orange "Required" note must be group-aware: granting the
+    /// interchangeable alternate `~/.config/claude/projects` fully authorizes
+    /// Claude, so the primary Claude row must stop warning once it's set.
+    private var showsRequiredWarning: Bool {
+        guard required, displayPath == nil else { return false }
+        if kind == .claudeProjects,
+           HistoryRootAuthorizationStore.shared.displayPath(for: .claudeConfigProjects) != nil {
+            return false
+        }
+        return true
+    }
+
+    private var wrongFolderMessage: String {
+        switch kind {
+        case .codexHome:
+            return L10n.historyFolderWrongCodex
+        case .claudeProjects, .claudeConfigProjects:
+            return L10n.historyFolderWrongClaude
+        }
     }
 
     private var title: String {
@@ -86,8 +112,15 @@ struct HistoryRootPickerRow: View {
         }
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        // Reject a folder that isn't actually a history root (e.g. the user
+        // picked ~ or the wrong subfolder) instead of silently authorizing it
+        // and then importing nothing. May resolve to a child of the pick.
+        guard let folder = kind.resolveSelectedFolder(url) else {
+            errorMessage = wrongFolderMessage
+            return
+        }
         do {
-            try HistoryRootAuthorizationStore.shared.authorize(kind: kind, url: url)
+            try HistoryRootAuthorizationStore.shared.authorize(kind: kind, url: folder)
             errorMessage = nil
             reload()
             onChange()

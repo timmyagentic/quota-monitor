@@ -21,6 +21,28 @@ actor ImportEngine {
         let importedEvents: Int
         let importedRateLimitSamples: Int
         let errors: [String]
+        /// True when an App Store security-scoped root resolved but its scope
+        /// could not be opened (folder moved/revoked). Surfaced to the user via
+        /// `lastError` so a silently-empty import prompts a re-select instead.
+        let scopeUnavailable: Bool
+
+        init(
+            scannedFiles: Int,
+            changedFiles: Int,
+            importedSessions: Int,
+            importedEvents: Int,
+            importedRateLimitSamples: Int,
+            errors: [String],
+            scopeUnavailable: Bool = false
+        ) {
+            self.scannedFiles = scannedFiles
+            self.changedFiles = changedFiles
+            self.importedSessions = importedSessions
+            self.importedEvents = importedEvents
+            self.importedRateLimitSamples = importedRateLimitSamples
+            self.errors = errors
+            self.scopeUnavailable = scopeUnavailable
+        }
 
         static let empty = ScanReport(
             scannedFiles: 0, changedFiles: 0,
@@ -51,6 +73,18 @@ actor ImportEngine {
 
         let scopedAccess = securityScopedAccess.access(codexHome)
         defer { scopedAccess.stop() }
+
+        // App Store: the bookmark resolved but its security scope wouldn't open
+        // (folder moved/revoked/TCC reset). Enumerating would silently find
+        // nothing; instead report it so the user is told to re-select the folder.
+        if DistributionChannel.current == .appStore, !scopedAccess.didStart {
+            return ScanReport(
+                scannedFiles: 0, changedFiles: 0,
+                importedSessions: 0, importedEvents: 0,
+                importedRateLimitSamples: 0,
+                errors: ["codex history folder scope unavailable: \(codexHome.path)"],
+                scopeUnavailable: true)
+        }
 
         let files = SessionScanner.scan(codexHome: codexHome)
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in

@@ -6,14 +6,62 @@ enum HistoryRootKind: String, CaseIterable, Sendable, Identifiable {
     case claudeConfigProjects
 
     var id: String { rawValue }
+
+    /// Validate that `url` (a folder the user picked in an NSOpenPanel) looks
+    /// like the expected history root for this kind, returning the URL to
+    /// actually bookmark — which may be a child of the pick (e.g. the user
+    /// selected `~` but we want `~/.codex`, or a Claude parent that contains
+    /// `projects`). Returns `nil` when the pick doesn't match, so the caller
+    /// can reject it instead of silently authorizing a wrong folder that would
+    /// import nothing. Pure (filesystem probe is injectable) → unit-testable.
+    func resolveSelectedFolder(
+        _ url: URL,
+        directoryExists: (URL) -> Bool = {
+            var isDir: ObjCBool = false
+            return FileManager.default.fileExists(atPath: $0.path, isDirectory: &isDir)
+                && isDir.boolValue
+        }
+    ) -> URL? {
+        func child(_ parent: URL, _ name: String) -> URL {
+            parent.appendingPathComponent(name, isDirectory: true)
+        }
+        switch self {
+        case .codexHome:
+            if directoryExists(child(url, "sessions"))
+                || directoryExists(child(url, "archived_sessions")) {
+                return url
+            }
+            // Tolerate a parent pick: accept `<pick>/.codex` if it holds them.
+            let dotCodex = child(url, ".codex")
+            if directoryExists(child(dotCodex, "sessions"))
+                || directoryExists(child(dotCodex, "archived_sessions")) {
+                return dotCodex
+            }
+            return nil
+        case .claudeProjects, .claudeConfigProjects:
+            if url.lastPathComponent == "projects" { return url }
+            // Tolerate a parent pick: accept `<pick>/projects` if present.
+            let projects = child(url, "projects")
+            if directoryExists(projects) { return projects }
+            return nil
+        }
+    }
 }
 
 struct SecurityScopedResourceAccess: Sendable {
     let url: URL
+    /// Whether `startAccessingSecurityScopedResource()` actually opened the
+    /// scope. For a non-security-scoped URL (e.g. a Developer ID real path)
+    /// this is `false` and harmless — the read succeeds without a scope. For a
+    /// bookmark-backed App Store URL, `false` means the scope could NOT be
+    /// opened (folder moved/revoked, TCC reset), so a read will find nothing:
+    /// callers should treat that as "folder access unavailable", not empty.
+    let didStart: Bool
     private let stopHandler: @Sendable () -> Void
 
-    init(url: URL, stop: @escaping @Sendable () -> Void) {
+    init(url: URL, didStart: Bool, stop: @escaping @Sendable () -> Void) {
         self.url = url
+        self.didStart = didStart
         self.stopHandler = stop
     }
 
@@ -29,7 +77,7 @@ protocol SecurityScopedResourceAccessing: Sendable {
 struct FoundationSecurityScopedResourceAccessing: SecurityScopedResourceAccessing {
     func access(_ url: URL) -> SecurityScopedResourceAccess {
         let didStart = url.startAccessingSecurityScopedResource()
-        return SecurityScopedResourceAccess(url: url) {
+        return SecurityScopedResourceAccess(url: url, didStart: didStart) {
             if didStart {
                 url.stopAccessingSecurityScopedResource()
             }

@@ -31,6 +31,11 @@ final class ClaudeFileWatcher {
     private let directories: [URL]
     private let latency: TimeInterval
     private let onChange: @Sendable () -> Void
+    /// App Store: watching a security-scoped bookmark root requires the scope to
+    /// be open for the FSEvents stream's whole lifetime. `nil` for Developer ID
+    /// (real HOME paths need no scope).
+    private let securityScopedAccess: (any SecurityScopedResourceAccessing)?
+    private var scopedAccesses: [SecurityScopedResourceAccess] = []
     private let queue = DispatchQueue(
         label: "dev.tjzhou.QuotaMonitor.claude-file-watch", qos: .utility)
     private var stream: FSEventStreamRef?
@@ -38,10 +43,12 @@ final class ClaudeFileWatcher {
     init(
         directories: [URL],
         latency: TimeInterval = 2.0,
+        securityScopedAccess: (any SecurityScopedResourceAccessing)? = nil,
         onChange: @escaping @Sendable () -> Void
     ) {
         self.directories = directories
         self.latency = latency
+        self.securityScopedAccess = securityScopedAccess
         self.onChange = onChange
     }
 
@@ -57,6 +64,12 @@ final class ClaudeFileWatcher {
     func start() -> Bool {
         if stream != nil { return true }
         guard !directories.isEmpty else { return false }
+        // Open (and hold) security scope on the watched roots before creating
+        // the stream, so FSEvents can watch App Store bookmark folders. No-op
+        // when no accessor was injected (Developer ID).
+        if let securityScopedAccess {
+            scopedAccesses = directories.map { securityScopedAccess.access($0) }
+        }
         var context = FSEventStreamContext(
             version: 0,
             info: Unmanaged.passUnretained(self).toOpaque(),
@@ -77,11 +90,15 @@ final class ClaudeFileWatcher {
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             latency,
             FSEventStreamCreateFlags(kFSEventStreamCreateFlagNoDefer)
-        ) else { return false }
+        ) else {
+            releaseScopes()
+            return false
+        }
         FSEventStreamSetDispatchQueue(created, queue)
         guard FSEventStreamStart(created) else {
             FSEventStreamInvalidate(created)
             FSEventStreamRelease(created)
+            releaseScopes()
             return false
         }
         stream = created
@@ -89,11 +106,18 @@ final class ClaudeFileWatcher {
     }
 
     func stop() {
-        guard let stream else { return }
-        FSEventStreamStop(stream)
-        FSEventStreamInvalidate(stream)
-        FSEventStreamRelease(stream)
-        self.stream = nil
+        if let stream {
+            FSEventStreamStop(stream)
+            FSEventStreamInvalidate(stream)
+            FSEventStreamRelease(stream)
+            self.stream = nil
+        }
+        releaseScopes()
+    }
+
+    private func releaseScopes() {
+        scopedAccesses.reversed().forEach { $0.stop() }
+        scopedAccesses = []
     }
 
     deinit { stop() }
