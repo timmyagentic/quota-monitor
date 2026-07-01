@@ -216,15 +216,17 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect(out.session?.events.first?.messageId == "abc-123")
     }
 
-    @Test("duplicate non-zero message.id keeps the LAST streaming snapshot")
-    func duplicateMessageIdKeepsLastSnapshot() throws {
+    @Test("duplicate non-zero message.id keeps the largest streaming snapshot")
+    func duplicateMessageIdKeepsLargestSnapshot() throws {
         // One API message, one assistant line per content block: usage
         // snapshots share the message.id and grow in output_tokens while
-        // input/cache stay fixed. The final line is the complete bill.
+        // input/cache stay fixed. A smaller replay after the largest row
+        // must not lower the complete bill.
         let url = try writeRollout(
             assistantLine(sid: "S1", msgId: "m1", output: 5) + "\n"
             + assistantLine(sid: "S1", msgId: "m1", output: 80) + "\n"
             + assistantLine(sid: "S1", msgId: "m1", output: 350) + "\n"
+            + assistantLine(sid: "S1", msgId: "m1", output: 300) + "\n"
             + assistantLine(sid: "S1", msgId: "m2", output: 7) + "\n")
         let out = try ClaudeRolloutParser.parse(fileURL: url)
         let events = try #require(out.session?.events)
@@ -233,6 +235,47 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect(events.first?.outputTokens == 350)
         #expect(events.last?.messageId == "m2")
         #expect(events.last?.outputTokens == 7)
+    }
+
+    @Test("duplicate message.id crossing a day boundary emits only a new-day delta")
+    func duplicateMessageIdAcrossDayEmitsDelta() throws {
+        let url = try writeRollout(
+            assistantLine(
+                sid: "S1",
+                msgId: "m1",
+                ts: "2026-06-29T12:00:00.000Z",
+                input: 100,
+                output: 10
+            ) + "\n"
+            + assistantLine(
+                sid: "S1",
+                msgId: "m1",
+                ts: "2026-06-30T12:00:00.000Z",
+                input: 100,
+                output: 50
+            ) + "\n"
+            + assistantLine(
+                sid: "S1",
+                msgId: "m1",
+                ts: "2026-06-30T12:01:00.000Z",
+                input: 100,
+                output: 45
+            ) + "\n")
+
+        let out = try ClaudeRolloutParser.parse(fileURL: url)
+        let events = try #require(out.session?.events)
+
+        #expect(events.count == 2)
+        guard events.count == 2 else {
+            Issue.record("expected two usage events, got \(events.count)")
+            return
+        }
+        #expect(events[0].timestamp == "2026-06-29T12:00:00.000Z")
+        #expect(events[0].inputTokens == 100)
+        #expect(events[0].outputTokens == 10)
+        #expect(events[1].timestamp == "2026-06-30T12:00:00.000Z")
+        #expect(events[1].inputTokens == 0)
+        #expect(events[1].outputTokens == 40)
     }
 
     @Test("cache creation duration split is parsed from usage.cache_creation")
@@ -447,10 +490,100 @@ struct ClaudeRolloutParserIncrementalTests {
         try append(main, assistantLine(sid: sid, msgId: "m1", output: 350) + "\n")
         let noopReport = try await engine.performScan()
         #expect(noopReport.importedEvents == 0)
+
+        // A smaller same-day replay must not lower the stored usage.
+        try append(main, assistantLine(sid: sid, msgId: "m1", output: 300) + "\n")
+        let lowerReport = try await engine.performScan()
+        #expect(lowerReport.importedEvents == 0)
         let count = try await db.pool.read { conn in
             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM usage_events") ?? -1
         }
         #expect(count == 1)
+        let output = try await db.pool.read { conn in
+            try Int.fetchOne(conn, sql: "SELECT output_tokens FROM usage_events") ?? -1
+        }
+        #expect(output == 350)
+    }
+
+    @Test("a newer usage snapshot on a later day does not rewrite the earlier day")
+    func crossPassSnapshotAcrossDayStoresOnlyDeltaOnLaterDay() async throws {
+        let db = try makeDatabase()
+        let (root, project) = try makeProjectRoot()
+
+        let sid = "snapshot-cross-day"
+        let main = project.appendingPathComponent("\(sid).jsonl")
+        try (assistantLine(
+            sid: sid,
+            msgId: "m1",
+            ts: "2026-06-29T12:00:00.000Z",
+            input: 100,
+            output: 10
+        ) + "\n").write(to: main, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        _ = try await engine.performScan()
+
+        try append(main, assistantLine(
+            sid: sid,
+            msgId: "m1",
+            ts: "2026-06-30T12:00:00.000Z",
+            input: 100,
+            output: 50
+        ) + "\n")
+        let report = try await engine.performScan()
+        #expect(report.importedEvents == 1)
+
+        let rows = try await db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT timestamp, input_tokens, output_tokens, total_tokens
+                FROM usage_events
+                WHERE session_id = ?
+                ORDER BY timestamp ASC, id ASC
+                """, arguments: [sid])
+        }
+
+        #expect(rows.count == 2)
+        guard rows.count == 2 else {
+            Issue.record("expected two stored usage rows, got \(rows.count)")
+            return
+        }
+        #expect((rows[0]["timestamp"] as String?) == "2026-06-29T12:00:00.000Z")
+        #expect((rows[0]["input_tokens"] as Int64?) == 100)
+        #expect((rows[0]["output_tokens"] as Int64?) == 10)
+        #expect((rows[0]["total_tokens"] as Int64?) == 110)
+        #expect((rows[1]["timestamp"] as String?) == "2026-06-30T12:00:00.000Z")
+        #expect((rows[1]["input_tokens"] as Int64?) == 0)
+        #expect((rows[1]["output_tokens"] as Int64?) == 40)
+        #expect((rows[1]["total_tokens"] as Int64?) == 40)
+
+        try append(main, assistantLine(
+            sid: sid,
+            msgId: "m1",
+            ts: "2026-06-30T12:01:00.000Z",
+            input: 100,
+            output: 45
+        ) + "\n")
+        let lowerReport = try await engine.performScan()
+        #expect(lowerReport.importedEvents == 0)
+
+        let stableRows = try await db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT timestamp, input_tokens, output_tokens, total_tokens
+                FROM usage_events
+                WHERE session_id = ?
+                ORDER BY timestamp ASC, id ASC
+                """, arguments: [sid])
+        }
+
+        #expect(stableRows.count == 2)
+        guard stableRows.count == 2 else {
+            Issue.record("expected two stored usage rows, got \(stableRows.count)")
+            return
+        }
+        #expect((stableRows[1]["timestamp"] as String?) == "2026-06-30T12:00:00.000Z")
+        #expect((stableRows[1]["input_tokens"] as Int64?) == 0)
+        #expect((stableRows[1]["output_tokens"] as Int64?) == 40)
+        #expect((stableRows[1]["total_tokens"] as Int64?) == 40)
     }
 
     @Test("a failed read after a session reset is retried on the next scan")

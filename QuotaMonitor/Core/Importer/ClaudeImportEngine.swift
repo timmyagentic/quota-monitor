@@ -33,9 +33,11 @@ import GRDB
 //
 // Differences from Codex JSONL:
 //   1. Usage is per-message, NOT cumulative — we emit one row per `assistant`
-//      MESSAGE, no delta math. One message can span several `assistant`
-//      lines (one per content block) whose usage snapshots grow as the
-//      message streams; the last snapshot is the complete bill.
+//      MESSAGE. One message can span several `assistant` lines (one per
+//      content block) whose usage snapshots grow as the message streams; the
+//      largest same-day snapshot is the complete bill. If a larger snapshot
+//      lands on a different local day, we keep the earlier day stable and emit
+//      only the token delta on the later day.
 //   2. Many event types are noise (file-history-snapshot, progress, user,
 //      system, last-prompt). We only consume `assistant`.
 //   3. Synthetic / placeholder messages have model `<synthetic>` — skipped.
@@ -406,21 +408,12 @@ actor ClaudeImportEngine {
             }
 
             // Upsert keyed on the v5 partial unique index
-            // (session_id, provider_message_id). Two cross-pass cases land
-            // here:
-            //   - The SAME snapshot re-emitted (byteOffset landed
-            //     mid-message, or a sibling file repeating the row): every
-            //     token column matches, the DO UPDATE's WHERE filters it
-            //     out, nothing changes.
-            //   - A NEWER streaming snapshot of an already-imported message
-            //     (its final output_tokens arrived in a later append):
-            //     the row is updated to the latest values — last snapshot
-            //     wins, matching the parser's in-pass behavior. value_usd
-            //     resets to 0; the post-scan backfill reprices it.
-            var inserted = 0
-            for evt in parsed.events {
-                let total = evt.inputTokens + evt.cacheReadTokens
-                    + evt.cacheCreationTokens + evt.outputTokens
+            // (session_id, provider_message_id). Same-day streaming snapshots
+            // still update the original row; cross-day snapshots become a
+            // later-day delta row so Dashboard history never rewrites the
+            // previous local day.
+            func upsert(_ evt: ClaudeUsageEvent) throws -> Int {
+                let total = evt.tokenCounts.total
                 try db.execute(literal: """
                     INSERT INTO usage_events (
                         session_id, timestamp, model_id,
@@ -459,7 +452,24 @@ actor ClaudeImportEngine {
                        OR usage_events.cache_creation_5m_tokens != excluded.cache_creation_5m_tokens
                        OR usage_events.cache_creation_1h_tokens != excluded.cache_creation_1h_tokens
                     """)
-                inserted += db.changesCount
+                return db.changesCount
+            }
+
+            var inserted = 0
+            for evt in parsed.events {
+                switch try Self.crossDaySnapshotResolution(
+                    db: db,
+                    sessionId: parsed.sessionId,
+                    event: evt,
+                    resetSession: resetSession
+                ) {
+                case .normalUpsert(let event):
+                    inserted += try upsert(event)
+                case .deltaUpsert(let delta):
+                    if let delta {
+                        inserted += try upsert(delta)
+                    }
+                }
             }
 
             let state = ImportStateRecord(
@@ -473,6 +483,87 @@ actor ClaudeImportEngine {
 
             return inserted
         }
+    }
+
+    private enum CrossDaySnapshotResolution {
+        case normalUpsert(ClaudeUsageEvent)
+        case deltaUpsert(ClaudeUsageEvent?)
+    }
+
+    private static func crossDaySnapshotResolution(
+        db: Database,
+        sessionId: String,
+        event: ClaudeUsageEvent,
+        resetSession: Bool
+    ) throws -> CrossDaySnapshotResolution {
+        guard !resetSession,
+              let messageId = event.messageId,
+              !ClaudeRolloutParser.isDayDeltaMessageId(messageId)
+        else { return .normalUpsert(event) }
+
+        let existingEvents = try storedClaudeEvents(
+            db: db,
+            sessionId: sessionId,
+            baseMessageId: messageId)
+        guard let base = existingEvents.first(where: { $0.messageId == messageId }) else {
+            return .normalUpsert(event)
+        }
+        guard !ClaudeRolloutParser.isSameLocalDay(base.timestamp, event.timestamp) else {
+            return .normalUpsert(ClaudeRolloutParser.preferredSnapshot(
+                candidate: event,
+                existing: base))
+        }
+
+        return .deltaUpsert(ClaudeRolloutParser.dayDeltaEvent(
+            existingEvents: existingEvents,
+            baseMessageId: messageId,
+            snapshot: event))
+    }
+
+    private static func storedClaudeEvents(
+        db: Database,
+        sessionId: String,
+        baseMessageId: String
+    ) throws -> [ClaudeUsageEvent] {
+        let prefix = ClaudeRolloutParser.dayDeltaMessagePrefix(for: baseMessageId)
+        let likePattern = sqlLikePatternEscaping(prefix) + "%"
+        let rows = try Row.fetchAll(db, sql: #"""
+            SELECT timestamp, model_id, input_tokens, cached_input_tokens,
+                   output_tokens, cache_creation_tokens,
+                   cache_creation_5m_tokens, cache_creation_1h_tokens,
+                   provider_message_id
+            FROM usage_events
+            WHERE session_id = ?
+              AND provider = 'claude'
+              AND (
+                  provider_message_id = ?
+                  OR provider_message_id LIKE ? ESCAPE '\'
+              )
+            """#, arguments: [sessionId, baseMessageId, likePattern])
+        return rows.map { row in
+            ClaudeUsageEvent(
+                timestamp: row["timestamp"] as String,
+                modelId: row["model_id"] as String,
+                inputTokens: row["input_tokens"] as Int64,
+                cacheReadTokens: row["cached_input_tokens"] as Int64,
+                cacheCreationTokens: row["cache_creation_tokens"] as Int64,
+                cacheCreation5mTokens: row["cache_creation_5m_tokens"] as Int64,
+                cacheCreation1hTokens: row["cache_creation_1h_tokens"] as Int64,
+                outputTokens: row["output_tokens"] as Int64,
+                messageId: row["provider_message_id"] as String?)
+        }
+    }
+
+    private static func sqlLikePatternEscaping(_ value: String) -> String {
+        var escaped = ""
+        escaped.reserveCapacity(value.count)
+        for character in value {
+            if character == "\\" || character == "%" || character == "_" {
+                escaped.append("\\")
+            }
+            escaped.append(character)
+        }
+        return escaped
     }
 }
 
@@ -505,7 +596,86 @@ struct ClaudeUsageEvent {
     let messageId: String?
 }
 
+fileprivate struct ClaudeUsageTokenCounts {
+    let inputTokens: Int64
+    let cacheReadTokens: Int64
+    let cacheCreationTokens: Int64
+    let cacheCreation5mTokens: Int64
+    let cacheCreation1hTokens: Int64
+    let outputTokens: Int64
+
+    static let zero = ClaudeUsageTokenCounts(
+        inputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        cacheCreation5mTokens: 0,
+        cacheCreation1hTokens: 0,
+        outputTokens: 0)
+
+    var total: Int64 {
+        inputTokens + cacheReadTokens + cacheCreationTokens + outputTokens
+    }
+
+    var isZero: Bool {
+        inputTokens == 0
+            && cacheReadTokens == 0
+            && cacheCreationTokens == 0
+            && cacheCreation5mTokens == 0
+            && cacheCreation1hTokens == 0
+            && outputTokens == 0
+    }
+
+    func adding(_ other: ClaudeUsageTokenCounts) -> ClaudeUsageTokenCounts {
+        ClaudeUsageTokenCounts(
+            inputTokens: inputTokens + other.inputTokens,
+            cacheReadTokens: cacheReadTokens + other.cacheReadTokens,
+            cacheCreationTokens: cacheCreationTokens + other.cacheCreationTokens,
+            cacheCreation5mTokens: cacheCreation5mTokens + other.cacheCreation5mTokens,
+            cacheCreation1hTokens: cacheCreation1hTokens + other.cacheCreation1hTokens,
+            outputTokens: outputTokens + other.outputTokens)
+    }
+
+    func subtracting(_ baseline: ClaudeUsageTokenCounts) -> ClaudeUsageTokenCounts {
+        ClaudeUsageTokenCounts(
+            inputTokens: max(inputTokens - baseline.inputTokens, 0),
+            cacheReadTokens: max(cacheReadTokens - baseline.cacheReadTokens, 0),
+            cacheCreationTokens: max(cacheCreationTokens - baseline.cacheCreationTokens, 0),
+            cacheCreation5mTokens: max(cacheCreation5mTokens - baseline.cacheCreation5mTokens, 0),
+            cacheCreation1hTokens: max(cacheCreation1hTokens - baseline.cacheCreation1hTokens, 0),
+            outputTokens: max(outputTokens - baseline.outputTokens, 0))
+    }
+}
+
+fileprivate extension ClaudeUsageEvent {
+    var tokenCounts: ClaudeUsageTokenCounts {
+        ClaudeUsageTokenCounts(
+            inputTokens: inputTokens,
+            cacheReadTokens: cacheReadTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheCreation5mTokens: cacheCreation5mTokens,
+            cacheCreation1hTokens: cacheCreation1hTokens,
+            outputTokens: outputTokens)
+    }
+
+    func replacingTokenCounts(
+        _ counts: ClaudeUsageTokenCounts,
+        messageId: String
+    ) -> ClaudeUsageEvent {
+        ClaudeUsageEvent(
+            timestamp: timestamp,
+            modelId: modelId,
+            inputTokens: counts.inputTokens,
+            cacheReadTokens: counts.cacheReadTokens,
+            cacheCreationTokens: counts.cacheCreationTokens,
+            cacheCreation5mTokens: counts.cacheCreation5mTokens,
+            cacheCreation1hTokens: counts.cacheCreation1hTokens,
+            outputTokens: counts.outputTokens,
+            messageId: messageId)
+    }
+}
+
 enum ClaudeRolloutParser {
+    fileprivate static let dayDeltaMessageSeparator = "#quotamonitor-day-delta:"
 
     /// Parse result from a single read pass.
     struct Output {
@@ -528,11 +698,12 @@ enum ClaudeRolloutParser {
     ///     instead of being skipped as empty work.
     ///   - One `message.id` can span several `assistant` lines: a zero-usage
     ///     stub (skipped), then one line per content block whose
-    ///     `output_tokens` grows as the message streams. The LAST snapshot
-    ///     carries the complete usage, so in-pass duplicates REPLACE the
-    ///     earlier event (last wins, not first). Cross-pass the SQL layer
-    ///     does the same via an upsert on the v5 partial unique index
-    ///     `(session_id, provider_message_id)`.
+    ///     `output_tokens` grows as the message streams. The largest same-day
+    ///     snapshot carries the complete usage, so in-pass duplicates replace
+    ///     the earlier event only when they do not lower the token total.
+    ///     Cross-day snapshots become a synthetic per-day delta event to avoid
+    ///     moving yesterday's usage into today, or rewriting yesterday after
+    ///     midnight.
     static func parse(
         fileURL: URL, fromOffset: Int64 = 0
     ) throws -> Output {
@@ -551,7 +722,7 @@ enum ClaudeRolloutParser {
         var lastModelId: String? = nil
         var events: [ClaudeUsageEvent] = []
 
-        // Same-pass dedup, keeping the LAST snapshot per message id (see
+        // Same-pass dedup, keeping the largest snapshot per message id (see
         // longer comment below). The cross-scan analogue is the SQL upsert
         // on the v5 partial unique index — we don't carry state across
         // invocations.
@@ -644,14 +815,30 @@ enum ClaudeRolloutParser {
                 messageId: messageId)
             if let messageId {
                 if let existingIndex = eventIndexByMessageId[messageId] {
-                    // Streaming snapshot of a message we already collected:
-                    // Claude Code writes one assistant line per content
-                    // block, with output_tokens growing while input/cache
-                    // stay fixed. The last snapshot is the complete bill —
-                    // replace the earlier event instead of skipping.
-                    // (First-wins here undercounted output_tokens; measured
-                    // ~389k tokens across 619 messages on a real machine.)
-                    events[existingIndex] = event
+                    let existing = events[existingIndex]
+                    if Self.isSameLocalDay(existing.timestamp, event.timestamp) {
+                        // Same local day: keep the largest streaming
+                        // snapshot as the complete bill for that message.
+                        // Normal streams grow monotonically; this also
+                        // prevents a replayed or partial duplicate from
+                        // lowering a completed row.
+                        events[existingIndex] = Self.preferredSnapshot(
+                            candidate: event,
+                            existing: existing)
+                    } else if let delta = Self.dayDeltaEvent(
+                        existingEvents: events,
+                        baseMessageId: messageId,
+                        snapshot: event
+                    ), let deltaMessageId = delta.messageId {
+                        // Across local days: preserve the original day and
+                        // count only newly observed tokens on the later day.
+                        if let deltaIndex = eventIndexByMessageId[deltaMessageId] {
+                            events[deltaIndex] = delta
+                        } else {
+                            eventIndexByMessageId[deltaMessageId] = events.count
+                            events.append(delta)
+                        }
+                    }
                     continue
                 }
                 eventIndexByMessageId[messageId] = events.count
@@ -696,5 +883,88 @@ enum ClaudeRolloutParser {
         if let d = any as? Double { return Int64(d) }
         if let n = any as? NSNumber { return n.int64Value }
         return nil
+    }
+
+    fileprivate static func isSameLocalDay(
+        _ lhs: String,
+        _ rhs: String,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let lhsDay = localDayKey(for: lhs, calendar: calendar),
+              let rhsDay = localDayKey(for: rhs, calendar: calendar)
+        else {
+            return true
+        }
+        return lhsDay == rhsDay
+    }
+
+    fileprivate static func dayDeltaMessagePrefix(for messageId: String) -> String {
+        "\(messageId)\(dayDeltaMessageSeparator)"
+    }
+
+    fileprivate static func isDayDeltaMessageId(_ messageId: String) -> Bool {
+        messageId.contains(dayDeltaMessageSeparator)
+    }
+
+    fileprivate static func dayDeltaEvent(
+        existingEvents: [ClaudeUsageEvent],
+        baseMessageId: String,
+        snapshot: ClaudeUsageEvent
+    ) -> ClaudeUsageEvent? {
+        guard let deltaMessageId = dayDeltaMessageId(
+            baseMessageId: baseMessageId,
+            timestamp: snapshot.timestamp),
+              let currentDay = localDayKey(for: snapshot.timestamp)
+        else { return nil }
+
+        let prefix = dayDeltaMessagePrefix(for: baseMessageId)
+        let baseline = existingEvents.reduce(ClaudeUsageTokenCounts.zero) { partial, event in
+            guard let messageId = event.messageId,
+                  messageId == baseMessageId || messageId.hasPrefix(prefix)
+            else { return partial }
+            if localDayKey(for: event.timestamp) == currentDay {
+                return partial
+            }
+            return partial.adding(event.tokenCounts)
+        }
+
+        let delta = snapshot.tokenCounts.subtracting(baseline)
+        guard !delta.isZero else { return nil }
+        let deltaEvent = snapshot.replacingTokenCounts(
+            delta, messageId: deltaMessageId)
+        guard let existingDelta = existingEvents.first(where: {
+            $0.messageId == deltaMessageId
+        }) else {
+            return deltaEvent
+        }
+        return preferredSnapshot(candidate: deltaEvent, existing: existingDelta)
+    }
+
+    fileprivate static func preferredSnapshot(
+        candidate: ClaudeUsageEvent,
+        existing: ClaudeUsageEvent
+    ) -> ClaudeUsageEvent {
+        candidate.tokenCounts.total >= existing.tokenCounts.total ? candidate : existing
+    }
+
+    private static func dayDeltaMessageId(
+        baseMessageId: String,
+        timestamp: String
+    ) -> String? {
+        guard let dayKey = localDayKey(for: timestamp) else { return nil }
+        return "\(dayDeltaMessagePrefix(for: baseMessageId))\(dayKey)"
+    }
+
+    private static func localDayKey(
+        for timestamp: String,
+        calendar: Calendar = .current
+    ) -> String? {
+        guard let date = ISO8601.parse(timestamp) else { return nil }
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day
+        else { return nil }
+        return String(format: "%04d-%02d-%02d", year, month, day)
     }
 }
