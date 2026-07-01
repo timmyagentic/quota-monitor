@@ -35,9 +35,9 @@ import GRDB
 //   1. Usage is per-message, NOT cumulative — we emit one row per `assistant`
 //      MESSAGE. One message can span several `assistant` lines (one per
 //      content block) whose usage snapshots grow as the message streams; the
-//      last snapshot is the complete bill. If that later snapshot lands on a
-//      different local day, we keep the earlier day stable and emit only the
-//      token delta on the later day.
+//      largest same-day snapshot is the complete bill. If a larger snapshot
+//      lands on a different local day, we keep the earlier day stable and emit
+//      only the token delta on the later day.
 //   2. Many event types are noise (file-history-snapshot, progress, user,
 //      system, last-prompt). We only consume `assistant`.
 //   3. Synthetic / placeholder messages have model `<synthetic>` — skipped.
@@ -463,8 +463,8 @@ actor ClaudeImportEngine {
                     event: evt,
                     resetSession: resetSession
                 ) {
-                case .normalUpsert:
-                    inserted += try upsert(evt)
+                case .normalUpsert(let event):
+                    inserted += try upsert(event)
                 case .deltaUpsert(let delta):
                     if let delta {
                         inserted += try upsert(delta)
@@ -486,7 +486,7 @@ actor ClaudeImportEngine {
     }
 
     private enum CrossDaySnapshotResolution {
-        case normalUpsert
+        case normalUpsert(ClaudeUsageEvent)
         case deltaUpsert(ClaudeUsageEvent?)
     }
 
@@ -499,17 +499,19 @@ actor ClaudeImportEngine {
         guard !resetSession,
               let messageId = event.messageId,
               !ClaudeRolloutParser.isDayDeltaMessageId(messageId)
-        else { return .normalUpsert }
+        else { return .normalUpsert(event) }
 
         let existingEvents = try storedClaudeEvents(
             db: db,
             sessionId: sessionId,
             baseMessageId: messageId)
         guard let base = existingEvents.first(where: { $0.messageId == messageId }) else {
-            return .normalUpsert
+            return .normalUpsert(event)
         }
         guard !ClaudeRolloutParser.isSameLocalDay(base.timestamp, event.timestamp) else {
-            return .normalUpsert
+            return .normalUpsert(ClaudeRolloutParser.preferredSnapshot(
+                candidate: event,
+                existing: base))
         }
 
         return .deltaUpsert(ClaudeRolloutParser.dayDeltaEvent(
@@ -696,11 +698,12 @@ enum ClaudeRolloutParser {
     ///     instead of being skipped as empty work.
     ///   - One `message.id` can span several `assistant` lines: a zero-usage
     ///     stub (skipped), then one line per content block whose
-    ///     `output_tokens` grows as the message streams. The LAST same-day
-    ///     snapshot carries the complete usage, so in-pass duplicates REPLACE
-    ///     the earlier event (last wins, not first). Cross-day snapshots
-    ///     become a synthetic per-day delta event to avoid moving yesterday's
-    ///     usage into today, or rewriting yesterday after midnight.
+    ///     `output_tokens` grows as the message streams. The largest same-day
+    ///     snapshot carries the complete usage, so in-pass duplicates replace
+    ///     the earlier event only when they do not lower the token total.
+    ///     Cross-day snapshots become a synthetic per-day delta event to avoid
+    ///     moving yesterday's usage into today, or rewriting yesterday after
+    ///     midnight.
     static func parse(
         fileURL: URL, fromOffset: Int64 = 0
     ) throws -> Output {
@@ -719,7 +722,7 @@ enum ClaudeRolloutParser {
         var lastModelId: String? = nil
         var events: [ClaudeUsageEvent] = []
 
-        // Same-pass dedup, keeping the LAST snapshot per message id (see
+        // Same-pass dedup, keeping the largest snapshot per message id (see
         // longer comment below). The cross-scan analogue is the SQL upsert
         // on the v5 partial unique index — we don't carry state across
         // invocations.
@@ -814,9 +817,14 @@ enum ClaudeRolloutParser {
                 if let existingIndex = eventIndexByMessageId[messageId] {
                     let existing = events[existingIndex]
                     if Self.isSameLocalDay(existing.timestamp, event.timestamp) {
-                        // Same local day: keep the final streaming snapshot
-                        // as the complete bill for that message.
-                        events[existingIndex] = event
+                        // Same local day: keep the largest streaming
+                        // snapshot as the complete bill for that message.
+                        // Normal streams grow monotonically; this also
+                        // prevents a replayed or partial duplicate from
+                        // lowering a completed row.
+                        events[existingIndex] = Self.preferredSnapshot(
+                            candidate: event,
+                            existing: existing)
                     } else if let delta = Self.dayDeltaEvent(
                         existingEvents: events,
                         baseMessageId: messageId,
@@ -923,6 +931,13 @@ enum ClaudeRolloutParser {
         let delta = snapshot.tokenCounts.subtracting(baseline)
         guard !delta.isZero else { return nil }
         return snapshot.replacingTokenCounts(delta, messageId: deltaMessageId)
+    }
+
+    fileprivate static func preferredSnapshot(
+        candidate: ClaudeUsageEvent,
+        existing: ClaudeUsageEvent
+    ) -> ClaudeUsageEvent {
+        candidate.tokenCounts.total >= existing.tokenCounts.total ? candidate : existing
     }
 
     private static func dayDeltaMessageId(

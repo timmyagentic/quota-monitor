@@ -216,15 +216,17 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect(out.session?.events.first?.messageId == "abc-123")
     }
 
-    @Test("duplicate non-zero message.id keeps the LAST streaming snapshot")
-    func duplicateMessageIdKeepsLastSnapshot() throws {
+    @Test("duplicate non-zero message.id keeps the largest streaming snapshot")
+    func duplicateMessageIdKeepsLargestSnapshot() throws {
         // One API message, one assistant line per content block: usage
         // snapshots share the message.id and grow in output_tokens while
-        // input/cache stay fixed. The final line is the complete bill.
+        // input/cache stay fixed. A smaller replay after the largest row
+        // must not lower the complete bill.
         let url = try writeRollout(
             assistantLine(sid: "S1", msgId: "m1", output: 5) + "\n"
             + assistantLine(sid: "S1", msgId: "m1", output: 80) + "\n"
             + assistantLine(sid: "S1", msgId: "m1", output: 350) + "\n"
+            + assistantLine(sid: "S1", msgId: "m1", output: 300) + "\n"
             + assistantLine(sid: "S1", msgId: "m2", output: 7) + "\n")
         let out = try ClaudeRolloutParser.parse(fileURL: url)
         let events = try #require(out.session?.events)
@@ -481,10 +483,19 @@ struct ClaudeRolloutParserIncrementalTests {
         try append(main, assistantLine(sid: sid, msgId: "m1", output: 350) + "\n")
         let noopReport = try await engine.performScan()
         #expect(noopReport.importedEvents == 0)
+
+        // A smaller same-day replay must not lower the stored usage.
+        try append(main, assistantLine(sid: sid, msgId: "m1", output: 300) + "\n")
+        let lowerReport = try await engine.performScan()
+        #expect(lowerReport.importedEvents == 0)
         let count = try await db.pool.read { conn in
             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM usage_events") ?? -1
         }
         #expect(count == 1)
+        let output = try await db.pool.read { conn in
+            try Int.fetchOne(conn, sql: "SELECT output_tokens FROM usage_events") ?? -1
+        }
+        #expect(output == 350)
     }
 
     @Test("a newer usage snapshot on a later day does not rewrite the earlier day")
