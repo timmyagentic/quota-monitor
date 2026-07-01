@@ -25,12 +25,21 @@ appcast 中按系统语言切换的双语更新说明。
 ## [Unreleased]
 
 #### Summary
-- 贡献者现在有一份架构指南，说明应用的整体结构以及编辑时需要注意的坑
 - App Store 版本导入前可以要求选择本地 Codex 和 Claude 历史目录
 
 ### 新增
-- **架构指南（`CLAUDE.md`）。** 新增一份简洁的架构地图，覆盖 `AppEnvironment` 中枢、两条数据通路以及编辑时常见的坑，作为现有贡献者指南的补充。
 - **App Store 历史目录授权。** App Store 版本现在会为你选择的 Codex 和 Claude 历史目录保存只读 security-scoped bookmark，让本地历史导入可以留在 macOS 沙盒边界内。
+
+## [0.2.37] — 2026-07-01
+
+#### Summary
+- 凌晨前后继续使用 Claude 时，Dashboard 里前一天的用量不再跟着继续变化
+
+### 新增
+- **架构指南（`CLAUDE.md`）。** 新增一份简洁的架构地图，覆盖 `AppEnvironment` 中枢、两条数据通路以及编辑时常见的坑，作为现有贡献者指南的补充。
+
+### 修复
+- **Claude 每日用量过午夜后保持稳定。** Claude Code 的同一条消息如果跨过本地日期后才完成 streaming，QuotaMonitor 现在会固定前一天的合计，只把新增 token 增量记到后一天，并在升级后重建一次已有的本地 Claude 用量记录。
 
 ## [0.2.36] — 2026-06-29
 
