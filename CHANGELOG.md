@@ -30,8 +30,9 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.37] — 2026-07-01
+
 #### Summary
-- Contributors get an architecture guide that maps the app's structure and the gotchas to watch for when editing it
 - Claude usage around midnight no longer makes a previous day's Dashboard total keep changing while you keep working
 
 ### Added
