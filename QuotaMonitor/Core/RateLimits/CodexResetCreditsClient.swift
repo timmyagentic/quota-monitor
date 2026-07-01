@@ -72,6 +72,13 @@ actor CodexResetCreditsClient: CodexResetCreditsFetching {
         let authFileURL = codexHome.appendingPathComponent("auth.json", isDirectory: false)
         let access = securityScopedAccess.access(codexHome)
         defer { access.stop() }
+        // App Store: the bookmark resolved but its scope wouldn't open (folder
+        // moved/revoked). Report that distinctly instead of a misleading
+        // "run codex login". Developer ID paths are non-scoped (didStart=false
+        // is normal there), so only gate this in App Store mode.
+        if DistributionChannel.current == .appStore, !access.didStart {
+            throw FetchError.folderNotAuthorized
+        }
         let auth = try Self.loadAuth(from: authFileURL)
         var request = URLRequest(url: endpoint)
         request.httpMethod = "GET"
