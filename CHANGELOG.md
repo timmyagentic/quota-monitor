@@ -33,10 +33,14 @@ window copy.
 #### Summary
 - App Store builds can ask for local Codex and Claude history folders before importing
 - QuotaMonitor can start automatically after you sign in, with a Settings switch to turn it off
+- QuotaMonitor update and release links now point directly at the current GitHub repository
 
 ### Added
 - **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
 - **Launch at login by default.** QuotaMonitor now registers as a macOS login item on launch and exposes a General settings toggle so users can turn it off.
+
+### Changed
+- **Current GitHub release links.** Sparkle feed URLs, appcast download links, README links, and release tooling now point directly at `timmyagentic/quota-monitor` instead of relying on the old repository owner redirect.
 
 ## [0.2.37] — 2026-07-01
 
@@ -980,7 +984,7 @@ window copy.
   0.65 s (760 MB/s) for line iteration, 3.7 s for the full
   parse-and-decode pass.
 
-[0.2.3]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.3
+[0.2.3]: https://github.com/timmyagentic/quota-monitor/releases/tag/v0.2.3
 
 ## [0.2.2] — 2026-05-07
 
@@ -1006,7 +1010,7 @@ window copy.
   savings/accounting term was reworded to `慢于节奏 N%` so it pairs
   symmetrically with `超出节奏 N%`.
 
-[0.2.2]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.2
+[0.2.2]: https://github.com/timmyagentic/quota-monitor/releases/tag/v0.2.2
 
 ## [0.2.1] — 2026-05-07
 
@@ -1021,7 +1025,7 @@ window copy.
   install must be removed manually — the rename leaves it intact so the
   user can roll back if the migration misbehaves.
 
-[0.2.1]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.1
+[0.2.1]: https://github.com/timmyagentic/quota-monitor/releases/tag/v0.2.1
 
 ## [0.2.0] — 2026-05-06
 
@@ -1095,7 +1099,7 @@ GUI-launch path bug that left spawned `codex` unable to find `node`.
   `SalvageBodyFromErrorMessageTests`, `ClaudeOAuthRefreshTests`
   (URL-protocol-stubbed refresh + write-back + concurrency coalescing).
 
-[0.2.0]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.2.0
+[0.2.0]: https://github.com/timmyagentic/quota-monitor/releases/tag/v0.2.0
 
 ## [0.1.0] — 2026-04-30
 
@@ -1147,4 +1151,4 @@ usage.
 - 37 tests across `RolloutParser`, `Aggregator`, `ClaudeUsageDecoder`,
   `ClaudeUsagePoller`, and `ClaudeUsageHydrator`.
 
-[0.1.0]: https://github.com/systemoutprintlnnnn/quota-monitor/releases/tag/v0.1.0
+[0.1.0]: https://github.com/timmyagentic/quota-monitor/releases/tag/v0.1.0

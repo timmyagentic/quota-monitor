@@ -15,6 +15,23 @@ class DeveloperIDReleaseTests(unittest.TestCase):
     def read_text(self, relative_path: str) -> str:
         return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
+    def test_quota_monitor_distribution_urls_use_current_repository_owner(self):
+        legacy_repo = "systemoutprintlnnnn" + "/quota-monitor"
+        current_repo = "timmyagentic/quota-monitor"
+        distribution_files = [
+            ".github/workflows/release.yml",
+            "README.md",
+            "Resources/Info.plist",
+            "appcast.xml",
+            "tools/release-sparkle.sh",
+        ]
+
+        for relative_path in distribution_files:
+            with self.subTest(path=relative_path):
+                contents = self.read_text(relative_path)
+                self.assertNotIn(legacy_repo, contents)
+                self.assertIn(current_repo, contents)
+
     def test_release_pipeline_supports_developer_id_without_replacing_sparkle(self):
         release = self.read_text("tools/release.sh")
 
@@ -37,7 +54,7 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertEqual(info["CFBundleIdentifier"], "dev.tjzhou.QuotaMonitor")
         self.assertEqual(
             info["SUFeedURL"],
-            "https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml",
+            "https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml",
         )
         self.assertEqual(
             info["SUPublicEDKey"],
