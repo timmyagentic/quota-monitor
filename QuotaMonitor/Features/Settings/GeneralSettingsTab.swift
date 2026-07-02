@@ -2,8 +2,9 @@ import SwiftUI
 
 /// General preferences. Deliberately kept short — only the two knobs
 /// regular users actually touch:
-///   1. Language
-///   2. Menu bar headline window (7d / 30d)
+///   1. Startup
+///   2. Language
+///   3. Menu bar headline window (7d / 30d)
 ///
 /// Path overrides, keychain policy, database location, CSV export, and
 /// the Codex rate-limit poll interval all moved to `AdvancedSettingsTab`
@@ -16,9 +17,23 @@ struct GeneralSettingsTab: View {
     var body: some View {
         @Bindable var settings = settings
         Form {
-            // Appearance — placed first because the Dock-icon toggle
-            // is the only path back to Cmd+Tab visibility when a
-            // user wants it. Default OFF (pure menu-bar agent).
+            Section(L10n.sectionStartup) {
+                Toggle(L10n.launchAtLoginLabel, isOn: Binding(
+                    get: { settings.launchAtLoginEnabled },
+                    set: { newValue in
+                        settings.launchAtLoginEnabled = newValue
+                        env.applyLaunchAtLoginPreference()
+                    }
+                ))
+                Text(L10n.launchAtLoginHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Appearance — the Dock-icon toggle is the only path back
+            // to Cmd+Tab visibility when a user wants it. Default OFF
+            // (pure menu-bar agent).
             Section(L10n.sectionAppearance) {
                 Toggle(L10n.showDockIconLabel, isOn: Binding(
                     get: { settings.showDockIconForWindows },

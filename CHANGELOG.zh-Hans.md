@@ -26,9 +26,11 @@ appcast 中按系统语言切换的双语更新说明。
 
 #### Summary
 - App Store 版本导入前可以要求选择本地 Codex 和 Claude 历史目录
+- QuotaMonitor 可以在登录后自动启动，也可以在设置中关闭
 
 ### 新增
 - **App Store 历史目录授权。** App Store 版本现在会为你选择的 Codex 和 Claude 历史目录保存只读 security-scoped bookmark，让本地历史导入可以留在 macOS 沙盒边界内。
+- **默认开机自启。** QuotaMonitor 现在会在启动时注册为 macOS 登录项，并在“通用”设置中提供开关，用户可以随时关闭。
 
 ## [0.2.37] — 2026-07-01
 

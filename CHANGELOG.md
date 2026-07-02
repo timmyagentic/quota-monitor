@@ -32,9 +32,11 @@ window copy.
 
 #### Summary
 - App Store builds can ask for local Codex and Claude history folders before importing
+- QuotaMonitor can start automatically after you sign in, with a Settings switch to turn it off
 
 ### Added
 - **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
+- **Launch at login by default.** QuotaMonitor now registers as a macOS login item on launch and exposes a General settings toggle so users can turn it off.
 
 ## [0.2.37] — 2026-07-01
 
