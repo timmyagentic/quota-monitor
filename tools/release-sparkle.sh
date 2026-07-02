@@ -84,7 +84,7 @@ DMG_FILE="$(basename "${DMG_PATH}")"
 # repo (Quota Monitor); the CodexMonitor release job overrides it to
 # systemoutprintlnnnn/codex-monitor so the signed appcast points users
 # at the DMG actually published under that brand.
-RELEASE_REPO="${RELEASE_REPO:-systemoutprintlnnnn/quota-monitor}"
+RELEASE_REPO="${RELEASE_REPO:-timmyagentic/quota-monitor}"
 DOWNLOAD_URL="https://github.com/${RELEASE_REPO}/releases/download/v${VERSION}/${DMG_FILE}"
 # RSS pubDate must be RFC-822 (English month + weekday) regardless of
 # the maintainer's system locale. `LC_ALL=C` pins the C locale just

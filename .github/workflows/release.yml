@@ -337,7 +337,7 @@ jobs:
           # (build.sh copies Resources/Info.plist verbatim apart from version
           # and brand-name injection, so editing it here flows into the build.)
           sed -i '' \
-            's#systemoutprintlnnnn/quota-monitor/main/appcast.xml#systemoutprintlnnnn/codex-monitor/main/appcast.xml#' \
+            's#timmyagentic/quota-monitor/main/appcast.xml#systemoutprintlnnnn/codex-monitor/main/appcast.xml#' \
             Resources/Info.plist
           echo "==> Branding after switch:"
           grep -E 'app(DisplayName|CodeName)' QuotaMonitor/Core/Branding.swift

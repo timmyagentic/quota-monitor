@@ -26,9 +26,13 @@ appcast 中按系统语言切换的双语更新说明。
 
 #### Summary
 - App Store 版本导入前可以要求选择本地 Codex 和 Claude 历史目录
+- QuotaMonitor 更新和发布链接现在会直接指向当前 GitHub 仓库
 
 ### 新增
 - **App Store 历史目录授权。** App Store 版本现在会为你选择的 Codex 和 Claude 历史目录保存只读 security-scoped bookmark，让本地历史导入可以留在 macOS 沙盒边界内。
+
+### 变更
+- **当前 GitHub 发布链接。** Sparkle feed URL、appcast 下载链接、README 链接和发布工具现在会直接指向 `timmyagentic/quota-monitor`，不再依赖旧仓库 owner 的重定向。
 
 ## [0.2.37] — 2026-07-01
 

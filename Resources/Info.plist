@@ -58,7 +58,7 @@
       switch is safe.
     -->
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml</string>
+    <string>https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>QzgtY6kPCCK/S98RMT5u03HVx8PTd+cahlHQti+Fmak=</string>
     <key>SUEnableAutomaticChecks</key>
