@@ -4,7 +4,7 @@
      version="2.0">
     <channel>
         <title>QuotaMonitor</title>
-        <link>https://github.com/systemoutprintlnnnn/quota-monitor</link>
+        <link>https://github.com/timmyagentic/quota-monitor</link>
         <description>Auto-update feed for QuotaMonitor.</description>
         <language>en</language>
         <!--
@@ -438,7 +438,7 @@
 </section>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.37/QuotaMonitor-0.2.37.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.37/QuotaMonitor-0.2.37.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="2W9vvhfMUqsFY4iF8yCUmX0AKHjKrhY0RJkuzQS5AqmFFpM+5coa6tyA4vevof7fWBOY+89x2ZLgNBPjx+xgBg==" length="6845461" />
         </item>
@@ -879,7 +879,7 @@
 </section>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.36/QuotaMonitor-0.2.36.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.36/QuotaMonitor-0.2.36.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="tEY9iQO8GcoE0AzUCC5W2nUslzdrDl2HO3N+FC3Wgu5CAIPk2cssiBZFPpYWAc0LAAxqYVmnmPJLfa5UWbnjCw==" length="6837430" />
         </item>
@@ -1480,7 +1480,7 @@
 </section>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.34/QuotaMonitor-0.2.34.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.34/QuotaMonitor-0.2.34.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="LRvGOLTqncT3tcTLW7MccIhj7E6S7paUk9t+mlYBEhAJJqObk1ifVaTtJwh/5NxIsxntZ4GVJTXvTRvtrVU2AQ==" length="6800760" />
         </item>
@@ -1929,7 +1929,7 @@
 </section>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.33/QuotaMonitor-0.2.33.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.33/QuotaMonitor-0.2.33.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="Fwtc1q/JpeVHWCwQLt4EiPxQkG+7h/9hh3cZOzFJ0DHITBcRSJ0DoG10e29ovhuUDON3wdGpg1ImWhED4sF0Bg==" length="6717970" />
         </item>
@@ -2378,7 +2378,7 @@
 </section>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.32/QuotaMonitor-0.2.32.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.32/QuotaMonitor-0.2.32.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="9FHAp0CtcS/7fAj0VOhuwPDlx8NR8RmoXx1sQdQHwo4WuxfsKxNbYkFF4nYsWVcuWesGstaFKiXwVw5FwY1vDg==" length="5060260" />
         </item>
@@ -2827,7 +2827,7 @@
 </section>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.31/QuotaMonitor-0.2.31.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.31/QuotaMonitor-0.2.31.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="3ZR9Bd4OJeV/9v+/Rva4To4XIe9fGScEHnHXd6fdzgEv7X17uP0scclUSzSoSocO2wGjl+zOM8lon36KKBKZCg==" length="4989614" />
         </item>
@@ -2870,7 +2870,7 @@
 </div>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.30/QuotaMonitor-0.2.30.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.30/QuotaMonitor-0.2.30.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="Via3Psd+x/F57RwPzmOEH2YPQ+3/Kmrx1Al4soY0JKHF1itwjzfJ8QrSB8Z3lmRATYR2P01s/hrIaQABcF2lAg==" length="4895388" />
         </item>
@@ -2909,7 +2909,7 @@
 </div>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.29/QuotaMonitor-0.2.29.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.29/QuotaMonitor-0.2.29.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="ITsZqC+yxlfSbrz3g+2zniwL60Vvq/QymZlGwmhomUvKyey2JABDp5v3KR/vEN+IQR4R+N7ufJNGIA0XZfytBA==" length="4882632" />
         </item>
@@ -2942,7 +2942,7 @@
 </ul>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.28/QuotaMonitor-0.2.28.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.28/QuotaMonitor-0.2.28.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="CDHJWSAZerUI8Nosx5iaJ7FscedOIpKOLdjR5F46dPtTtYcjW1Bg2OR0kNjI0jCCAdzpuOVJUcdHi3c446ULCQ==" length="4882216" />
         </item>
@@ -2997,7 +2997,7 @@
 </div>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.27/QuotaMonitor-0.2.27.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.27/QuotaMonitor-0.2.27.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="GM45Ld4HajxVaiSR0DwHOnnIxmiH3v/5flgoRp2PlbLygxIYH07CqkZh7Nllbw3KWt9lxZjuHKYrbYxm+S5OAQ==" length="4882250" />
         </item>
@@ -3042,7 +3042,7 @@
 </div>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.26/QuotaMonitor-0.2.26.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.26/QuotaMonitor-0.2.26.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="VU1KEid29sb7l96SBm2utRVzS2mf/HFSHGVBLhiCEaBMhHij4RvMobDOCQUdkNDgftJB4yus7hH+E9gXCUOMBA==" length="4882253" />
         </item>
@@ -3101,7 +3101,7 @@
 </ul>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.25/QuotaMonitor-0.2.25.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.25/QuotaMonitor-0.2.25.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="HjTUcepM7wYycFX2w+qTvyP1P6dBuPoJkkB1GQZPRRTcWIRuGekcp42NxX31a9tqt5H8Dh9CYLah86rhzlaACg==" length="4561876" />
         </item>
@@ -3118,7 +3118,7 @@
 </ul>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.24/QuotaMonitor-0.2.24.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.24/QuotaMonitor-0.2.24.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="pvtqHwO858I5CdMaqu18qFfcUiNs5IH5BC6N51m3ioOpMdL4qBr1vrQp9qfYI3hIowTTiShNJFrYK+B0deMrCw==" length="4717560" />
         </item>
@@ -3138,7 +3138,7 @@
 </ul>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.23/QuotaMonitor-0.2.23.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.23/QuotaMonitor-0.2.23.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="bg509mtw4sIpAS2ovvOmtwOczymVymFVE4C4Awa2BZ9TAHRSRIDe+udZVlmZt41x6EoXRp02r8ak9qsmuFZLDQ==" length="4741077" />
         </item>
@@ -3159,7 +3159,7 @@
 </ul>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.22/QuotaMonitor-0.2.22.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.22/QuotaMonitor-0.2.22.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="DM/hnOCSuXPlmYCzabIfSp8JkwTMuZqIe2uooWszSXfJtUKMvdIsNTgcOeWJTx6oy5PITL6LrjeDZbajFOh7DA==" length="4731962" />
         </item>
@@ -3188,7 +3188,7 @@
 </ul>
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.21/QuotaMonitor-0.2.21.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.21/QuotaMonitor-0.2.21.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="2GiwbfYetR6MFv+lwSBHe6rqNCOv6FSICXKvdxdT/RkImP/l+m9glwcasTkzy7K+dCCNR5uYmxccNvnFItjOBQ==" length="4731729" />
         </item>
@@ -3202,7 +3202,7 @@
                 See CHANGELOG.md for what's new in 0.2.20.
             ]]></description>
             <enclosure
-                url="https://github.com/systemoutprintlnnnn/quota-monitor/releases/download/v0.2.20/QuotaMonitor-0.2.20.dmg"
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.20/QuotaMonitor-0.2.20.dmg"
                 type="application/octet-stream"
                 sparkle:edSignature="KtHdF929WdzSc2DL9/LPVukoy9pHX9MYFZTHy24J+Iz/z0ITi/j9oUBgB/QHUdb9gl31kiUUp6KOQ2FDiYA+Dw==" length="4722253" />
         </item>

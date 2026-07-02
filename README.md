@@ -17,7 +17,7 @@ respective official APIs.
 ## Install
 
 1. Download the latest `QuotaMonitor-<version>.dmg` from the
-   [Releases page](https://github.com/systemoutprintlnnnn/quota-monitor/releases).
+   [Releases page](https://github.com/timmyagentic/quota-monitor/releases).
 2. Open the DMG, drag **QuotaMonitor.app** onto the **Applications** alias
    shown in the installer window.
 3. Open **QuotaMonitor.app** from Applications.
