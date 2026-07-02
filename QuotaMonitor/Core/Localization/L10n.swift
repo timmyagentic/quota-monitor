@@ -234,6 +234,13 @@ enum L10n {
         t(en: "Choose whether quota rows show the percent already used or the percent still remaining. Progress bars follow the same direction.",
           zh: "选择配额行显示已用百分比还是剩余百分比。用量条也会按同一方向显示。")
     }
+    static var launchAtLoginLabel: String {
+        t(en: "Launch at login", zh: "开机自启")
+    }
+    static var launchAtLoginHelp: String {
+        t(en: "\(Branding.appCodeName) registers as a macOS login item so the menu-bar meter is ready after you sign in.",
+          zh: "\(Branding.appCodeName) 会注册为 macOS 登录项，登录后菜单栏用量表会自动就绪。")
+    }
     static var showDockIconLabel: String {
         t(en: "Show Dock icon when windows are open",
           zh: "窗口打开时显示程序坞图标")
@@ -654,6 +661,7 @@ enum L10n {
     static var settingsTabAdvanced: String { t(en: "Advanced", zh: "高级") }
 
     // sections
+    static var sectionStartup: String { t(en: "Startup", zh: "启动") }
     static var sectionAppearance: String { t(en: "Appearance", zh: "外观") }
     static var sectionLanguage: String { t(en: "Language", zh: "语言") }
     static var sectionCodexCLI: String { "Codex CLI" }

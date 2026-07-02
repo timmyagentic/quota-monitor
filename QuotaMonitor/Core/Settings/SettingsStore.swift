@@ -62,6 +62,13 @@ final class SettingsStore {
         didSet { defaults.set(mirrorClaudeKeychainToFile,
                               forKey: Keys.mirrorClaudeKeychainToFile) }
     }
+    /// Whether QuotaMonitor should register itself as a macOS login item.
+    /// **Default true** and persisted on first launch so future releases
+    /// preserve an explicit user opt-out instead of re-enabling it.
+    var launchAtLoginEnabled: Bool {
+        didSet { defaults.set(launchAtLoginEnabled,
+                              forKey: Keys.launchAtLoginEnabled) }
+    }
     /// Whether to promote the menu-bar app to `.regular` activation
     /// policy while a Dashboard / Settings / Onboarding window is on
     /// screen. **Default false** — by default QuotaMonitor stays a
@@ -349,6 +356,12 @@ final class SettingsStore {
             defaults.set(resolvedMirrorClaudeKeychainToFile,
                          forKey: Keys.mirrorClaudeKeychainToFile)
         }
+        let storedLaunchAtLogin =
+            defaults.object(forKey: Keys.launchAtLoginEnabled) as? Bool
+        self.launchAtLoginEnabled = storedLaunchAtLogin ?? true
+        if storedLaunchAtLogin == nil {
+            defaults.set(true, forKey: Keys.launchAtLoginEnabled)
+        }
         // Default false. A missing key reads as false via
         // `defaults.bool(forKey:)`, which is exactly the resolved
         // default we want for both fresh installs and existing users
@@ -635,6 +648,8 @@ final class SettingsStore {
             keychainPolicy: (d.string(forKey: Keys.keychainPolicy)
                 .flatMap(KeychainPolicy.init(rawValue:))) ?? .fallback,
             mirrorClaudeKeychainToFile: resolvedMirrorClaudeKeychainToFile(d),
+            launchAtLoginEnabled:
+                (d.object(forKey: Keys.launchAtLoginEnabled) as? Bool) ?? true,
             enabledProviders: providers,
             codexFastModeBilling: d.bool(forKey: Keys.codexFastModeBilling),
             developerModeEnabled: d.bool(forKey: Keys.developerModeEnabled),
@@ -699,6 +714,7 @@ final class SettingsStore {
         let pollIntervalSeconds: Int
         let keychainPolicy: KeychainPolicy
         let mirrorClaudeKeychainToFile: Bool
+        let launchAtLoginEnabled: Bool
         let enabledProviders: Set<String>
         let codexFastModeBilling: Bool
         let developerModeEnabled: Bool
@@ -709,6 +725,7 @@ final class SettingsStore {
         static let pollInterval   = "settings.pollIntervalSeconds"
         static let keychainPolicy = "settings.keychainPolicy"
         static let mirrorClaudeKeychainToFile = "settings.mirrorClaudeKeychainToFile"
+        static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"

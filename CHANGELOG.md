@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 - App Store builds can ask for local Codex and Claude history folders before importing
+- QuotaMonitor can start automatically after you sign in, with a Settings switch to turn it off
 - QuotaMonitor update and release links now point directly at the current GitHub repository
 
 ### Added
 - **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
+- **Launch at login by default.** QuotaMonitor now registers as a macOS login item on launch and exposes a General settings toggle so users can turn it off.
 
 ### Changed
 - **Current GitHub release links.** Sparkle feed URLs, appcast download links, README links, and release tooling now point directly at `timmyagentic/quota-monitor` instead of relying on the old repository owner redirect.

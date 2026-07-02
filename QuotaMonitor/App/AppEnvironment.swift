@@ -157,16 +157,19 @@ final class AppEnvironment {
     /// a chatty session from scanning on every keystroke-sized append.
     static let claudeFileWatchScanMinInterval: TimeInterval = 5
     private let codexResetCreditsClient: any CodexResetCreditsFetching
+    private let launchAtLoginController: any LaunchAtLoginControlling
     private var lastCodexResetCreditsRefreshAttemptAt: Date?
     let pricingSource = LiteLLMPricingSource()
 
     init(
         appServer: AppServerClient = AppServerClient(),
         codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
+        launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true
     ) {
         self.appServer = appServer
         self.codexResetCreditsClient = codexResetCreditsClient
+        self.launchAtLoginController = launchAtLoginController
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
         guard startBackgroundTasks else { return }
         // Boot background polling immediately so it doesn't depend on the user
@@ -1372,6 +1375,28 @@ final class AppEnvironment {
             // Dock icon is the user's only visible entry and we keep it.
             NSApp.setActivationPolicy(.accessory)
         }
+    }
+
+    func applyLaunchAtLoginPreference() {
+        applyLaunchAtLoginPreference(
+            enabled: SettingsStore.shared.launchAtLoginEnabled,
+            allowSystemRegistration: !LocalQAEnvironment.isActive())
+    }
+
+    func applyLaunchAtLoginPreference(
+        enabled: Bool,
+        allowSystemRegistration: Bool
+    ) {
+        guard allowSystemRegistration else {
+            DeveloperLog.eventRecord(
+                "settings.launch_at_login.skip",
+                category: "settings",
+                trigger: "settings",
+                result: "skipped",
+                fields: ["reason": .string("local-qa")])
+            return
+        }
+        launchAtLoginController.apply(enabled: enabled)
     }
 
     // MARK: - dock policy predicate

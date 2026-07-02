@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let env = AppEnvironment.shared
         let loc = LocalizationStore.shared
         let settings = SettingsStore.shared
+        env.applyLaunchAtLoginPreference()
 
         // Now that the migration has run (in QuotaMonitorApp.init), it's safe to
         // let Sparkle read UserDefaults. AppKit owns the four app windows (see
