@@ -125,6 +125,16 @@ mkdir -p ReleaseNotes
 if [[ -f "${EN_HTML_FILE}" ]]; then
     echo "==> Using ${EN_HTML_FILE} for English release notes"
 else
+    # Mirror the Chinese guard below: changelog-to-html.py prints a "See …"
+    # stub (exit 0) when the section is missing, which — now that we WRITE the
+    # output to a committed, linked file — would silently ship stub notes.
+    # Require the section instead.
+    if ! grep -qE "^##[[:space:]]+\[${VERSION//./\\.}\]" CHANGELOG.md; then
+        echo "error: CHANGELOG.md is missing a '## [${VERSION}]' section," >&2
+        echo "       and ${EN_HTML_FILE} does not exist." >&2
+        echo "       Provide one of the two before generating the appcast item." >&2
+        exit 1
+    fi
     echo "==> No ${EN_HTML_FILE}, generating from CHANGELOG.md"
     python3 tools/changelog-to-html.py --lang en "${VERSION}" CHANGELOG.md \
         > "${EN_HTML_FILE}"
