@@ -1,21 +1,15 @@
 import SwiftUI
-import Charts
 
-/// Composition card: where is the spend going? Two-column layout —
-///
-/// - Left: top 8 models from the last 30 days as horizontal bars
-///   (model name, %, $).
-/// - Right: provider donut (Codex vs Claude) + a one-liner auto-insight
-///   ("Opus 4 = 67% of spend, +12pp vs prior 30d").
+/// Composition panel: where the last-30-day usage went. Mirrors Token
+/// Monitor's overview breakdown with two compact horizontal lists:
+/// by model and by tool/provider.
 struct CompositionSection: View {
+    @Environment(SettingsStore.self) private var settings
+
     let modelShares30d: [ModelShare]
     let modelSharesPrior30d: [ModelShare]
-    /// Pre-filtered to only include providers the user has enabled.
     let providerShares30d: [ProviderShare]
-    /// Hide the right-hand donut column entirely when only one provider
-    /// is being tracked — a single-slice donut is just visual noise and
-    /// the bar column already conveys all the information.
-    let showProviderDonut: Bool
+    let showProviderBreakdown: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -25,105 +19,26 @@ struct CompositionSection: View {
                 Spacer()
             }
 
-            if modelShares30d.isEmpty && providerShares30d.allSatisfy({ $0.valueUSD <= 0 }) {
+            if modelRows.isEmpty && providerRows.isEmpty {
                 Text(L10n.compositionNoSpend)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-            } else if showProviderDonut {
+            } else if showProviderBreakdown {
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 14) {
-                        modelBarsColumn
-                        providerDonutColumn
+                    HStack(alignment: .top, spacing: 36) {
+                        BreakdownBarColumn(title: L10n.compositionTopModels, rows: modelRows)
+                        BreakdownBarColumn(title: L10n.compositionByProvider, rows: providerRows)
                     }
-                    VStack(alignment: .leading, spacing: 14) {
-                        modelBarsColumn
-                        providerDonutColumn
+                    VStack(alignment: .leading, spacing: 18) {
+                        BreakdownBarColumn(title: L10n.compositionTopModels, rows: modelRows)
+                        BreakdownBarColumn(title: L10n.compositionByProvider, rows: providerRows)
                     }
                 }
             } else {
-                // Single-provider mode — let the model bars take the
-                // full width. Insight sentence gets pulled in here so
-                // the user doesn't lose it when the donut column hides.
-                VStack(alignment: .leading, spacing: 10) {
-                    modelBarsColumn
-                    if let insight = insightText {
-                        Text(insight)
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                BreakdownBarColumn(title: L10n.compositionTopModels, rows: modelRows)
             }
-        }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
-        )
-    }
 
-    // MARK: - Models column
-
-    private var modelBarsColumn: some View {
-        let total = total30d
-        let top = Array(modelShares30d.prefix(8))
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.compositionTopModels)
-                .font(.subheadline.weight(.semibold))
-            VStack(spacing: 4) {
-                ForEach(top) { share in
-                    modelBarRow(share, total: max(total, 0.0001))
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func modelBarRow(_ share: ModelShare, total: Double) -> some View {
-        let pct = share.valueUSD / total
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(share.displayName)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer()
-                Text(share.valueUSD.formatted(.currency(code: "USD")))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Text(String(format: "%.0f%%", pct * 100))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .frame(width: 40, alignment: .trailing)
-            }
-            ProgressView(value: pct)
-                // Two-color discipline: bar tint flips to red when one
-                // model is dominant (>50%) — matches the banner trigger.
-                .tint(pct > 0.5 ? Color.red : Color.green)
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.secondary.opacity(0.05))
-        )
-    }
-
-    // MARK: - Provider donut column
-
-    private var providerDonutColumn: some View {
-        let total = providerShares30d.reduce(0) { $0 + $1.valueUSD }
-        return VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.compositionByProvider)
-                .font(.subheadline.weight(.semibold))
-            if total <= 0 {
-                Text(L10n.compositionNoSpend)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            } else {
-                providerDonut(total: total)
-                providerLegend(total: total)
-            }
             if let insight = insightText {
                 Text(insight)
                     .font(.caption.monospacedDigit())
@@ -131,65 +46,49 @@ struct CompositionSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .dashboardPanel(cornerRadius: 12, padding: 14)
     }
 
-    private func providerDonut(total: Double) -> some View {
-        Chart(providerShares30d) { share in
-            SectorMark(
-                angle: .value("USD", share.valueUSD),
-                innerRadius: .ratio(0.6),
-                angularInset: 1.5
-            )
-            .cornerRadius(3)
-            // Two-color palette: green for the dominant share, secondary
-            // grey for the rest. Avoids inventing decorative provider
-            // colors that would conflict with the menu bar's green/red
-            // semantic discipline.
-            .foregroundStyle(by: .value("Provider", share.provider))
-        }
-        .chartForegroundStyleScale([
-            "codex":  Color.green.opacity(0.85),
-            "claude": Color.secondary.opacity(0.55)
-        ])
-        .chartLegend(.hidden)
-        .frame(height: 140)
-    }
-
-    private func providerLegend(total: Double) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(providerShares30d) { share in
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(share.provider == "codex"
-                              ? Color.green.opacity(0.85)
-                              : Color.secondary.opacity(0.55))
-                        .frame(width: 7, height: 7)
-                    Text(providerLabel(share.provider))
-                        .font(.caption2)
-                    Spacer()
-                    Text(share.valueUSD.formatted(.currency(code: "USD")))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text(String(format: "%.0f%%",
-                                total > 0 ? share.valueUSD / total * 100 : 0))
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, alignment: .trailing)
-                }
-            }
+    private var modelRows: [BreakdownBarRow] {
+        let total = max(modelShares30d.reduce(Int64(0)) { $0 + $1.tokens }, 1)
+        let maxTokens = max(modelShares30d.map(\.tokens).max() ?? 0, 1)
+        return modelShares30d.prefix(5).map { share in
+            let pct = Double(share.tokens) / Double(total)
+            return BreakdownBarRow(
+                id: share.modelId,
+                label: share.displayName,
+                color: DashboardTheme.modelColor(share.modelId),
+                value: compactTokens(share.tokens),
+                percent: pct,
+                fractionOfMax: Double(share.tokens) / Double(maxTokens))
         }
     }
 
-    private func providerLabel(_ id: String) -> String {
-        switch id {
-        case "codex":  return L10n.codex
-        case "claude": return L10n.claude
-        default:       return id
+    private var providerRows: [BreakdownBarRow] {
+        let visible = providerShares30d
+            .filter { $0.tokens > 0 || $0.valueUSD > 0 }
+            .sorted { $0.tokens > $1.tokens }
+        let total = max(visible.reduce(Int64(0)) { $0 + $1.tokens }, 1)
+        let maxTokens = max(visible.map(\.tokens).max() ?? 0, 1)
+        return visible.map { share in
+            let pct = Double(share.tokens) / Double(total)
+            return BreakdownBarRow(
+                id: share.provider,
+                label: DashboardTheme.providerLabel(share.provider),
+                color: DashboardTheme.providerColor(share.provider),
+                value: compactTokens(share.tokens),
+                percent: pct,
+                fractionOfMax: Double(share.tokens) / Double(maxTokens))
         }
     }
 
-    // MARK: - Insight
+    private func compactTokens(_ tokens: Int64) -> String {
+        tokens.formatted(
+            .number
+                .notation(.compactName)
+                .precision(.fractionLength(0...1))
+                .locale(settings.tokenFormatLocale))
+    }
 
     /// Auto-insight sentence — uses the dominant model's pp-delta vs the
     /// prior 30 days when available, otherwise falls back to the static
@@ -211,5 +110,75 @@ struct CompositionSection: View {
 
     private var total30d: Double {
         modelShares30d.reduce(0) { $0 + $1.valueUSD }
+    }
+}
+
+private struct BreakdownBarRow: Identifiable {
+    let id: String
+    let label: String
+    let color: Color
+    let value: String
+    let percent: Double
+    let fractionOfMax: Double
+}
+
+private struct BreakdownBarColumn: View {
+    let title: String
+    let rows: [BreakdownBarRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            VStack(spacing: 7) {
+                ForEach(rows) { row in
+                    BreakdownBarRowView(row: row)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct BreakdownBarRowView: View {
+    let row: BreakdownBarRow
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 7) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(row.color)
+                    .frame(width: 10, height: 10)
+                Text(row.label)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(width: 128, alignment: .leading)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.06))
+                    Capsule()
+                        .fill(row.color)
+                        .frame(width: max(2, proxy.size.width * row.fractionOfMax))
+                }
+            }
+            .frame(height: 4)
+
+            Text(row.value)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 64, alignment: .trailing)
+            Text(row.percent.formatted(
+                .percent
+                    .precision(.fractionLength(1))
+            ))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .frame(width: 52, alignment: .trailing)
+        }
     }
 }

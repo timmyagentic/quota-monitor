@@ -226,8 +226,57 @@ struct AggregatorTests {
         let codex = try #require(shares.first { $0.provider == "codex" })
         let claude = try #require(shares.first { $0.provider == "claude" })
         #expect(abs(codex.valueUSD - 12.34) < 0.0001)
+        #expect(codex.tokens == 1000)
         #expect(claude.valueUSD == 0,
-                "missing provider must zero-fill so the donut layout stays stable")
+                "missing provider must zero-fill so the tool breakdown stays stable")
+        #expect(claude.tokens == 0)
+    }
+
+    @Test("fetchDailyBreakdown: groups trend buckets by provider or model")
+    func dailyBreakdown_groupsTrendBuckets() throws {
+        let db = try makeDatabase()
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let yesterday = try #require(cal.date(byAdding: .day, value: -1, to: today))
+        let codexTime = yesterday.addingTimeInterval(10 * 3600)
+        let claudeTime = yesterday.addingTimeInterval(11 * 3600)
+        let todayTime = today.addingTimeInterval(9 * 3600)
+
+        try seedEvent(in: db, provider: "codex", sessionId: "c-1",
+                      at: codexTime, valueUSD: 2.00, tokens: 2_000)
+        try seedEvent(in: db, provider: "claude", sessionId: "k-1",
+                      at: claudeTime, valueUSD: 3.00, tokens: 3_000)
+        try seedEvent(in: db, provider: "codex", sessionId: "c-2",
+                      at: todayTime, valueUSD: 4.00, tokens: 4_000)
+
+        let byProvider = try db.pool.read { conn in
+            try Aggregator.fetchDailyBreakdown(
+                db: conn, days: 2, grouping: .provider, provider: .all,
+                now: todayTime, calendar: cal)
+        }
+        let yesterdayCodex = try #require(byProvider.first {
+            cal.isDate($0.date, inSameDayAs: yesterday) && $0.key == "codex"
+        })
+        let yesterdayClaude = try #require(byProvider.first {
+            cal.isDate($0.date, inSameDayAs: yesterday) && $0.key == "claude"
+        })
+        let todayCodex = try #require(byProvider.first {
+            cal.isDate($0.date, inSameDayAs: today) && $0.key == "codex"
+        })
+        #expect(yesterdayCodex.tokens == 2_000)
+        #expect(yesterdayCodex.provider == "codex")
+        #expect(abs(yesterdayClaude.valueUSD - 3.00) < 0.0001)
+        #expect(yesterdayClaude.provider == "claude")
+        #expect(todayCodex.tokens == 4_000)
+
+        let codexModels = try db.pool.read { conn in
+            try Aggregator.fetchDailyBreakdown(
+                db: conn, days: 2, grouping: .model, provider: .codex,
+                now: todayTime, calendar: cal)
+        }
+        #expect(codexModels.allSatisfy { $0.provider == "codex" && $0.key == "gpt-5" },
+                "provider filter must restrict model trend rows before grouping")
+        #expect(codexModels.reduce(0) { $0 + $1.tokens } == 6_000)
     }
 
     // MARK: - filter clause

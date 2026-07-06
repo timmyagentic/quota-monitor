@@ -13,8 +13,13 @@ extension Aggregator {
         try await pool.read { db in
             let overview = try fetchOverview(db: db, provider: provider)
             let daily = try fetchDaily(db: db, days: 14, provider: provider)
-            // 60-day window powers Trends "Today/7d/30d (Δ vs prior 30d)".
-            let dailyExtended = try fetchDaily(db: db, days: 60, provider: provider)
+            // One-year window powers the Token Monitor-inspired Trends
+            // page. The statline still reads only the trailing 60 days.
+            let dailyExtended = try fetchDaily(db: db, days: 365, provider: provider)
+            let dailyProviderExtended = try fetchDailyBreakdown(
+                db: db, days: 365, grouping: .provider, provider: provider)
+            let dailyModelExtended = try fetchDailyBreakdown(
+                db: db, days: 365, grouping: .model, provider: provider)
             let monthly = try fetchMonthly(db: db, months: 12, provider: provider)
             let shares = try fetchModelShares(db: db, provider: provider)
             // 30d + prior-30d slices fuel the Composition section's bar
@@ -39,6 +44,8 @@ extension Aggregator {
                 overview: overview,
                 daily: daily,
                 dailyExtended: dailyExtended,
+                dailyProviderExtended: dailyProviderExtended,
+                dailyModelExtended: dailyModelExtended,
                 monthly: monthly,
                 modelShares: shares,
                 modelShares30d: shares30d,
@@ -118,6 +125,91 @@ extension Aggregator {
         }
         return dailySeries(dayTokens: dayTokens, dayValue: dayValue,
                            days: days, now: now, calendar: calendar)
+    }
+
+    static func fetchDailyBreakdown(
+        db: Database,
+        days: Int,
+        grouping: TrendBreakdownGrouping,
+        provider: ProviderFilter = .all,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> [DailyBreakdownPoint] {
+        guard days > 0 else { return [] }
+        let earliestDay = calendar.date(
+            byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))
+        let lowerBound = ISO8601.fractional.string(from: earliestDay ?? .distantPast)
+
+        let keySQL: String
+        let labelSQL: String
+        let joinSQL: String
+        switch grouping {
+        case .provider:
+            keySQL = "ue.provider"
+            labelSQL = "ue.provider"
+            joinSQL = ""
+        case .model:
+            keySQL = "ue.model_id"
+            labelSQL = "COALESCE(pc.display_name, ue.model_id)"
+            joinSQL = "LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id"
+        }
+
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT
+                ue.timestamp,
+                ue.provider,
+                ue.value_usd,
+                ue.total_tokens,
+                \(keySQL) AS breakdown_key,
+                \(labelSQL) AS breakdown_label
+            FROM usage_events ue
+            \(joinSQL)
+            WHERE ue.timestamp >= ?
+            \(provider.clause(table: "ue"))
+            """, arguments: [lowerBound])
+
+        struct Bucket: Hashable {
+            let date: Date
+            let provider: String
+            let key: String
+        }
+        var totals: [Bucket: (label: String, valueUSD: Double, tokens: Int64)] = [:]
+        for row in rows {
+            let ts: String = row["timestamp"] ?? ""
+            guard let date = parseTimestamp(ts) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            let rawKey: String = row["breakdown_key"] ?? "unknown"
+            let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "unknown"
+                : rawKey
+            let rawLabel: String = row["breakdown_label"] ?? key
+            let label = rawLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? key
+                : rawLabel
+            let rawProvider: String = row["provider"] ?? "unknown"
+            let provider = rawProvider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "unknown"
+                : rawProvider
+            let bucket = Bucket(date: dayStart, provider: provider, key: key)
+            var current = totals[bucket] ?? (label: label, valueUSD: 0, tokens: 0)
+            current.valueUSD += row["value_usd"] ?? 0
+            current.tokens += row["total_tokens"] ?? 0
+            totals[bucket] = current
+        }
+
+        return totals.map { bucket, value in
+            DailyBreakdownPoint(
+                date: bucket.date,
+                provider: bucket.provider,
+                key: bucket.key,
+                label: value.label,
+                valueUSD: value.valueUSD,
+                tokens: value.tokens)
+        }
+        .sorted {
+            if $0.date != $1.date { return $0.date < $1.date }
+            return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        }
     }
 
     /// Buckets `usage_events` by local-calendar month, returning `months`
@@ -248,22 +340,31 @@ extension Aggregator {
         }
     }
 
-    /// Per-provider $ over the trailing 30 days. Always returns rows for
-    /// both `codex` and `claude` (zero-filled when the provider has no
-    /// recent activity) so the Composition donut layout is stable.
+    /// Per-provider usage over the trailing 30 days. Always returns rows
+    /// for both `codex` and `claude` (zero-filled when the provider has no
+    /// recent activity) so the Composition tool breakdown layout is stable.
     static func fetchProviderShares30d(db: Database) throws -> [ProviderShare] {
         let rows = try Row.fetchAll(db, sql: """
-            SELECT provider, COALESCE(SUM(value_usd), 0) AS v
+            SELECT
+              provider,
+              COALESCE(SUM(value_usd), 0) AS v,
+              COALESCE(SUM(total_tokens), 0) AS tokens
             FROM usage_events
             WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
             GROUP BY provider
             """)
-        var by: [String: Double] = [:]
+        var by: [String: (valueUSD: Double, tokens: Int64)] = [:]
         for r in rows {
             let p: String = r["provider"] ?? "codex"
-            by[p] = r["v"] ?? 0
+            by[p] = (r["v"] ?? 0, r["tokens"] ?? 0)
         }
-        return ["codex", "claude"].map { ProviderShare(provider: $0, valueUSD: by[$0] ?? 0) }
+        return ["codex", "claude"].map {
+            let bucket = by[$0] ?? (0, 0)
+            return ProviderShare(
+                provider: $0,
+                valueUSD: bucket.valueUSD,
+                tokens: bucket.tokens)
+        }
     }
 
     /// Per-provider stats in a single query — used by the menu bar so the two

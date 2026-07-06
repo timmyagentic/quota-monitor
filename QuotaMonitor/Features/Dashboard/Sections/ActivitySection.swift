@@ -10,6 +10,7 @@ import SwiftUI
 struct ActivitySection: View {
     @Environment(SettingsStore.self) private var settings
     let activity: ActivitySnapshot
+    var showsStatStrip = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -19,7 +20,9 @@ struct ActivitySection: View {
                 Spacer()
             }
 
-            statStrip
+            if showsStatStrip {
+                statStrip
+            }
 
             if activity.hasData {
                 chartCard
@@ -30,11 +33,7 @@ struct ActivitySection: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
-        )
+        .dashboardPanel(cornerRadius: 12, padding: 14)
     }
 
     // MARK: - stat strip

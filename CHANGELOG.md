@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 - App Store builds can ask for local Codex and Claude history folders before importing
+- Dashboard now looks more like a dense usage cockpit, with Overview and Trends modes, richer activity color, and stacked usage charts
 - QuotaMonitor can start automatically after you sign in, with a Settings switch to turn it off
 - QuotaMonitor update and release links now point directly at the current GitHub repository
 
@@ -40,6 +41,7 @@ window copy.
 - **Launch at login by default.** QuotaMonitor now registers as a macOS login item on launch and exposes a General settings toggle so users can turn it off.
 
 ### Changed
+- **Dashboard visual refresh.** Dashboard now has separate Overview and Trends modes, a denser metric strip, blue activity heatmap, tool/model breakdown bars, and stacked token trend charts inspired by modern usage dashboards.
 - **Current GitHub release links.** Sparkle feed URLs, appcast download links, README links, and release tooling now point directly at `timmyagentic/quota-monitor` instead of relying on the old repository owner redirect.
 
 ## [0.2.37] — 2026-07-01
