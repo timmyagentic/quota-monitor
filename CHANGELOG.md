@@ -30,10 +30,12 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.38] — 2026-07-06
+
 #### Summary
-- App Store builds can ask for local Codex and Claude history folders before importing
-- QuotaMonitor can start automatically after you sign in, with a Settings switch to turn it off
-- QuotaMonitor update and release links now point directly at the current GitHub repository
+- Import history directories are handled safely in sandboxed App Store builds, and updates continue to flow without breaking local folder permissions.
+- QuotaMonitor can start automatically after sign-in, with a settings switch if you want to disable launch-at-login behavior.
+- Update and release links now point directly at the current repository to prevent migration-related update errors.
 
 ### Added
 - **App Store history folder access.** App Store builds now save read-only security-scoped bookmarks for selected Codex and Claude history folders, so local history import can stay inside the macOS sandbox.
