@@ -1,0 +1,16 @@
+<h3>Added</h3>
+<ul>
+<li><b>Per-event hover popover with cache breakdown + hit rate.</b> Hovering any row in the History day-detail "events" timeline or the Session detail timeline now reveals a popover (200 ms hover delay, 120 ms dismiss delay with cursor-in-popover detection so the popover stays put when you move the cursor over it) listing Cache / Hit Rate / Input / Output / (Reasoning if non-zero) / Total. Cache is a single number — split into read vs write would have left "Cache Write: 0" on every Codex row because OpenAI's cache is server-managed. Hit Rate tints green ≥ 90 %, neutral 40–90 %, orange &lt; 40 % so the eye can scan a long timeline for events that failed to reuse cache.</li>
+<li><b>Provider-aware "Input" column.</b> Codex stores OpenAI's <code>prompt_tokens</code> (full prompt including the cached subset), Claude stores the uncached remainder. The popover now subtracts the cached portion on Codex rows so "Input" means the same thing across providers and Cache + Input + Output ≈ Total in both columns.</li>
+<li><b>Inferred-cost warning surfaces in the UI.</b> When the parser fell back to gpt-5 because no model metadata existed in the rollout (the <code>model_inferred</code> flag, in the schema since v4 but never shown), the row now displays an orange warning triangle next to the model name and a footnote in the popover explaining that the cost figure is approximate.</li>
+<li><b>Column headers above the event timeline.</b> New shared <code>EventRowHeader</code> struct shows "时间 / 模型 / Tokens / 金额" above the LazyVStack in both HistoryView and SessionDetailView, sharing frame widths with EventRow so the header alignment stays pixel-accurate.</li>
+</ul>
+<h3>Changed</h3>
+<ul>
+<li><b>Event row layout is now four columns instead of nine.</b> Time / Model / Total Tokens / Cost. The four token-chip values (input / cache / output / reasoning) used to be inline; they now live exclusively in the hover popover. Removes ~70 % of the visual noise from a 908-event timeline.</li>
+<li><b>Scan-status row collapses two lines into one.</b> "Scanning local history" and "X/Y files processed" now share a row with a Spacer between them; the monospacedDigit count is right-aligned so the number stays anchored as files stream in.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><b>App no longer freezes when expanding a session with many events.</b> <code>ExpandableSessionRow</code> used a plain <code>VStack</code> inside its expanded block, which materialized every EventRow + its ~5 token-chip subviews on the main thread the instant the user clicked the chevron. With xhs-workspace's 908 events that was ~7 000 view bodies + layouts blocking the UI for multiple seconds. Switching to <code>LazyVStack</code> lets SwiftUI virtualize against the outer ScrollView and only materialize what's visible.</li>
+</ul>

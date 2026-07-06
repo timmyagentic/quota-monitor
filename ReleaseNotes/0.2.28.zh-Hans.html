@@ -1,0 +1,9 @@
+<h3>新增</h3>
+<ul>
+<li><b>为新出现的 Claude 和 GLM 模型补充内置价格种子。</b> QuotaMonitor 现在内置 <code>claude-opus-4-8</code>、<code>claude-sonnet-4-5-20250929</code>、<code>glm-4.7</code>、<code>glm-5.1</code> 的价格目录行，因此这些 model ID 的历史使用记录在首次启动时即可计价，不会继续显示为 <code>$0</code>。</li>
+</ul>
+<h3>修复</h3>
+<ul>
+<li><b>Sparkle 更新签名现在与实际发布的 DMG 字节一致。</b> 发布 workflow 会对 GitHub Actions 构建并发布的 DMG 直接签名，然后自动打开 appcast PR，避免之前“本地签名的 DMG 与 Sparkle 下载的文件不同”导致更新被判定为签名错误的问题。</li>
+<li><b>修复已有 0.2.26 和 0.2.27 appcast 条目。</b> 这些条目的签名和长度已基于 CI 构建出的 release 资产重新生成，Sparkle 可以正确校验这些更新。</li>
+</ul>

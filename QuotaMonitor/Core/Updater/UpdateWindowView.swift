@@ -100,9 +100,27 @@ struct UpdateWindowView: View {
             header
             if state.hasReleaseNotes {
                 AnimatedReleaseNotesView(htmlContent: state.releaseNotesHTML)
+            } else if state.releaseNotesPending {
+                loadingReleaseNotesView
             } else {
                 noReleaseNotesView
             }
+        }
+    }
+
+    /// Shown while Sparkle downloads the linked release notes
+    /// (`sparkle:releaseNotesLink`). Keeps the window from flashing the
+    /// "no release notes" placeholder in the brief window between the update
+    /// dialog appearing and the notes arriving.
+    private var loadingReleaseNotesView: some View {
+        VStack(spacing: 12) {
+            Spacer()
+            ProgressView()
+                .scaleEffect(1.2)
+            Text(L10n.updateLoadingReleaseNotes)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Spacer()
         }
     }
 

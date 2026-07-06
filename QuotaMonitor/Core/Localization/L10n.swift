@@ -785,6 +785,9 @@ enum L10n {
         t(en: "No release notes were provided for this update.",
           zh: "本次更新未提供更新说明。")
     }
+    static var updateLoadingReleaseNotes: String {
+        t(en: "Loading release notes\u{2026}", zh: "正在加载更新说明\u{2026}")
+    }
 
     // language
     static var languagePickerLabel: String { t(en: "Display language", zh: "显示语言") }

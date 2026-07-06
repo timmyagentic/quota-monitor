@@ -1,0 +1,8 @@
+<h3>Changed</h3>
+<ul>
+<li><b>Advanced settings sections reordered by relevance.</b> Updates now sits at the top of the form (it's the single most useful control for end users), and Developer Mode moves down adjacent to Uninstall where the other "rarely needed" knobs cluster. Final order: Updates → Codex CLI → Claude Code → Database → Export → Pricing → Developer Mode → Uninstall.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><b>Sparkle release-notes dialog now renders the actual CHANGELOG entries</b> instead of a "See CHANGELOG.md for what's new in X.Y.Z" placeholder. <code>tools/release-sparkle.sh</code> runs the new <code>tools/changelog-to-html.py</code> script to extract the per-version section from CHANGELOG.md, convert its markdown bullet lists + headings + bold + code spans to inline HTML, and embed the result in the appcast item's <code>&lt;description&gt;</code> CDATA block. Sparkle's WebView then renders it as a proper "What's new" panel.</li>
+</ul>

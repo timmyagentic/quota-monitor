@@ -1,0 +1,12 @@
+<div class="release-summary">
+<ul>
+<li>更新窗口现在会显示内嵌 HTML 更新日志，不再是空白面板</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>修复</h3>
+<ul>
+<li><b>自定义 Sparkle 更新窗口现在能正常加载发布说明 HTML。</b> 当前 macOS 的 WebKit 会把 <code>loadHTMLString(..., baseURL: nil)</code> 识别为一次初始 <code>about:blank</code> 导航，因此更新器现在允许这次初始文档加载，同时继续阻止外部导航。</li>
+</ul>
+</div>

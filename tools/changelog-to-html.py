@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Extract one version's section from a changelog and emit it as
-inline HTML suitable for Sparkle's release-notes WebView (the
-<description> CDATA block in an appcast item).
+HTML suitable for Sparkle's release-notes WebView. release-sparkle.sh
+writes this into ReleaseNotes/<version>.<lang>.html, which the appcast
+references via <sparkle:releaseNotesLink> (Sparkle downloads it lazily),
+rather than inlining it — that keeps appcast.xml small enough to avoid
+raw.githubusercontent.com rate-limiting the update feed.
 
 Usage:
   ./changelog-to-html.py [--format summary|full|both] [--lang en|zh-Hans]
@@ -9,9 +12,9 @@ Usage:
 
 The second positional argument is the changelog file to read from; it
 defaults to CHANGELOG.md. Pass CHANGELOG.zh-Hans.md to render the
-Simplified-Chinese release notes — release-sparkle.sh calls this twice
-(once per language) to emit the bilingual <description xml:lang="…">
-nodes Sparkle selects between at parse time.
+Simplified-Chinese release notes — release-sparkle.sh calls this once
+per language to populate the two linked notes files that back the
+bilingual <sparkle:releaseNotesLink xml:lang="…"> nodes.
 
 The few user-visible labels (the ``both`` details toggle and the
 missing-section fallback line) are localized via ``--lang``. When omitted,

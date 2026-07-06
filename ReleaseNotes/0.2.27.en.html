@@ -1,0 +1,20 @@
+<div class="release-summary">
+<ul>
+<li><b>Dashboard Activity section</b> — lifetime tokens, peak day, active-day streaks, and a GitHub-style token heatmap.</li>
+<li><b>Refreshed update experience</b> — animated release notes with dark-mode support.</li>
+<li><b>Localized release notes</b> — Chinese macOS now shows Chinese update notes automatically.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Added in 0.2.26</h3>
+<ul>
+<li><b>Dashboard "Activity" section.</b> A usage profile: a four-up stat strip (lifetime tokens, peak-day tokens, current streak, longest streak) above a GitHub-style token-activity heatmap. Every figure follows the active provider filter and is derived entirely from the existing local history — no new data collection or schema change.</li>
+<li><b>Custom Sparkle update UI.</b> Replaces Sparkle's standard system-style update alert with a SwiftUI window presenting a <code>WKWebView</code> for animated, visually polished release notes. Supports dark mode, <code>prefers-reduced-motion</code> accessibility, and bilingual release notes (en + zh-Hans).</li>
+<li><b>HTML release notes pipeline.</b> Release notes are now authored as HTML for full visual control — images, CSS animations, and rich layouts are all possible in the update dialog.</li>
+</ul>
+<h3>Fixed in 0.2.27</h3>
+<ul>
+<li><b>Sparkle now selects Chinese release notes on Chinese macOS.</b> Added <code>CFBundleLocalizations</code> (en + zh-Hans) to Info.plist so Sparkle's appcast parser knows the app supports Simplified Chinese and picks <code>&lt;description xml:lang="zh-Hans"&gt;</code> accordingly.</li>
+</ul>
+</div>

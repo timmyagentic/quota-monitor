@@ -337,9 +337,11 @@ differ, so a local-DMG signature won't validate against the download):
 
 ```sh
 gh release download vX.Y.Z -p '*.dmg' -D /tmp/qm
-./tools/release-sparkle.sh /tmp/qm/QuotaMonitor-X.Y.Z.dmg   # signs the published DMG
+./tools/release-sparkle.sh /tmp/qm/QuotaMonitor-X.Y.Z.dmg   # signs the DMG + writes ReleaseNotes/X.Y.Z.*.html
 python3 tools/appcast-insert.py dist/appcast-item-X.Y.Z.xml appcast.xml
-# then commit appcast.xml on a branch, open a PR, merge.
+# then commit appcast.xml AND ReleaseNotes/X.Y.Z.*.html on a branch, open a PR, merge.
+# (the appcast links the notes via sparkle:releaseNotesLink, so the feed only
+#  works once those files are on main.)
 ```
 
 You can confirm a signature without shipping by verifying it against the

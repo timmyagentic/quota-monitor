@@ -1,0 +1,12 @@
+<div class="release-summary">
+<ul>
+<li>Update windows now show the embedded HTML change log instead of a blank panel</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Fixed</h3>
+<ul>
+<li><b>Release notes HTML now loads in the custom Sparkle update window.</b> WebKit reports <code>loadHTMLString(..., baseURL: nil)</code> as an initial <code>about:blank</code> navigation on current macOS, so the updater now allows that initial document load while continuing to block external navigation.</li>
+</ul>
+</div>
