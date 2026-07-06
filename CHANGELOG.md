@@ -30,6 +30,19 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Fixed an update-check error that could show "An error occurred in retrieving update information — please try again later" instead of finding the new version.
+- Release notes now load a little more smoothly in the update window.
+
+### Fixed
+
+- **Update checks no longer fail with a retrieval error.** The update feed had grown large enough that its download host began rate-limiting it (HTTP 429), so a check would sometimes report "An error occurred in retrieving update information" instead of offering the update. Release notes are now linked and fetched on demand rather than embedded in the feed, shrinking it roughly 30× (≈600 KB → ≈20 KB) so it downloads reliably.
+
+### Changed
+
+- **The update window shows a brief loading indicator while release notes download.** Because notes are now fetched on demand, the window shows a short spinner instead of momentarily flashing the "no release notes" placeholder before the notes appear.
+
 ## [0.2.38] — 2026-07-06
 
 #### Summary

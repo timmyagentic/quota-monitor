@@ -86,40 +86,52 @@ DMG_FILE="$(basename "${DMG_PATH}")"
 # at the DMG actually published under that brand.
 RELEASE_REPO="${RELEASE_REPO:-timmyagentic/quota-monitor}"
 DOWNLOAD_URL="https://github.com/${RELEASE_REPO}/releases/download/v${VERSION}/${DMG_FILE}"
+# Base URL hosting the per-version release-notes HTML the appcast LINKS to
+# (via sparkle:releaseNotesLink). Deliberately pinned to the primary Quota
+# Monitor repo and NOT derived from RELEASE_REPO: the CodexMonitor feed push
+# (release.yml) ships only appcast.xml, not ReleaseNotes/, so both brands'
+# feeds must resolve their notes against this single, always-populated host.
+NOTES_BASE_URL="${NOTES_BASE_URL:-https://raw.githubusercontent.com/timmyagentic/quota-monitor/main}"
 # RSS pubDate must be RFC-822 (English month + weekday) regardless of
 # the maintainer's system locale. `LC_ALL=C` pins the C locale just
 # for this one invocation.
 PUBDATE="$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')"
 MIN_OS="14.0"
 
-# Pull release notes for the appcast <description> CDATA block.
+# Ensure the per-version release-notes HTML exists on disk. The appcast
+# LINKS to these files (sparkle:releaseNotesLink) instead of inlining them,
+# so Sparkle downloads them lazily — only when a user opens an update —
+# which keeps appcast.xml tiny (a few KB vs. hundreds) and off
+# raw.githubusercontent.com's rate limiter (a bloated feed 429s on the
+# frequent poll and surfaces "获取升级信息时出现错误"). release.yml commits
+# these files alongside appcast.xml so the linked URLs resolve.
 #
-# Two sources, tried in order:
-#   1. ReleaseNotes/<version>.{en,zh-Hans}.html — raw HTML, full
+# Two sources per language, tried in order:
+#   1. ReleaseNotes/<version>.{en,zh-Hans}.html — hand-authored, full
 #      visual control (images, CSS animations, rich layouts).
-#   2. Fallback: tools/changelog-to-html.py extracts the [X.Y.Z]
-#      section from CHANGELOG.md / CHANGELOG.zh-Hans.md and converts
-#      the Summary bullets to a self-styled rich HTML page.
+#   2. Fallback: tools/changelog-to-html.py extracts the [X.Y.Z] section
+#      from CHANGELOG.md / CHANGELOG.zh-Hans.md, converted to a styled HTML
+#      page and WRITTEN to the ReleaseNotes file so the link resolves.
 #
-# Bilingual notes: we emit two <description xml:lang="…"> nodes — en
-# and zh-Hans. Sparkle picks the one matching the user's system
-# language at appcast parse time. Both nodes MUST carry an explicit
-# xml:lang or Sparkle logs an error and defaults to "en".
+# Bilingual notes: we emit two <sparkle:releaseNotesLink xml:lang="…">
+# nodes — en and zh-Hans. Sparkle downloads the one matching the user's
+# system language. Both nodes MUST carry an explicit xml:lang or Sparkle
+# logs an error and defaults to "en".
 
 EN_HTML_FILE="ReleaseNotes/${VERSION}.en.html"
 ZH_HTML_FILE="ReleaseNotes/${VERSION}.zh-Hans.html"
+mkdir -p ReleaseNotes
 
 if [[ -f "${EN_HTML_FILE}" ]]; then
     echo "==> Using ${EN_HTML_FILE} for English release notes"
-    EN_NOTES_HTML="$(cat "${EN_HTML_FILE}")"
 else
-    echo "==> No ${EN_HTML_FILE}, falling back to changelog-to-html.py"
-    EN_NOTES_HTML="$(python3 tools/changelog-to-html.py --lang en "${VERSION}" CHANGELOG.md)"
+    echo "==> No ${EN_HTML_FILE}, generating from CHANGELOG.md"
+    python3 tools/changelog-to-html.py --lang en "${VERSION}" CHANGELOG.md \
+        > "${EN_HTML_FILE}"
 fi
 
 if [[ -f "${ZH_HTML_FILE}" ]]; then
     echo "==> Using ${ZH_HTML_FILE} for Chinese release notes"
-    ZH_NOTES_HTML="$(cat "${ZH_HTML_FILE}")"
 else
     # Hard-require the Simplified-Chinese section so a release can't
     # silently ship English-only notes — fixed bilingual notes are the
@@ -133,8 +145,13 @@ else
         echo "       Provide one of the two before generating the appcast item." >&2
         exit 1
     fi
-    ZH_NOTES_HTML="$(python3 tools/changelog-to-html.py --lang zh-Hans "${VERSION}" "${ZH_CHANGELOG}")"
+    echo "==> No ${ZH_HTML_FILE}, generating from ${ZH_CHANGELOG}"
+    python3 tools/changelog-to-html.py --lang zh-Hans "${VERSION}" "${ZH_CHANGELOG}" \
+        > "${ZH_HTML_FILE}"
 fi
+
+EN_NOTES_LINK="${NOTES_BASE_URL}/ReleaseNotes/${VERSION}.en.html"
+ZH_NOTES_LINK="${NOTES_BASE_URL}/ReleaseNotes/${VERSION}.zh-Hans.html"
 
 # Build the <item> block once, then both (a) write a clean, banner-free
 # copy that automation (release.yml) can splice straight into
@@ -147,12 +164,8 @@ ITEM_BLOCK="$(cat <<APPCAST_ITEM
             <sparkle:version>${VERSION}</sparkle:version>
             <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>${MIN_OS}</sparkle:minimumSystemVersion>
-            <description xml:lang="en"><![CDATA[
-${EN_NOTES_HTML}
-            ]]></description>
-            <description xml:lang="zh-Hans"><![CDATA[
-${ZH_NOTES_HTML}
-            ]]></description>
+            <sparkle:releaseNotesLink xml:lang="en">${EN_NOTES_LINK}</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="zh-Hans">${ZH_NOTES_LINK}</sparkle:releaseNotesLink>
             <enclosure
                 url="${DOWNLOAD_URL}"
                 type="application/octet-stream"
@@ -171,4 +184,7 @@ cat <<APPCAST_BANNER
 ---------------------------------------------------------------
 ${ITEM_BLOCK}
 ---------------------------------------------------------------
+==> Also commit the linked release notes so the URLs resolve:
+      ${EN_HTML_FILE}
+      ${ZH_HTML_FILE}
 APPCAST_BANNER

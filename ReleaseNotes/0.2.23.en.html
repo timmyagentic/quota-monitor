@@ -1,0 +1,7 @@
+<h3>Fixed</h3>
+<ul>
+<li><b>Codex token totals no longer explode on modern rollouts.</b> The importer now prefers <code>token_count.info.last_token_usage</code> as the per-event delta when Codex emits it, instead of deriving deltas from interleaved <code>total_token_usage</code> snapshots that can move backwards in long-running sessions. Legacy rows that only contain cumulative totals still use the old cumulative-diff fallback.</li>
+<li><b>Duplicate token_count snapshots are ignored without dropping distinct events.</b> Replayed rows with the same <code>total_token_usage</code> and <code>last_token_usage</code> pair are skipped, while rows with a different <code>last_token_usage</code> remain billable. This keeps long active sessions from double-counting repeated status snapshots without returning to the previous under/over-counting behavior.</li>
+<li><b>Malformed token_count rows with only a large <code>total_tokens</code> value are discarded.</b> Rows whose input/cache/output/reasoning buckets are all zero cannot be priced correctly and no longer inflate history totals.</li>
+<li><b>DMG creation no longer collides with older mounted releases.</b> The installer volume name now includes the release version, so a stale <code>Install QuotaMonitor</code> mount cannot block packaging a new DMG.</li>
+</ul>

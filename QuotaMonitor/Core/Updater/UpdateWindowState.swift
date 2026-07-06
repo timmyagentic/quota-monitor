@@ -50,6 +50,14 @@ final class UpdateWindowState {
     /// Drives the WebView-vs-fallback choice in `UpdateWindowView`.
     var hasReleaseNotes: Bool = false
 
+    /// `true` while Sparkle is still downloading linked release notes
+    /// (`sparkle:releaseNotesLink`). The appcast links notes instead of
+    /// inlining them, so `showUpdateFound` fires before the notes arrive —
+    /// this lets the window show a brief loading state instead of flashing
+    /// the "no release notes" placeholder before the real notes land.
+    /// Cleared when the download completes (or fails).
+    var releaseNotesPending: Bool = false
+
     // MARK: - Download / extraction progress
 
     var totalBytes: UInt64 = 0
@@ -155,6 +163,7 @@ final class UpdateWindowState {
         isCritical = false
         releaseNotesHTML = ""
         hasReleaseNotes = false
+        releaseNotesPending = false
         totalBytes = 0
         downloadedBytes = 0
         extractionProgress = 0

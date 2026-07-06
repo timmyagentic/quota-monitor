@@ -1,0 +1,9 @@
+<h3>Added</h3>
+<ul>
+<li><b>Pricing seeds for newly observed Claude and GLM models.</b> QuotaMonitor now ships bundled catalog rows for <code>claude-opus-4-8</code>, <code>claude-sonnet-4-5-20250929</code>, <code>glm-4.7</code>, and <code>glm-5.1</code>, so imported usage for those model IDs is priced on first launch instead of staying at <code>$0</code>.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><b>Sparkle update signatures now match the published DMG bytes.</b> The release workflow signs the DMG produced by GitHub Actions and opens the appcast PR automatically, avoiding the previous failure mode where a locally signed DMG differed from the file Sparkle downloaded.</li>
+<li><b>Existing 0.2.26 and 0.2.27 appcast entries were repaired.</b> Their signatures and lengths were regenerated from the CI-built release assets, so Sparkle can validate those updates correctly.</li>
+</ul>

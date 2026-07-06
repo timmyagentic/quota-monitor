@@ -118,6 +118,13 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         s.releaseNotesHTML = s.hasReleaseNotes
             ? ReleaseNotesCSS.wrapHTML(rawHTML, isDark: isDarkMode, locale: localeID)
             : ""
+        // The appcast links notes (sparkle:releaseNotesLink) instead of
+        // inlining them, so itemDescription is empty here and the notes
+        // arrive later via showUpdateReleaseNotes(with:). Flag them pending
+        // so the window shows a loading state rather than briefly flashing
+        // the "no release notes" placeholder before the download lands.
+        s.releaseNotesPending = !s.hasReleaseNotes
+            && appcastItem.releaseNotesURL != nil
 
         s.phase = .updateAvailable
 
@@ -140,9 +147,13 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     }
 
     func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {
-        // Release notes are embedded in the appcast description, so
-        // this method is typically not called.  If Sparkle does call
-        // it (e.g. for a `releaseNotesURL` item), append the data.
+        // The appcast links release notes (sparkle:releaseNotesLink), so
+        // Sparkle downloads them and delivers the data here after
+        // showUpdateFound has already shown the window. Clear the pending
+        // flag first so every exit path leaves the loading state: empty or
+        // undecodable notes fall through to the "no release notes"
+        // placeholder instead of spinning forever.
+        state.releaseNotesPending = false
         guard let text = String(data: downloadData.data,
                                 encoding: .utf8),
               ReleaseNotesCSS.hasContent(text) else { return }
@@ -156,7 +167,9 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     ) {
         Self.log.warning(
             "Release notes download failed: \(error.localizedDescription)")
-        // We already have the embedded description — nothing to do.
+        // Stop the loading state so the window falls back to the calm
+        // "no release notes" placeholder instead of spinning forever.
+        state.releaseNotesPending = false
     }
 
     func showUpdateNotFoundWithError(
