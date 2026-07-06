@@ -36,6 +36,9 @@ appcast 中按系统语言切换的双语更新说明。
 ### 变更
 - **当前 GitHub 发布链接。** Sparkle feed URL、appcast 下载链接、README 链接和发布工具现在会直接指向 `timmyagentic/quota-monitor`，不再依赖旧仓库 owner 的重定向。
 
+### 修复
+- **历史安装自动修复更新源。** 对于仍保存旧 `SUFeedURL` 的已有安装，启动时会自动迁移到新地址，避免“获取升级信息时出现错误，请稍后再试”。
+
 ## [0.2.37] — 2026-07-01
 
 #### Summary
