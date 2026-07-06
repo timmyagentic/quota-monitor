@@ -42,6 +42,9 @@ window copy.
 ### Changed
 - **Current GitHub release links.** Sparkle feed URLs, appcast download links, README links, and release tooling now point directly at `timmyagentic/quota-monitor` instead of relying on the old repository owner redirect.
 
+### Fixed
+- **Automatic Sparkle feed repair for old installs.** Existing users whose installed app still stored the legacy `SUFeedURL` will have it repaired automatically on first launch, so update checks work after the repository migration.
+
 ## [0.2.37] — 2026-07-01
 
 #### Summary

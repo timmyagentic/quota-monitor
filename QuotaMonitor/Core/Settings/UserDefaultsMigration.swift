@@ -30,10 +30,18 @@ import Foundation
 enum UserDefaultsMigration {
     private static let legacyBundleID = "dev.tjzhou.CodexMonitor"
     private static let guardKey = "migration.fromCodexMonitor.done"
+    private static let updaterFeedMigrationDoneKey = "migration.sparkleFeedURL.done"
+    private static let expectedSUFeedURL = "https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml"
+    private static let legacySUFeedURL = "https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml"
 
     static func runIfNeeded() {
         if LocalQAEnvironment.isActive() { return }
         let defaults = LocalQAEnvironment.userDefaults() ?? .standard
+        migrateFromLegacyBundleID(defaults: defaults)
+        migrateSparkleFeedURL(defaults: defaults)
+    }
+
+    private static func migrateFromLegacyBundleID(defaults: UserDefaults) {
         if defaults.bool(forKey: guardKey) { return }
 
         let legacy = legacyBundleID as CFString
@@ -82,5 +90,41 @@ enum UserDefaultsMigration {
                 "[UserDefaultsMigration] copied \(copied) keys from \(legacyBundleID)\n".utf8
             ))
         }
+    }
+
+    private static func migrateSparkleFeedURL(defaults: UserDefaults) {
+        if defaults.bool(forKey: updaterFeedMigrationDoneKey) { return }
+        if Bundle.main.object(forInfoDictionaryKey: "QMDistributionChannel") as? String == "app-store" {
+            defaults.set(true, forKey: updaterFeedMigrationDoneKey)
+            return
+        }
+
+        let existing = defaults.string(forKey: "SUFeedURL")
+        let infoPlistFeed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
+        let shouldMigrate =
+            existing == nil && infoPlistFeed == legacySUFeedURL ||
+            existing == legacySUFeedURL ||
+            (existing?.contains("systemoutprintlnnnn") == true)
+
+        if shouldMigrate {
+            let from = existing ?? (infoPlistFeed ?? "unknown")
+            defaults.set(expectedSUFeedURL, forKey: "SUFeedURL")
+            defaults.synchronize()
+            DeveloperLog.eventRecord(
+                "settings.sparkle_feed_url_migration",
+                category: "settings",
+                result: "success",
+                fields: [
+                    "from": .string(from),
+                    "to": .string(expectedSUFeedURL),
+                    "distribution_channel": .string(
+                        (Bundle.main.object(
+                            forInfoDictionaryKey: "QMDistributionChannel"
+                        ) as? String) ?? "unknown"),
+                    "info_plist_feed": .string(infoPlistFeed ?? "unknown")
+                ])
+        }
+
+        defaults.set(true, forKey: updaterFeedMigrationDoneKey)
     }
 }
