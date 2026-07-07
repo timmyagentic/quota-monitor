@@ -485,18 +485,19 @@ enum PricingService {
     }
 
     /// SQL expression that resolves to the catalog `model_id` we should
-    /// price this event against. When Fast-Mode is off (or the event
-    /// isn't codex / isn't a model with a Fast variant), it's just
-    /// `usage_events.model_id`. When Fast-Mode is on for a recognised
-    /// codex model, it becomes `usage_events.model_id || '-fast'`.
+    /// price this event against. For a recognised codex model, the per-turn
+    /// `codex_billing_tier` (stamped from the logs_2.sqlite trace) decides:
+    ///   - `'priority'` → `model_id || '-fast'` (forced, ignores the switch)
+    ///   - `'standard'` → `model_id`            (forced, ignores the switch)
+    ///   - `NULL`       → the global `codexFastModeBilling` switch decides
+    /// Everything else (non-codex, or a model with no Fast variant) is just
+    /// `usage_events.model_id`.
     ///
-    /// We string-interpolate the model id list and the suffix because
-    /// they're code-controlled (sourced from `CodexFastMode`), never
-    /// user input. Single-quote escaping is unnecessary here, but the
-    /// model id assertion below makes the assumption explicit.
+    /// We string-interpolate the model id list, suffix, and the boolean flag
+    /// because they're code-controlled (sourced from `CodexFastMode` / the
+    /// caller), never user input. The assertion below pins that assumption.
     private static func effectiveModelIdSQL(codexFastModeBilling: Bool) -> String {
-        guard codexFastModeBilling,
-              !CodexFastMode.multipliers.isEmpty else {
+        guard !CodexFastMode.multipliers.isEmpty else {
             return "usage_events.model_id"
         }
         // Determinism + simpler diffs.
@@ -507,11 +508,20 @@ enum PricingService {
         }
         let quoted = ids.map { "'\($0)'" }.joined(separator: ",")
         let suffix = CodexFastMode.suffix
+        let globalFast = codexFastModeBilling ? "1" : "0"
         return """
         CASE
           WHEN usage_events.provider = 'codex'
                AND usage_events.model_id IN (\(quoted))
-          THEN usage_events.model_id || '\(suffix)'
+          THEN CASE
+                 WHEN usage_events.codex_billing_tier = 'priority'
+                      THEN usage_events.model_id || '\(suffix)'
+                 WHEN usage_events.codex_billing_tier = 'standard'
+                      THEN usage_events.model_id
+                 WHEN usage_events.codex_billing_tier IS NULL AND \(globalFast) = 1
+                      THEN usage_events.model_id || '\(suffix)'
+                 ELSE usage_events.model_id
+               END
           ELSE usage_events.model_id
         END
         """

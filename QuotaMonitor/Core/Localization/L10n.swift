@@ -686,8 +686,8 @@ enum L10n {
         t(en: "Codex Bill as Fast Mode", zh: "Codex 按 Fast Mode 计费")
     }
     static var codexFastModeBillingHelp: String {
-        t(en: "Codex doesn't tag each request with its billing tier, so this toggle applies to your whole account — including history. Turn it on if you regularly use Fast Mode.",
-          zh: "Codex 不会标记每次请求的计费档位，所以这里只能按账户整体估算费用，切换后历史记录会同步重算。如果长期使用 Fast Mode 就打开。")
+        t(en: "QuotaMonitor now reads each recent Codex request's tier from its local trace and bills those turns automatically. This toggle only covers older history the trace no longer reaches — turn it on if you regularly use Fast (Priority) Mode.",
+          zh: "QuotaMonitor 现在会从本地 trace 逐次识别近期 Codex 请求的计费档位并自动计费。这个开关只影响 trace 未覆盖的更早历史——如果长期使用 Fast（Priority）模式就打开。")
     }
     static var sectionDatabase: String { t(en: "Database", zh: "数据库") }
     static var sectionExport: String { t(en: "Export", zh: "导出") }

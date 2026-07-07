@@ -77,7 +77,8 @@ struct PricingValueBackfillTests {
         output: Int64, cacheCreation: Int64 = 0,
         cacheCreation5m: Int64 = 0,
         cacheCreation1h: Int64 = 0,
-        seedValueUSD: Double = -1
+        seedValueUSD: Double = -1,
+        codexBillingTier: String? = nil
     ) throws {
         let stamp = "2026-04-29T10:00:00Z"
         let sid = "s-\(UUID().uuidString)"
@@ -100,14 +101,15 @@ struct PricingValueBackfillTests {
                  reasoning_output_tokens, total_tokens, value_usd,
                  provider, cache_creation_tokens,
                  cache_creation_5m_tokens, cache_creation_1h_tokens,
-                 model_inferred)
-                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0)
+                 model_inferred, codex_billing_tier)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0, ?)
                 """, arguments: [
                     sid, stamp, modelId,
                     input, cached, output,
                     input + output + cacheCreation,
                     seedValueUSD,
-                    provider, cacheCreation, cacheCreation5m, cacheCreation1h
+                    provider, cacheCreation, cacheCreation5m, cacheCreation1h,
+                    codexBillingTier
                 ])
         }
     }
@@ -458,5 +460,48 @@ struct PricingValueBackfillTests {
                 "model-a should reprice to 20.00, got \(after[0])")
         #expect(abs(after[1] - 4.00) < 1e-6,
                 "model-b must not change when only model-a's row was edited, got \(after[1])")
+    }
+
+    // MARK: - per-turn billing tier overrides the global switch
+
+    @Test("codex tier=priority forces the fast rate even when the global switch is OFF")
+    func priorityTierForcesFastRegardlessOfSwitch() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        // 1M input + 1M output: standard = 35.00, fast = 87.50.
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             codexBillingTier: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 87.50) < 1e-6,
+                "trace-proven priority must bill at fast (87.50) even with the global switch off, got \(values[0])")
+    }
+
+    @Test("codex tier=standard forces the standard rate even when the global switch is ON")
+    func standardTierForcesStandardRegardlessOfSwitch() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             codexBillingTier: "standard")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 35.00) < 1e-6,
+                "trace-proven standard must bill at standard (35.00) even with global Fast on, got \(values[0])")
     }
 }

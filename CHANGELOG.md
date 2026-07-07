@@ -32,8 +32,13 @@ window copy.
 
 #### Summary
 
+- Codex Fast (Priority) usage is now detected automatically for recent activity, so those cost estimates are more accurate without flipping any switch.
 - Fixed an update-check error that could show "An error occurred in retrieving update information — please try again later" instead of finding the new version.
 - Release notes now load a little more smoothly in the update window.
+
+### Added
+
+- **Automatic Codex Fast/Priority tier detection.** QuotaMonitor now reads the local Codex trace (`~/.codex/logs_2.sqlite`) and attributes each recent turn's billing tier — Priority turns bill at the Fast rate, standard turns bill at the base rate — instead of relying only on the global "Bill as Fast Mode" switch. Older history the trace no longer covers still falls back to that switch.
 
 ### Fixed
 

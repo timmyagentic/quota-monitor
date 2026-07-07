@@ -310,5 +310,34 @@ enum Migrations {
                    OR source_path LIKE '%/.config/claude/projects/%'
                 """)
         }
+
+        // v13: Codex per-turn billing tier.
+        //   - usage_events.codex_turn_id: the turn this token_count delta was
+        //     attributed to (from task_started / turn_context). Nullable —
+        //     legacy sessions predate turn ids.
+        //   - usage_events.codex_billing_tier: 'priority' | 'standard' | NULL.
+        //     Filled by CodexPriorityTagger from ~/.codex/logs_2.sqlite trace:
+        //     'priority' = trace proved this turn ran on the priority service
+        //     tier (billed as Fast); 'standard' = trace covered this turn's
+        //     time window with no priority record; NULL = no trace evidence
+        //     (outside the trace window or no turn id) → the global
+        //     codexFastModeBilling switch decides at pricing time.
+        //   - Force one Codex full re-scan so existing rows pick up turn ids.
+        //     Codex re-parses whole files, so invalidating (size, mtime) is
+        //     enough to mark every rollout as changed on the next scan.
+        migrator.registerMigration("v13-codex-billing-tier") { db in
+            try db.alter(table: "usage_events") { t in
+                t.add(column: "codex_turn_id", .text)
+                t.add(column: "codex_billing_tier", .text)
+            }
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0
+                WHERE source_path LIKE '%/.codex/sessions/%'
+                   OR source_path LIKE '%/.codex/archived_sessions/%'
+                """)
+        }
     }
 }

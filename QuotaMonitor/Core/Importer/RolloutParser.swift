@@ -55,6 +55,9 @@ struct UsageDelta {
     /// `turn_context` ever set the model in this session). Surfaced in UI
     /// so the user knows the cost is approximate.
     let modelInferred: Bool
+    /// The Codex turn this delta belongs to (`task_started` / `turn_context`
+    /// turn_id). `nil` for legacy sessions that predate turn ids.
+    let turnId: String?
 }
 
 struct RateLimitSampleDraft {
@@ -83,6 +86,7 @@ enum RolloutParser {
         var cwd: String?
         var currentModel: String?
         var currentModelIsFallback = false
+        var currentTurnId: String?
         var seenModels: Set<String> = []
         var latestPlanType: String?
 
@@ -112,6 +116,10 @@ enum RolloutParser {
                     currentModelIsFallback = false
                     seenModels.insert(normalized)
                 }
+                if let turnId = tc.turnId { currentTurnId = turnId }
+
+            case .taskStarted(let turnId, _):
+                if let turnId { currentTurnId = turnId }
 
             case .tokenCount(let tc, let envelopeTs):
                 let timestamp = envelopeTs ?? ISO8601.fractional.string(from: Date())
@@ -154,7 +162,8 @@ enum RolloutParser {
                         outputTokens: delta.outputTokens,
                         reasoningOutputTokens: delta.reasoningOutputTokens,
                         totalTokens: delta.totalTokens,
-                        modelInferred: inferred))
+                        modelInferred: inferred,
+                        turnId: currentTurnId))
                 }
                 updatedAt = timestamp
 

@@ -9,6 +9,7 @@ import Foundation
 enum RolloutEvent {
     case sessionMeta(SessionMetaPayload, timestamp: String?)
     case turnContext(TurnContextPayload, timestamp: String?)
+    case taskStarted(turnId: String?, timestamp: String?)
     case tokenCount(TokenCountPayload, timestamp: String?)
     case other(type: String, timestamp: String?)
 }
@@ -77,6 +78,25 @@ struct SessionMetaPayload: Decodable {
 
 struct TurnContextPayload: Decodable {
     let model: String?
+    let turnId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case turnId = "turn_id"
+    }
+}
+
+// MARK: - event_msg / task_started
+
+/// `task_started` opens a turn and is the first place `turn_id` appears in a
+/// rollout. We track it so subsequent `token_count` deltas can be attributed
+/// to a turn (they don't carry the id themselves).
+struct TaskStartedPayload: Decodable {
+    let turnId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case turnId = "turn_id"
+    }
 }
 
 // MARK: - event_msg / token_count
@@ -194,12 +214,22 @@ extension RolloutEvent {
             return .turnContext(tc, timestamp: timestamp)
 
         case "event_msg":
-            // Nested discriminator — only token_count matters for usage.
-            guard let data = RolloutLineScanner.objectValue(forKey: "payload", in: line),
-                  RolloutLineScanner.stringValue(forKey: "type", in: data) == "token_count",
-                  let tc = try? decoder.decode(TokenCountPayload.self, from: data)
-            else { return .other(type: type, timestamp: timestamp) }
-            return .tokenCount(tc, timestamp: timestamp)
+            // Nested discriminator — token_count carries usage; task_started
+            // opens a turn (its turn_id is attributed to following usage).
+            guard let data = RolloutLineScanner.objectValue(forKey: "payload", in: line) else {
+                return .other(type: type, timestamp: timestamp)
+            }
+            switch RolloutLineScanner.stringValue(forKey: "type", in: data) {
+            case "token_count":
+                guard let tc = try? decoder.decode(TokenCountPayload.self, from: data)
+                else { return .other(type: type, timestamp: timestamp) }
+                return .tokenCount(tc, timestamp: timestamp)
+            case "task_started":
+                let started = try? decoder.decode(TaskStartedPayload.self, from: data)
+                return .taskStarted(turnId: started?.turnId, timestamp: timestamp)
+            default:
+                return .other(type: type, timestamp: timestamp)
+            }
 
         default:
             return .other(type: type, timestamp: timestamp)

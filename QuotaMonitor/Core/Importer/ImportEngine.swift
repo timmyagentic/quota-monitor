@@ -25,6 +25,10 @@ actor ImportEngine {
         /// could not be opened (folder moved/revoked). Surfaced to the user via
         /// `lastError` so a silently-empty import prompts a re-select instead.
         let scopeUnavailable: Bool
+        /// Number of Codex rows whose `codex_billing_tier` changed during this
+        /// scan's priority-trace tagging. Non-zero means pricing must re-run
+        /// even when no files changed (a new priority turn entered the trace).
+        let codexTierUpdated: Int
 
         init(
             scannedFiles: Int,
@@ -33,7 +37,8 @@ actor ImportEngine {
             importedEvents: Int,
             importedRateLimitSamples: Int,
             errors: [String],
-            scopeUnavailable: Bool = false
+            scopeUnavailable: Bool = false,
+            codexTierUpdated: Int = 0
         ) {
             self.scannedFiles = scannedFiles
             self.changedFiles = changedFiles
@@ -42,6 +47,7 @@ actor ImportEngine {
             self.importedRateLimitSamples = importedRateLimitSamples
             self.errors = errors
             self.scopeUnavailable = scopeUnavailable
+            self.codexTierUpdated = codexTierUpdated
         }
 
         static let empty = ScanReport(
@@ -182,6 +188,16 @@ actor ImportEngine {
         // Cheap (single pass, all in one transaction) and idempotent.
         try await reconcileSessionTree()
 
+        // Attribute each turn's billing tier from the logs_2.sqlite priority
+        // trace. Only when files actually changed — the trace scan is a
+        // multi-second full-text pass over a large DB, so a no-change popover
+        // refresh must not pay it. Best-effort: a missing/locked trace tags
+        // nothing and the global Fast-Mode switch takes over.
+        var codexTierUpdated = 0
+        if !changed.isEmpty {
+            codexTierUpdated = try await tagCodexPriority()
+        }
+
         // NOTE: PricingService.backfillAllValues is intentionally NOT called
         // here. ScanController.runScan() invokes it exactly once after both
         // engines complete, which is enough to (a) value Claude rows that
@@ -194,7 +210,8 @@ actor ImportEngine {
             importedSessions: importedSessions,
             importedEvents: importedEvents,
             importedRateLimitSamples: importedSamples,
-            errors: errors)
+            errors: errors,
+            codexTierUpdated: codexTierUpdated)
 
         Log.importer.info("scan ok scanned=\(report.scannedFiles) changed=\(report.changedFiles) sessions=\(report.importedSessions) events=\(report.importedEvents) samples=\(report.importedRateLimitSamples) errors=\(report.errors.count)")
         DeveloperLog.eventRecord(
@@ -369,7 +386,8 @@ actor ImportEngine {
                     cacheCreationTokens: 0,
                     provider: "codex",
                     modelInferred: delta.modelInferred,
-                    providerMessageId: nil)
+                    providerMessageId: nil,
+                    codexTurnId: delta.turnId)
                 try event.insert(db)
             }
 
@@ -461,6 +479,23 @@ actor ImportEngine {
                     """, arguments: [root, containsSubagents, sessionId])
             }
         }
+    }
+
+    // MARK: - codex priority tagging
+
+    /// Read the `logs_2.sqlite` priority trace and stamp every Codex row's
+    /// billing tier. Returns the number of rows whose tier changed. Best-
+    /// effort: no codex home or an unreadable trace tags nothing and returns 0.
+    private func tagCodexPriority() async throws -> Int {
+        guard let codexHome else { return 0 }
+        let logsURL = codexHome.appendingPathComponent("logs_2.sqlite")
+        let trace = CodexPriorityTraceReader.read(logsDatabaseURL: logsURL)
+        let changed = try await database.pool.write { db in
+            try CodexPriorityTagger.tag(in: db, trace: trace)
+        }
+        Log.importer.info(
+            "codex priority tag: \(trace.priorityTurnIds.count) priority turns, \(changed) rows retiered")
+        return changed
     }
 
     /// Walk parent links until we find a session whose parent is missing or nil,

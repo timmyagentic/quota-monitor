@@ -179,7 +179,7 @@ extension AppEnvironment {
                     // imported in this pass and propagates price-table edits.
                     // Skip when nothing changed — backfill is sub-second, but
                     // it still pulls a write lock and walks every event row.
-                    if merged.changedFiles > 0 {
+                    if merged.changedFiles > 0 || merged.codexTierUpdated > 0 {
                         await MainActor.run { self.markScanPricing(runID: scanRunID) }
                         try await db.pool.write {
                             try PricingService.backfillAllValues(
@@ -331,7 +331,8 @@ extension AppEnvironment {
             importedEvents: a.importedEvents + b.importedEvents,
             importedRateLimitSamples: a.importedRateLimitSamples + b.importedRateLimitSamples,
             errors: a.errors + b.errors,
-            scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
+            scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable,
+            codexTierUpdated: a.codexTierUpdated + b.codexTierUpdated)
     }
 
     /// Pure App Store scan-scope decisions, extracted so they can be unit-tested

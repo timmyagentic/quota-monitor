@@ -26,8 +26,13 @@ appcast 中按系统语言切换的双语更新说明。
 
 #### Summary
 
+- 现在会自动识别近期的 Codex Fast（Priority）用量，那部分费用估算更准，无需再手动切换开关。
 - 修复了检查更新时可能出现“获取升级信息时出现错误，请稍后再试”、而不是发现新版本的问题。
 - 更新窗口里的更新说明加载得更顺滑了。
+
+### 新增
+
+- **自动识别 Codex Fast/Priority 计费档位。** QuotaMonitor 现在会读取本地 Codex trace（`~/.codex/logs_2.sqlite`），逐 turn 从中归因计费档位——Priority 的 turn 按 Fast 价计、standard 的 turn 按基础价计——不再只依赖全局“按 Fast Mode 计费”开关。trace 覆盖不到的更早历史仍由该开关兜底。
 
 ### 修复
 

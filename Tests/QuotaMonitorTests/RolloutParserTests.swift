@@ -210,4 +210,48 @@ struct RolloutParserTests {
                     "no turn_context anywhere in the file → cost is approximate, must be flagged")
         }
     }
+
+    // MARK: - turn id attribution
+
+    @Test("turn_id from task_started is attributed to the following token_count delta")
+    func turnIdFromTaskStartedPropagatesToDelta() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-07T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-07T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-07-07T00:00:01.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-A","started_at":1}}
+        {"timestamp":"2026-07-07T00:00:02.000Z","type":"turn_context","payload":{"turn_id":"turn-A","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-07T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.count == 1)
+        #expect(parsed.usageDeltas.first?.turnId == "turn-A")
+    }
+
+    @Test("turn_id switches across turns; each delta carries its own turn")
+    func turnIdSwitchesAcrossTurns() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-07T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-07T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-07-07T00:00:01.000Z","type":"turn_context","payload":{"turn_id":"turn-A","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-07T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-07-07T00:00:03.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-B","started_at":2}}
+        {"timestamp":"2026-07-07T00:00:04.000Z","type":"turn_context","payload":{"turn_id":"turn-B","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-07T00:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":55}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-A", "turn-B"])
+    }
+
+    @Test("legacy session without turn events yields nil turnId on deltas")
+    func turnIdNilForLegacySessions() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-07T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-07T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-07-07T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"2026-07-07T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.count == 1)
+        #expect(parsed.usageDeltas.first?.turnId == nil)
+    }
 }
