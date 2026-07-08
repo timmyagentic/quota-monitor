@@ -24,9 +24,8 @@ extension MenuBarContentView {
             // Compact quota rows nested inside the Codex block. Pre-Day-23
             // these lived in their own card with a separate "Codex CLI
             // quotas" header — folded into the provider block now.
-            let activeAdditional = snapshot.additional.filter {
-                ($0.primary?.usedPercent ?? 0) > 0.5
-            }
+            let activeAdditional = CodexAdditionalQuotaRows.visibleRows(
+                for: snapshot.additional)
 
             VStack(alignment: .leading, spacing: 6) {
                 if let primary = snapshot.primary {
@@ -35,10 +34,8 @@ extension MenuBarContentView {
                 if let secondary = snapshot.secondary {
                     QuotaRow(title: L10n.quotaCardTitle7d, window: secondary, accent: .blue)
                 }
-                ForEach(activeAdditional, id: \.limitName) { extra in
-                    if let win = extra.primary {
-                        QuotaRow(title: extra.limitName, window: win, accent: .blue)
-                    }
+                ForEach(activeAdditional, id: \.id) { row in
+                    QuotaRow(title: row.title, window: row.window, accent: .blue)
                 }
                 if let resetCredits = env.latestCodexResetCredits {
                     CodexResetCreditsRow(snapshot: resetCredits)
@@ -378,5 +375,62 @@ extension MenuBarContentView {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(accent.opacity(0.08))
         )
+    }
+}
+
+struct CodexAdditionalQuotaRow: Equatable, Sendable {
+    let id: String
+    let title: String
+    let window: RateLimitSnapshot.Window
+}
+
+enum CodexAdditionalQuotaRows {
+    private static let activeUsageThreshold = 0.5
+
+    static func visibleRows(
+        for additional: [RateLimitSnapshot.Additional]
+    ) -> [CodexAdditionalQuotaRow] {
+        additional.flatMap { extra -> [CodexAdditionalQuotaRow] in
+            guard hasActiveWindow(extra) else { return [] }
+
+            var rows: [CodexAdditionalQuotaRow] = []
+            if let primary = extra.primary {
+                rows.append(row(
+                    for: extra.limitName,
+                    bucket: "primary",
+                    label: L10n.quotaCardTitle5h,
+                    window: primary))
+            }
+            if let secondary = extra.secondary {
+                rows.append(row(
+                    for: extra.limitName,
+                    bucket: "secondary",
+                    label: L10n.quotaCardTitle7d,
+                    window: secondary))
+            }
+            return rows
+        }
+    }
+
+    private static func hasActiveWindow(
+        _ extra: RateLimitSnapshot.Additional
+    ) -> Bool {
+        isActive(extra.primary) || isActive(extra.secondary)
+    }
+
+    private static func isActive(_ window: RateLimitSnapshot.Window?) -> Bool {
+        (window?.usedPercent ?? 0) > activeUsageThreshold
+    }
+
+    private static func row(
+        for limitName: String,
+        bucket: String,
+        label: String,
+        window: RateLimitSnapshot.Window
+    ) -> CodexAdditionalQuotaRow {
+        CodexAdditionalQuotaRow(
+            id: "\(limitName)|\(bucket)",
+            title: "\(limitName) \(label)",
+            window: window)
     }
 }
