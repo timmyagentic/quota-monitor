@@ -31,22 +31,28 @@ struct MainWindowLayoutTests {
         #expect(statusItemController.contains(".environment(updater)"))
     }
 
-    @Test("Dashboard overview keeps Forecast before retrospective sections")
-    func dashboardOverviewKeepsForecastBeforeRetrospectiveSections() throws {
+    @Test("Dashboard overview keeps the original single-stack section order")
+    func dashboardOverviewKeepsOriginalSingleStackSectionOrder() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
         let overview = try Self.sourceSlice(
             source,
             from: "private func overview",
-            to: "private func trends")
+            to: "private var visibleProviderCount")
 
         let metricStrip = try Self.offset(of: "DashboardMetricStrip(", in: overview)
         let forecast = try Self.offset(of: "ForecastSection(", in: overview)
+        let trends = try Self.offset(of: "TrendsSection(", in: overview)
         let activity = try Self.offset(of: "ActivitySection(", in: overview)
         let composition = try Self.offset(of: "CompositionSection(", in: overview)
 
+        #expect(!source.contains("@State private var page"))
+        #expect(!source.contains("private var pageTabs"))
+        #expect(!source.contains("private enum DashboardPage"))
+        #expect(!overview.contains("private func trends"))
         #expect(metricStrip < forecast)
-        #expect(forecast < activity)
-        #expect(forecast < composition)
+        #expect(forecast < trends)
+        #expect(trends < activity)
+        #expect(activity < composition)
     }
 
     private static func source(named relativePath: String) throws -> String {

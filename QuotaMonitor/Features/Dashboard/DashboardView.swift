@@ -1,13 +1,10 @@
 import SwiftUI
 
-/// Dashboard window — a Token Monitor-inspired HUD with two inner pages:
-/// Overview for activity/profile composition, Trends for dense charting.
-/// The main window still owns provider filtering and Dashboard/History/
-/// Sessions navigation; this view only switches within the dashboard.
+/// Dashboard window — a Token Monitor-inspired HUD with the original
+/// top-to-bottom section order preserved.
 struct DashboardView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(SettingsStore.self) private var settings
-    @State private var page: DashboardPage = .overview
 
     var body: some View {
         ScrollView {
@@ -16,13 +13,7 @@ struct DashboardView: View {
                     hiddenIconHint
                 }
                 if let snapshot = env.dashboardSnapshot {
-                    pageTabs
-                    switch page {
-                    case .overview:
-                        overview(snapshot)
-                    case .trends:
-                        trends(snapshot)
-                    }
+                    overview(snapshot)
                 } else {
                     emptyState
                 }
@@ -48,6 +39,12 @@ struct DashboardView: View {
                 liveCodexRateLimits: env.latestRateLimits,
                 providerFilter: env.providerFilter,
                 enabledProviders: settings.enabledProviders)
+            TrendsSection(
+                dailyExtended: snapshot.dailyExtended,
+                providerBreakdown: snapshot.dailyProviderExtended
+                    .filter { providerIsVisible($0.provider) },
+                modelBreakdown: snapshot.dailyModelExtended
+                    .filter { providerIsVisible($0.provider) })
             ActivitySection(activity: snapshot.activity, showsStatStrip: false)
             CompositionSection(
                 modelShares30d: snapshot.modelShares30d,
@@ -56,15 +53,6 @@ struct DashboardView: View {
                     .filter { providerIsVisible($0.provider) },
                 showProviderBreakdown: visibleProviderCount > 1)
         }
-    }
-
-    private func trends(_ snapshot: DashboardSnapshot) -> some View {
-        TrendsSection(
-            dailyExtended: snapshot.dailyExtended,
-            providerBreakdown: snapshot.dailyProviderExtended
-                .filter { providerIsVisible($0.provider) },
-            modelBreakdown: snapshot.dailyModelExtended
-                .filter { providerIsVisible($0.provider) })
     }
 
     private var visibleProviderCount: Int {
@@ -81,32 +69,6 @@ struct DashboardView: View {
         case .claude:
             return provider == "claude"
         }
-    }
-
-    // MARK: - inner tabs
-
-    private var pageTabs: some View {
-        HStack(spacing: 4) {
-            ForEach(DashboardPage.allCases) { candidate in
-                Button {
-                    page = candidate
-                } label: {
-                    Text(candidate.label)
-                        .font(.callout.weight(page == candidate ? .semibold : .regular))
-                        .foregroundStyle(page == candidate ? .primary : .secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(page == candidate
-                                      ? Color.primary.opacity(0.08)
-                                      : Color.clear)
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .dashboardPanel(cornerRadius: 9, padding: 3)
     }
 
     // MARK: - metric strip
@@ -204,20 +166,6 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 400)
         .dashboardPanel(cornerRadius: 12, padding: 18)
-    }
-}
-
-private enum DashboardPage: CaseIterable, Identifiable {
-    case overview
-    case trends
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .overview: return L10n.dashboardTabOverview
-        case .trends: return L10n.dashboardTabTrends
-        }
     }
 }
 
