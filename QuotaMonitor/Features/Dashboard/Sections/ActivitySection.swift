@@ -8,9 +8,16 @@ import SwiftUI
 /// to the active provider filter — so every number here follows the
 /// All / Codex / Claude picker in the toolbar.
 struct ActivitySection: View {
+    struct Metric: Identifiable {
+        let value: String
+        let label: String
+
+        var id: String { label }
+    }
+
     @Environment(SettingsStore.self) private var settings
     let activity: ActivitySnapshot
-    var showsStatStrip = true
+    var metrics: [Metric] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -20,8 +27,10 @@ struct ActivitySection: View {
                 Spacer()
             }
 
-            if showsStatStrip {
+            if metrics.isEmpty {
                 statStrip
+            } else {
+                metricStrip(metrics)
             }
 
             if activity.hasData {
@@ -37,6 +46,24 @@ struct ActivitySection: View {
     }
 
     // MARK: - stat strip
+
+    private func metricStrip(_ metrics: [Metric]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
+                statCell(value: metric.value, label: metric.label)
+
+                if index < metrics.count - 1 {
+                    cellDivider
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.secondary.opacity(0.05))
+        )
+    }
 
     private var statStrip: some View {
         let locale = settings.tokenFormatLocale

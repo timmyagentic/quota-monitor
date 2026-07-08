@@ -39,7 +39,7 @@ struct MainWindowLayoutTests {
             from: "private func overview",
             to: "private var visibleProviderCount")
 
-        let metricStrip = try Self.offset(of: "DashboardMetricStrip(", in: overview)
+        let statline = try Self.offset(of: "statline", in: overview)
         let forecast = try Self.offset(of: "ForecastSection(", in: overview)
         let trends = try Self.offset(of: "TrendsSection(", in: overview)
         let activity = try Self.offset(of: "ActivitySection(", in: overview)
@@ -49,7 +49,10 @@ struct MainWindowLayoutTests {
         #expect(!source.contains("private var pageTabs"))
         #expect(!source.contains("private enum DashboardPage"))
         #expect(!overview.contains("private func trends"))
-        #expect(metricStrip < forecast)
+        #expect(!overview.contains("DashboardMetricStrip("))
+        #expect(!overview.contains("showsStatStrip: false"))
+        #expect(overview.contains("metrics: activityMetrics(for: snapshot)"))
+        #expect(statline < forecast)
         #expect(forecast < trends)
         #expect(trends < activity)
         #expect(activity < composition)

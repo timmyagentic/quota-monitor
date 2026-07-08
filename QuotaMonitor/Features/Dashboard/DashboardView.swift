@@ -31,7 +31,7 @@ struct DashboardView: View {
 
     private func overview(_ snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            DashboardMetricStrip(metrics: metrics(for: snapshot))
+            statline
             ForecastSection(
                 snapshot: snapshot,
                 blocks: env.billingBlocks,
@@ -45,13 +45,78 @@ struct DashboardView: View {
                     .filter { providerIsVisible($0.provider) },
                 modelBreakdown: snapshot.dailyModelExtended
                     .filter { providerIsVisible($0.provider) })
-            ActivitySection(activity: snapshot.activity, showsStatStrip: false)
+            ActivitySection(
+                activity: snapshot.activity,
+                metrics: activityMetrics(for: snapshot))
             CompositionSection(
                 modelShares30d: snapshot.modelShares30d,
                 modelSharesPrior30d: snapshot.modelSharesPrior30d,
                 providerShares30d: snapshot.providerShares30d
                     .filter { providerIsVisible($0.provider) },
                 showProviderBreakdown: visibleProviderCount > 1)
+        }
+    }
+
+    // MARK: - rolling-window statline
+
+    private var statline: some View {
+        let codex = env.menuBarSnapshot?.codex
+        let claude = env.menuBarSnapshot?.claude
+        let window = settings.menuBarHeadlineWindow
+
+        func usd(_ stats: ProviderStats?) -> Double {
+            guard let stats else { return 0 }
+            return window == .last7d ? stats.last7dValueUSD : stats.last30dValueUSD
+        }
+        func tokens(_ stats: ProviderStats?) -> Int64 {
+            guard let stats else { return 0 }
+            return window == .last7d ? stats.last7dTokens : stats.last30dTokens
+        }
+        func sessions(_ stats: ProviderStats?) -> Int {
+            guard let stats else { return 0 }
+            return window == .last7d ? stats.last7dSessionCount : stats.last30dSessionCount
+        }
+
+        let usdSum: Double
+        let tokensSum: Int64
+        let sessionsSum: Int
+        let enabled = settings.enabledProviders
+
+        switch env.providerFilter {
+        case .all:
+            let codexEnabled = enabled.contains("codex")
+            let claudeEnabled = enabled.contains("claude")
+            usdSum = (codexEnabled ? usd(codex) : 0) + (claudeEnabled ? usd(claude) : 0)
+            tokensSum = (codexEnabled ? tokens(codex) : 0) + (claudeEnabled ? tokens(claude) : 0)
+            sessionsSum = (codexEnabled ? sessions(codex) : 0) + (claudeEnabled ? sessions(claude) : 0)
+        case .codex:
+            usdSum = usd(codex)
+            tokensSum = tokens(codex)
+            sessionsSum = sessions(codex)
+        case .claude:
+            usdSum = usd(claude)
+            tokensSum = tokens(claude)
+            sessionsSum = sessions(claude)
+        }
+
+        let hasData = usdSum > 0 || tokensSum > 0 || sessionsSum > 0
+        return HStack {
+            if hasData {
+                Text(L10n.dashboardHeadlineStatline(
+                    window: window,
+                    usd: usdSum.formatted(.currency(code: "USD")),
+                    tokens: tokensSum.formatted(
+                        .number.notation(.compactName).locale(settings.tokenFormatLocale)),
+                    sessions: sessionsSum))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .help(L10n.headlineApiEquivalentHelp)
+            } else {
+                Text(L10n.dashboardHeadlineStatlineEmpty(window: window))
+                    .font(.callout)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer()
         }
     }
 
@@ -71,37 +136,37 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: - metric strip
+    // MARK: - activity metrics
 
-    private func metrics(for snapshot: DashboardSnapshot) -> [DashboardMetric] {
+    private func activityMetrics(for snapshot: DashboardSnapshot) -> [ActivitySection.Metric] {
         let activity = snapshot.activity
         let activeDays = activity.daily.filter { $0.tokens > 0 }.count
         let topModel = snapshot.modelShares30d.first?.displayName
             ?? snapshot.modelShares.first?.displayName
             ?? "—"
         return [
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: compactTokens(activity.lifetimeTokens),
                 label: L10n.activityLifetimeTokens),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: compactUSD(snapshot.overview.totalValueUSD),
                 label: L10n.dashboardMetricTotalCost),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: activeDays.formatted(.number.locale(settings.tokenFormatLocale)),
                 label: L10n.dashboardMetricActiveDays),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: L10n.activityStreakDays(activity.currentStreakDays),
                 label: L10n.activityCurrentStreak),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: L10n.activityStreakDays(activity.longestStreakDays),
                 label: L10n.activityLongestStreak),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: compactTokens(activity.peakDayTokens),
                 label: L10n.activityPeakTokens),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: topModel,
                 label: L10n.dashboardMetricTopModel),
-            DashboardMetric(
+            ActivitySection.Metric(
                 value: snapshot.overview.totalEvents.formatted(
                     .number.notation(.compactName).locale(settings.tokenFormatLocale)),
                 label: L10n.dashboardMetricEvents)
@@ -166,44 +231,6 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 400)
         .dashboardPanel(cornerRadius: 12, padding: 18)
-    }
-}
-
-private struct DashboardMetric: Identifiable {
-    let value: String
-    let label: String
-
-    var id: String { label }
-}
-
-private struct DashboardMetricStrip: View {
-    let metrics: [DashboardMetric]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(metric.value)
-                        .font(.title3.monospacedDigit().weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.55)
-                    Text(metric.label)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                }
-                .padding(.horizontal, 16)
-                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-
-                if index < metrics.count - 1 {
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(width: 1, height: 54)
-                }
-            }
-        }
-        .dashboardPanel(cornerRadius: 12, padding: 0)
     }
 }
 
