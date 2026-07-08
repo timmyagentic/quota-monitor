@@ -58,6 +58,18 @@ struct MainWindowLayoutTests {
         #expect(activity < composition)
     }
 
+    @Test("Dashboard trends only exposes stacked bar mode")
+    func dashboardTrendsOnlyExposesStackedBarMode() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift")
+
+        #expect(source.contains("private var stackedBars: some View"))
+        #expect(!source.contains("K-line"))
+        #expect(!source.contains("kline"))
+        #expect(!source.contains("TrendMode"))
+        #expect(!source.contains("UsageCandle"))
+        #expect(!source.contains("candleTooltip"))
+    }
+
     private static func source(named relativePath: String) throws -> String {
         var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while url.path != "/" {

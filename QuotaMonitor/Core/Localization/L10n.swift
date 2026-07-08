@@ -422,12 +422,8 @@ enum L10n {
     // MARK: - dashboard
 
     static var dashboardTitle: String { t(en: "Dashboard", zh: "仪表盘") }
-    static var dashboardTabOverview: String { t(en: "Overview", zh: "总览") }
-    static var dashboardTabTrends: String { t(en: "Trends", zh: "趋势") }
     static var dashboardStackProvider: String { t(en: "By tool", zh: "按工具") }
     static var dashboardStackModel: String { t(en: "By model", zh: "按模型") }
-    static var dashboardModeBars: String { t(en: "Bars", zh: "柱状图") }
-    static var dashboardModeKLine: String { t(en: "K-line", zh: "K 线") }
     static var dashboardRange7d: String { t(en: "7d", zh: "7 天") }
     static var dashboardRange30d: String { t(en: "30d", zh: "30 天") }
     static var dashboardRange90d: String { t(en: "90d", zh: "90 天") }

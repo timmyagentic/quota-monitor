@@ -1,9 +1,9 @@
 import SwiftUI
 import Charts
 
-/// Trends panel: stacked token bars by provider/model plus a compact K-line
-/// mode over the same daily series. The summary line still reports spend
-/// over today / 7d / 30d so the chart remains useful for both tokens and cost.
+/// Trends panel: stacked token bars by provider/model. The summary line still
+/// reports spend over today / 7d / 30d so the chart remains useful for both
+/// tokens and cost.
 struct TrendsSection: View {
     @Environment(SettingsStore.self) private var settings
 
@@ -13,7 +13,6 @@ struct TrendsSection: View {
 
     @State private var range: TrendRange = .last30d
     @State private var stackBy: TrendStack = .provider
-    @State private var mode: TrendMode = .bars
     @State private var selectedDay: Date?
 
     var body: some View {
@@ -32,10 +31,8 @@ struct TrendsSection: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else {
-                chart
-                if mode == .bars {
-                    trendLegend
-                }
+                stackedBars
+                trendLegend
                 statline
             }
         }
@@ -46,25 +43,14 @@ struct TrendsSection: View {
 
     private var controls: some View {
         HStack(alignment: .center, spacing: 10) {
-            if mode == .bars {
-                Picker("", selection: $stackBy) {
-                    ForEach(TrendStack.allCases) { item in
-                        Text(item.label).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 180)
-            }
-
-            Picker("", selection: $mode) {
-                ForEach(TrendMode.allCases) { item in
+            Picker("", selection: $stackBy) {
+                ForEach(TrendStack.allCases) { item in
                     Text(item.label).tag(item)
                 }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 150)
+            .frame(width: 180)
 
             Spacer(minLength: 8)
 
@@ -92,16 +78,6 @@ struct TrendsSection: View {
     }
 
     // MARK: - chart
-
-    @ViewBuilder
-    private var chart: some View {
-        switch mode {
-        case .bars:
-            stackedBars
-        case .kline:
-            kLine
-        }
-    }
 
     private var stackedBars: some View {
         Chart {
@@ -147,63 +123,6 @@ struct TrendsSection: View {
             }
         }
         .chartLegend(.hidden)
-        .chartXSelection(value: $selectedDay)
-        .frame(height: 330)
-    }
-
-    private var kLine: some View {
-        Chart {
-            ForEach(candles) { candle in
-                RuleMark(
-                    x: .value(L10n.chartAxisDay, candle.midDate, unit: .day),
-                    yStart: .value("Low", candle.low),
-                    yEnd: .value("High", candle.high)
-                )
-                .foregroundStyle(candle.color)
-                .lineStyle(StrokeStyle(lineWidth: 1.4))
-
-                RectangleMark(
-                    x: .value(L10n.chartAxisDay, candle.midDate, unit: .day),
-                    yStart: .value("Open", min(candle.open, candle.close)),
-                    yEnd: .value("Close", max(candle.open, candle.close)),
-                    width: .fixed(range.candleWidth)
-                )
-                .foregroundStyle(candle.color)
-                .cornerRadius(2)
-            }
-
-            if let candle = selectedCandle {
-                RuleMark(x: .value(L10n.chartAxisDay, candle.midDate, unit: .day))
-                    .foregroundStyle(Color.primary.opacity(0.22))
-                    .annotation(
-                        position: .top,
-                        alignment: .center,
-                        spacing: 4,
-                        overflowResolution: .init(x: .fit, y: .disabled)
-                    ) {
-                        candleTooltip(candle)
-                    }
-            }
-        }
-        .chartXAxis {
-            AxisMarks(values: .stride(by: .day, count: range.axisStride)) { _ in
-                AxisGridLine()
-                AxisValueLabel(format: .dateTime.month(.abbreviated).day(),
-                                centered: true)
-            }
-        }
-        .chartYAxis {
-            AxisMarks { value in
-                AxisGridLine()
-                AxisValueLabel {
-                    if let v = value.as(Int64.self) {
-                        Text(compactTokens(v))
-                    } else if let d = value.as(Double.self) {
-                        Text(compactNumber(d))
-                    }
-                }
-            }
-        }
         .chartXSelection(value: $selectedDay)
         .frame(height: 330)
     }
@@ -259,24 +178,6 @@ struct TrendsSection: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 2)
-        )
-    }
-
-    private func candleTooltip(_ candle: UsageCandle) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(candle.label)
-                .font(.caption.weight(.semibold))
-            Text("O \(compactTokens(candle.open)) · H \(compactTokens(candle.high))")
-                .font(.caption2.monospacedDigit())
-            Text("L \(compactTokens(candle.low)) · C \(compactTokens(candle.close))")
-                .font(.caption2.monospacedDigit())
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
@@ -372,20 +273,6 @@ struct TrendsSection: View {
         .sorted { $0.tokens > $1.tokens }
     }
 
-    private var candles: [UsageCandle] {
-        UsageCandle.build(
-            points: windowedDaily,
-            bucketDays: range.candleBucketDays)
-    }
-
-    private var selectedCandle: UsageCandle? {
-        guard let selectedDay, !candles.isEmpty else { return nil }
-        return candles.min {
-            abs($0.midDate.timeIntervalSince(selectedDay))
-            < abs($1.midDate.timeIntervalSince(selectedDay))
-        }
-    }
-
     private func seriesColor(_ point: DailyBreakdownPoint) -> Color {
         switch stackBy {
         case .provider:
@@ -463,24 +350,6 @@ private enum TrendRange: CaseIterable, Identifiable {
         }
     }
 
-    var candleBucketDays: Int {
-        switch self {
-        case .last7d: return 1
-        case .last30d: return 2
-        case .last90d: return 5
-        case .lastYear: return 14
-        }
-    }
-
-    var candleWidth: CGFloat {
-        switch self {
-        case .last7d: return 14
-        case .last30d: return 10
-        case .last90d: return 8
-        case .lastYear: return 6
-        }
-    }
-
     var label: String {
         switch self {
         case .last7d: return L10n.dashboardRange7d
@@ -501,20 +370,6 @@ private enum TrendStack: CaseIterable, Identifiable {
         switch self {
         case .provider: return L10n.dashboardStackProvider
         case .model: return L10n.dashboardStackModel
-        }
-    }
-}
-
-private enum TrendMode: CaseIterable, Identifiable {
-    case bars
-    case kline
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .bars: return L10n.dashboardModeBars
-        case .kline: return L10n.dashboardModeKLine
         }
     }
 }
@@ -540,57 +395,4 @@ private struct TrendSelection {
     let date: Date
     let rows: [Row]
     let totalTokens: Int64
-}
-
-private struct UsageCandle: Identifiable {
-    let id: Date
-    let startDate: Date
-    let endDate: Date
-    let midDate: Date
-    let open: Int64
-    let high: Int64
-    let low: Int64
-    let close: Int64
-    let label: String
-
-    var color: Color {
-        close >= open ? Color.green.opacity(0.86) : DashboardTheme.warning
-    }
-
-    static func build(
-        points: [DailyPoint],
-        bucketDays: Int
-    ) -> [UsageCandle] {
-        let bucketSize = max(1, bucketDays)
-        var out: [UsageCandle] = []
-        var index = 0
-        while index < points.count {
-            let slice = Array(points[index..<min(index + bucketSize, points.count)])
-            guard let first = slice.first, let last = slice.last else { break }
-            let values = slice.map(\.tokens)
-            let mid = first.date.addingTimeInterval(last.date.timeIntervalSince(first.date) / 2)
-            let label: String
-            if Calendar.current.isDate(first.date, inSameDayAs: last.date) {
-                label = first.date.formatted(.dateTime.month(.abbreviated).day())
-            } else {
-                label = first.date.formatted(.dateTime.month(.abbreviated).day())
-                    + " – "
-                    + last.date.formatted(.dateTime.month(.abbreviated).day())
-            }
-            out.append(UsageCandle(
-                id: first.date,
-                startDate: first.date,
-                endDate: last.date,
-                midDate: mid,
-                open: first.tokens,
-                high: values.max() ?? 0,
-                low: values.min() ?? 0,
-                close: last.tokens,
-                label: label))
-            index += bucketSize
-        }
-        return out.filter { candle in
-            candle.open > 0 || candle.high > 0 || candle.low > 0 || candle.close > 0
-        }
-    }
 }
