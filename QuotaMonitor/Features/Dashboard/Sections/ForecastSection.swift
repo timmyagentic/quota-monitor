@@ -55,11 +55,7 @@ struct ForecastSection: View {
                 }
             }
         }
-        .padding(14)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
-        )
+        .dashboardPanel(cornerRadius: 12, padding: 14)
     }
 
     // MARK: - Codex card
@@ -77,6 +73,7 @@ struct ForecastSection: View {
         let hasSecondary = liveSecondary != nil || dbQuota?.secondary != nil
         ProviderForecastCard(
             label: L10n.codex,
+            accent: DashboardTheme.providerColor("codex"),
             tier: nil,
             tooltip: nil,
             isEmpty: !hasPrimary && !hasSecondary,
@@ -141,6 +138,7 @@ struct ForecastSection: View {
 
         ProviderForecastCard(
             label: L10n.claude,
+            accent: DashboardTheme.providerColor("claude"),
             tier: tier,
             tooltip: modelTooltip,
             isEmpty: !isFresh,
@@ -197,6 +195,7 @@ struct ForecastSection: View {
 /// focused on the rows.
 private struct ProviderForecastCard<Content: View>: View {
     let label: String
+    let accent: Color
     let tier: String?
     let tooltip: String?
     let isEmpty: Bool
@@ -206,6 +205,9 @@ private struct ProviderForecastCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(accent)
+                    .frame(width: 10, height: 10)
                 Text(label)
                     .font(.subheadline.weight(.semibold))
                 if let tier, !tier.isEmpty {
@@ -230,11 +232,11 @@ private struct ProviderForecastCard<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                .fill(Color.primary.opacity(0.035))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.secondary.opacity(0.15), lineWidth: 0.5)
+                .strokeBorder(Color.primary.opacity(0.09), lineWidth: 0.5)
         )
     }
 }

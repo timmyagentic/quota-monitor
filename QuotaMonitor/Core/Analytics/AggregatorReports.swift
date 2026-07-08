@@ -8,23 +8,42 @@ extension Aggregator {
 
     static func loadDashboard(
         from pool: DatabasePool,
-        provider: ProviderFilter = .all
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil
     ) async throws -> DashboardSnapshot {
         try await pool.read { db in
-            let overview = try fetchOverview(db: db, provider: provider)
-            let daily = try fetchDaily(db: db, days: 14, provider: provider)
-            // 60-day window powers Trends "Today/7d/30d (Δ vs prior 30d)".
-            let dailyExtended = try fetchDaily(db: db, days: 60, provider: provider)
-            let monthly = try fetchMonthly(db: db, months: 12, provider: provider)
-            let shares = try fetchModelShares(db: db, provider: provider)
+            let overview = try fetchOverview(
+                db: db, provider: provider, enabledProviders: enabledProviders)
+            let daily = try fetchDaily(
+                db: db, days: 14, provider: provider,
+                enabledProviders: enabledProviders)
+            // One-year window powers the Token Monitor-inspired Trends
+            // page. The statline still reads only the trailing 60 days.
+            let dailyExtended = try fetchDaily(
+                db: db, days: 365, provider: provider,
+                enabledProviders: enabledProviders)
+            let dailyProviderExtended = try fetchDailyBreakdown(
+                db: db, days: 365, grouping: .provider, provider: provider,
+                enabledProviders: enabledProviders)
+            let dailyModelExtended = try fetchDailyBreakdown(
+                db: db, days: 365, grouping: .model, provider: provider,
+                enabledProviders: enabledProviders)
+            let monthly = try fetchMonthly(
+                db: db, months: 12, provider: provider,
+                enabledProviders: enabledProviders)
+            let shares = try fetchModelShares(
+                db: db, provider: provider, enabledProviders: enabledProviders)
             // 30d + prior-30d slices fuel the Composition section's bar
             // list, banner ("X drives Y% of cost"), and the auto-insight
             // delta sentence.
             let shares30d = try fetchModelShares(
-                db: db, provider: provider, sinceDays: 30, untilDaysAgo: 0)
+                db: db, provider: provider, sinceDays: 30, untilDaysAgo: 0,
+                enabledProviders: enabledProviders)
             let sharesPrior30d = try fetchModelShares(
-                db: db, provider: provider, sinceDays: 60, untilDaysAgo: 30)
-            let providerShares30d = try fetchProviderShares30d(db: db)
+                db: db, provider: provider, sinceDays: 60, untilDaysAgo: 30,
+                enabledProviders: enabledProviders)
+            let providerShares30d = try fetchProviderShares30d(
+                db: db, provider: provider, enabledProviders: enabledProviders)
             // Codex quota/history queries filter the shared rate-limit table
             // to Codex sources (`live` + `jsonl`). Hide the Codex section for
             // the Claude-only dashboard view.
@@ -34,11 +53,14 @@ extension Aggregator {
             let quota = provider == .claude
                 ? nil
                 : try fetchCodexQuota(db: db)
-            let activity = try fetchActivity(db: db, provider: provider)
+            let activity = try fetchActivity(
+                db: db, provider: provider, enabledProviders: enabledProviders)
             return DashboardSnapshot(
                 overview: overview,
                 daily: daily,
                 dailyExtended: dailyExtended,
+                dailyProviderExtended: dailyProviderExtended,
+                dailyModelExtended: dailyModelExtended,
                 monthly: monthly,
                 modelShares: shares,
                 modelShares30d: shares30d,
@@ -51,8 +73,12 @@ extension Aggregator {
     }
 
     static func fetchOverview(
-        db: Database, provider: ProviderFilter = .all
+        db: Database,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil
     ) throws -> OverviewStats {
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
         let row = try Row.fetchOne(db, sql: """
             SELECT
                 COALESCE(SUM(value_usd), 0)  AS total_value,
@@ -61,11 +87,11 @@ extension Aggregator {
                 MIN(timestamp)               AS first_at,
                 MAX(timestamp)               AS last_at
             FROM usage_events
-            \(provider.whereClause(table: "usage_events"))
+            \(scope.whereClause(table: "usage_events"))
             """)
         let sessionCount = try Int.fetchOne(db, sql: """
             SELECT COUNT(*) FROM sessions
-            \(provider.whereClause(table: "sessions"))
+            \(scope.whereClause(table: "sessions"))
             """) ?? 0
 
         return OverviewStats(
@@ -87,9 +113,12 @@ extension Aggregator {
     /// near-midnight events from the opposite DST half of the year.
     static func fetchDaily(
         db: Database, days: Int, provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
         now: Date = Date(), calendar: Calendar = .current
     ) throws -> [DailyPoint] {
         guard days > 0 else { return [] }
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
         // Lower bound = local start-of-day of the earliest bucket, serialized to
         // ISO8601 UTC for lexical comparison against stored T/Z timestamps.
         // Derived from the injected `now` (not SQL 'now') so the window is
@@ -104,7 +133,7 @@ extension Aggregator {
             SELECT timestamp, value_usd, total_tokens
             FROM usage_events
             WHERE timestamp >= ?
-            \(provider.clause(table: "usage_events"))
+            \(scope.clause(table: "usage_events"))
             """, arguments: [lowerBound])
 
         var dayValue: [Date: Double] = [:]
@@ -120,15 +149,106 @@ extension Aggregator {
                            days: days, now: now, calendar: calendar)
     }
 
+    static func fetchDailyBreakdown(
+        db: Database,
+        days: Int,
+        grouping: TrendBreakdownGrouping,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> [DailyBreakdownPoint] {
+        guard days > 0 else { return [] }
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
+        let earliestDay = calendar.date(
+            byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))
+        let lowerBound = ISO8601.fractional.string(from: earliestDay ?? .distantPast)
+
+        let keySQL: String
+        let labelSQL: String
+        let joinSQL: String
+        switch grouping {
+        case .provider:
+            keySQL = "ue.provider"
+            labelSQL = "ue.provider"
+            joinSQL = ""
+        case .model:
+            keySQL = "ue.model_id"
+            labelSQL = "COALESCE(pc.display_name, ue.model_id)"
+            joinSQL = "LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id"
+        }
+
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT
+                ue.timestamp,
+                ue.provider,
+                ue.value_usd,
+                ue.total_tokens,
+                \(keySQL) AS breakdown_key,
+                \(labelSQL) AS breakdown_label
+            FROM usage_events ue
+            \(joinSQL)
+            WHERE ue.timestamp >= ?
+            \(scope.clause(table: "ue"))
+            """, arguments: [lowerBound])
+
+        struct Bucket: Hashable {
+            let date: Date
+            let provider: String
+            let key: String
+        }
+        var totals: [Bucket: (label: String, valueUSD: Double, tokens: Int64)] = [:]
+        for row in rows {
+            let ts: String = row["timestamp"] ?? ""
+            guard let date = parseTimestamp(ts) else { continue }
+            let dayStart = calendar.startOfDay(for: date)
+            let rawKey: String = row["breakdown_key"] ?? "unknown"
+            let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "unknown"
+                : rawKey
+            let rawLabel: String = row["breakdown_label"] ?? key
+            let label = rawLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? key
+                : rawLabel
+            let rawProvider: String = row["provider"] ?? "unknown"
+            let provider = rawProvider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "unknown"
+                : rawProvider
+            let bucket = Bucket(date: dayStart, provider: provider, key: key)
+            var current = totals[bucket] ?? (label: label, valueUSD: 0, tokens: 0)
+            current.valueUSD += row["value_usd"] ?? 0
+            current.tokens += row["total_tokens"] ?? 0
+            totals[bucket] = current
+        }
+
+        return totals.map { bucket, value in
+            DailyBreakdownPoint(
+                date: bucket.date,
+                provider: bucket.provider,
+                key: bucket.key,
+                label: value.label,
+                valueUSD: value.valueUSD,
+                tokens: value.tokens)
+        }
+        .sorted {
+            if $0.date != $1.date { return $0.date < $1.date }
+            return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        }
+    }
+
     /// Buckets `usage_events` by local-calendar month, returning `months`
     /// consecutive months ending with the current month (zero-filled).
     /// `session_count` uses DISTINCT session_id so cross-month sessions
     /// count once per month they touched. Mirrors ccusage's `monthly.ts`.
     static func fetchMonthly(
         db: Database, months: Int, provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
         now: Date = Date(), timeZone: TimeZone = .current
     ) throws -> [MonthlyPoint] {
         guard months > 0 else { return [] }
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
         // Anchor on first-of-current-month in the local calendar; the lower
@@ -146,7 +266,7 @@ extension Aggregator {
             SELECT timestamp, value_usd, total_tokens, session_id
             FROM usage_events
             WHERE timestamp >= ?
-            \(provider.clause(table: "usage_events"))
+            \(scope.clause(table: "usage_events"))
             """, arguments: [lowerBound])
 
         var byMonth: [Date: (value: Double, tokens: Int64, sessions: Set<String>)] = [:]
@@ -175,9 +295,13 @@ extension Aggregator {
     }
 
     static func fetchModelShares(
-        db: Database, provider: ProviderFilter = .all
+        db: Database,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil
     ) throws -> [ModelShare] {
-        try Row.fetchAll(db, sql: """
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
+        return try Row.fetchAll(db, sql: """
             SELECT
               ue.model_id,
               COALESCE(pc.display_name, ue.model_id) AS display_name,
@@ -186,7 +310,7 @@ extension Aggregator {
               COUNT(*)              AS event_count
             FROM usage_events ue
             LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id
-            \(provider.whereClause(table: "ue"))
+            \(scope.whereClause(table: "ue"))
             GROUP BY ue.model_id
             ORDER BY value_usd DESC
             """).map { row in
@@ -209,8 +333,11 @@ extension Aggregator {
         db: Database,
         provider: ProviderFilter,
         sinceDays: Int,
-        untilDaysAgo: Int
+        untilDaysAgo: Int,
+        enabledProviders: Set<String>? = nil
     ) throws -> [ModelShare] {
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
         // Build WHERE clause manually so we can compose the time predicate
         // with the provider clause (which contributes "AND ue.provider =
         // ...").
@@ -228,7 +355,7 @@ extension Aggregator {
             WHERE ue.timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
               AND ue.timestamp <  strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
             """
-        sql += provider.clause(table: "ue")
+        sql += scope.clause(table: "ue")
         sql += """
 
             GROUP BY ue.model_id
@@ -248,22 +375,38 @@ extension Aggregator {
         }
     }
 
-    /// Per-provider $ over the trailing 30 days. Always returns rows for
-    /// both `codex` and `claude` (zero-filled when the provider has no
-    /// recent activity) so the Composition donut layout is stable.
-    static func fetchProviderShares30d(db: Database) throws -> [ProviderShare] {
+    /// Per-provider usage over the trailing 30 days. Always returns rows
+    /// for both `codex` and `claude` (zero-filled when the provider has no
+    /// recent activity) so the Composition tool breakdown layout is stable.
+    static func fetchProviderShares30d(
+        db: Database,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil
+    ) throws -> [ProviderShare] {
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT provider, COALESCE(SUM(value_usd), 0) AS v
+            SELECT
+              provider,
+              COALESCE(SUM(value_usd), 0) AS v,
+              COALESCE(SUM(total_tokens), 0) AS tokens
             FROM usage_events
             WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
+            \(scope.clause(table: "usage_events"))
             GROUP BY provider
             """)
-        var by: [String: Double] = [:]
+        var by: [String: (valueUSD: Double, tokens: Int64)] = [:]
         for r in rows {
             let p: String = r["provider"] ?? "codex"
-            by[p] = r["v"] ?? 0
+            by[p] = (r["v"] ?? 0, r["tokens"] ?? 0)
         }
-        return ["codex", "claude"].map { ProviderShare(provider: $0, valueUSD: by[$0] ?? 0) }
+        return scope.zeroFillProviders().map {
+            let bucket = by[$0] ?? (0, 0)
+            return ProviderShare(
+                provider: $0,
+                valueUSD: bucket.valueUSD,
+                tokens: bucket.tokens)
+        }
     }
 
     /// Per-provider stats in a single query — used by the menu bar so the two

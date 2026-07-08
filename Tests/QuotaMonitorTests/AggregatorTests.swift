@@ -226,8 +226,57 @@ struct AggregatorTests {
         let codex = try #require(shares.first { $0.provider == "codex" })
         let claude = try #require(shares.first { $0.provider == "claude" })
         #expect(abs(codex.valueUSD - 12.34) < 0.0001)
+        #expect(codex.tokens == 1000)
         #expect(claude.valueUSD == 0,
-                "missing provider must zero-fill so the donut layout stays stable")
+                "missing provider must zero-fill so the tool breakdown stays stable")
+        #expect(claude.tokens == 0)
+    }
+
+    @Test("fetchDailyBreakdown: groups trend buckets by provider or model")
+    func dailyBreakdown_groupsTrendBuckets() throws {
+        let db = try makeDatabase()
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let yesterday = try #require(cal.date(byAdding: .day, value: -1, to: today))
+        let codexTime = yesterday.addingTimeInterval(10 * 3600)
+        let claudeTime = yesterday.addingTimeInterval(11 * 3600)
+        let todayTime = today.addingTimeInterval(9 * 3600)
+
+        try seedEvent(in: db, provider: "codex", sessionId: "c-1",
+                      at: codexTime, valueUSD: 2.00, tokens: 2_000)
+        try seedEvent(in: db, provider: "claude", sessionId: "k-1",
+                      at: claudeTime, valueUSD: 3.00, tokens: 3_000)
+        try seedEvent(in: db, provider: "codex", sessionId: "c-2",
+                      at: todayTime, valueUSD: 4.00, tokens: 4_000)
+
+        let byProvider = try db.pool.read { conn in
+            try Aggregator.fetchDailyBreakdown(
+                db: conn, days: 2, grouping: .provider, provider: .all,
+                now: todayTime, calendar: cal)
+        }
+        let yesterdayCodex = try #require(byProvider.first {
+            cal.isDate($0.date, inSameDayAs: yesterday) && $0.key == "codex"
+        })
+        let yesterdayClaude = try #require(byProvider.first {
+            cal.isDate($0.date, inSameDayAs: yesterday) && $0.key == "claude"
+        })
+        let todayCodex = try #require(byProvider.first {
+            cal.isDate($0.date, inSameDayAs: today) && $0.key == "codex"
+        })
+        #expect(yesterdayCodex.tokens == 2_000)
+        #expect(yesterdayCodex.provider == "codex")
+        #expect(abs(yesterdayClaude.valueUSD - 3.00) < 0.0001)
+        #expect(yesterdayClaude.provider == "claude")
+        #expect(todayCodex.tokens == 4_000)
+
+        let codexModels = try db.pool.read { conn in
+            try Aggregator.fetchDailyBreakdown(
+                db: conn, days: 2, grouping: .model, provider: .codex,
+                now: todayTime, calendar: cal)
+        }
+        #expect(codexModels.allSatisfy { $0.provider == "codex" && $0.key == "gpt-5" },
+                "provider filter must restrict model trend rows before grouping")
+        #expect(codexModels.reduce(0) { $0 + $1.tokens } == 6_000)
     }
 
     // MARK: - filter clause
@@ -251,6 +300,31 @@ struct AggregatorTests {
         #expect(abs(codexOnly.totalValueUSD - 1.00) < 0.0001)
         #expect(abs(claudeOnly.totalValueUSD - 2.00) < 0.0001)
         #expect(abs(union.totalValueUSD - 3.00) < 0.0001)
+    }
+
+    @Test("loadDashboard scopes all-provider snapshots to enabled providers")
+    func loadDashboard_scopesAllProviderSnapshotToEnabledProviders() async throws {
+        let db = try makeDatabase()
+        try seedEvent(in: db, provider: "codex", sessionId: "c",
+                      daysAgo: 1, valueUSD: 1.00, tokens: 1_000)
+        try seedEvent(in: db, provider: "claude", sessionId: "k",
+                      daysAgo: 1, valueUSD: 2.00, tokens: 2_000)
+
+        let snapshot = try await Aggregator.loadDashboard(
+            from: db.pool,
+            provider: .all,
+            enabledProviders: ["codex"])
+
+        #expect(abs(snapshot.overview.totalValueUSD - 1.00) < 0.0001)
+        #expect(snapshot.overview.totalTokens == 1_000)
+        #expect(snapshot.overview.totalEvents == 1)
+        #expect(snapshot.activity.lifetimeTokens == 1_000)
+        #expect(snapshot.activity.activeDays == 1)
+        #expect(snapshot.dailyExtended.reduce(Int64(0)) { $0 + $1.tokens } == 1_000)
+        #expect(snapshot.dailyProviderExtended.allSatisfy { $0.provider == "codex" })
+        #expect(snapshot.dailyModelExtended.allSatisfy { $0.provider == "codex" })
+        #expect(snapshot.providerShares30d.map(\.provider) == ["codex"])
+        #expect(snapshot.modelShares30d.reduce(Int64(0)) { $0 + $1.tokens } == 1_000)
     }
 
     // MARK: - Codex quota source isolation

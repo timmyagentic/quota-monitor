@@ -1248,41 +1248,50 @@ final class AppEnvironment {
         isLoadingDashboard = true
 
         let filter = providerFilter
+        let enabledProviders = SettingsStore.snapshot().enabledProviders
         let op = DeveloperLog.startOperation(
             "dashboard.refresh",
             category: "ui",
             trigger: trigger,
             parent: parentOperation,
-            fields: ["filter": .string(filter.rawValue)])
+            fields: [
+                "filter": .string(filter.rawValue),
+                "enabled_providers": .string(enabledProviders.sorted().joined(separator: ","))
+            ])
         Task { [weak self, op] in
             guard let self else { return }
             defer { Task { @MainActor in self.isLoadingDashboard = false } }
             do {
                 let (db, _) = try self.ensureServices()
                 let snapshot = try await Aggregator.loadDashboard(
-                    from: db.pool, provider: filter)
+                    from: db.pool,
+                    provider: filter,
+                    enabledProviders: enabledProviders)
                 // Billing blocks are an Anthropic concept — only meaningful
                 // when the active filter includes Claude data.
-                let blocks: BillingBlocks.Snapshot? = (filter == .codex) ? nil
-                    : try await db.pool.read { conn in
+                let includesClaude = filter != .codex
+                    && enabledProviders.contains("claude")
+                let resolvedBlocks: BillingBlocks.Snapshot? = includesClaude
+                    ? try await db.pool.read { conn in
                         try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
                     }
+                    : nil
                 await MainActor.run {
                     self.dashboardSnapshot = snapshot
-                    self.billingBlocks = blocks
+                    self.billingBlocks = resolvedBlocks
                 }
                 // Menu bar is provider-agnostic — refresh alongside the
                 // dashboard so price edits, filter toggles, and settings
                 // changes keep both views in sync.
                 self.refreshMenuBar(
-                    precomputedBlocks: blocks,
+                    precomputedBlocks: resolvedBlocks,
                     trigger: "dashboard",
                     parentOperation: op)
                 DeveloperLog.finishOperation(
                     op,
                     fields: [
                         "filter": .string(filter.rawValue),
-                        "has_billing_blocks": .bool(blocks != nil)
+                        "has_billing_blocks": .bool(resolvedBlocks != nil)
                     ])
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }

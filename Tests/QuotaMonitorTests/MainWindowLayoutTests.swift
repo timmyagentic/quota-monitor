@@ -31,6 +31,79 @@ struct MainWindowLayoutTests {
         #expect(statusItemController.contains(".environment(updater)"))
     }
 
+    @Test("Dashboard overview keeps the original single-stack section order")
+    func dashboardOverviewKeepsOriginalSingleStackSectionOrder() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
+        let overview = try Self.sourceSlice(
+            source,
+            from: "private func overview",
+            to: "private var visibleProviderCount")
+
+        let statline = try Self.offset(of: "statline", in: overview)
+        let forecast = try Self.offset(of: "ForecastSection(", in: overview)
+        let trends = try Self.offset(of: "TrendsSection(", in: overview)
+        let activity = try Self.offset(of: "ActivitySection(", in: overview)
+        let composition = try Self.offset(of: "CompositionSection(", in: overview)
+
+        #expect(!source.contains("@State private var page"))
+        #expect(!source.contains("private var pageTabs"))
+        #expect(!source.contains("private enum DashboardPage"))
+        #expect(!overview.contains("private func trends"))
+        #expect(!overview.contains("DashboardMetricStrip("))
+        #expect(!overview.contains("showsStatStrip: false"))
+        #expect(overview.contains("metrics: activityMetrics(for: snapshot)"))
+        #expect(statline < forecast)
+        #expect(forecast < trends)
+        #expect(trends < activity)
+        #expect(activity < composition)
+    }
+
+    @Test("Dashboard trends only exposes stacked bar mode")
+    func dashboardTrendsOnlyExposesStackedBarMode() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift")
+
+        #expect(source.contains("private var stackedBars: some View"))
+        #expect(!source.contains("K-line"))
+        #expect(!source.contains("kline"))
+        #expect(!source.contains("TrendMode"))
+        #expect(!source.contains("UsageCandle"))
+        #expect(!source.contains("candleTooltip"))
+    }
+
+    @Test("Dashboard trends preserve selected range and token totals")
+    func dashboardTrendsPreserveRangeAndTotals() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift")
+
+        #expect(source.contains(".chartXScale(domain: xDomain)"))
+        #expect(source.contains("TrendSeriesBuilder.collapsedModelSeries(raw)"))
+        #expect(source.contains("static let otherKey = \"__other__\""))
+    }
+
+    @Test("Dashboard composition selects model rows by tokens")
+    func dashboardCompositionSelectsModelRowsByTokens() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/CompositionSection.swift")
+        let modelRows = try Self.sourceSlice(
+            source,
+            from: "private var modelRows",
+            to: "private var providerRows")
+
+        #expect(modelRows.contains(".sorted { $0.tokens > $1.tokens }"))
+        #expect(modelRows.contains(".prefix(5)"))
+    }
+
+    @Test("Dashboard model colors are model-specific")
+    func dashboardModelColorsAreModelSpecific() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardTheme.swift")
+        let modelColor = try Self.sourceSlice(
+            source,
+            from: "static func modelColor",
+            to: "struct DashboardPanelModifier")
+
+        #expect(modelColor.contains("Color(hue: hue"))
+        #expect(!modelColor.contains("return claude"))
+        #expect(!modelColor.contains("return codex"))
+    }
+
     private static func source(named relativePath: String) throws -> String {
         var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while url.path != "/" {
@@ -41,5 +114,20 @@ struct MainWindowLayoutTests {
             url.deleteLastPathComponent()
         }
         throw CocoaError(.fileNoSuchFile)
+    }
+
+    private static func sourceSlice(
+        _ source: String,
+        from startSignature: String,
+        to endSignature: String
+    ) throws -> String {
+        let start = try #require(source.range(of: startSignature)?.lowerBound)
+        let rest = source[start...]
+        let end = try #require(rest.range(of: endSignature)?.lowerBound)
+        return String(rest[..<end])
+    }
+
+    private static func offset(of needle: String, in source: String) throws -> String.Index {
+        try #require(source.range(of: needle)?.lowerBound)
     }
 }

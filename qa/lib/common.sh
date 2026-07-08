@@ -63,14 +63,25 @@ qm_copy_user_defaults_to_qa_suite() {
     local target_home="$2"
     local source_domain="$3"
     local target_domain="$4"
-    local tmp_plist
+    local source_plist tmp_plist
 
     qm_assert_qa_defaults_suite "$target_domain" || return 1
 
     mkdir -p "$target_home/Library/Preferences"
-    HOME="$source_home" defaults read "$source_domain" >/dev/null 2>&1 || return 1
+    source_plist="$(qm_user_defaults_plist_path "$source_home" "$source_domain")"
+    if [[ -f "$source_plist" ]]; then
+        plutil -lint "$source_plist" >/dev/null 2>&1 || return 1
+        qm_plist_has_any_key "$source_plist" || return 1
+        HOME="$target_home" defaults import "$target_domain" "$source_plist" >/dev/null 2>&1
+        return $?
+    fi
+
     tmp_plist="$(mktemp "${TMPDIR:-/tmp}/qm-user-defaults.XXXXXX.plist")"
     if ! HOME="$source_home" defaults export "$source_domain" "$tmp_plist" >/dev/null 2>&1; then
+        rm -f "$tmp_plist"
+        return 1
+    fi
+    if ! qm_plist_has_any_key "$tmp_plist"; then
         rm -f "$tmp_plist"
         return 1
     fi
@@ -79,6 +90,83 @@ qm_copy_user_defaults_to_qa_suite() {
         return 1
     fi
     rm -f "$tmp_plist"
+}
+
+qm_user_defaults_plist_path() {
+    local home="$1"
+    local domain="$2"
+    printf '%s\n' "$home/Library/Preferences/${domain}.plist"
+}
+
+qm_plist_has_key() {
+    local plist="$1"
+    local key="$2"
+    /usr/libexec/PlistBuddy -c "Print :${key}" "$plist" >/dev/null 2>&1
+}
+
+qm_plist_has_any_key() {
+    local plist="$1"
+    local compact
+
+    compact="$(plutil -p "$plist" 2>/dev/null | tr -d '[:space:]')" || return 1
+    [[ "$compact" != "{}" ]]
+}
+
+qm_defaults_domain_has_product_preferences() {
+    local home="$1"
+    local domain="$2"
+    local plist key
+
+    plist="$(qm_user_defaults_plist_path "$home" "$domain")"
+    [[ -f "$plist" ]] || return 1
+    plutil -lint "$plist" >/dev/null 2>&1 || return 1
+
+    for key in \
+        app.language \
+        onboarding.providersDone \
+        settings.enabledProviders \
+        settings.menuBarIconProviders; do
+        qm_plist_has_key "$plist" "$key" && return 0
+    done
+
+    return 1
+}
+
+qm_defaults_domain_exists() {
+    local home="$1"
+    local domain="$2"
+    local plist
+
+    plist="$(qm_user_defaults_plist_path "$home" "$domain")"
+    [[ -f "$plist" ]] || return 1
+    plutil -lint "$plist" >/dev/null 2>&1
+}
+
+qm_select_real_data_defaults_domain() {
+    local source_home="$1"
+    local domain
+    local candidates=(
+        "dev.tjzhou.QuotaMonitor"
+        "QuotaMonitor"
+        "dev.tjzhou.CodexMonitor"
+        "CodexMonitor"
+    )
+
+    for domain in "${candidates[@]}"; do
+        if qm_defaults_domain_has_product_preferences "$source_home" "$domain"; then
+            printf '%s\n' "$domain"
+            return 0
+        fi
+    done
+
+    for domain in "${candidates[@]}"; do
+        if qm_defaults_domain_exists "$source_home" "$domain"; then
+            printf '%s\n' "$domain"
+            return 0
+        fi
+    done
+
+    printf '%s\n' "dev.tjzhou.QuotaMonitor"
 }
 
 qm_write_real_data_defaults() {

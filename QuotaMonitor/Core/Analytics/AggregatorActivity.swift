@@ -25,13 +25,15 @@ struct ActivitySnapshot: Sendable, Equatable {
     let currentStreakDays: Int
     /// Longest run of consecutive active days, all-time.
     let longestStreakDays: Int
+    /// Number of all-time local-calendar days with any token usage.
+    let activeDays: Int
     /// Trailing ~1-year daily token series, oldest first, zero-filled.
     /// Powers the heatmap.
     let daily: [DailyPoint]
 
     static let empty = ActivitySnapshot(
         lifetimeTokens: 0, peakDayTokens: 0, peakDay: nil,
-        currentStreakDays: 0, longestStreakDays: 0, daily: [])
+        currentStreakDays: 0, longestStreakDays: 0, activeDays: 0, daily: [])
 
     var hasData: Bool { lifetimeTokens > 0 }
 }
@@ -46,17 +48,20 @@ extension Aggregator {
     static func fetchActivity(
         db: Database,
         provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
         heatmapDays: Int = 365,
         now: Date = Date(),
         calendar: Calendar = .current
     ) throws -> ActivitySnapshot {
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
         // Fetch raw events; day bucketing happens client-side via Calendar
         // so each timestamp uses the correct DST offset for its own instant,
         // rather than today's offset applied uniformly to all history.
         let rows = try Row.fetchAll(db, sql: """
             SELECT timestamp, value_usd, total_tokens
             FROM usage_events
-            \(provider.whereClause(table: "usage_events"))
+            \(scope.whereClause(table: "usage_events"))
             """)
 
         // Group by local calendar day — Calendar.startOfDay(for:) accounts
@@ -99,6 +104,7 @@ extension Aggregator {
             peakDay: peakDay,
             currentStreakDays: current,
             longestStreakDays: longest,
+            activeDays: activeDays.count,
             daily: daily)
     }
 

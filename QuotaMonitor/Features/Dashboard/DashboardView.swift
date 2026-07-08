@@ -1,118 +1,112 @@
 import SwiftUI
 
-/// Dashboard window — a slim composition of four semantic sections that
-/// each answer one question:
-///
-/// 1. `ForecastSection` — am I about to blow a quota?
-/// 2. `TrendsSection`   — is my usage trending up or down?
-/// 3. `ActivitySection` — what does my usage profile look like?
-/// 4. `CompositionSection` — where is the spend going?
-///
-/// All three read from `AppEnvironment.dashboardSnapshot` /
-/// `billingBlocks` / `menuBarSnapshot`. The provider filter picker lives
-/// in `MainWindowView` (not here) so it sits above the dashboard /
-/// history / sessions tab switch. No `Divider()` between top-level
-/// sections — each section owns its card-style background.
+/// Dashboard window — a Token Monitor-inspired HUD with the original
+/// top-to-bottom section order preserved.
 struct DashboardView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(SettingsStore.self) private var settings
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 if env.menuBarUnreachable && !settings.firstRunHintDismissed {
                     hiddenIconHint
                 }
                 if let snapshot = env.dashboardSnapshot {
-                    statline
-                    ForecastSection(
-                        snapshot: snapshot,
-                        blocks: env.billingBlocks,
-                        claudeUsage: env.latestClaudeUsage,
-                        liveCodexRateLimits: env.latestRateLimits,
-                        providerFilter: env.providerFilter,
-                        enabledProviders: settings.enabledProviders)
-                    TrendsSection(
-                        dailyExtended: snapshot.dailyExtended)
-                    ActivitySection(activity: snapshot.activity)
-                    CompositionSection(
-                        modelShares30d: snapshot.modelShares30d,
-                        modelSharesPrior30d: snapshot.modelSharesPrior30d,
-                        providerShares30d: snapshot.providerShares30d
-                            .filter { settings.enabledProviders.contains($0.provider) },
-                        showProviderDonut: settings.enabledProviders.count > 1)
+                    overview(snapshot)
                 } else {
                     emptyState
                 }
             }
             .padding(20)
+            .frame(maxWidth: 1240, alignment: .topLeading)
         }
-        // Make every label / number / model-name in the Dashboard
-        // selectable so the user can copy a USD figure or a session id
-        // out without screenshotting. Buttons / charts are unaffected
-        // (`.textSelection` only modifies standalone Text views).
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(DashboardBackground())
         .textSelection(.enabled)
         .task { env.refreshDashboard() }
     }
 
+    // MARK: - pages
+
+    private func overview(_ snapshot: DashboardSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            statline
+            ForecastSection(
+                snapshot: snapshot,
+                blocks: env.billingBlocks,
+                claudeUsage: env.latestClaudeUsage,
+                liveCodexRateLimits: env.latestRateLimits,
+                providerFilter: env.providerFilter,
+                enabledProviders: settings.enabledProviders)
+            TrendsSection(
+                dailyExtended: snapshot.dailyExtended,
+                providerBreakdown: snapshot.dailyProviderExtended
+                    .filter { providerIsVisible($0.provider) },
+                modelBreakdown: snapshot.dailyModelExtended
+                    .filter { providerIsVisible($0.provider) })
+            ActivitySection(
+                activity: snapshot.activity,
+                metrics: activityMetrics(for: snapshot))
+            CompositionSection(
+                modelShares30d: snapshot.modelShares30d,
+                modelSharesPrior30d: snapshot.modelSharesPrior30d,
+                providerShares30d: snapshot.providerShares30d
+                    .filter { providerIsVisible($0.provider) },
+                showProviderBreakdown: visibleProviderCount > 1)
+        }
+    }
+
     // MARK: - rolling-window statline
 
-    /// Single-line summary at the top of the Dashboard. Pulls from
-    /// `MenuBarSnapshot` so the numbers match the menu bar verbatim. The
-    /// rolling window (7d vs 30d) is shared with the menu bar so the
-    /// user sees one consistent period across the whole app. When the
-    /// user has filtered to one provider, we restrict the line to that
-    /// provider's slice; otherwise we sum both.
     private var statline: some View {
         let codex = env.menuBarSnapshot?.codex
         let claude = env.menuBarSnapshot?.claude
         let window = settings.menuBarHeadlineWindow
-        // Per-provider field selectors keep the switch on `window`
-        // out of every arithmetic line below.
-        func usd(_ s: ProviderStats?) -> Double {
-            guard let s else { return 0 }
-            return window == .last7d ? s.last7dValueUSD : s.last30dValueUSD
+
+        func usd(_ stats: ProviderStats?) -> Double {
+            guard let stats else { return 0 }
+            return window == .last7d ? stats.last7dValueUSD : stats.last30dValueUSD
         }
-        func tokens(_ s: ProviderStats?) -> Int64 {
-            guard let s else { return 0 }
-            return window == .last7d ? s.last7dTokens : s.last30dTokens
+        func tokens(_ stats: ProviderStats?) -> Int64 {
+            guard let stats else { return 0 }
+            return window == .last7d ? stats.last7dTokens : stats.last30dTokens
         }
-        func sessions(_ s: ProviderStats?) -> Int {
-            guard let s else { return 0 }
-            return window == .last7d ? s.last7dSessionCount : s.last30dSessionCount
+        func sessions(_ stats: ProviderStats?) -> Int {
+            guard let stats else { return 0 }
+            return window == .last7d ? stats.last7dSessionCount : stats.last30dSessionCount
         }
+
         let usdSum: Double
         let tokensSum: Int64
         let sessionsSum: Int
-        // The provider filter narrows first; the enabled set then
-        // gates the `.all` arm so a disabled provider can't still leak
-        // into the rolling sum (it can't anyway since the poller is
-        // off, but we belt-and-brace the math because the snapshot
-        // can outlive a freshly-disabled provider for a few seconds).
         let enabled = settings.enabledProviders
+
         switch env.providerFilter {
         case .all:
             let codexEnabled = enabled.contains("codex")
             let claudeEnabled = enabled.contains("claude")
-            usdSum      = (codexEnabled ? usd(codex) : 0) + (claudeEnabled ? usd(claude) : 0)
-            tokensSum   = (codexEnabled ? tokens(codex) : 0) + (claudeEnabled ? tokens(claude) : 0)
+            usdSum = (codexEnabled ? usd(codex) : 0) + (claudeEnabled ? usd(claude) : 0)
+            tokensSum = (codexEnabled ? tokens(codex) : 0) + (claudeEnabled ? tokens(claude) : 0)
             sessionsSum = (codexEnabled ? sessions(codex) : 0) + (claudeEnabled ? sessions(claude) : 0)
         case .codex:
-            usdSum      = usd(codex)
-            tokensSum   = tokens(codex)
+            usdSum = usd(codex)
+            tokensSum = tokens(codex)
             sessionsSum = sessions(codex)
         case .claude:
-            usdSum      = usd(claude)
-            tokensSum   = tokens(claude)
+            usdSum = usd(claude)
+            tokensSum = tokens(claude)
             sessionsSum = sessions(claude)
         }
+
         let hasData = usdSum > 0 || tokensSum > 0 || sessionsSum > 0
         return HStack {
             if hasData {
                 Text(L10n.dashboardHeadlineStatline(
                     window: window,
                     usd: usdSum.formatted(.currency(code: "USD")),
-                    tokens: tokensSum.formatted(.number.notation(.compactName).locale(settings.tokenFormatLocale)),
+                    tokens: tokensSum.formatted(
+                        .number.notation(.compactName).locale(settings.tokenFormatLocale)),
                     sessions: sessionsSum))
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -126,11 +120,77 @@ struct DashboardView: View {
         }
     }
 
+    private var visibleProviderCount: Int {
+        ["codex", "claude"].filter(providerIsVisible).count
+    }
+
+    private func providerIsVisible(_ provider: String) -> Bool {
+        guard settings.enabledProviders.contains(provider) else { return false }
+        switch env.providerFilter {
+        case .all:
+            return true
+        case .codex:
+            return provider == "codex"
+        case .claude:
+            return provider == "claude"
+        }
+    }
+
+    // MARK: - activity metrics
+
+    private func activityMetrics(for snapshot: DashboardSnapshot) -> [ActivitySection.Metric] {
+        let activity = snapshot.activity
+        let topModel = snapshot.modelShares30d.first?.displayName
+            ?? snapshot.modelShares.first?.displayName
+            ?? "—"
+        return [
+            ActivitySection.Metric(
+                value: compactTokens(activity.lifetimeTokens),
+                label: L10n.activityLifetimeTokens),
+            ActivitySection.Metric(
+                value: compactUSD(snapshot.overview.totalValueUSD),
+                label: L10n.dashboardMetricTotalCost),
+            ActivitySection.Metric(
+                value: activity.activeDays.formatted(
+                    .number.locale(settings.tokenFormatLocale)),
+                label: L10n.dashboardMetricActiveDays),
+            ActivitySection.Metric(
+                value: L10n.activityStreakDays(activity.currentStreakDays),
+                label: L10n.activityCurrentStreak),
+            ActivitySection.Metric(
+                value: L10n.activityStreakDays(activity.longestStreakDays),
+                label: L10n.activityLongestStreak),
+            ActivitySection.Metric(
+                value: compactTokens(activity.peakDayTokens),
+                label: L10n.activityPeakTokens),
+            ActivitySection.Metric(
+                value: topModel,
+                label: L10n.dashboardMetricTopModel),
+            ActivitySection.Metric(
+                value: snapshot.overview.totalEvents.formatted(
+                    .number.notation(.compactName).locale(settings.tokenFormatLocale)),
+                label: L10n.dashboardMetricEvents)
+        ]
+    }
+
+    private func compactTokens(_ tokens: Int64) -> String {
+        tokens.formatted(
+            .number
+                .notation(.compactName)
+                .precision(.fractionLength(0...1))
+                .locale(settings.tokenFormatLocale))
+    }
+
+    private func compactUSD(_ value: Double) -> String {
+        "$" + value.formatted(
+            .number
+                .notation(.compactName)
+                .precision(.fractionLength(0...1))
+                .locale(settings.tokenFormatLocale))
+    }
+
     // MARK: - hidden-icon hint
 
-    /// Shown when the menu-bar status item was detected as clipped/hidden
-    /// and we promoted to a permanent Dock icon. Dismissible; the choice
-    /// persists via `settings.firstRunHintDismissed`.
     @ViewBuilder
     private var hiddenIconHint: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -155,8 +215,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .padding(12)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .dashboardPanel(cornerRadius: 10, padding: 12)
     }
 
     // MARK: - empty state
@@ -171,5 +230,23 @@ struct DashboardView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 400)
+        .dashboardPanel(cornerRadius: 12, padding: 18)
+    }
+}
+
+private struct DashboardBackground: View {
+    var body: some View {
+        ZStack {
+            Color(nsColor: .windowBackgroundColor)
+            LinearGradient(
+                colors: [DashboardTheme.codex.opacity(0.18), .clear],
+                startPoint: .topLeading,
+                endPoint: .center)
+            LinearGradient(
+                colors: [DashboardTheme.claude.opacity(0.10), .clear],
+                startPoint: .bottomTrailing,
+                endPoint: .center)
+        }
+        .ignoresSafeArea()
     }
 }

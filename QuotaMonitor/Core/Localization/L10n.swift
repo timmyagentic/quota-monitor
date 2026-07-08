@@ -422,6 +422,15 @@ enum L10n {
     // MARK: - dashboard
 
     static var dashboardTitle: String { t(en: "Dashboard", zh: "仪表盘") }
+    static var dashboardStackProvider: String { t(en: "By tool", zh: "按工具") }
+    static var dashboardStackModel: String { t(en: "By model", zh: "按模型") }
+    static var dashboardRange7d: String { t(en: "7d", zh: "7 天") }
+    static var dashboardRange30d: String { t(en: "30d", zh: "30 天") }
+    static var dashboardRange90d: String { t(en: "90d", zh: "90 天") }
+    static var dashboardMetricTotalCost: String { t(en: "Total cost", zh: "总花费") }
+    static var dashboardMetricActiveDays: String { t(en: "Active days", zh: "活跃天数") }
+    static var dashboardMetricTopModel: String { t(en: "Top model", zh: "常用模型") }
+    static var dashboardMetricEvents: String { t(en: "Events", zh: "消息数") }
     static var providerFilterLabel: String { t(en: "Show", zh: "显示") }
     static var providerFilterHelp: String {
         t(en: "Choose which tools to include in this view.",
@@ -499,6 +508,8 @@ enum L10n {
     static var modelsUsedToday: String { t(en: "Models used today", zh: "今日使用的模型") }
 
     static var last30Days: String { t(en: "Last 30 days", zh: "近 30 天") }
+    static var last90Days: String { t(en: "Last 90 days", zh: "近 90 天") }
+    static var lastYear: String { t(en: "1 year", zh: "1 年") }
 
     // MARK: - dashboard / trends section
 
@@ -518,6 +529,7 @@ enum L10n {
         return t(en: String(format: "(Δ vs prior 30d %@%.0f%%)", sign, percent),
                  zh: String(format: "（环比近 30 天 %@%.0f%%）", sign, percent))
     }
+    static var trendsOtherSeries: String { t(en: "Other", zh: "其他") }
 
     // MARK: - dashboard / composition section
 
@@ -526,13 +538,13 @@ enum L10n {
         t(en: "Top models · last 30 days", zh: "Top 模型 · 近 30 天")
     }
     static var compositionByProvider: String {
-        t(en: "By provider · last 30 days", zh: "按 Provider · 近 30 天")
+        t(en: "By tool · last 30 days", zh: "按工具 · 近 30 天")
     }
     static var compositionNoSpend: String {
         t(en: "No spend recorded in the last 30 days.",
           zh: "近 30 天未记录到任何花费。")
     }
-    /// Auto-insight sentence shown beside the donut. We surface it only
+    /// Auto-insight sentence shown below the composition breakdown. We surface it only
     /// when the dominant model has both >0 current spend and a defined
     /// prior-period baseline. `pp` is the percentage-point delta of the
     /// model's share-of-spend vs the prior 30 days.

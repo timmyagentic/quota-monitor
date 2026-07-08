@@ -35,15 +35,20 @@ window copy.
 - Fixed an update-check error that could show "An error occurred in retrieving update information — please try again later" instead of finding the new version.
 - Release notes now load a little more smoothly in the update window.
 - Model-specific Codex quota rows now show their weekly limit when available.
+- Dashboard now looks more like a dense usage cockpit, with forecast, activity, composition, and stacked trends in one flow.
+- Dashboard charts and totals now stay consistent when a provider is disabled.
+
+### Changed
+
+- **Dashboard visual refresh.** Dashboard now keeps forecast, stacked token trends, activity, and composition in one scrollable dashboard with a denser metric strip and clearer activity color.
+- **The update window shows a brief loading indicator while release notes download.** Because notes are now fetched on demand, the window shows a short spinner instead of momentarily flashing the "no release notes" placeholder before the notes appear.
 
 ### Fixed
 
 - **Update checks no longer fail with a retrieval error.** The update feed had grown large enough that its download host began rate-limiting it (HTTP 429), so a check would sometimes report "An error occurred in retrieving update information" instead of offering the update. Release notes are now linked and fetched on demand rather than embedded in the feed, shrinking it roughly 30× (≈600 KB → ≈20 KB) so it downloads reliably.
 - **Model-specific Codex weekly limits are visible.** Additional Codex model quotas, including GPT-5.3-Codex-Spark, now render both their 5-hour and 7-day rows instead of only the 5-hour row.
-
-### Changed
-
-- **The update window shows a brief loading indicator while release notes download.** Because notes are now fetched on demand, the window shows a short spinner instead of momentarily flashing the "no release notes" placeholder before the notes appear.
+- **Real-data QA mirrors saved setup.** The local real-data shadow runner now chooses the saved preferences domain that contains language and onboarding settings, so validation launches in the same language instead of reopening setup.
+- **Dashboard provider filtering is consistent.** Activity, composition, and trends now use the same enabled-provider scope, preserve "Other" model usage in stacked trends, and keep sparse ranges visually anchored to the selected window.
 
 ## [0.2.38] — 2026-07-06
 

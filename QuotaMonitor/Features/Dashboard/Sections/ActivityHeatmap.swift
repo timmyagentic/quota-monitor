@@ -11,18 +11,16 @@ enum HeatmapMode: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 }
 
-/// Five-step green scale, shared by the grid and the legend so they can't
-/// drift. Level 0 is the empty / no-activity tint; 1…4 deepen with volume.
-/// Green matches the app's two-color (green/red) menu-bar discipline rather
-/// than inventing a new accent.
+/// Five-step blue scale, shared by the grid and the legend so they can't
+/// drift. Level 0 is the empty / no-activity tint; 1…4 brighten with volume.
 enum HeatmapPalette {
     static func color(level: Int) -> Color {
         switch level {
-        case ..<1:  return Color.secondary.opacity(0.12)
-        case 1:     return Color.green.opacity(0.30)
-        case 2:     return Color.green.opacity(0.50)
-        case 3:     return Color.green.opacity(0.72)
-        default:    return Color.green
+        case ..<1:  return Color.primary.opacity(0.045)
+        case 1:     return DashboardTheme.accentBlue.opacity(0.22)
+        case 2:     return DashboardTheme.accentBlue.opacity(0.45)
+        case 3:     return DashboardTheme.accentBlue.opacity(0.75)
+        default:    return Color(red: 0.72, green: 0.90, blue: 1.0)
         }
     }
 }
@@ -39,7 +37,7 @@ struct ActivityHeatmap: View {
     @State private var hoveredCell: (col: Int, row: Int, cell: HeatmapModel.Cell)?
 
     private let cell: CGFloat = 13
-    private let gap: CGFloat = 3
+    private let gap: CGFloat = 4
 
     var body: some View {
         let model = HeatmapModel(daily: daily, calendar: .current)
@@ -47,8 +45,8 @@ struct ActivityHeatmap: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 ZStack(alignment: .topLeading) {
                     VStack(alignment: .leading, spacing: 4) {
-                        monthLabels(model)
                         grid(model)
+                        monthLabels(model)
                     }
                     if let (col, row, cell) = hoveredCell, let point = cell.point {
                         tooltipOverlay(for: point, col: col, row: row)
@@ -76,7 +74,7 @@ struct ActivityHeatmap: View {
         return VStack(alignment: .leading, spacing: 2) {
             Text(date)
                 .font(.caption.weight(.medium))
-            Text(tokens + " tokens")
+            Text(L10n.tokensCount(tokens))
                 .font(.caption2.monospacedDigit())
                 .foregroundStyle(.secondary)
         }

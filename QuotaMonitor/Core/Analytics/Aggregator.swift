@@ -31,6 +31,24 @@ struct DailyPoint: Sendable, Identifiable, Equatable {
     let tokens: Int64
 }
 
+enum TrendBreakdownGrouping: Sendable {
+    case provider
+    case model
+}
+
+struct DailyBreakdownPoint: Sendable, Identifiable, Equatable {
+    let date: Date
+    let provider: String
+    let key: String
+    let label: String
+    let valueUSD: Double
+    let tokens: Int64
+
+    var id: String {
+        "\(provider)-\(key)-\(date.timeIntervalSinceReferenceDate)"
+    }
+}
+
 /// Monthly bucket for the Dashboard's "Monthly trend" section. `month` is
 /// the first instant of the local-calendar month (so chart axes align).
 /// Mirrors ccusage's `monthly` report (`monthly.ts`) and pacer's
@@ -56,11 +74,16 @@ struct ModelShare: Sendable, Identifiable, Equatable {
 struct DashboardSnapshot: Sendable, Equatable {
     let overview: OverviewStats
     let daily: [DailyPoint]          // last 14 days, oldest first
-    /// Last 60 days, oldest first. Used by the Dashboard's Trends section
-    /// to compute the rolling-30d total and the Δ vs the prior 30 days.
-    /// We pull 60 days in one shot rather than two queries because the
-    /// shape is identical to `daily` and the cost is negligible.
+    /// Last 365 days, oldest first. Used by the Dashboard's Trends section
+    /// for the 7d / 30d / 90d / 1y ranges; the statline still reads only
+    /// the trailing 60 days to compute 30d and prior-30d totals.
     let dailyExtended: [DailyPoint]
+    /// Same rolling day window as `dailyExtended`, split by provider.
+    /// Powers the Token Monitor-inspired stacked trend chart.
+    let dailyProviderExtended: [DailyBreakdownPoint]
+    /// Same rolling day window as `dailyExtended`, split by model display
+    /// name so the Trends view can flip between tool and model stacks.
+    let dailyModelExtended: [DailyBreakdownPoint]
     /// Last 12 calendar months, oldest first. Zero-filled.
     let monthly: [MonthlyPoint]
     let modelShares: [ModelShare]    // sorted desc by valueUSD (lifetime)
@@ -71,9 +94,9 @@ struct DashboardSnapshot: Sendable, Equatable {
     /// compute the per-model delta surfaced in the Composition section's
     /// auto-insight sentence ("Opus 4 = 67% of spend, +12pp vs prior 30d").
     let modelSharesPrior30d: [ModelShare]
-    /// Per-provider spend over the last 30 days, used by the Composition
-    /// donut. Keys are the canonical `provider` strings ("codex" /
-    /// "claude").
+    /// Per-provider usage over the last 30 days, used by the Composition
+    /// tool breakdown. Keys are the canonical `provider` strings ("codex"
+    /// / "claude").
     let providerShares30d: [ProviderShare]
     let recentRateLimits: [RateLimitHistoryPoint]
     /// Codex 5h / weekly quota snapshot. Nil when filter is Claude-only or
@@ -87,14 +110,71 @@ struct DashboardSnapshot: Sendable, Equatable {
     let activity: ActivitySnapshot
 }
 
+struct ProviderScope: Sendable, Equatable {
+    let filter: ProviderFilter
+    let enabledProviders: Set<String>?
+
+    private static let knownProviders: [String] = ["codex", "claude"]
+
+    init(filter: ProviderFilter, enabledProviders: Set<String>? = nil) {
+        self.filter = filter
+        self.enabledProviders = enabledProviders
+    }
+
+    var providerIDs: [String]? {
+        let filtered: [String]?
+        switch filter {
+        case .all:
+            filtered = nil
+        case .codex:
+            filtered = ["codex"]
+        case .claude:
+            filtered = ["claude"]
+        }
+
+        guard let enabledProviders else {
+            return filtered
+        }
+
+        let enabled = enabledProviders.intersection(Self.knownProviders)
+        if let filtered {
+            return filtered.filter { enabled.contains($0) }
+        }
+        return Self.knownProviders.filter { enabled.contains($0) }
+    }
+
+    func clause(table: String) -> String {
+        predicate(table: table).map { " AND \($0)" } ?? ""
+    }
+
+    func whereClause(table: String) -> String {
+        predicate(table: table).map { " WHERE \($0)" } ?? ""
+    }
+
+    func zeroFillProviders() -> [String] {
+        providerIDs ?? Self.knownProviders
+    }
+
+    private func predicate(table: String) -> String? {
+        guard let ids = providerIDs else { return nil }
+        guard !ids.isEmpty else { return "1 = 0" }
+        if ids.count == 1, let id = ids.first {
+            return "\(table).provider = '\(id)'"
+        }
+        let quoted = ids.map { "'\($0)'" }.joined(separator: ", ")
+        return "\(table).provider IN (\(quoted))"
+    }
+}
+
 /// Compact provider-level slice, currently scoped to "last 30 days" for
-/// the Composition donut. Keeping it as its own type rather than reusing
-/// `ProviderStats` because we only need two scalars here and `ProviderStats`
-/// carries a lot of menu-bar-specific fields.
+/// the Composition tool breakdown. Keeping it as its own type rather than
+/// reusing `ProviderStats` because we only need a few scalars here and
+/// `ProviderStats` carries a lot of menu-bar-specific fields.
 struct ProviderShare: Sendable, Identifiable, Equatable {
     let provider: String  // "codex" | "claude"
     var id: String { provider }
     let valueUSD: Double
+    let tokens: Int64
 }
 
 /// Most-recent Codex rate-limit sample per bucket. Pacer separates `primary`
