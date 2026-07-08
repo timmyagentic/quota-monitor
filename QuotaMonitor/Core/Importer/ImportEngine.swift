@@ -368,6 +368,12 @@ actor ImportEngine {
             try sessionRecord.save(db)
 
             // 2. Replace usage_events for this session (file may have grown).
+            // Keep already-resolved Codex tiers attached to their turn. The
+            // local trace is retention-limited, so a later re-parse may happen
+            // after the evidence that proved the tier has rolled out of
+            // logs_2.sqlite.
+            let existingTiersByTurnId = try Self.existingCodexBillingTiersByTurnId(
+                in: db, sessionId: parsed.sessionId)
             try UsageEventRecord
                 .filter(Column("session_id") == parsed.sessionId)
                 .deleteAll(db)
@@ -387,7 +393,10 @@ actor ImportEngine {
                     provider: "codex",
                     modelInferred: delta.modelInferred,
                     providerMessageId: nil,
-                    codexTurnId: delta.turnId)
+                    codexTurnId: delta.turnId,
+                    codexBillingTier: delta.turnId.flatMap {
+                        existingTiersByTurnId[$0]
+                    })
                 try event.insert(db)
             }
 
@@ -438,6 +447,29 @@ actor ImportEngine {
                 events: parsed.usageDeltas.count,
                 samples: parsed.rateLimitSamples.count)
         }
+    }
+
+    private static func existingCodexBillingTiersByTurnId(
+        in db: Database, sessionId: String
+    ) throws -> [String: String] {
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT codex_turn_id, codex_billing_tier
+            FROM usage_events
+            WHERE session_id = ?
+              AND provider = 'codex'
+              AND codex_turn_id IS NOT NULL
+              AND codex_billing_tier IN ('priority', 'standard')
+            """, arguments: [sessionId])
+
+        var result: [String: String] = [:]
+        for row in rows {
+            guard let turnId: String = row["codex_turn_id"],
+                  let tier: String = row["codex_billing_tier"]
+            else { continue }
+            if result[turnId] == "priority" { continue }
+            result[turnId] = tier
+        }
+        return result
     }
 
     // MARK: - reconcile session tree
