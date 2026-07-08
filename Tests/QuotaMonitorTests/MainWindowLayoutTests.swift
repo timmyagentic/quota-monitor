@@ -31,6 +31,24 @@ struct MainWindowLayoutTests {
         #expect(statusItemController.contains(".environment(updater)"))
     }
 
+    @Test("Dashboard overview keeps Forecast before retrospective sections")
+    func dashboardOverviewKeepsForecastBeforeRetrospectiveSections() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
+        let overview = try Self.sourceSlice(
+            source,
+            from: "private func overview",
+            to: "private func trends")
+
+        let metricStrip = try Self.offset(of: "DashboardMetricStrip(", in: overview)
+        let forecast = try Self.offset(of: "ForecastSection(", in: overview)
+        let activity = try Self.offset(of: "ActivitySection(", in: overview)
+        let composition = try Self.offset(of: "CompositionSection(", in: overview)
+
+        #expect(metricStrip < forecast)
+        #expect(forecast < activity)
+        #expect(forecast < composition)
+    }
+
     private static func source(named relativePath: String) throws -> String {
         var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while url.path != "/" {
@@ -41,5 +59,20 @@ struct MainWindowLayoutTests {
             url.deleteLastPathComponent()
         }
         throw CocoaError(.fileNoSuchFile)
+    }
+
+    private static func sourceSlice(
+        _ source: String,
+        from startSignature: String,
+        to endSignature: String
+    ) throws -> String {
+        let start = try #require(source.range(of: startSignature)?.lowerBound)
+        let rest = source[start...]
+        let end = try #require(rest.range(of: endSignature)?.lowerBound)
+        return String(rest[..<end])
+    }
+
+    private static func offset(of needle: String, in source: String) throws -> String.Index {
+        try #require(source.range(of: needle)?.lowerBound)
     }
 }

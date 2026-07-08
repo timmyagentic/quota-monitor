@@ -41,13 +41,6 @@ struct DashboardView: View {
     private func overview(_ snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             DashboardMetricStrip(metrics: metrics(for: snapshot))
-            ActivitySection(activity: snapshot.activity, showsStatStrip: false)
-            CompositionSection(
-                modelShares30d: snapshot.modelShares30d,
-                modelSharesPrior30d: snapshot.modelSharesPrior30d,
-                providerShares30d: snapshot.providerShares30d
-                    .filter { providerIsVisible($0.provider) },
-                showProviderBreakdown: visibleProviderCount > 1)
             ForecastSection(
                 snapshot: snapshot,
                 blocks: env.billingBlocks,
@@ -55,6 +48,13 @@ struct DashboardView: View {
                 liveCodexRateLimits: env.latestRateLimits,
                 providerFilter: env.providerFilter,
                 enabledProviders: settings.enabledProviders)
+            ActivitySection(activity: snapshot.activity, showsStatStrip: false)
+            CompositionSection(
+                modelShares30d: snapshot.modelShares30d,
+                modelSharesPrior30d: snapshot.modelSharesPrior30d,
+                providerShares30d: snapshot.providerShares30d
+                    .filter { providerIsVisible($0.provider) },
+                showProviderBreakdown: visibleProviderCount > 1)
         }
     }
 
