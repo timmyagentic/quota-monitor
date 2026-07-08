@@ -33,6 +33,7 @@ window copy.
 #### Summary
 
 - Codex Fast (Priority) usage is now detected automatically for recent activity, so those cost estimates are more accurate without flipping any switch.
+- Codex Fast detection is more reliable after rescans or copied local trace snapshots.
 - Fixed an update-check error that could show "An error occurred in retrieving update information — please try again later" instead of finding the new version.
 - Release notes now load a little more smoothly in the update window.
 
@@ -42,6 +43,7 @@ window copy.
 
 ### Fixed
 
+- **Codex trace snapshots are retagged reliably.** QuotaMonitor now reruns Codex tier tagging when local trace data changes even if rollout files did not, and copied trace snapshots are normalized so they can be opened read-only without WAL sidecar files.
 - **Update checks no longer fail with a retrieval error.** The update feed had grown large enough that its download host began rate-limiting it (HTTP 429), so a check would sometimes report "An error occurred in retrieving update information" instead of offering the update. Release notes are now linked and fetched on demand rather than embedded in the feed, shrinking it roughly 30× (≈600 KB → ≈20 KB) so it downloads reliably.
 
 ### Changed

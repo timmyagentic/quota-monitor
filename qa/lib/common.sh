@@ -81,6 +81,47 @@ qm_copy_user_defaults_to_qa_suite() {
     rm -f "$tmp_plist"
 }
 
+qm_defaults_domain_has_user_configuration() {
+    local source_home="$1"
+    local domain="$2"
+    local key
+
+    HOME="$source_home" defaults read "$domain" >/dev/null 2>&1 || return 1
+    for key in \
+        app.language \
+        onboarding.providersDone \
+        onboarding.lastVersion \
+        settings.enabledProviders \
+        settings.menuBarIconProviders \
+        settings.pollIntervalSeconds \
+        settings.showDockIconForWindows; do
+        if HOME="$source_home" defaults read "$domain" "$key" >/dev/null 2>&1; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+qm_resolve_real_data_defaults_domain() {
+    local source_home="${1:-$HOME}"
+    local candidates="${QM_QA_SOURCE_DEFAULTS_CANDIDATES:-QuotaMonitor dev.tjzhou.QuotaMonitor}"
+    local domain
+
+    if [[ -n "${QM_QA_SOURCE_DEFAULTS_DOMAIN:-}" ]]; then
+        printf '%s\n' "$QM_QA_SOURCE_DEFAULTS_DOMAIN"
+        return
+    fi
+
+    for domain in $candidates; do
+        if qm_defaults_domain_has_user_configuration "$source_home" "$domain"; then
+            printf '%s\n' "$domain"
+            return
+        fi
+    done
+
+    printf '%s\n' "dev.tjzhou.QuotaMonitor"
+}
+
 qm_write_real_data_defaults() {
     local home="$1"
     local domain="$2"
@@ -225,6 +266,87 @@ qm_copy_sqlite_snapshot() {
 SQL
 }
 
+qm_prepare_sqlite_snapshot_for_readonly() {
+    local database="$1"
+
+    [[ -f "$database" ]] || return 0
+    sqlite3 "$database" 'PRAGMA journal_mode = DELETE;' >/dev/null
+    rm -f "${database}-wal" "${database}-shm"
+}
+
+qm_should_copy_quota_monitor_app_support_path() {
+    local relative="$1"
+
+    case "$relative" in
+        ./Logs|./Logs/*) return 1 ;;
+        ./claude-oauth.json|./claude-oauth.json.*) return 1 ;;
+        ./quotamonitor.sqlite|./quotamonitor.sqlite-wal|./quotamonitor.sqlite-shm) return 1 ;;
+        ./*.sqlite-wal|./*.sqlite-shm) return 1 ;;
+    esac
+    return 0
+}
+
+qm_copy_quota_monitor_application_support_snapshot() {
+    local source="$1"
+    local destination="$2"
+
+    [[ -d "$source" ]] || return 0
+    rm -rf "$destination"
+    mkdir -p "$destination"
+
+    local relative source_path destination_path
+    while IFS= read -r -d '' relative; do
+        qm_should_copy_quota_monitor_app_support_path "$relative" || continue
+
+        source_path="${source}/${relative#./}"
+        destination_path="${destination}/${relative#./}"
+        if [[ -L "$source_path" ]]; then
+            mkdir -p "$(dirname "$destination_path")"
+            cp -P "$source_path" "$destination_path"
+        elif [[ -d "$source_path" ]]; then
+            mkdir -p "$destination_path"
+        elif [[ -f "$source_path" ]]; then
+            mkdir -p "$(dirname "$destination_path")"
+            cp -p "$source_path" "$destination_path"
+        fi
+    done < <(cd "$source" && find . -mindepth 1 -print0)
+}
+
+qm_copy_quota_monitor_application_data_shadow() {
+    local source_home="$1"
+    local target_home="$2"
+    local source_db="$3"
+    local target_db="$4"
+    local source_app_support="${source_home}/Library/Application Support/QuotaMonitor"
+    local target_app_support="${target_home}/Library/Application Support/QuotaMonitor"
+
+    qm_copy_quota_monitor_application_support_snapshot \
+        "$source_app_support" \
+        "$target_app_support"
+    qm_copy_sqlite_snapshot "$source_db" "$target_db"
+    rm -f "${target_db}-wal" "${target_db}-shm"
+}
+
+qm_copy_directory_snapshot() {
+    local source="$1"
+    local destination="$2"
+
+    [[ -d "$source" ]] || return 0
+    rm -rf "$destination"
+    mkdir -p "$destination"
+
+    if command -v rsync >/dev/null 2>&1; then
+        rsync -a --delete "${source}/" "${destination}/"
+        return
+    fi
+    if command -v ditto >/dev/null 2>&1; then
+        ditto "$source" "$destination"
+        return
+    fi
+
+    (cd "$source" && tar -cf - .) | (cd "$destination" && tar -xf -)
+}
+
 qm_copy_codex_metadata_snapshot() {
     local source_codex_home="$1"
     local target_codex_home="$2"
@@ -241,6 +363,8 @@ qm_copy_codex_metadata_snapshot() {
         qm_copy_sqlite_snapshot \
             "${source_codex_home}/state_5.sqlite" \
             "${target_codex_home}/state_5.sqlite"
+        qm_prepare_sqlite_snapshot_for_readonly \
+            "${target_codex_home}/state_5.sqlite"
         copied_root_state=true
     fi
 
@@ -248,11 +372,48 @@ qm_copy_codex_metadata_snapshot() {
         qm_copy_sqlite_snapshot \
             "${source_codex_home}/sqlite/state_5.sqlite" \
             "${target_codex_home}/sqlite/state_5.sqlite"
+        qm_prepare_sqlite_snapshot_for_readonly \
+            "${target_codex_home}/sqlite/state_5.sqlite"
     elif [[ "$copied_root_state" == "true" ]]; then
         qm_copy_sqlite_snapshot \
             "${source_codex_home}/state_5.sqlite" \
             "${target_codex_home}/sqlite/state_5.sqlite"
+        qm_prepare_sqlite_snapshot_for_readonly \
+            "${target_codex_home}/sqlite/state_5.sqlite"
     fi
+}
+
+qm_copy_codex_shadow_data() {
+    local source_codex_home="$1"
+    local target_codex_home="$2"
+
+    qm_copy_codex_metadata_snapshot "$source_codex_home" "$target_codex_home"
+    qm_copy_directory_snapshot \
+        "${source_codex_home}/sessions" \
+        "${target_codex_home}/sessions"
+    qm_copy_directory_snapshot \
+        "${source_codex_home}/archived_sessions" \
+        "${target_codex_home}/archived_sessions"
+
+    if [[ -f "${source_codex_home}/logs_2.sqlite" ]]; then
+        qm_copy_sqlite_snapshot \
+            "${source_codex_home}/logs_2.sqlite" \
+            "${target_codex_home}/logs_2.sqlite"
+        qm_prepare_sqlite_snapshot_for_readonly \
+            "${target_codex_home}/logs_2.sqlite"
+    fi
+}
+
+qm_copy_claude_shadow_data() {
+    local source_home="$1"
+    local target_home="$2"
+
+    qm_copy_directory_snapshot \
+        "${source_home}/.claude/projects" \
+        "${target_home}/.claude/projects"
+    qm_copy_directory_snapshot \
+        "${source_home}/.config/claude/projects" \
+        "${target_home}/.config/claude/projects"
 }
 
 qm_installed_app_bundle() {
@@ -453,8 +614,11 @@ qm_write_real_data_computer_qa_brief() {
         printf '%s\n\n' "- Cleanup: \`$artifacts/cleanup-computer-use.sh\`"
         printf 'The app is running against the shadow DB under the isolated QA home. The original DB path is never passed to the app.\n\n'
         printf '## Data Boundary\n\n'
+        printf '%s\n' '- The source application-support data is copied into the QA home, excluding credentials and old runtime logs.'
         printf '%s\n' '- The source database was copied with a SQLite backup into the QA home before launch.'
         printf '%s\n' '- QuotaMonitor UserDefaults are copied into the isolated QA suite without changing product-visible preferences.'
+        printf '%s\n' '- Codex rollouts and local trace are copied into the isolated QA home so turn-level billing can be tested.'
+        printf '%s\n' '- Claude project histories are copied into the isolated QA home so history imports use the same local data shape.'
         printf '%s\n' '- Do not copy real Codex or Claude credentials into this profile.'
         printf '%s\n' '- CODEX_HOME points at the QA home, not the real ~/.codex directory.'
         printf '%s\n' '- Live external sources are disabled in Local QA, so the app should not request real Claude credentials.'

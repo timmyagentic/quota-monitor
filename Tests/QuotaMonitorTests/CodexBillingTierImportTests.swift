@@ -82,6 +82,78 @@ struct CodexBillingTierImportTests {
         }
     }
 
+    @Test("a later trace scan stamps pending Codex turns even when rollouts are unchanged")
+    func laterTraceStampsPendingTurnsWithoutRolloutChanges() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codexhome-\(UUID().uuidString)", isDirectory: true)
+        let sessions = codexHome.appendingPathComponent("sessions", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: sessions, withIntermediateDirectories: true)
+
+        let turn = "019f0000-0000-7000-8000-0000000000ee"
+        let sessionId = "019f0000-0000-7000-8000-0000000000ff"
+        let eventEpoch = 1_783_400_000.0
+        let eventTs = ISO8601.fractional.string(
+            from: Date(timeIntervalSince1970: eventEpoch))
+
+        let jsonl = """
+        {"timestamp":"\(eventTs)","type":"session_meta","payload":{"id":"\(sessionId)","timestamp":"\(eventTs)","cwd":"/tmp/proj"}}
+        {"timestamp":"\(eventTs)","type":"event_msg","payload":{"type":"task_started","turn_id":"\(turn)","started_at":1}}
+        {"timestamp":"\(eventTs)","type":"turn_context","payload":{"turn_id":"\(turn)","model":"gpt-5.5"}}
+        {"timestamp":"\(eventTs)","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+
+        """
+        let rollout = sessions.appendingPathComponent(
+            "rollout-2026-07-06T00-00-00-\(sessionId).jsonl")
+        try jsonl.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+
+        let initialTier = try await db.pool.read { conn in
+            try String.fetchOne(conn, sql: """
+                SELECT codex_billing_tier
+                FROM usage_events
+                WHERE provider = 'codex' AND codex_turn_id = ?
+                LIMIT 1
+                """, arguments: [turn])
+        }
+        #expect(initialTier == nil,
+                "without a trace, the imported Codex turn starts unresolved")
+
+        let logsURL = codexHome.appendingPathComponent("logs_2.sqlite")
+        let traceQueue = try DatabaseQueue(path: logsURL.path)
+        try await traceQueue.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts INTEGER NOT NULL,
+                    feedback_log_body TEXT
+                )
+                """)
+            try conn.execute(
+                sql: "INSERT INTO logs (ts, feedback_log_body) VALUES (?, ?)",
+                arguments: [Int64(eventEpoch),
+                            #"request{turn_id=\#(turn)}: {"service_tier":"priority"}"#])
+        }
+
+        let report = try await engine.performScan()
+        #expect(report.changedFiles == 0,
+                "the second scan should exercise trace-only retagging")
+
+        let tier = try await db.pool.read { conn in
+            try String.fetchOne(conn, sql: """
+                SELECT codex_billing_tier
+                FROM usage_events
+                WHERE provider = 'codex' AND codex_turn_id = ?
+                LIMIT 1
+                """, arguments: [turn])
+        }
+        #expect(tier == "priority",
+                "pending turns should be stamped when trace data appears later")
+    }
+
     @Test("re-parsing a Codex rollout preserves a previously stamped billing tier")
     func reparsingPreservesStampedBillingTierWhenTraceIsGone() async throws {
         let db = try makeDatabase()

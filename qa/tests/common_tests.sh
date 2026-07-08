@@ -104,6 +104,40 @@ test_write_defaults_accepts_language_override() {
     [[ "$language" == "zh-Hans" ]] || fail "language override was $language"
 }
 
+test_resolve_real_data_defaults_domain_prefers_domain_with_user_configuration() {
+    local source_home legacy_domain bundle_domain
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-domain.XXXXXX")"
+    legacy_domain="dev.tjzhou.QuotaMonitor.LegacySource.$RANDOM.$$"
+    bundle_domain="dev.tjzhou.QuotaMonitor.BundleSource.$RANDOM.$$"
+    trap 'defaults delete "$legacy_domain" >/dev/null 2>&1 || true; defaults delete "$bundle_domain" >/dev/null 2>&1 || true; rm -rf "$source_home"' RETURN
+
+    defaults write "$bundle_domain" SUHasLaunchedBefore -bool true
+    defaults write "$legacy_domain" app.language -string zh-Hans
+    defaults write "$legacy_domain" onboarding.providersDone -bool true
+    defaults write "$legacy_domain" settings.enabledProviders -array codex claude
+
+    local domain
+    domain="$(QM_QA_SOURCE_DEFAULTS_CANDIDATES="$legacy_domain $bundle_domain" \
+        qm_resolve_real_data_defaults_domain "$source_home")"
+    [[ "$domain" == "$legacy_domain" ]] \
+        || fail "resolved real-data defaults domain was $domain"
+}
+
+test_resolve_real_data_defaults_domain_falls_back_to_bundle_domain() {
+    local source_home bundle_domain
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-domain-fallback.XXXXXX")"
+    bundle_domain="dev.tjzhou.QuotaMonitor.BundleFallback.$RANDOM.$$"
+    trap 'defaults delete "$bundle_domain" >/dev/null 2>&1 || true; rm -rf "$source_home"' RETURN
+
+    defaults write "$bundle_domain" settings.enabledProviders -array codex
+
+    local domain
+    domain="$(QM_QA_SOURCE_DEFAULTS_CANDIDATES="dev.tjzhou.QuotaMonitor.Missing $bundle_domain" \
+        qm_resolve_real_data_defaults_domain "$source_home")"
+    [[ "$domain" == "$bundle_domain" ]] \
+        || fail "fallback real-data defaults domain was $domain"
+}
+
 test_write_real_data_defaults_copies_user_preferences_without_overrides() {
     local source_home target_home source_domain target_domain report
     source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-defaults.XXXXXX")"
@@ -884,38 +918,128 @@ SQL
     [[ "$copy_count" == "1" ]] || fail "shadow DB did not receive copied rows: $copy_count"
 }
 
-test_copy_codex_metadata_snapshot_copies_only_safe_metadata() {
+test_copy_quota_monitor_application_data_shadows_complete_non_secret_app_support() {
+    local dir source_home target_home source_db target_db app_support copy_count
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-app-support-shadow.XXXXXX")"
+    source_home="$dir/source"
+    target_home="$dir/target"
+    source_db="$source_home/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
+    target_db="$target_home/Library/Application Support/QuotaMonitor/quotamonitor.sqlite"
+    app_support="$(dirname "$source_db")"
+    trap 'rm -rf "$dir"' RETURN
+
+    mkdir -p "$app_support/Logs" "$target_home"
+    sqlite3 "$source_db" <<'SQL'
+CREATE TABLE sessions (id TEXT PRIMARY KEY);
+INSERT INTO sessions (id) VALUES ('real-session');
+SQL
+    printf 'legacy-db' >"$app_support/quotamonitor.db"
+    printf 'cached-report' >"$app_support/cached-report.json"
+    printf 'stale-wal' >"$app_support/quotamonitor.sqlite-wal"
+    printf 'stale-shm' >"$app_support/quotamonitor.sqlite-shm"
+    printf 'old-live-log' >"$app_support/Logs/quotamonitor-dev.log"
+    printf 'oauth-secret' >"$app_support/claude-oauth.json"
+
+    qm_copy_quota_monitor_application_data_shadow \
+        "$source_home" \
+        "$target_home" \
+        "$source_db" \
+        "$target_db"
+
+    assert_file "$target_db"
+    assert_file "$target_home/Library/Application Support/QuotaMonitor/quotamonitor.db"
+    assert_file "$target_home/Library/Application Support/QuotaMonitor/cached-report.json"
+    [[ ! -e "$target_home/Library/Application Support/QuotaMonitor/claude-oauth.json" ]] \
+        || fail "OAuth credential cache was copied into real-data shadow"
+    [[ ! -e "$target_home/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log" ]] \
+        || fail "old developer log was copied into real-data shadow"
+    [[ ! -e "$target_home/Library/Application Support/QuotaMonitor/quotamonitor.sqlite-wal" ]] \
+        || fail "stale SQLite WAL was copied into real-data shadow"
+    [[ ! -e "$target_home/Library/Application Support/QuotaMonitor/quotamonitor.sqlite-shm" ]] \
+        || fail "stale SQLite SHM was copied into real-data shadow"
+
+    copy_count="$(sqlite3 "$target_db" 'SELECT COUNT(*) FROM sessions;')"
+    [[ "$copy_count" == "1" ]] || fail "shadow DB row count was $copy_count"
+}
+
+test_copy_codex_shadow_data_copies_history_trace_and_metadata_without_credentials() {
     local dir source_home target_home
     dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-codex-metadata-shadow.XXXXXX")"
     source_home="$dir/source"
     target_home="$dir/target"
     trap 'rm -rf "$dir"' RETURN
 
-    mkdir -p "$source_home/.codex" "$target_home"
+    mkdir -p \
+        "$source_home/.codex/sessions/2026/07/08" \
+        "$source_home/.codex/archived_sessions/2026/07/07" \
+        "$target_home"
     printf '{"id":"s1","thread_name":"梳理未合并PR"}\n' \
         >"$source_home/.codex/session_index.jsonl"
+    printf '{"type":"session_meta"}\n' \
+        >"$source_home/.codex/sessions/2026/07/08/rollout-live.jsonl"
+    printf '{"type":"session_meta"}\n' \
+        >"$source_home/.codex/archived_sessions/2026/07/07/rollout-old.jsonl"
     sqlite3 "$source_home/.codex/state_5.sqlite" <<'SQL'
 CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, cwd TEXT NOT NULL);
 INSERT INTO threads (id, title, cwd)
 VALUES ('s1', '梳理未合并PR', '/Volumes/SamsungDisk/Code/quota-monitor');
 SQL
+    sqlite3 "$source_home/.codex/logs_2.sqlite" <<'SQL'
+CREATE TABLE logs (id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, feedback_log_body TEXT);
+INSERT INTO logs (ts, feedback_log_body)
+VALUES (1783430000, '{"service_tier":"priority","turn_id":"019f0000-0000-7000-8000-000000000001"}');
+SQL
+    sqlite3 "$source_home/.codex/logs_2.sqlite" 'PRAGMA journal_mode = WAL;' >/dev/null
     printf 'secret-token' >"$source_home/.codex/auth.json"
 
-    qm_copy_codex_metadata_snapshot "$source_home/.codex" "$target_home/.codex"
+    qm_copy_codex_shadow_data "$source_home/.codex" "$target_home/.codex"
 
     assert_file "$target_home/.codex/session_index.jsonl"
     assert_file "$target_home/.codex/state_5.sqlite"
     assert_file "$target_home/.codex/sqlite/state_5.sqlite"
+    assert_file "$target_home/.codex/sessions/2026/07/08/rollout-live.jsonl"
+    assert_file "$target_home/.codex/archived_sessions/2026/07/07/rollout-old.jsonl"
+    assert_file "$target_home/.codex/logs_2.sqlite"
     [[ ! -e "$target_home/.codex/auth.json" ]] \
         || fail "credential file was copied into real-data shadow"
 
-    local title root_count compat_count
+    local title root_count compat_count log_count log_journal_mode
     title="$(sqlite3 "$target_home/.codex/state_5.sqlite" "SELECT title FROM threads WHERE id='s1';")"
     root_count="$(sqlite3 "$target_home/.codex/state_5.sqlite" 'SELECT COUNT(*) FROM threads;')"
     compat_count="$(sqlite3 "$target_home/.codex/sqlite/state_5.sqlite" 'SELECT COUNT(*) FROM threads;')"
+    log_count="$(sqlite3 "$target_home/.codex/logs_2.sqlite" 'SELECT COUNT(*) FROM logs;')"
+    log_journal_mode="$(sqlite3 "$target_home/.codex/logs_2.sqlite" 'PRAGMA journal_mode;')"
     [[ "$title" == "梳理未合并PR" ]] || fail "root state title copy failed: $title"
     [[ "$root_count" == "1" ]] || fail "root state row count was $root_count"
     [[ "$compat_count" == "1" ]] || fail "compat state row count was $compat_count"
+    [[ "$log_count" == "1" ]] || fail "logs_2 shadow row count was $log_count"
+    [[ "$log_journal_mode" == "delete" ]] \
+        || fail "logs_2 shadow should be readable without WAL sidecars, journal=$log_journal_mode"
+}
+
+test_copy_claude_shadow_data_copies_project_history_without_credentials() {
+    local dir source_home target_home
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-claude-shadow.XXXXXX")"
+    source_home="$dir/source"
+    target_home="$dir/target"
+    trap 'rm -rf "$dir"' RETURN
+
+    mkdir -p \
+        "$source_home/.claude/projects/-repo" \
+        "$source_home/.config/claude/projects/-repo" \
+        "$target_home"
+    printf '{"message":"legacy"}\n' \
+        >"$source_home/.claude/projects/-repo/session-a.jsonl"
+    printf '{"message":"config"}\n' \
+        >"$source_home/.config/claude/projects/-repo/session-b.jsonl"
+    printf 'secret' >"$source_home/.claude/.credentials.json"
+
+    qm_copy_claude_shadow_data "$source_home" "$target_home"
+
+    assert_file "$target_home/.claude/projects/-repo/session-a.jsonl"
+    assert_file "$target_home/.config/claude/projects/-repo/session-b.jsonl"
+    [[ ! -e "$target_home/.claude/.credentials.json" ]] \
+        || fail "Claude credential file was copied into real-data shadow"
 }
 
 test_write_real_data_computer_qa_brief_documents_shadow_boundary() {
@@ -941,6 +1065,10 @@ test_write_real_data_computer_qa_brief_documents_shadow_boundary() {
         || fail "real-data brief does not explain DB shadow copy"
     grep -q 'UserDefaults are copied into the isolated QA suite' "$brief" \
         || fail "real-data brief does not explain copied user defaults"
+    grep -q 'Codex rollouts and local trace are copied into the isolated QA home' "$brief" \
+        || fail "real-data brief does not explain copied Codex history and trace"
+    grep -q 'Claude project histories are copied into the isolated QA home' "$brief" \
+        || fail "real-data brief does not explain copied Claude project history"
     grep -q 'Do not copy real Codex or Claude credentials' "$brief" \
         || fail "real-data brief credential boundary missing"
     grep -q 'source DB fingerprint' "$brief" \
@@ -1069,6 +1197,8 @@ test_rejects_live_pricing_refresh_events() {
 test_write_defaults
 test_refuses_installed_app_defaults_suite
 test_accepts_custom_qa_defaults_suite
+test_resolve_real_data_defaults_domain_prefers_domain_with_user_configuration
+test_resolve_real_data_defaults_domain_falls_back_to_bundle_domain
 test_write_real_data_defaults_copies_user_preferences_without_overrides
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied
 test_write_defaults_accepts_language_override
@@ -1102,7 +1232,9 @@ test_assert_artifact_contract_allows_incomplete_ax_with_warning
 test_warns_when_ax_snapshot_is_incomplete
 test_ax_snapshot_accepts_localized_settings_title
 test_copy_sqlite_snapshot_preserves_source
-test_copy_codex_metadata_snapshot_copies_only_safe_metadata
+test_copy_quota_monitor_application_data_shadows_complete_non_secret_app_support
+test_copy_codex_shadow_data_copies_history_trace_and_metadata_without_credentials
+test_copy_claude_shadow_data_copies_project_history_without_credentials
 test_write_real_data_computer_qa_brief_documents_shadow_boundary
 test_assert_real_data_artifact_contract
 test_rejects_real_provider_path_leak

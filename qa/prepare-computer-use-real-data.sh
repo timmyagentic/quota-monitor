@@ -28,7 +28,7 @@ CLEANUP_SCRIPT="${ARTIFACTS}/cleanup-computer-use.sh"
 REAL_DB="${QM_QA_REAL_DB_PATH:-$(qm_default_real_database_path "$HOME")}"
 PROTECTION_REPORT="${ARTIFACTS}/real-data-protection.txt"
 SOURCE_HOME="${QM_QA_SOURCE_HOME:-$HOME}"
-SOURCE_DEFAULTS_DOMAIN="${QM_QA_SOURCE_DEFAULTS_DOMAIN:-dev.tjzhou.QuotaMonitor}"
+SOURCE_DEFAULTS_DOMAIN="$(qm_resolve_real_data_defaults_domain "$SOURCE_HOME")"
 SOURCE_CODEX_HOME="${QM_QA_SOURCE_CODEX_HOME:-${CODEX_HOME:-${SOURCE_HOME}/.codex}}"
 MOCK_CODEX_RESET_CREDITS="${QM_QA_MOCK_CODEX_RESET_CREDITS:-false}"
 USER_DEFAULTS_REPORT="${ARTIFACTS}/user-defaults-shadow.txt"
@@ -56,7 +56,11 @@ qm_write_computer_use_cleanup \
     "$INSTALLED_APP_WAS_RUNNING"
 
 SOURCE_FINGERPRINT_BEFORE="$(qm_file_fingerprint "$REAL_DB")"
-qm_copy_sqlite_snapshot "$REAL_DB" "$DB_PATH"
+qm_copy_quota_monitor_application_data_shadow \
+    "$SOURCE_HOME" \
+    "$QA_HOME" \
+    "$REAL_DB" \
+    "$DB_PATH"
 
 qm_write_real_data_defaults \
     "$QA_HOME" \
@@ -68,7 +72,8 @@ qm_write_real_data_defaults \
     exit 1
 }
 mkdir -p "$QA_HOME/.codex" "$QA_HOME/.claude" "$QA_HOME/.config/claude"
-qm_copy_codex_metadata_snapshot "$SOURCE_CODEX_HOME" "$QA_HOME/.codex"
+qm_copy_codex_shadow_data "$SOURCE_CODEX_HOME" "$QA_HOME/.codex"
+qm_copy_claude_shadow_data "$SOURCE_HOME" "$QA_HOME"
 
 USER_DEFAULTS_POLICY="copied-user-defaults"
 

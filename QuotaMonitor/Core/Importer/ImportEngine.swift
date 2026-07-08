@@ -13,6 +13,7 @@ actor ImportEngine {
     private let database: DatabaseManager
     private let codexHome: URL?
     private let securityScopedAccess: any SecurityScopedResourceAccessing
+    private static let codexPriorityTraceStateSessionId = "__codex_priority_trace__"
 
     struct ScanReport: Sendable {
         let scannedFiles: Int
@@ -189,13 +190,17 @@ actor ImportEngine {
         try await reconcileSessionTree()
 
         // Attribute each turn's billing tier from the logs_2.sqlite priority
-        // trace. Only when files actually changed — the trace scan is a
-        // multi-second full-text pass over a large DB, so a no-change popover
-        // refresh must not pay it. Best-effort: a missing/locked trace tags
-        // nothing and the global Fast-Mode switch takes over.
+        // trace. Track the trace file separately from rollout files: a
+        // real-data shadow can copy an old QuotaMonitor DB plus a newly
+        // available trace, and Codex can append trace evidence even when no
+        // rollout changed. Best-effort: a missing/locked trace tags nothing
+        // and the global Fast-Mode switch takes over.
+        let traceFile = Self.codexPriorityTraceFile(codexHome: codexHome)
+        let traceChanged = Self.codexPriorityTraceChanged(
+            traceFile, priorState: priorState)
         var codexTierUpdated = 0
-        if !changed.isEmpty {
-            codexTierUpdated = try await tagCodexPriority()
+        if !changed.isEmpty || traceChanged {
+            codexTierUpdated = try await tagCodexPriority(traceFile: traceFile)
         }
 
         // NOTE: PricingService.backfillAllValues is intentionally NOT called
@@ -515,15 +520,55 @@ actor ImportEngine {
 
     // MARK: - codex priority tagging
 
+    private static func codexPriorityTraceFile(codexHome: URL) -> SessionFile? {
+        let logsURL = codexHome.appendingPathComponent("logs_2.sqlite")
+        let values = try? logsURL.resourceValues(forKeys: [
+            .fileSizeKey,
+            .contentModificationDateKey,
+            .isRegularFileKey])
+        guard values?.isRegularFile == true else { return nil }
+        let size = Int64(values?.fileSize ?? 0)
+        let mtimeMs = Int64(
+            (values?.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000)
+        return SessionFile(
+            url: logsURL,
+            path: logsURL.path,
+            fileSize: size,
+            fileMtimeMs: mtimeMs,
+            bucket: "trace")
+    }
+
+    private static func codexPriorityTraceChanged(
+        _ traceFile: SessionFile?,
+        priorState: [String: ImportStateRecord]
+    ) -> Bool {
+        guard let traceFile else { return false }
+        guard let prior = priorState[traceFile.path] else { return true }
+        return prior.fileSize != traceFile.fileSize
+            || prior.fileMtimeMs != traceFile.fileMtimeMs
+    }
+
     /// Read the `logs_2.sqlite` priority trace and stamp every Codex row's
     /// billing tier. Returns the number of rows whose tier changed. Best-
-    /// effort: no codex home or an unreadable trace tags nothing and returns 0.
-    private func tagCodexPriority() async throws -> Int {
-        guard let codexHome else { return 0 }
-        let logsURL = codexHome.appendingPathComponent("logs_2.sqlite")
-        let trace = CodexPriorityTraceReader.read(logsDatabaseURL: logsURL)
+    /// effort: no trace or an unreadable trace tags nothing and returns 0.
+    private func tagCodexPriority(traceFile: SessionFile?) async throws -> Int {
+        guard let traceFile else { return 0 }
+        let trace = CodexPriorityTraceReader.read(logsDatabaseURL: traceFile.url)
+        let now = ISO8601.fractional.string(from: Date())
         let changed = try await database.pool.write { db in
-            try CodexPriorityTagger.tag(in: db, trace: trace)
+            let changed = try CodexPriorityTagger.tag(in: db, trace: trace)
+            if trace.windowStart != nil || trace.windowEnd != nil
+                || !trace.priorityTurnIds.isEmpty {
+                let state = ImportStateRecord(
+                    sourcePath: traceFile.path,
+                    sessionId: Self.codexPriorityTraceStateSessionId,
+                    fileSize: traceFile.fileSize,
+                    fileMtimeMs: traceFile.fileMtimeMs,
+                    lastImportedAt: now,
+                    byteOffset: 0)
+                try state.save(db)
+            }
+            return changed
         }
         Log.importer.info(
             "codex priority tag: \(trace.priorityTurnIds.count) priority turns, \(changed) rows retiered")
