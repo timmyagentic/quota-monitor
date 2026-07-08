@@ -34,10 +34,12 @@ window copy.
 
 - Fixed an update-check error that could show "An error occurred in retrieving update information — please try again later" instead of finding the new version.
 - Release notes now load a little more smoothly in the update window.
+- Model-specific Codex quota rows now show their weekly limit when available.
 
 ### Fixed
 
 - **Update checks no longer fail with a retrieval error.** The update feed had grown large enough that its download host began rate-limiting it (HTTP 429), so a check would sometimes report "An error occurred in retrieving update information" instead of offering the update. Release notes are now linked and fetched on demand rather than embedded in the feed, shrinking it roughly 30× (≈600 KB → ≈20 KB) so it downloads reliably.
+- **Model-specific Codex weekly limits are visible.** Additional Codex model quotas, including GPT-5.3-Codex-Spark, now render both their 5-hour and 7-day rows instead of only the 5-hour row.
 
 ### Changed
 
