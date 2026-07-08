@@ -14,6 +14,42 @@ assert_file() {
     [[ -f "$1" ]] || fail "expected file: $1"
 }
 
+write_test_preferences_plist() {
+    local home="$1"
+    local domain="$2"
+    shift 2
+
+    mkdir -p "$home/Library/Preferences"
+    local plist="$home/Library/Preferences/${domain}.plist"
+    {
+        printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>'
+        printf '%s\n' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+        printf '%s\n' '<plist version="1.0">'
+        printf '%s\n' '<dict>'
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                string)
+                    printf '  <key>%s</key>\n  <string>%s</string>\n' "$2" "$3"
+                    shift 3
+                    ;;
+                bool)
+                    printf '  <key>%s</key>\n  <%s/>\n' "$2" "$3"
+                    shift 3
+                    ;;
+                array2)
+                    printf '  <key>%s</key>\n  <array>\n    <string>%s</string>\n    <string>%s</string>\n  </array>\n' "$2" "$3" "$4"
+                    shift 4
+                    ;;
+                *)
+                    fail "unknown plist fixture entry: $1"
+                    ;;
+            esac
+        done
+        printf '%s\n' '</dict>'
+        printf '%s\n' '</plist>'
+    } >"$plist"
+}
+
 test_write_defaults() {
     local home
     home="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-defaults.XXXXXX")"
@@ -41,7 +77,7 @@ test_refuses_installed_app_defaults_suite() {
     source_domain="dev.tjzhou.QuotaMonitor.SourceTest.$RANDOM.$$"
     report="$target_home/user-defaults-shadow.txt"
     cleanup="$target_home/cleanup.sh"
-    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete dev.tjzhou.QuotaMonitor >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
 
     HOME="$source_home" defaults write "$source_domain" app.language -string en
 
@@ -111,14 +147,15 @@ test_write_real_data_defaults_copies_user_preferences_without_overrides() {
     source_domain="dev.tjzhou.QuotaMonitor.SourceTest.$RANDOM.$$"
     target_domain="dev.tjzhou.QuotaMonitor.TargetTest.$RANDOM.$$"
     report="$target_home/user-defaults-shadow.txt"
-    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+    trap 'HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
 
-    HOME="$source_home" defaults write "$source_domain" app.language -string zh-Hans
-    HOME="$source_home" defaults write "$source_domain" settings.enabledProviders -array codex
-    HOME="$source_home" defaults write "$source_domain" settings.menuBarIconProviders -array codex
-    HOME="$source_home" defaults write "$source_domain" settings.keychainPolicy -string fallback
-    HOME="$source_home" defaults write "$source_domain" settings.developerModeEnabled -bool false
-    HOME="$source_home" defaults write "$source_domain" settings.mirrorClaudeKeychainToFile -bool true
+    write_test_preferences_plist "$source_home" "$source_domain" \
+        string app.language zh-Hans \
+        array2 settings.enabledProviders codex claude \
+        array2 settings.menuBarIconProviders codex claude \
+        string settings.keychainPolicy fallback \
+        bool settings.developerModeEnabled false \
+        bool settings.mirrorClaudeKeychainToFile true
 
     qm_write_real_data_defaults \
         "$target_home" \
@@ -157,10 +194,11 @@ test_write_real_data_defaults_accepts_language_override() {
     source_domain="dev.tjzhou.QuotaMonitor.SourceLanguageTest.$RANDOM.$$"
     target_domain="dev.tjzhou.QuotaMonitor.TargetLanguageTest.$RANDOM.$$"
     report="$target_home/user-defaults-shadow.txt"
-    trap 'HOME="$source_home" defaults delete "$source_domain" >/dev/null 2>&1 || true; HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+    trap 'HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
 
-    HOME="$source_home" defaults write "$source_domain" app.language -string en
-    HOME="$source_home" defaults write "$source_domain" settings.enabledProviders -array codex
+    write_test_preferences_plist "$source_home" "$source_domain" \
+        string app.language en \
+        array2 settings.enabledProviders codex claude
 
     QM_QA_LANGUAGE=zh-Hans qm_write_real_data_defaults \
         "$target_home" \
@@ -206,6 +244,26 @@ test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied() {
     if HOME="$target_home" defaults read "$target_domain" settings.developerModeEnabled >/dev/null 2>&1; then
         fail "real-data defaults wrote fallback QA settings after copy failure"
     fi
+}
+
+test_select_real_data_defaults_domain_prefers_domain_with_product_preferences() {
+    local source_home bundle_domain app_domain selected
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-defaults-domain.XXXXXX")"
+    bundle_domain="dev.tjzhou.QuotaMonitor"
+    app_domain="QuotaMonitor"
+    trap 'rm -rf "$source_home"' RETURN
+
+    write_test_preferences_plist "$source_home" "$bundle_domain" \
+        bool SUHasLaunchedBefore true
+    write_test_preferences_plist "$source_home" "$app_domain" \
+        string app.language zh-Hans \
+        bool onboarding.providersDone true \
+        array2 settings.enabledProviders codex claude
+
+    selected="$(qm_select_real_data_defaults_domain "$source_home")"
+
+    [[ "$selected" == "$app_domain" ]] \
+        || fail "real-data defaults domain was $selected, expected $app_domain"
 }
 
 test_seed_fixtures() {
@@ -1071,6 +1129,7 @@ test_refuses_installed_app_defaults_suite
 test_accepts_custom_qa_defaults_suite
 test_write_real_data_defaults_copies_user_preferences_without_overrides
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied
+test_select_real_data_defaults_domain_prefers_domain_with_product_preferences
 test_write_defaults_accepts_language_override
 test_seed_fixtures
 test_write_launch_config
