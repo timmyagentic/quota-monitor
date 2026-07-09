@@ -70,6 +70,9 @@ enum CodexFastMode {
     /// model_id → multiplier (applied to input, cached, output rates).
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
+        "gpt-5.6-sol": 2.0,
+        "gpt-5.6-terra": 2.0,
+        "gpt-5.6-luna": 2.0,
         "gpt-5.5": 2.5,
         "gpt-5.4": 2.0,
     ]
@@ -93,6 +96,18 @@ enum PricingSeed {
               effectiveModelId: "gpt-5", isOfficial: true,
               note: "Used for sessions that lack turn_context model metadata.",
               sourceUrl: "https://openai.com/api/pricing/"),
+        .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
+              inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
+              effectiveModelId: "gpt-5.6-sol", isOfficial: true, note: nil,
+              sourceUrl: "https://developers.openai.com/api/docs/pricing"),
+        .init(modelId: "gpt-5.6-terra", displayName: "GPT-5.6 Terra",
+              inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
+              effectiveModelId: "gpt-5.6-terra", isOfficial: true, note: nil,
+              sourceUrl: "https://developers.openai.com/api/docs/pricing"),
+        .init(modelId: "gpt-5.6-luna", displayName: "GPT-5.6 Luna",
+              inputPricePerMillion: 1.00, cachedInputPricePerMillion: 0.10, outputPricePerMillion: 6.00,
+              effectiveModelId: "gpt-5.6-luna", isOfficial: true, note: nil,
+              sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.5", displayName: "GPT-5.5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
               effectiveModelId: "gpt-5.5", isOfficial: true, note: nil,
