@@ -37,6 +37,11 @@ window copy.
 - Model-specific Codex quota rows now show their weekly limit when available.
 - Dashboard now looks more like a dense usage cockpit, with forecast, activity, composition, and stacked trends in one flow.
 - Dashboard charts and totals now stay consistent when a provider is disabled.
+- Usage from the new GPT-5.6 models (Sol, Terra, Luna) is now priced correctly, including Fast Mode.
+
+### Added
+
+- **GPT-5.6 pricing.** The bundled pricing catalog now covers `gpt-5.6-sol` ($5/$30 per 1M tokens), `gpt-5.6-terra` ($2.50/$15), and `gpt-5.6-luna` ($1/$6), plus their 2× Fast-Mode rows, so usage from these models gets a correct dollar value.
 
 ### Changed
 
