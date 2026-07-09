@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.39] — 2026-07-10
+
 #### Summary
 
 - Fixed an update-check error that could show "An error occurred in retrieving update information — please try again later" instead of finding the new version.
