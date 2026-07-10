@@ -25,6 +25,37 @@ enum HeatmapPalette {
     }
 }
 
+/// Pure geometry shared by the heatmap grid, its hover hit-areas, and the
+/// tooltip overlay. Each cell's hover area is the full `cell + gap` pitch
+/// square (the visible square sits inset by `gap / 2`), so hit areas tile
+/// the grid with no dead zones between squares. The tooltip hangs its
+/// bottom edge `tooltipMargin` above the hovered square so it never covers
+/// the square — or the cursor, which would steal the hover and flicker.
+enum HeatmapGeometry {
+    static let tooltipMargin: CGFloat = 4
+
+    /// Full hover-sensitive area of a cell, in grid coordinates.
+    static func hitFrame(col: Int, row: Int, cell: CGFloat, gap: CGFloat) -> CGRect {
+        let pitch = cell + gap
+        return CGRect(
+            x: CGFloat(col) * pitch, y: CGFloat(row) * pitch,
+            width: pitch, height: pitch)
+    }
+
+    /// The visible coloured square, centred inside its hit area.
+    static func squareFrame(col: Int, row: Int, cell: CGFloat, gap: CGFloat) -> CGRect {
+        hitFrame(col: col, row: row, cell: cell, gap: gap)
+            .insetBy(dx: gap / 2, dy: gap / 2)
+    }
+
+    /// Point the tooltip's bottom-centre is pinned to: horizontally centred
+    /// on the square, `tooltipMargin` above its top edge.
+    static func tooltipAnchor(col: Int, row: Int, cell: CGFloat, gap: CGFloat) -> CGPoint {
+        let square = squareFrame(col: col, row: row, cell: cell, gap: gap)
+        return CGPoint(x: square.midX, y: square.minY - tooltipMargin)
+    }
+}
+
 /// GitHub-style contribution heatmap: weeks as columns, weekday as rows,
 /// month labels along the top. Cells are bucketed into five intensity levels.
 /// Horizontally scrollable so a full year never clips inside the dashboard.
@@ -54,9 +85,9 @@ struct ActivityHeatmap: View {
                 }
                 // Give the tooltip room to appear above the first row
                 // without being clipped by the parent card.
-                .padding(.top, 32)
+                .padding(.top, 44)
             }
-            .padding(.top, -32)
+            .padding(.top, -44)
             legend
         }
     }
@@ -67,9 +98,7 @@ struct ActivityHeatmap: View {
         let date = point.date.formatted(.dateTime.year().month(.abbreviated).day())
         let tokens = point.tokens.formatted(
             .number.notation(.compactName).locale(tokenLocale))
-
-        let xOffset = CGFloat(col) * (cell + gap) + cell / 2
-        let yOffset = 16 + CGFloat(row) * (cell + gap) - cell / 2 - 8
+        let anchor = HeatmapGeometry.tooltipAnchor(col: col, row: row, cell: cell, gap: gap)
 
         return VStack(alignment: .leading, spacing: 2) {
             Text(date)
@@ -85,15 +114,27 @@ struct ActivityHeatmap: View {
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 1)
         )
-        .position(x: xOffset, y: yOffset)
+        .fixedSize()
+        // Zero-sized bottom-aligned frame turns `.position` (which pins the
+        // view's centre) into a bottom-centre pin, so the whole tooltip sits
+        // above the anchor no matter how tall its content renders.
+        .frame(width: 0, height: 0, alignment: .bottom)
+        .position(x: anchor.x, y: anchor.y)
+        // The tooltip must never intercept the cursor: if it did, the cell
+        // below would see the hover end, dismiss the tooltip, and flicker.
+        .allowsHitTesting(false)
     }
 
     // MARK: - grid
 
     private func grid(_ model: HeatmapModel) -> some View {
-        HStack(alignment: .top, spacing: gap) {
+        // Spacing lives INSIDE each cell (gap/2 padding around the visible
+        // square) rather than between stack elements, so the hover-sensitive
+        // areas tile the grid edge-to-edge — pointing at the gap between two
+        // squares still keeps the tooltip up instead of hitting a dead zone.
+        HStack(alignment: .top, spacing: 0) {
             ForEach(model.weeks.indices, id: \.self) { col in
-                VStack(spacing: gap) {
+                VStack(spacing: 0) {
                     ForEach(model.weeks[col].indices, id: \.self) { row in
                         cellView(model.weeks[col][row], col: col, row: row)
                     }
@@ -107,6 +148,7 @@ struct ActivityHeatmap: View {
         RoundedRectangle(cornerRadius: 2, style: .continuous)
             .fill(HeatmapPalette.color(level: entry.level))
             .frame(width: cell, height: cell)
+            .padding(gap / 2)
             .contentShape(Rectangle())
             .onHover { hovering in
                 if hovering && entry.point != nil {
@@ -128,7 +170,9 @@ struct ActivityHeatmap: View {
                 Text(marker.label)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .offset(x: CGFloat(marker.column) * (cell + gap))
+                    // gap/2 keeps the label flush with its column's visible
+                    // square now that squares sit inset inside their cells.
+                    .offset(x: gap / 2 + CGFloat(marker.column) * (cell + gap))
             }
         }
         .frame(width: max(width, 1), height: 12, alignment: .topLeading)
