@@ -104,6 +104,8 @@ struct ForecastSection: View {
             stored: dbQuota)
         let hasPrimary = quota.primary != nil
         let hasSecondary = quota.secondary != nil
+        let paceBurn = quota.primary.flatMap { _ in dbQuota?.burn["primary"] }
+            ?? quota.secondary.flatMap { _ in dbQuota?.burn["secondary"] }
         ProviderForecastCard(
             label: L10n.codex,
             accent: DashboardTheme.providerColor("codex"),
@@ -127,9 +129,9 @@ struct ForecastSection: View {
                         resetsAt: secondary.resetsAt,
                         burn: dbQuota?.burn["secondary"])
                 }
-                // Pace line: prefer the 5h burn rate (more responsive); fall
-                // back to the 7d slope when only that bucket has samples.
-                if let burn = dbQuota?.burn["primary"] ?? dbQuota?.burn["secondary"],
+                // Pace line: prefer the visible 5h burn rate (more responsive);
+                // fall back to 7d only when that window is also visible.
+                if let burn = paceBurn,
                    abs(burn.percentPerMinute) > 0.0005 {
                     Text(L10n.forecastPaceCodex(percentPerHr: burn.percentPerMinute * 60))
                         .font(.caption2.monospacedDigit())

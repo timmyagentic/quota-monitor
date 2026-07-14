@@ -92,6 +92,24 @@ struct MainWindowLayoutTests {
         #expect(!domain.contains("return first...last"))
     }
 
+    @Test("Codex pace uses only visible quota windows")
+    func codexPaceUsesOnlyVisibleQuotaWindows() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Features/Dashboard/Sections/ForecastSection.swift")
+        let card = try Self.sourceSlice(
+            source,
+            from: "private var codexCard",
+            to: "private var claudeCard")
+
+        #expect(card.contains("quota.primary.flatMap"))
+        #expect(card.contains("dbQuota?.burn[\"primary\"]"))
+        #expect(card.contains("quota.secondary.flatMap"))
+        #expect(card.contains("dbQuota?.burn[\"secondary\"]"))
+        #expect(card.contains("if let burn = paceBurn"))
+        #expect(!card.contains(
+            "dbQuota?.burn[\"primary\"] ?? dbQuota?.burn[\"secondary\"]"))
+    }
+
     @Test("Dashboard composition selects model rows by tokens")
     func dashboardCompositionSelectsModelRowsByTokens() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/CompositionSection.swift")
