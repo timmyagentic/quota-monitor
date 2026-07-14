@@ -46,6 +46,8 @@ struct ParsedSession {
 struct UsageDelta {
     let timestamp: String
     let modelId: String
+    let turnId: String?
+    let serviceTierPreference: CodexServiceTierPreference?
     let inputTokens: Int64
     let cachedInputTokens: Int64
     let outputTokens: Int64
@@ -55,6 +57,11 @@ struct UsageDelta {
     /// `turn_context` ever set the model in this session). Surfaced in UI
     /// so the user knows the cost is approximate.
     let modelInferred: Bool
+}
+
+private struct ActiveCodexTurn {
+    var id: String?
+    let serviceTierPreference: CodexServiceTierPreference?
 }
 
 struct RateLimitSampleDraft {
@@ -86,6 +93,8 @@ enum RolloutParser {
         var currentModelIsFallback = false
         var seenModels: Set<String> = []
         var latestPlanType: String?
+        var pendingServiceTierPreference: CodexServiceTierPreference?
+        var activeTurn: ActiveCodexTurn?
 
         var previousUsage: TokenUsageWire?
         var seenUsageSnapshots: Set<UsageSnapshotKey> = []
@@ -112,6 +121,36 @@ enum RolloutParser {
                     currentModel = normalized
                     currentModelIsFallback = false
                     seenModels.insert(normalized)
+                }
+
+                if let turn = activeTurn {
+                    if turn.id == nil {
+                        activeTurn?.id = tc.turnId
+                    } else if let contextTurnId = tc.turnId,
+                              turn.id != contextTurnId
+                    {
+                        activeTurn = ActiveCodexTurn(
+                            id: contextTurnId,
+                            serviceTierPreference: nil)
+                    }
+                } else {
+                    activeTurn = ActiveCodexTurn(
+                        id: tc.turnId,
+                        serviceTierPreference: nil)
+                }
+
+            case .threadSettingsApplied(let settings, _):
+                pendingServiceTierPreference = CodexServiceTierPreference(
+                    rolloutValue: settings.resolvedServiceTier)
+
+            case .taskStarted(let task, _):
+                activeTurn = ActiveCodexTurn(
+                    id: task.turnId,
+                    serviceTierPreference: pendingServiceTierPreference)
+
+            case .taskComplete(let task, _):
+                if let turn = activeTurn, turn.id == task.turnId {
+                    activeTurn = nil
                 }
 
             case .tokenCount(let tc, let envelopeTs):
@@ -150,6 +189,8 @@ enum RolloutParser {
                     deltas.append(UsageDelta(
                         timestamp: timestamp,
                         modelId: resolvedModel,
+                        turnId: activeTurn?.id,
+                        serviceTierPreference: activeTurn?.serviceTierPreference,
                         inputTokens: delta.inputTokens,
                         cachedInputTokens: delta.cachedInputTokens,
                         outputTokens: delta.outputTokens,
@@ -159,7 +200,7 @@ enum RolloutParser {
                 }
                 updatedAt = timestamp
 
-            case .threadSettingsApplied, .taskStarted, .taskComplete, .other:
+            case .other:
                 continue
             }
         }

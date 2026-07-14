@@ -231,6 +231,165 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 30])
     }
 
+    // MARK: - per-turn service tier preference
+
+    @Test("service tier preference is frozen at task start in file order")
+    func serviceTierPreferenceFreezesAtTaskStart() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:10.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:11.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:12.000Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:13.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:20.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"default"}}}
+        {"timestamp":"2026-05-20T00:00:14.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":55}}}}
+        {"timestamp":"2026-05-20T00:00:15.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:16.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-b"}}
+        {"timestamp":"2026-05-20T00:00:17.000Z","type":"turn_context","payload":{"turn_id":"turn-b","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:18.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":30,"cached_input_tokens":0,"output_tokens":3,"reasoning_output_tokens":0,"total_tokens":33}}}}
+        {"timestamp":"2026-05-20T00:00:19.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-b"}}
+        {"timestamp":"2026-05-20T00:00:21.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-a", "turn-a", "turn-b", nil])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [
+            .priority, .priority, .standard, nil,
+        ])
+    }
+
+    @Test("task start without an ID replaces the previous active turn")
+    func taskStartWithoutIdReplacesActiveTurn() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":null}}
+        {"timestamp":"2026-05-20T00:00:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-a", nil])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [.priority, .priority])
+    }
+
+    @Test("turn context fills a missing active ID without refreezing preference")
+    func turnContextFillsMissingActiveId() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":null}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"default"}}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"turn_context","payload":{"turn_id":"turn-recovered","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-recovered"])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [.priority])
+    }
+
+    @Test("turn context without task start recovers only the turn ID")
+    func turnContextWithoutTaskStartDoesNotFreezePendingPreference() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"turn_context","payload":{"turn_id":"turn-fallback","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-fallback"])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [nil])
+    }
+
+    @Test("different turn context replaces stale active preference with unknown")
+    func differentTurnContextEstablishesUnknownFallback() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"turn_context","payload":{"turn_id":"turn-b","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:06.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-a", "turn-b"])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [.priority, nil])
+    }
+
+    @Test("pending preference remains sticky across completed turns")
+    func pendingPreferenceRemainsStickyAcrossTurns() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:06.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-b"}}
+        {"timestamp":"2026-05-20T00:00:07.000Z","type":"turn_context","payload":{"turn_id":"turn-b","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:08.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        {"timestamp":"2026-05-20T00:00:09.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-b"}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-a", "turn-b"])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [.priority, .priority])
+    }
+
+    @Test("valid missing null and unknown settings clear pending preference")
+    func unrecognizedSettingsClearPendingPreference() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{}}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-missing"}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"turn_context","payload":{"turn_id":"turn-missing","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        {"timestamp":"2026-05-20T00:00:06.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-missing"}}
+        {"timestamp":"2026-05-20T00:00:07.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:08.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":null}}}
+        {"timestamp":"2026-05-20T00:00:09.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-null"}}
+        {"timestamp":"2026-05-20T00:00:10.000Z","type":"turn_context","payload":{"turn_id":"turn-null","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:11.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        {"timestamp":"2026-05-20T00:00:12.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-null"}}
+        {"timestamp":"2026-05-20T00:00:13.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:14.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"flex"}}}
+        {"timestamp":"2026-05-20T00:00:15.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-unknown"}}
+        {"timestamp":"2026-05-20T00:00:16.000Z","type":"turn_context","payload":{"turn_id":"turn-unknown","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:17.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":30,"cached_input_tokens":0,"output_tokens":3,"reasoning_output_tokens":0,"total_tokens":33}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == [
+            "turn-missing", "turn-null", "turn-unknown",
+        ])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [nil, nil, nil])
+    }
+
+    @Test("only matching task completion clears the active turn")
+    func taskCompletionMustMatchActiveTurn() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}}
+        {"timestamp":"2026-05-20T00:00:01.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"priority"}}}
+        {"timestamp":"2026-05-20T00:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:03.000Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-5.5"}}
+        {"timestamp":"2026-05-20T00:00:04.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-b"}}
+        {"timestamp":"2026-05-20T00:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1,"reasoning_output_tokens":0,"total_tokens":11}}}}
+        {"timestamp":"2026-05-20T00:00:06.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:07.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-a", nil])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [.priority, nil])
+    }
+
     // MARK: - legacy fallback
 
     @Test("subagent without turn_context: legacy gpt-5 fallback, modelInferred=true")
