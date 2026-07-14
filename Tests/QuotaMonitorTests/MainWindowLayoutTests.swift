@@ -79,6 +79,19 @@ struct MainWindowLayoutTests {
         #expect(source.contains("static let otherKey = \"__other__\""))
     }
 
+    @Test("Dashboard trend domain includes the complete final day")
+    func dashboardTrendDomainIncludesCompleteFinalDay() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift")
+        let domain = try Self.sourceSlice(
+            source,
+            from: "private var xDomain",
+            to: "private var selectedTrendSelection")
+
+        #expect(domain.contains("TrendChartDomain.domain"))
+        #expect(domain.contains("for: windowedDaily.map(\\.date)"))
+        #expect(!domain.contains("return first...last"))
+    }
+
     @Test("Dashboard composition selects model rows by tokens")
     func dashboardCompositionSelectsModelRowsByTokens() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/CompositionSection.swift")
