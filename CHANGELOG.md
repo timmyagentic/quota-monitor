@@ -35,6 +35,11 @@ window copy.
 - Codex quota cards and the menu-bar label now follow the quota windows that are actually active, so the temporary weekly-only policy no longer appears as a false 5-hour limit or a stale weekly value.
 - Daily trend charts now keep the newest day's bar inside the plot instead of drawing it past the right axis.
 - Hovering the dashboard activity heatmap feels right again: the tooltip floats above the day square instead of covering it, and the whole square — including the small gaps between squares — now triggers it.
+- Codex cost estimates now keep explicitly Standard and Fast turns separate, while the Fast setting only fills gaps in older or untagged history.
+
+### Changed
+
+- **Per-turn Codex Fast estimates.** Recent Codex turns now use their recorded service-tier preference, while the existing setting acts only as a Fast fallback for older or untagged usage and never overrides explicitly Standard turns.
 
 ### Fixed
 

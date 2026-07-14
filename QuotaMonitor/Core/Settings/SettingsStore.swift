@@ -115,19 +115,15 @@ final class SettingsStore {
         didSet { defaults.set(tokenUnitLanguage.rawValue,
                               forKey: Keys.tokenUnitLanguage) }
     }
-    /// Global override for Codex CLI billing tier. Codex's JSONL output
-    /// does not record whether a given turn used Fast Mode, so we can't
-    /// auto-detect per call. When ON, the value-backfill SQL routes
-    /// every event for the models listed in `CodexFastMode.multipliers`
-    /// (currently GPT-5.5 → 2.5×, GPT-5.4 → 2.0×) to a synthetic
-    /// `<model>-fast` catalog row so the dollar figure reflects the
-    /// Fast-tier rate. Toggling re-runs `backfillAllValues` so history
-    /// is recomputed end-to-end — a flip changes every prior chart and
-    /// the menu-bar headline immediately.
+    /// Fallback for Codex usage whose rollout did not record a usable
+    /// service-tier preference. Stored `priority` and `default` preferences
+    /// always win; only unknown rows for models in `CodexFastMode.multipliers`
+    /// follow this switch. Toggling re-runs `backfillAllValues`, but does not
+    /// override explicitly tagged turns. The preference remains an estimate,
+    /// not proof of the tier ultimately served by OpenAI.
     ///
-    /// Default OFF: most Codex users are on Standard, and we don't want
-    /// to silently inflate the $ for someone who never enabled Fast
-    /// Mode on the OpenAI side.
+    /// Default OFF: older and untagged usage stays on Standard pricing unless
+    /// the user explicitly chooses the Fast fallback.
     var codexFastModeBilling: Bool {
         didSet { defaults.set(codexFastModeBilling,
                               forKey: Keys.codexFastModeBilling) }
@@ -375,9 +371,8 @@ final class SettingsStore {
         self.tokenUnitLanguage = (defaults.string(forKey: Keys.tokenUnitLanguage)
             .flatMap(TokenUnitLanguage.init(rawValue:))) ?? .followLanguage
         // Default false. A missing key reads as false via
-        // `defaults.bool(forKey:)`, which is exactly what we want for
-        // fresh installs and existing users (we don't enable Fast
-        // billing for anyone who hasn't asked for it).
+        // `defaults.bool(forKey:)`, so older and untagged Codex usage stays
+        // on Standard pricing until the user enables the Fast fallback.
         self.codexFastModeBilling = defaults.bool(forKey: Keys.codexFastModeBilling)
         self.developerModeEnabled = defaults.bool(forKey: Keys.developerModeEnabled)
         self.hasShownFirstRunPresentation =

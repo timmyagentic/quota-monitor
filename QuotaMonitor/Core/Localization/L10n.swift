@@ -686,20 +686,19 @@ enum L10n {
         t(en: "How often Codex's local rate-limit quota is fetched. Claude's quota is polled separately every 2 hours and isn't affected by this.",
           zh: "多久从本地 Codex 拉取一次速率限制配额。Claude 的配额由独立的 2 小时间隔拉取，不受此设置影响。")
     }
-    // Codex Fast-Mode billing — Codex CLI's JSONL doesn't surface tier
-    // per turn, so the user toggles their account-wide billing mode
-    // here. Help copy intentionally hides the per-model multipliers;
-    // users only need to know the toggle is global because per-call
-    // tier isn't observable.
+    // Codex Fast estimation fallback. Recent turns use the service-tier
+    // preference frozen from rollout JSONL, while this switch covers older or
+    // untagged usage only. A recorded preference is not proof of the tier the
+    // server ultimately served.
     static var sectionCodexBilling: String {
         t(en: "Codex Billing", zh: "Codex 计费")
     }
     static var codexFastModeBillingLabel: String {
-        t(en: "Codex Bill as Fast Mode", zh: "Codex 按 Fast Mode 计费")
+        t(en: "Untagged Codex Usage as Fast", zh: "未标记的 Codex 用量按 Fast 估算")
     }
     static var codexFastModeBillingHelp: String {
-        t(en: "Codex doesn't tag each request with its billing tier, so this toggle applies to your whole account — including history. Turn it on if you regularly use Fast Mode.",
-          zh: "Codex 不会标记每次请求的计费档位，所以这里只能按账户整体估算费用，切换后历史记录会同步重算。如果长期使用 Fast Mode 就打开。")
+        t(en: "Recent Codex usage is estimated per turn from its recorded service-tier preference. This switch only treats older or untagged usage as Fast; explicitly Standard turns stay Standard.",
+          zh: "近期 Codex 用量会按每个 turn 记录的服务档位偏好估算。此开关只把旧版或未标记用量按 Fast 计费；明确记录为 Standard 的 turn 仍按 Standard。")
     }
     static var sectionDatabase: String { t(en: "Database", zh: "数据库") }
     static var sectionExport: String { t(en: "Export", zh: "导出") }

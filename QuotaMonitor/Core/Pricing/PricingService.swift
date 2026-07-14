@@ -52,12 +52,11 @@ struct PricingEntry: Sendable, Hashable {
     }
 }
 
-/// Codex Fast-Mode billing multipliers. The Codex CLI doesn't surface
-/// per-call tier info in its JSONL output, so we can't detect Fast vs
-/// Standard at import time. Instead the user flips one global toggle in
-/// Settings → Advanced → Codex CLI ("Bill as Fast Mode"). When ON, every
-/// usage_events row whose model_id is one of these keys gets repriced
-/// with its base price × the listed multiplier.
+/// Codex Fast estimation multipliers. Rollout JSONL can record a service-tier
+/// preference that the importer freezes per turn. Stored `priority` selects a
+/// synthetic Fast row, stored `default` selects the base row, and only unknown
+/// preferences follow the global fallback. The preference is pricing evidence,
+/// not confirmation of the tier ultimately served by OpenAI.
 ///
 /// **Why a hard-coded map, not catalog rows.** We seed synthetic
 /// `-fast` rows in `PricingSeed.entries` derived from these numbers so
@@ -84,8 +83,8 @@ enum CodexFastMode {
 enum PricingSeed {
     /// Concrete catalog entries shipped with the binary. Includes the
     /// real model rows plus synthetic `*-fast` siblings derived from
-    /// `CodexFastMode.multipliers` so the Fast-Mode toggle can JOIN
-    /// against them directly.
+    /// `CodexFastMode.multipliers` so per-event preference and fallback
+    /// selection can JOIN against them directly.
     static let entries: [PricingEntry] = base + fastVariants
 
     private static let base: [PricingEntry] = [
@@ -442,10 +441,10 @@ enum PricingService {
     ///     at the catalog write rate, and 1-hour cache writes are billed at
     ///     2x base input. No subtraction needed.
     ///
-    /// When `codexFastModeBilling` is true, codex events whose model_id is in
-    /// `CodexFastMode.multipliers` are JOINed against the synthetic
-    /// `<model>-fast` catalog row instead of the base row, so the dollar
-    /// figure reflects the Fast-tier rate.
+    /// For codex events whose model_id is in `CodexFastMode.multipliers`, a
+    /// stored `priority` preference selects the synthetic `<model>-fast` row,
+    /// a stored `default` selects the base row, and `codexFastModeBilling`
+    /// chooses the fallback only when the stored preference is unknown.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
