@@ -17,6 +17,143 @@ struct MigrationsTests {
         return dir.appendingPathComponent("quotamonitor.sqlite")
     }
 
+    @Test("fresh schema stores Codex rollout tier preferences")
+    func freshSchemaStoresCodexRolloutTierPreferences() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-codex-tier-fresh")
+        let manager = try DatabaseManager(url: url)
+
+        let columns = try manager.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_table_info('usage_events')
+                """)
+        }
+
+        #expect(columns.contains("codex_turn_id"))
+        #expect(columns.contains("codex_service_tier_preference"))
+        #expect(!columns.contains("codex_billing_tier"))
+    }
+
+    @Test("pre-v14 schema clears only Codex tiers and invalidates Codex sessions")
+    func preV14SchemaMigratesCodexTierPreferences() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-codex-tier-v14")
+        let queue = try DatabaseQueue(path: url.path)
+
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        let v14 = "v14-codex-rollout-tier-preference"
+        let appliedMigrations = Set(
+            migrator.migrations.filter { $0 != v14 }
+        ).union(["v13-codex-billing-tier"])
+
+        try queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE grdb_migrations (
+                    identifier TEXT NOT NULL PRIMARY KEY
+                )
+                """)
+            for migration in appliedMigrations.sorted() {
+                try db.execute(
+                    sql: "INSERT INTO grdb_migrations (identifier) VALUES (?)",
+                    arguments: [migration])
+            }
+
+            try db.execute(sql: """
+                CREATE TABLE sessions (
+                    session_id TEXT PRIMARY KEY,
+                    provider TEXT NOT NULL
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO sessions (session_id, provider)
+                VALUES ('codex-custom', 'codex'), ('claude-control', 'claude')
+                """)
+
+            try db.execute(sql: """
+                CREATE TABLE usage_events (
+                    id INTEGER PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    codex_turn_id TEXT,
+                    codex_billing_tier TEXT
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (id, session_id, provider, codex_turn_id, codex_billing_tier)
+                VALUES
+                    (1, 'codex-custom', 'codex', 'turn-codex', 'priority'),
+                    (2, 'claude-control', 'claude', 'turn-claude', 'priority')
+                """)
+
+            try db.execute(sql: """
+                CREATE TABLE import_state (
+                    source_path TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    file_size INTEGER NOT NULL,
+                    file_mtime_ms INTEGER NOT NULL,
+                    last_imported_at TEXT NOT NULL,
+                    byte_offset INTEGER NOT NULL DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO import_state
+                    (source_path, session_id, file_size, file_mtime_ms,
+                     last_imported_at, byte_offset)
+                VALUES
+                    ('/custom/codex-home/sessions/2026/07/15/rollout-custom.jsonl',
+                     'codex-custom', 111, 222, '2026-07-15T00:00:00Z', 111),
+                    ('/custom/claude-home/projects/control.jsonl',
+                     'claude-control', 333, 444, '2026-07-15T00:00:00Z', 123)
+                """)
+        }
+
+        try migrator.migrate(queue)
+
+        try queue.read { db in
+            let columns = try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_table_info('usage_events')
+                """)
+            try #require(columns.contains("codex_service_tier_preference"))
+            #expect(!columns.contains("codex_billing_tier"))
+
+            let usageRows = try Row.fetchAll(db, sql: """
+                SELECT provider, codex_turn_id, codex_service_tier_preference
+                FROM usage_events
+                ORDER BY id
+                """)
+            let codex = try #require(usageRows.first)
+            #expect(codex["provider"] as String == "codex")
+            #expect(codex["codex_turn_id"] as String? == "turn-codex")
+            #expect(codex["codex_service_tier_preference"] as String? == nil)
+
+            let claude = try #require(usageRows.last)
+            #expect(claude["provider"] as String == "claude")
+            #expect(claude["codex_turn_id"] as String? == "turn-claude")
+            #expect(claude["codex_service_tier_preference"] as String? == "priority")
+
+            let stateRows = try Row.fetchAll(db, sql: """
+                SELECT session_id, file_size, file_mtime_ms, byte_offset
+                FROM import_state
+                ORDER BY session_id
+                """)
+            let bySession = Dictionary(uniqueKeysWithValues: stateRows.map {
+                ($0["session_id"] as String, $0)
+            })
+
+            let codexState = try #require(bySession["codex-custom"])
+            #expect(codexState["file_size"] as Int64 == -1)
+            #expect(codexState["file_mtime_ms"] as Int64 == -1)
+            #expect(codexState["byte_offset"] as Int64 == 0)
+
+            let claudeState = try #require(bySession["claude-control"])
+            #expect(claudeState["file_size"] as Int64 == 333)
+            #expect(claudeState["file_mtime_ms"] as Int64 == 444)
+            #expect(claudeState["byte_offset"] as Int64 == 123)
+        }
+    }
+
     @Test("usage_events has a timestamp index for all-provider History scans")
     func usageEventsTimestampIndexExists() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-usage-events-index")

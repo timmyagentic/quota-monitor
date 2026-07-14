@@ -369,7 +369,9 @@ actor ImportEngine {
                     cacheCreationTokens: 0,
                     provider: "codex",
                     modelInferred: delta.modelInferred,
-                    providerMessageId: nil)
+                    providerMessageId: nil,
+                    codexTurnId: delta.turnId,
+                    codexServiceTierPreference: delta.serviceTierPreference?.rawValue)
                 try event.insert(db)
             }
 

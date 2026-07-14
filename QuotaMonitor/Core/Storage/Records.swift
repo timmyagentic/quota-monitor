@@ -69,6 +69,8 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
     /// `(session_id, provider_message_id)` so re-parsing the tail of a
     /// rollout during an incremental scan can `INSERT OR IGNORE` cleanly.
     var providerMessageId: String?
+    var codexTurnId: String? = nil
+    var codexServiceTierPreference: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -87,6 +89,8 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
         case provider
         case modelInferred = "model_inferred"
         case providerMessageId = "provider_message_id"
+        case codexTurnId = "codex_turn_id"
+        case codexServiceTierPreference = "codex_service_tier_preference"
     }
 }
 
