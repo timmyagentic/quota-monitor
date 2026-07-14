@@ -274,11 +274,11 @@ enum MenuBarTitleBuilder {
         for (i, r) in rows.enumerated() {
             if i > 0 { out.append(run("   ", sepFont)) }   // wide gap between providers
             if multi { out.append(run("\(r.tag) ", tagFont)) }
-            out.append(run("5h\(thinSpace)", labelFont))
-            out.append(run(r.fiveHour, valueFont))
-            out.append(run("  ·  ", sepFont))
-            out.append(run("7d\(thinSpace)", labelFont))
-            out.append(run(r.sevenDay, valueFont))
+            for (segmentIndex, segment) in visibleSegments(for: r).enumerated() {
+                if segmentIndex > 0 { out.append(run("  ·  ", sepFont)) }
+                out.append(run("\(segment.label)\(thinSpace)", labelFont))
+                out.append(run(segment.value, valueFont))
+            }
         }
         return out
     }
@@ -291,12 +291,29 @@ enum MenuBarTitleBuilder {
         var parts: [String] = []
         for r in rows {
             let tag = multi ? "\(r.tag) " : ""
-            parts.append("\(tag)5h \(r.fiveHour) · 7d \(r.sevenDay)")
+            let windows = visibleSegments(for: r)
+                .map { "\($0.label) \($0.value)" }
+                .joined(separator: " · ")
+            parts.append("\(tag)\(windows)")
         }
         return run(parts.joined(separator: "   "), font)
     }
 
     // MARK: helpers
+
+    private static func visibleSegments(
+        for row: MenuBarLabelModel.Row
+    ) -> [(label: String, value: String)] {
+        let all = [
+            (label: "5h", value: row.fiveHour),
+            (label: "7d", value: row.sevenDay)
+        ]
+        let available = all.filter { $0.value != "--" }
+        // Preserve the established two-placeholder readout while data is
+        // entirely unavailable. Once one real window exists, omit only the
+        // inactive window so the title describes the current Codex policy.
+        return available.isEmpty ? all : available
+    }
 
     private static func run(_ s: String, _ font: NSFont) -> NSAttributedString {
         NSAttributedString(string: s, attributes: [

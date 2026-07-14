@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import GRDB
 @testable import QuotaMonitor
 
 @Suite("Codex RateLimitPoller state machine")
@@ -175,6 +176,49 @@ struct RateLimitPollerTests {
         await poller.pollOnce()
 
         #expect(snapshots.all.first?.resetCreditsAvailable == 2)
+    }
+
+    @Test("weekly-only wire primary persists as a semantic 7-day window")
+    func weeklyOnlyWindowPersistsSemanticBucketAndDuration() async throws {
+        let reset = Int(Date(timeIntervalSinceNow: 5 * 86_400).timeIntervalSince1970)
+        let json = """
+        {
+          "planType": "pro",
+          "rateLimits": {
+            "planType": "pro",
+            "primary": {
+              "usedPercent": 64,
+              "windowDurationMins": 10080,
+              "resetsAt": \(reset)
+            },
+            "secondary": null
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(
+            RateLimitsPayload.self,
+            from: Data(json.utf8))
+        let mock = MockCodexRateLimitsFetcher(script: [.success(payload)])
+        let db = try makeDatabase()
+        let snapshots = SnapshotBox()
+        let poller = makePoller(fetcher: mock, db: db, snapshots: snapshots)
+
+        await poller.pollOnce()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT bucket, window_start, resets_at
+                FROM rate_limit_samples
+                WHERE source_kind = 'live' AND limit_name IS NULL
+                """)
+        })
+        let windowStart = try #require(
+            ISO8601.parse(row["window_start"] as String? ?? ""))
+        let resetsAt = try #require(
+            ISO8601.parse(row["resets_at"] as String? ?? ""))
+
+        #expect((row["bucket"] as String?) == "secondary")
+        #expect(abs(resetsAt.timeIntervalSince(windowStart) - 604_800) < 0.001)
     }
 
     @Test("forced pollOnce bypasses the minimum gap for manual refresh")

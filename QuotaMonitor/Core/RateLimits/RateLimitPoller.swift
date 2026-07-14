@@ -371,18 +371,23 @@ actor RateLimitPoller {
         window: RateLimitSnapshot.Window
     ) throws {
         let resetIso = ISO8601.fractional.string(from: window.resetAt)
+        let windowStartIso: String? = window.windowDuration > 0
+            ? ISO8601.fractional.string(
+                from: window.resetAt.addingTimeInterval(-window.windowDuration))
+            : nil
         try db.execute(sql: """
             INSERT INTO rate_limit_samples
               (source_kind, source_session_id, bucket, sample_timestamp,
                plan_type, limit_name, window_start, resets_at,
                used_percent, remaining_percent)
-            VALUES (?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?)
+            VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 "live",
                 bucket,
                 captured,
                 plan,
                 limitName,
+                windowStartIso,
                 resetIso,
                 window.usedPercent,
                 max(0, 100 - window.usedPercent)

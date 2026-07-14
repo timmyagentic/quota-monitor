@@ -1,0 +1,32 @@
+{
+  "_comment": "Sanitized codex app-server capture from 2026-07-14 during the temporary removal of the 5-hour restriction. The upstream primary wire slot now carries the 10080-minute weekly window and secondary is absent.",
+  "rateLimits": {
+    "planType": "pro",
+    "primary": {
+      "usedPercent": 64,
+      "windowDurationMins": 10080,
+      "resetsAt": 1784506860
+    },
+    "secondary": null
+  },
+  "rateLimitsByLimitId": {
+    "codex": {
+      "limitName": "codex",
+      "primary": {
+        "usedPercent": 64,
+        "windowDurationMins": 10080,
+        "resetsAt": 1784506860
+      },
+      "secondary": null
+    },
+    "codex_spark": {
+      "limitName": "GPT-5.3-Codex-Spark",
+      "primary": {
+        "usedPercent": 3,
+        "windowDurationMins": 10080,
+        "resetsAt": 1784619350
+      },
+      "secondary": null
+    }
+  }
+}

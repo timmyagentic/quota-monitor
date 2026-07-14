@@ -58,7 +58,8 @@ struct UsageDelta {
 }
 
 struct RateLimitSampleDraft {
-    let bucket: String              // "primary" | "secondary"
+    let bucket: String              // semantic "primary" (5h) | "secondary" (7d)
+    let windowDuration: TimeInterval?
     let sampleTimestamp: String
     let planType: String?
     let limitName: String?
@@ -272,27 +273,24 @@ enum RolloutParser {
     ) -> [RateLimitSampleDraft] {
         guard let rl = rateLimits else { return [] }
         var samples: [RateLimitSampleDraft] = []
-        if let primary = rl.primary, let resets = primary.resetsAt {
+        let wireWindows = [rl.primary, rl.secondary]
+        for window in wireWindows {
+            guard let window,
+                  let resets = window.resetsAt,
+                  let bucket = CodexQuotaWindowClassifier.classify(
+                    duration: window.windowMinutes.map { TimeInterval($0 * 60) })
+            else { continue }
+
             samples.append(RateLimitSampleDraft(
-                bucket: "primary",
+                bucket: bucket.rawValue,
+                windowDuration: window.windowMinutes.map { TimeInterval($0 * 60) },
                 sampleTimestamp: timestamp,
                 planType: rl.planType,
                 limitName: rl.limitName,
                 resetsAt: ISO8601.fractional.string(
                     from: Date(timeIntervalSince1970: resets)),
-                usedPercent: primary.usedPercent,
-                remainingPercent: max(0, 100 - primary.usedPercent)))
-        }
-        if let secondary = rl.secondary, let resets = secondary.resetsAt {
-            samples.append(RateLimitSampleDraft(
-                bucket: "secondary",
-                sampleTimestamp: timestamp,
-                planType: rl.planType,
-                limitName: rl.limitName,
-                resetsAt: ISO8601.fractional.string(
-                    from: Date(timeIntervalSince1970: resets)),
-                usedPercent: secondary.usedPercent,
-                remainingPercent: max(0, 100 - secondary.usedPercent)))
+                usedPercent: window.usedPercent,
+                remainingPercent: max(0, 100 - window.usedPercent)))
         }
         return samples
     }

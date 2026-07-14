@@ -97,20 +97,32 @@ struct AggregatorTests {
     private func seedRateLimitSample(
         in db: DatabaseManager,
         sourceKind: String,
+        sourceSessionId: String? = nil,
         sampleAt: String,
         bucket: String = "primary",
         usedPercent: Double,
-        resetAt: String = "2026-06-03T15:00:00Z"
+        resetAt: String = "2026-06-03T15:00:00Z",
+        windowDuration: TimeInterval? = nil,
+        storesWindowDuration: Bool = true
     ) throws {
+        let inferredDuration = windowDuration
+            ?? (bucket == "primary" ? 18_000 : 604_800)
+        let windowStart = storesWindowDuration
+            ? ISO8601.parse(resetAt).map {
+                ISO8601.fractional.string(
+                    from: $0.addingTimeInterval(-inferredDuration))
+            }
+            : nil
         try db.pool.write { conn in
             try conn.execute(sql: """
                 INSERT INTO rate_limit_samples
                   (source_kind, source_session_id, bucket, sample_timestamp,
                    plan_type, limit_name, window_start, resets_at,
                    used_percent, remaining_percent)
-                VALUES (?, NULL, ?, ?, NULL, NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)
                 """, arguments: [
-                    sourceKind, bucket, sampleAt, resetAt,
+                    sourceKind, sourceSessionId, bucket, sampleAt,
+                    windowStart, resetAt,
                     usedPercent, max(0, 100 - usedPercent)
                 ])
         }
@@ -351,6 +363,86 @@ struct AggregatorTests {
                 "newer Claude OAuth rows must not override Codex quota rows")
     }
 
+    @Test("fetchCodexQuota keeps windows from one latest snapshot")
+    func codexQuota_doesNotMixOlderMissingWindow() throws {
+        let db = try makeDatabase()
+        try seedRateLimitSample(
+            in: db, sourceKind: "live",
+            sampleAt: "2026-07-12T18:00:00Z",
+            bucket: "primary", usedPercent: 12)
+        try seedRateLimitSample(
+            in: db, sourceKind: "live",
+            sampleAt: "2026-07-12T18:00:00Z",
+            bucket: "secondary", usedPercent: 3)
+        try seedRateLimitSample(
+            in: db, sourceKind: "live",
+            sampleAt: "2026-07-14T14:00:00Z",
+            bucket: "secondary", usedPercent: 64,
+            resetAt: "2026-07-19T19:01:00Z")
+
+        let quota = try db.pool.read { conn in
+            try Aggregator.fetchCodexQuota(db: conn)
+        }
+
+        #expect(quota?.primary == nil)
+        #expect(quota?.secondary?.usedPercent == 64)
+    }
+
+    @Test("fetchCodexQuota reclassifies legacy weekly data stored in primary")
+    func codexQuota_reclassifiesLegacyWeeklyPrimary() throws {
+        let db = try makeDatabase()
+        try seedRateLimitSample(
+            in: db, sourceKind: "live",
+            sampleAt: "2026-07-14T14:00:00Z",
+            bucket: "primary", usedPercent: 64,
+            resetAt: "2026-07-19T19:01:00Z",
+            storesWindowDuration: false)
+
+        let quota = try db.pool.read { conn in
+            try Aggregator.fetchCodexQuota(db: conn)
+        }
+
+        #expect(quota?.primary == nil)
+        #expect(quota?.secondary?.usedPercent == 64)
+    }
+
+    @Test("fetchCodexQuota prefers live when sources share a timestamp")
+    func codexQuota_sameTimestampPrefersLiveSnapshot() throws {
+        let db = try makeDatabase()
+        let captured = "2026-07-14T14:00:00Z"
+        try seedRateLimitSample(
+            in: db, sourceKind: "live", sampleAt: captured,
+            usedPercent: 64, resetAt: "2026-07-14T19:00:00Z")
+        try seedRateLimitSample(
+            in: db, sourceKind: "jsonl", sourceSessionId: "session-1",
+            sampleAt: captured, usedPercent: 99,
+            resetAt: "2026-07-14T19:00:00Z")
+
+        let quota = try db.pool.read { conn in
+            try Aggregator.fetchCodexQuota(db: conn)
+        }
+
+        #expect(quota?.primary?.usedPercent == 64)
+    }
+
+    @Test("fetchCodexQuota resolves duplicate rows by highest id")
+    func codexQuota_duplicateRowsUseLatestInsertion() throws {
+        let db = try makeDatabase()
+        let captured = "2026-07-14T14:00:00Z"
+        try seedRateLimitSample(
+            in: db, sourceKind: "live", sampleAt: captured,
+            usedPercent: 64, resetAt: "2026-07-14T19:00:00Z")
+        try seedRateLimitSample(
+            in: db, sourceKind: "live", sampleAt: captured,
+            usedPercent: 65, resetAt: "2026-07-14T19:00:00Z")
+
+        let quota = try db.pool.read { conn in
+            try Aggregator.fetchCodexQuota(db: conn)
+        }
+
+        #expect(quota?.primary?.usedPercent == 65)
+    }
+
     @Test("fetchRateLimitHistory excludes Claude OAuth samples")
     func codexRateLimitHistory_ignoresClaudeOAuthSamples() throws {
         let db = try makeDatabase()
@@ -373,6 +465,25 @@ struct AggregatorTests {
 
         #expect(history.count == 1)
         #expect(history.first?.series == "primary (live)")
+    }
+
+    @Test("fetchRateLimitHistory de-duplicates same-snapshot rows by id")
+    func codexRateLimitHistory_deduplicatesRows() throws {
+        let db = try makeDatabase()
+        let now = ISO8601.fractional.string(from: Date())
+        try seedRateLimitSample(
+            in: db, sourceKind: "live", sampleAt: now,
+            usedPercent: 12)
+        try seedRateLimitSample(
+            in: db, sourceKind: "live", sampleAt: now,
+            usedPercent: 13)
+
+        let history = try db.pool.read { conn in
+            try Aggregator.fetchRateLimitHistory(db: conn, hours: 24)
+        }
+
+        #expect(history.count == 1)
+        #expect(history.first?.usedPercent == 13)
     }
 
     // MARK: - sliding-window timestamp format (datetime() vs strftime regression)
@@ -432,6 +543,8 @@ struct AggregatorTests {
         // "since 00:00 today"; strftime keeps it a true rolling 60 minutes.
         try seedRateLimitSample(in: db, sourceKind: "live",
                                 sampleAt: stamp(minutesAgo: 50), usedPercent: 10)
+        try seedRateLimitSample(in: db, sourceKind: "live",
+                                sampleAt: stamp(minutesAgo: 25), usedPercent: 99)
         try seedRateLimitSample(in: db, sourceKind: "live",
                                 sampleAt: stamp(minutesAgo: 25), usedPercent: 16)
         try seedRateLimitSample(in: db, sourceKind: "live",

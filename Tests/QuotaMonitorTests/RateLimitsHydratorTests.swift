@@ -32,22 +32,34 @@ struct RateLimitsHydratorTests {
     private func insert(
         _ db: DatabaseManager,
         sourceKind: String = "live",
+        sourceSessionId: String? = nil,
         sampleAt: String,
         bucket: String,
         limitName: String? = nil,
         plan: String? = nil,
         usedPercent: Double,
-        resetAt: String
+        resetAt: String,
+        windowDuration: TimeInterval? = nil,
+        storesWindowDuration: Bool = true
     ) async throws {
+        let inferredDuration = windowDuration
+            ?? (bucket == "primary" ? 18_000 : 604_800)
+        let windowStart = storesWindowDuration
+            ? ISO8601.parse(resetAt).map {
+                ISO8601.fractional.string(
+                    from: $0.addingTimeInterval(-inferredDuration))
+            }
+            : nil
         try await db.pool.write { conn in
             try conn.execute(sql: """
                 INSERT INTO rate_limit_samples
                   (source_kind, source_session_id, bucket, sample_timestamp,
                    plan_type, limit_name, window_start, resets_at,
                    used_percent, remaining_percent)
-                VALUES (?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, arguments: [
-                    sourceKind, bucket, sampleAt, plan, limitName, resetAt,
+                    sourceKind, sourceSessionId, bucket, sampleAt, plan,
+                    limitName, windowStart, resetAt,
                     usedPercent, max(0, 100 - usedPercent)
                 ])
         }
@@ -77,7 +89,7 @@ struct RateLimitsHydratorTests {
         #expect(snap.secondary?.windowDuration == 604_800)
     }
 
-    // MARK: - per-bucket max wins
+    // MARK: - latest snapshot group wins
 
     @Test("per-bucket max wins — older row in same bucket is ignored")
     func perBucketMaxWins() async throws {
@@ -94,6 +106,92 @@ struct RateLimitsHydratorTests {
         let snap = try #require(try await RateLimitsHydrator.loadLatest(database: db))
         #expect(abs((snap.primary?.usedPercent ?? -1) - 12) < 0.0001,
                 "older 99% sample must NOT bleed into the hydrated snapshot")
+    }
+
+    @Test("same-timestamp live snapshot wins over a jsonl snapshot")
+    func sameTimestampPrefersLiveSnapshotIdentity() async throws {
+        let db = try makeDatabase()
+        let captured = "2026-07-14T14:00:00Z"
+        try await insert(db, sourceKind: "live", sampleAt: captured,
+                         bucket: "primary", usedPercent: 64,
+                         resetAt: "2026-07-14T19:00:00Z")
+        try await insert(db, sourceKind: "jsonl", sourceSessionId: "session-1",
+                         sampleAt: captured, bucket: "primary", usedPercent: 99,
+                         resetAt: "2026-07-14T19:00:00Z")
+
+        let snap = try #require(try await RateLimitsHydrator.loadLatest(database: db))
+        #expect(snap.primary?.usedPercent == 64)
+    }
+
+    @Test("duplicate rows in one snapshot use the highest database id")
+    func duplicateRowsUseLatestInsertion() async throws {
+        let db = try makeDatabase()
+        let captured = "2026-07-14T14:00:00Z"
+        try await insert(db, sampleAt: captured, bucket: "primary",
+                         usedPercent: 64, resetAt: "2026-07-14T19:00:00Z")
+        try await insert(db, sampleAt: captured, bucket: "primary",
+                         usedPercent: 65, resetAt: "2026-07-14T19:00:00Z")
+
+        let snap = try #require(try await RateLimitsHydrator.loadLatest(database: db))
+        #expect(snap.primary?.usedPercent == 65)
+    }
+
+    @Test("new weekly-only snapshot does not revive an older 5-hour row")
+    func weeklyOnlySnapshotDoesNotMixOlderBucket() async throws {
+        let db = try makeDatabase()
+        try await insert(db, sampleAt: "2026-07-12T18:00:00Z",
+                         bucket: "primary", plan: "pro",
+                         usedPercent: 12, resetAt: "2026-07-12T23:00:00Z")
+        try await insert(db, sampleAt: "2026-07-12T18:00:00Z",
+                         bucket: "secondary", plan: "pro",
+                         usedPercent: 3, resetAt: "2026-07-19T18:00:00Z")
+        try await insert(db, sampleAt: "2026-07-14T14:00:00Z",
+                         bucket: "secondary", plan: "pro",
+                         usedPercent: 64, resetAt: "2026-07-19T19:01:00Z")
+
+        let snap = try #require(try await RateLimitsHydrator.loadLatest(database: db))
+        #expect(snap.primary == nil,
+                "an absent current 5-hour window must not be backfilled from an older snapshot")
+        #expect(snap.secondary?.usedPercent == 64)
+    }
+
+    @Test("legacy raw primary weekly row is reclassified on warm start")
+    func legacyWeeklyPrimaryIsReclassified() async throws {
+        let db = try makeDatabase()
+        try await insert(db, sampleAt: "2026-07-14T14:00:00Z",
+                         bucket: "primary", plan: "pro",
+                         usedPercent: 64, resetAt: "2026-07-19T19:01:00Z",
+                         storesWindowDuration: false)
+
+        let snap = try #require(try await RateLimitsHydrator.loadLatest(database: db))
+        #expect(snap.primary == nil)
+        #expect(snap.secondary?.usedPercent == 64)
+        #expect(snap.secondary?.windowDuration == 604_800)
+    }
+
+    @Test("stored duration identifies weekly primary even near reset")
+    func storedWeeklyDurationBeatsWireSlotNearReset() async throws {
+        let db = try makeDatabase()
+        try await insert(db, sampleAt: "2026-07-19T18:30:00Z",
+                         bucket: "primary", plan: "pro",
+                         usedPercent: 91, resetAt: "2026-07-19T19:01:00Z",
+                         windowDuration: 604_800)
+
+        let snap = try #require(try await RateLimitsHydrator.loadLatest(database: db))
+        #expect(snap.primary == nil)
+        #expect(snap.secondary?.usedPercent == 91)
+    }
+
+    @Test("ambiguous legacy primary-only row is not mislabeled")
+    func ambiguousLegacyPrimaryIsHidden() async throws {
+        let db = try makeDatabase()
+        try await insert(db, sampleAt: "2026-07-19T18:30:00Z",
+                         bucket: "primary", plan: "pro",
+                         usedPercent: 91, resetAt: "2026-07-19T19:01:00Z",
+                         storesWindowDuration: false)
+
+        let snap = try await RateLimitsHydrator.loadLatest(database: db)
+        #expect(snap == nil)
     }
 
     // MARK: - jsonl fallback

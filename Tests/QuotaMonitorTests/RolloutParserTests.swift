@@ -140,6 +140,42 @@ struct RolloutParserTests {
         #expect(parsed.latestPlanType == "prolite")
     }
 
+    @Test("weekly window in embedded primary slot is stored as semantic secondary")
+    func weeklyOnlyEmbeddedRateLimitIsClassifiedByDuration() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-14T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-07-14T00:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":64.0,"window_minutes":10080,"resets_at":1784506860},"secondary":null,"plan_type":"pro"}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.rateLimitSamples.count == 1)
+        #expect(parsed.rateLimitSamples.first?.bucket == "secondary")
+        #expect(parsed.rateLimitSamples.first?.windowDuration == 604_800)
+        #expect(parsed.rateLimitSamples.first?.usedPercent == 64)
+    }
+
+    @Test("embedded windows without duration are not mislabeled from wire slots")
+    func embeddedRateLimitWithoutDurationIsOmitted() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-14T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-07-14T00:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":12.0,"resets_at":1784506860},"secondary":null,"plan_type":"pro"}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.rateLimitSamples.isEmpty)
+    }
+
+    @Test("embedded windows with unknown nonzero duration are omitted")
+    func embeddedRateLimitWithUnknownDurationIsOmitted() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-14T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-07-14T00:00:01.000Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","limit_name":null,"primary":{"used_percent":12.0,"window_minutes":60,"resets_at":1784506860},"secondary":null,"plan_type":"pro"}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.rateLimitSamples.isEmpty)
+    }
+
     @Test("last_token_usage wins when total_token_usage is non-monotonic")
     func lastTokenUsageWinsForCurrentCodexRows() throws {
         let url = try writeRollout(#"""

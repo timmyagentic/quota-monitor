@@ -32,10 +32,19 @@ enum MenuBarLabelModel {
             guard iconProviders.contains(id), enabledProviders.contains(id) else { continue }
             switch id {
             case "codex":
-                let five = rateLimits?.primary?.usedPercent
-                    ?? codexQuota?.primary?.usedPercent
-                let seven = rateLimits?.secondary?.usedPercent
-                    ?? codexQuota?.secondary?.usedPercent
+                let five: Double?
+                let seven: Double?
+                if let rateLimits {
+                    // A live payload is one coherent snapshot. In particular,
+                    // a missing window can mean that Codex currently does not
+                    // enforce it, so never splice an older database window into
+                    // the live snapshot.
+                    five = rateLimits.primary?.usedPercent
+                    seven = rateLimits.secondary?.usedPercent
+                } else {
+                    five = codexQuota?.primary?.usedPercent
+                    seven = codexQuota?.secondary?.usedPercent
+                }
                 out.append(Row(tag: "CX",
                                fiveHour: format(five, displayMode),
                                sevenDay: format(seven, displayMode)))
