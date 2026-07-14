@@ -159,7 +159,7 @@ enum RolloutParser {
                 }
                 updatedAt = timestamp
 
-            case .other:
+            case .threadSettingsApplied, .taskStarted, .taskComplete, .other:
                 continue
             }
         }

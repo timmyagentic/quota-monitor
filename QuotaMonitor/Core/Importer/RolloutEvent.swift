@@ -9,6 +9,9 @@ import Foundation
 enum RolloutEvent {
     case sessionMeta(SessionMetaPayload, timestamp: String?)
     case turnContext(TurnContextPayload, timestamp: String?)
+    case threadSettingsApplied(ThreadSettingsAppliedPayload, timestamp: String?)
+    case taskStarted(TaskLifecyclePayload, timestamp: String?)
+    case taskComplete(TaskLifecyclePayload, timestamp: String?)
     case tokenCount(TokenCountPayload, timestamp: String?)
     case other(type: String, timestamp: String?)
 }
@@ -77,6 +80,44 @@ struct SessionMetaPayload: Decodable {
 
 struct TurnContextPayload: Decodable {
     let model: String?
+    let turnId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case turnId = "turn_id"
+    }
+}
+
+// MARK: - event_msg
+
+struct TaskLifecyclePayload: Decodable {
+    let turnId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case turnId = "turn_id"
+    }
+}
+
+struct ThreadSettingsAppliedPayload: Decodable {
+    struct ThreadSettings: Decodable {
+        let serviceTier: String?
+
+        enum CodingKeys: String, CodingKey {
+            case serviceTier = "service_tier"
+        }
+    }
+
+    let threadSettings: ThreadSettings?
+    let serviceTier: String?
+
+    enum CodingKeys: String, CodingKey {
+        case threadSettings = "thread_settings"
+        case serviceTier = "service_tier"
+    }
+
+    var resolvedServiceTier: String? {
+        threadSettings?.serviceTier ?? serviceTier
+    }
 }
 
 // MARK: - event_msg / token_count
@@ -194,12 +235,36 @@ extension RolloutEvent {
             return .turnContext(tc, timestamp: timestamp)
 
         case "event_msg":
-            // Nested discriminator — only token_count matters for usage.
             guard let data = RolloutLineScanner.objectValue(forKey: "payload", in: line),
-                  RolloutLineScanner.stringValue(forKey: "type", in: data) == "token_count",
-                  let tc = try? decoder.decode(TokenCountPayload.self, from: data)
+                  let nestedType = RolloutLineScanner.stringValue(forKey: "type", in: data)
             else { return .other(type: type, timestamp: timestamp) }
-            return .tokenCount(tc, timestamp: timestamp)
+
+            switch nestedType {
+            case "thread_settings_applied":
+                guard let payload = try? decoder.decode(
+                    ThreadSettingsAppliedPayload.self,
+                    from: data)
+                else { return .other(type: type, timestamp: timestamp) }
+                return .threadSettingsApplied(payload, timestamp: timestamp)
+
+            case "task_started":
+                guard let payload = try? decoder.decode(TaskLifecyclePayload.self, from: data)
+                else { return .other(type: type, timestamp: timestamp) }
+                return .taskStarted(payload, timestamp: timestamp)
+
+            case "task_complete":
+                guard let payload = try? decoder.decode(TaskLifecyclePayload.self, from: data)
+                else { return .other(type: type, timestamp: timestamp) }
+                return .taskComplete(payload, timestamp: timestamp)
+
+            case "token_count":
+                guard let payload = try? decoder.decode(TokenCountPayload.self, from: data)
+                else { return .other(type: type, timestamp: timestamp) }
+                return .tokenCount(payload, timestamp: timestamp)
+
+            default:
+                return .other(type: type, timestamp: timestamp)
+            }
 
         default:
             return .other(type: type, timestamp: timestamp)
