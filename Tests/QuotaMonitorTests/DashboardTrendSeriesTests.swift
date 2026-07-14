@@ -30,6 +30,22 @@ struct DashboardTrendSeriesTests {
         #expect(domain.upperBound == expectedTrailingBoundary)
     }
 
+    @Test("chart domain ends at the next day boundary after a midnight DST jump")
+    func chartDomainEndsAtNextDayBoundaryAfterMidnightDSTJump() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "America/Sao_Paulo"))
+        let day = try #require(calendar.date(
+            from: DateComponents(year: 2018, month: 11, day: 4)))
+        let dayInterval = try #require(calendar.dateInterval(of: .day, for: day))
+
+        let domain = try #require(TrendChartDomain.domain(
+            for: [day],
+            calendar: calendar))
+
+        #expect(domain.lowerBound == dayInterval.start)
+        #expect(domain.upperBound == dayInterval.end)
+    }
+
     @Test("model trend collapse preserves non-top usage in Other")
     func modelTrendCollapsePreservesOtherUsage() {
         let day = Date(timeIntervalSince1970: 1_800_000_000)

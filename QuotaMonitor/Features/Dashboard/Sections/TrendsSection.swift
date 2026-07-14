@@ -341,18 +341,14 @@ enum TrendChartDomain {
             return nil
         }
 
-        let firstDay = calendar.startOfDay(for: first)
-        let lastDay = calendar.startOfDay(for: last)
-        guard firstDay <= lastDay,
-              let trailingBoundary = calendar.date(
-                  byAdding: .day,
-                  value: 1,
-                  to: lastDay)
+        guard let firstDay = calendar.dateInterval(of: .day, for: first),
+              let lastDay = calendar.dateInterval(of: .day, for: last),
+              firstDay.start <= lastDay.start
         else {
             return nil
         }
 
-        return firstDay...trailingBoundary
+        return firstDay.start...lastDay.end
     }
 }
 

@@ -88,6 +88,7 @@ struct MainWindowLayoutTests {
             to: "private var selectedTrendSelection")
 
         #expect(domain.contains("TrendChartDomain.domain"))
+        #expect(domain.contains("for: windowedDaily.map(\\.date)"))
         #expect(!domain.contains("return first...last"))
     }
 
