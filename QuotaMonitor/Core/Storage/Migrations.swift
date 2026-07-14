@@ -55,11 +55,11 @@ enum Migrations {
                 t.autoIncrementedPrimaryKey("id")
                 t.column("source_kind", .text).notNull()      // "jsonl", "live", or "claude_oauth"
                 t.column("source_session_id", .text)
-                t.column("bucket", .text).notNull()           // "primary" or "secondary"
+                t.column("bucket", .text).notNull()           // semantic 5h / 7d bucket
                 t.column("sample_timestamp", .text).notNull()
                 t.column("plan_type", .text)
                 t.column("limit_name", .text)
-                t.column("window_start", .text)
+                t.column("window_start", .text)               // also preserves Codex duration
                 t.column("resets_at", .text).notNull()
                 t.column("used_percent", .double).notNull()
                 t.column("remaining_percent", .double).notNull()

@@ -1,5 +1,37 @@
 import SwiftUI
 
+struct CodexForecastQuotaSelection: Equatable {
+    struct Window: Equatable {
+        let usedPercent: Double
+        let resetsAt: Date
+    }
+
+    let primary: Window?
+    let secondary: Window?
+
+    static func make(
+        live: RateLimitSnapshot?,
+        stored: CodexQuotaSnapshot?
+    ) -> Self {
+        if let live {
+            return Self(
+                primary: live.primary.map {
+                    Window(usedPercent: $0.usedPercent, resetsAt: $0.resetAt)
+                },
+                secondary: live.secondary.map {
+                    Window(usedPercent: $0.usedPercent, resetsAt: $0.resetAt)
+                })
+        }
+        return Self(
+            primary: stored?.primary.map {
+                Window(usedPercent: $0.usedPercent, resetsAt: $0.resetsAt)
+            },
+            secondary: stored?.secondary.map {
+                Window(usedPercent: $0.usedPercent, resetsAt: $0.resetsAt)
+            })
+    }
+}
+
 /// Forecast card: per-provider quota block (Codex 5h+7d, Claude 5h) with a
 /// pace line. Answers "am I about to blow a quota?". Replaces the old
 /// `codexQuotaSection` + `billingBlockSection` pair on the Dashboard.
@@ -67,10 +99,11 @@ struct ForecastSection: View {
         // hasn't landed a sample yet (cold launch before warm-start
         // hydrator, signed-out, etc.) and the source for burn.
         let dbQuota = snapshot.codexQuota
-        let livePrimary = liveCodexRateLimits?.primary
-        let liveSecondary = liveCodexRateLimits?.secondary
-        let hasPrimary = livePrimary != nil || dbQuota?.primary != nil
-        let hasSecondary = liveSecondary != nil || dbQuota?.secondary != nil
+        let quota = CodexForecastQuotaSelection.make(
+            live: liveCodexRateLimits,
+            stored: dbQuota)
+        let hasPrimary = quota.primary != nil
+        let hasSecondary = quota.secondary != nil
         ProviderForecastCard(
             label: L10n.codex,
             accent: DashboardTheme.providerColor("codex"),
@@ -80,30 +113,18 @@ struct ForecastSection: View {
             emptyText: L10n.forecastNoCodexQuota
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                if let live = livePrimary {
+                if let primary = quota.primary {
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle5h,
-                        usedPercent: live.usedPercent,
-                        resetsAt: live.resetAt,
-                        burn: dbQuota?.burn["primary"])
-                } else if let dbP = dbQuota?.primary {
-                    QuotaProgressRow(
-                        title: L10n.quotaCardTitle5h,
-                        usedPercent: dbP.usedPercent,
-                        resetsAt: dbP.resetsAt,
+                        usedPercent: primary.usedPercent,
+                        resetsAt: primary.resetsAt,
                         burn: dbQuota?.burn["primary"])
                 }
-                if let live = liveSecondary {
+                if let secondary = quota.secondary {
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle7d,
-                        usedPercent: live.usedPercent,
-                        resetsAt: live.resetAt,
-                        burn: dbQuota?.burn["secondary"])
-                } else if let dbS = dbQuota?.secondary {
-                    QuotaProgressRow(
-                        title: L10n.quotaCardTitle7d,
-                        usedPercent: dbS.usedPercent,
-                        resetsAt: dbS.resetsAt,
+                        usedPercent: secondary.usedPercent,
+                        resetsAt: secondary.resetsAt,
                         burn: dbQuota?.burn["secondary"])
                 }
                 // Pace line: prefer the 5h burn rate (more responsive); fall

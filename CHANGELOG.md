@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 
+- Codex quota cards and the menu-bar label now follow the quota windows that are actually active, so the temporary weekly-only policy no longer appears as a false 5-hour limit or a stale weekly value.
 - Hovering the dashboard activity heatmap feels right again: the tooltip floats above the day square instead of covering it, and the whole square — including the small gaps between squares — now triggers it.
 
 ### Fixed
 
+- **Dynamic Codex quota windows.** QuotaMonitor now identifies 5-hour and 7-day quotas by their actual duration, treats a missing window as absent instead of mixing in older database data, and automatically brings the 5-hour display back if Codex restores it.
 - **Activity heatmap tooltip position and hover range.** The hover tooltip kept a stale layout offset from an earlier design that placed month labels above the grid, so it rendered on top of the hovered square — where it could also intercept the cursor and flicker — and only the 13-pt square itself was hover-sensitive, leaving the 4-pt gaps as dead zones. The tooltip is now pinned just above the square and never intercepts the cursor, and each day's hover area covers the full grid pitch.
 
 ## [0.2.39] — 2026-07-10

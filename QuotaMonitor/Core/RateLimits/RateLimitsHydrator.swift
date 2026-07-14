@@ -7,39 +7,71 @@ import GRDB
 /// its first live poll. Mirror of `ClaudeUsageHydrator` for the Codex
 /// side.
 ///
-/// Strategy differs from Claude's "one-timestamp-group" approach: Codex
-/// rows can come from two sources (`live` polls and `jsonl` rollout
-/// imports) at arbitrary timestamps, so we take the max-per-(bucket,
-/// limit_name) instead. That matches `Aggregator.fetchCodexQuota`'s
-/// behaviour for the Dashboard — live rows naturally win when present
-/// (their timestamps are newer), jsonl rows remain visible after the
-/// live source goes cold.
+/// Codex rows can come from two sources (`live` polls and `jsonl` rollout
+/// imports) at arbitrary timestamps. We select one latest timestamp per
+/// `limit_name`, then keep only the windows present in that coherent snapshot.
+/// A missing window is meaningful (for example, the temporary weekly-only
+/// policy), so it must never be backfilled from an older timestamp.
 ///
 /// `source_kind = 'claude_oauth'` is excluded so Claude's own samples
 /// (which share the table) can't leak into a Codex hydrate.
 enum RateLimitsHydrator {
     static func loadLatest(database: DatabaseManager) async throws -> RateLimitSnapshot? {
         try await database.pool.read { db in
-            // Per-(bucket, limit_name) max sample_timestamp, joined back
-            // to fetch the row payload. `COALESCE(limit_name, '')` lets us
-            // group plain primary/secondary alongside the per-model
-            // additional rows in the same query.
+            // Latest snapshot per limit group, joined back to fetch every
+            // window in that snapshot. `COALESCE(limit_name, '')` keeps the
+            // headline group separate from per-model additional limits.
             let rows = try Row.fetchAll(db, sql: """
-                SELECT s.bucket, s.limit_name, s.plan_type,
-                       s.used_percent, s.resets_at, s.sample_timestamp
-                FROM rate_limit_samples s
-                JOIN (
-                    SELECT bucket,
-                           COALESCE(limit_name, '') AS lname,
-                           MAX(sample_timestamp) AS max_ts
+                WITH latest_times AS (
+                    SELECT COALESCE(limit_name, '') AS lname,
+                           MAX(sample_timestamp) AS sample_timestamp
                     FROM rate_limit_samples
                     WHERE source_kind IN ('live', 'jsonl')
-                    GROUP BY bucket, COALESCE(limit_name, '')
-                ) m
-                  ON m.bucket = s.bucket
-                 AND m.lname = COALESCE(s.limit_name, '')
-                 AND m.max_ts = s.sample_timestamp
+                    GROUP BY COALESCE(limit_name, '')
+                ),
+                latest_snapshots AS (
+                    SELECT latest.lname,
+                           anchor.source_kind,
+                           COALESCE(anchor.source_session_id, '') AS session_key,
+                           anchor.sample_timestamp
+                    FROM latest_times latest
+                    JOIN rate_limit_samples anchor
+                      ON COALESCE(anchor.limit_name, '') = latest.lname
+                     AND anchor.sample_timestamp = latest.sample_timestamp
+                    WHERE anchor.source_kind IN ('live', 'jsonl')
+                      AND anchor.id = (
+                          SELECT candidate.id
+                          FROM rate_limit_samples candidate
+                          WHERE candidate.source_kind IN ('live', 'jsonl')
+                            AND COALESCE(candidate.limit_name, '') = latest.lname
+                            AND candidate.sample_timestamp = latest.sample_timestamp
+                          ORDER BY CASE WHEN candidate.source_kind = 'live' THEN 0 ELSE 1 END,
+                                   candidate.id DESC
+                          LIMIT 1
+                      )
+                )
+                SELECT s.source_kind, s.source_session_id, s.bucket,
+                       s.limit_name, s.plan_type,
+                       s.used_percent, s.window_start, s.resets_at,
+                       s.sample_timestamp
+                FROM rate_limit_samples s
+                JOIN latest_snapshots latest
+                  ON latest.lname = COALESCE(s.limit_name, '')
+                 AND latest.source_kind = s.source_kind
+                 AND latest.session_key = COALESCE(s.source_session_id, '')
+                 AND latest.sample_timestamp = s.sample_timestamp
                 WHERE s.source_kind IN ('live', 'jsonl')
+                  AND s.id = (
+                      SELECT MAX(duplicate.id)
+                      FROM rate_limit_samples duplicate
+                      WHERE duplicate.source_kind = s.source_kind
+                        AND COALESCE(duplicate.source_session_id, '')
+                            = COALESCE(s.source_session_id, '')
+                        AND COALESCE(duplicate.limit_name, '')
+                            = COALESCE(s.limit_name, '')
+                        AND duplicate.sample_timestamp = s.sample_timestamp
+                        AND duplicate.bucket = s.bucket
+                  )
                 """)
 
             guard !rows.isEmpty else { return nil }
@@ -56,37 +88,58 @@ enum RateLimitsHydrator {
             var plan: String?
             var newestCaptured: Date?
 
+            func snapshotKey(_ row: Row) -> String {
+                let sourceKind: String = row["source_kind"] ?? ""
+                let sourceSessionId: String = row["source_session_id"] ?? ""
+                let limitName: String = row["limit_name"] ?? ""
+                let timestamp: String = row["sample_timestamp"] ?? ""
+                return [sourceKind, sourceSessionId, limitName, timestamp]
+                    .joined(separator: "\u{1F}")
+            }
+
+            let pairedSecondarySnapshots = Set(rows.compactMap { row -> String? in
+                let bucket: String = row["bucket"] ?? ""
+                return bucket == CodexQuotaWindowBucket.secondary.rawValue
+                    ? snapshotKey(row)
+                    : nil
+            })
+
             for row in rows {
-                if plan == nil { plan = row["plan_type"] as String? }
-                let bucket: String? = row["bucket"]
+                let rawBucket: String = row["bucket"] ?? ""
+                guard let legacySlot = CodexQuotaWindowBucket(rawValue: rawBucket)
+                else { continue }
                 let limitName: String? = row["limit_name"]
                 let usedPercent: Double = row["used_percent"] ?? 0
-                guard let resetAt = parseDate(row["resets_at"] as String?) else { continue }
+                guard let resetAt = parseDate(row["resets_at"] as String?),
+                      let captured = parseDate(row["sample_timestamp"] as String?)
+                else { continue }
+                let windowStart = parseDate(row["window_start"] as String?)
+                guard let bucket = CodexQuotaWindowClassifier.classifyPersisted(
+                    legacySlot: legacySlot,
+                    windowStart: windowStart,
+                    sampleAt: captured,
+                    resetAt: resetAt,
+                    hasPairedSecondary: pairedSecondarySnapshots.contains(snapshotKey(row)))
+                else { continue }
 
-                if let captured = parseDate(row["sample_timestamp"] as String?) {
-                    if newestCaptured == nil || captured > newestCaptured! {
-                        newestCaptured = captured
-                    }
+                if newestCaptured == nil || captured > newestCaptured! {
+                    newestCaptured = captured
+                    plan = row["plan_type"] as String?
                 }
 
-                // Codex's stored rows don't carry an explicit window
-                // duration. Infer from bucket: primary = 5h, secondary
-                // = 7d. Matches the wire-format defaults the live poll
-                // produces and the inference `ClaudeUsageHydrator` uses.
-                let duration: TimeInterval = (bucket == "primary") ? 18_000 : 604_800
                 let window = RateLimitSnapshot.Window(
                     usedPercent: usedPercent,
-                    windowDuration: duration,
+                    windowDuration: CodexQuotaWindowClassifier.duration(for: bucket),
                     resetAt: resetAt)
 
                 if let limitName, !limitName.isEmpty {
                     var entry = additional[limitName] ?? (nil, nil)
-                    if bucket == "primary" { entry.primary = window }
-                    else if bucket == "secondary" { entry.secondary = window }
+                    if bucket == .primary { entry.primary = window }
+                    else { entry.secondary = window }
                     additional[limitName] = entry
                 } else {
-                    if bucket == "primary" { primary = window }
-                    else if bucket == "secondary" { secondary = window }
+                    if bucket == .primary { primary = window }
+                    else { secondary = window }
                 }
             }
 

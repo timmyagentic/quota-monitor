@@ -154,4 +154,26 @@ struct MenuBarLabelModelTests {
 
         #expect(rows == [.init(tag: "CX", fiveHour: "8%", sevenDay: "1%")])
     }
+
+    @Test("weekly-only live snapshot never mixes in stale database windows")
+    func weeklyOnlyLiveSnapshotUsesSnapshotLevelFallback() {
+        let weekly = RateLimitSnapshot.Window(
+            usedPercent: 64,
+            windowDuration: 604_800,
+            resetAt: Date().addingTimeInterval(5 * 86_400))
+        let live = RateLimitSnapshot(
+            capturedAt: Date(), planType: "pro",
+            primary: nil, secondary: weekly,
+            additional: [], resetCreditsAvailable: nil)
+
+        let rows = MenuBarLabelModel.rows(
+            iconProviders: ["codex"],
+            enabledProviders: ["codex"],
+            rateLimits: live,
+            claudeUsage: nil,
+            codexQuota: codexQuota(five: 11, seven: 3),
+            displayMode: .used)
+
+        #expect(rows == [.init(tag: "CX", fiveHour: "--", sevenDay: "64%")])
+    }
 }

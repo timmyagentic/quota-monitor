@@ -52,6 +52,99 @@ struct RateLimitsDecoderTests {
         #expect(snap.additional.first?.limitName == "GPT-5.3-Codex-Spark")
     }
 
+    @Test("weekly-only promotion capture classifies windows by duration, not wire slot")
+    func decodeWeeklyOnlyPromotionCapture() throws {
+        let data = try loadFixture("live_camel_weekly_only_2026-07-14")
+        let payload = try JSONDecoder().decode(RateLimitsPayload.self, from: data)
+        let snap = RateLimitSnapshot(
+            from: payload,
+            capturedAt: Date(timeIntervalSince1970: 1_784_050_000))
+
+        #expect(snap.primary == nil,
+                "the upstream primary slot is weekly during the promotion, not a 5-hour window")
+        #expect(snap.secondary?.usedPercent == 64)
+        #expect(snap.secondary?.windowDuration == 604_800)
+
+        let spark = try #require(snap.additional.first)
+        #expect(spark.primary == nil)
+        #expect(spark.secondary?.usedPercent == 3)
+        #expect(spark.secondary?.windowDuration == 604_800)
+    }
+
+    @Test("missing duration is not mislabeled from its wire slot")
+    func missingDurationIsOmitted() throws {
+        let json = """
+        {
+          "rateLimits": {
+            "primary": { "usedPercent": 12, "resetsAt": 1781169600 },
+            "secondary": { "usedPercent": 34, "resetsAt": 1781510400 }
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(RateLimitsPayload.self, from: Data(json.utf8))
+        let snap = RateLimitSnapshot(from: payload)
+
+        #expect(snap.primary == nil)
+        #expect(snap.secondary == nil)
+    }
+
+    @Test("known durations use the same five-percent tolerance as Codex")
+    func knownDurationToleranceMatchesCodex() {
+        #expect(CodexQuotaWindowClassifier.classify(duration: 17_100) == .primary)
+        #expect(CodexQuotaWindowClassifier.classify(duration: 18_900) == .primary)
+        #expect(CodexQuotaWindowClassifier.classify(duration: 574_560) == .secondary)
+        #expect(CodexQuotaWindowClassifier.classify(duration: 635_040) == .secondary)
+        #expect(CodexQuotaWindowClassifier.classify(duration: 17_099) == nil)
+        #expect(CodexQuotaWindowClassifier.classify(duration: 0) == nil)
+    }
+
+    @Test("five-hour and weekly windows can arrive in either wire slot")
+    func reversedWireSlotsAreClassifiedByDuration() throws {
+        let json = """
+        {
+          "rateLimits": {
+            "primary": {
+              "usedPercent": 64,
+              "windowDurationMins": 10080,
+              "resetsAt": 1784506860
+            },
+            "secondary": {
+              "usedPercent": 12,
+              "windowDurationMins": 300,
+              "resetsAt": 1784074860
+            }
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(
+            RateLimitsPayload.self,
+            from: Data(json.utf8))
+        let snap = RateLimitSnapshot(from: payload)
+
+        #expect(snap.primary?.usedPercent == 12)
+        #expect(snap.secondary?.usedPercent == 64)
+    }
+
+    @Test("unknown nonzero duration is not mislabeled as a known quota window")
+    func unknownDurationIsOmitted() throws {
+        let json = """
+        {
+          "rateLimits": {
+            "primary": {
+              "usedPercent": 12,
+              "windowDurationMins": 60,
+              "resetsAt": 1781169600
+            }
+          }
+        }
+        """
+        let payload = try JSONDecoder().decode(RateLimitsPayload.self, from: Data(json.utf8))
+        let snap = RateLimitSnapshot(from: payload)
+
+        #expect(snap.primary == nil)
+        #expect(snap.secondary == nil)
+    }
+
     @Test("legacy snake_case capture still decodes")
     func decodeLegacySnake() throws {
         let data = try loadFixture("legacy_snake")

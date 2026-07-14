@@ -38,6 +38,56 @@ struct MenuBarTitleBuilderTests {
         #expect(valueFont.pointSize == 11)
     }
 
+    @Test("Weekly-only window omits the inactive 5-hour segment")
+    func weeklyOnlyWindowOmitsFiveHourSegment() {
+        let row = MenuBarLabelModel.Row(
+            tag: "CX", fiveHour: "--", sevenDay: "64%")
+
+        let native = MenuBarTitleBuilder.make(rows: [row], style: .native)
+        let emphasis = MenuBarTitleBuilder.make(rows: [row], style: .emphasis)
+
+        #expect(native.string == "7d 64%")
+        #expect(emphasis.string == "7d\u{2009}64%")
+    }
+
+    @Test("Five-hour-only window omits the inactive weekly segment")
+    func fiveHourOnlyWindowOmitsWeeklySegment() {
+        let row = MenuBarLabelModel.Row(
+            tag: "CX", fiveHour: "17%", sevenDay: "--")
+
+        let native = MenuBarTitleBuilder.make(rows: [row], style: .native)
+        let emphasis = MenuBarTitleBuilder.make(rows: [row], style: .emphasis)
+
+        #expect(native.string == "5h 17%")
+        #expect(emphasis.string == "5h\u{2009}17%")
+    }
+
+    @Test("No available windows retains the established placeholders")
+    func unavailableWindowsRetainPlaceholders() {
+        let row = MenuBarLabelModel.Row(
+            tag: "CX", fiveHour: "--", sevenDay: "--")
+
+        let native = MenuBarTitleBuilder.make(rows: [row], style: .native)
+        let emphasis = MenuBarTitleBuilder.make(rows: [row], style: .emphasis)
+
+        #expect(native.string == "5h -- · 7d --")
+        #expect(emphasis.string == "5h\u{2009}--  ·  7d\u{2009}--")
+    }
+
+    @Test("Mixed-window providers retain stable tags and order")
+    func mixedWindowProvidersRetainTags() {
+        let rows = [
+            MenuBarLabelModel.Row(tag: "CX", fiveHour: "--", sevenDay: "64%"),
+            MenuBarLabelModel.Row(tag: "CC", fiveHour: "18%", sevenDay: "--")
+        ]
+
+        let native = MenuBarTitleBuilder.make(rows: rows, style: .native)
+        let emphasis = MenuBarTitleBuilder.make(rows: rows, style: .emphasis)
+
+        #expect(native.string == "CX 7d 64%   CC 5h 18%")
+        #expect(emphasis.string == "CX 7d\u{2009}64%   CC 5h\u{2009}18%")
+    }
+
     @Test("Multi-provider native style includes stable provider tags")
     func nativeStyleTagsMultipleProviders() {
         let title = MenuBarTitleBuilder.make(

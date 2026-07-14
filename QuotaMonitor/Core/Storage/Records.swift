@@ -119,11 +119,11 @@ struct RateLimitSampleRecord: Codable, FetchableRecord, PersistableRecord {
     var id: Int64?
     var sourceKind: String          // "jsonl", "live", or "claude_oauth"
     var sourceSessionId: String?
-    var bucket: String              // "primary" or "secondary"
+    var bucket: String              // semantic "primary" (5h) or "secondary" (7d)
     var sampleTimestamp: String
     var planType: String?
     var limitName: String?
-    var windowStart: String?
+    var windowStart: String?        // Codex writers preserve reset - duration here
     var resetsAt: String
     var usedPercent: Double
     var remainingPercent: Double

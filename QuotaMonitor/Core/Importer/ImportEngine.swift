@@ -379,6 +379,13 @@ actor ImportEngine {
                     && Column("source_session_id") == parsed.sessionId)
                 .deleteAll(db)
             for draft in parsed.rateLimitSamples {
+                let windowStart: String? = draft.windowDuration.flatMap { duration in
+                    guard duration > 0,
+                          let resetAt = ISO8601.parse(draft.resetsAt)
+                    else { return nil }
+                    return ISO8601.fractional.string(
+                        from: resetAt.addingTimeInterval(-duration))
+                }
                 let sample = RateLimitSampleRecord(
                     id: nil,
                     sourceKind: "jsonl",
@@ -387,7 +394,7 @@ actor ImportEngine {
                     sampleTimestamp: draft.sampleTimestamp,
                     planType: draft.planType,
                     limitName: draft.limitName,
-                    windowStart: nil,
+                    windowStart: windowStart,
                     resetsAt: draft.resetsAt,
                     usedPercent: draft.usedPercent,
                     remainingPercent: draft.remainingPercent)
