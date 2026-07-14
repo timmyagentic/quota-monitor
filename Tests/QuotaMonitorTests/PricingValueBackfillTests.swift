@@ -77,6 +77,7 @@ struct PricingValueBackfillTests {
         output: Int64, cacheCreation: Int64 = 0,
         cacheCreation5m: Int64 = 0,
         cacheCreation1h: Int64 = 0,
+        serviceTierPreference: String? = nil,
         seedValueUSD: Double = -1
     ) throws {
         let stamp = "2026-04-29T10:00:00Z"
@@ -100,14 +101,16 @@ struct PricingValueBackfillTests {
                  reasoning_output_tokens, total_tokens, value_usd,
                  provider, cache_creation_tokens,
                  cache_creation_5m_tokens, cache_creation_1h_tokens,
+                 codex_service_tier_preference,
                  model_inferred)
-                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 0)
                 """, arguments: [
                     sid, stamp, modelId,
                     input, cached, output,
                     input + output + cacheCreation,
                     seedValueUSD,
-                    provider, cacheCreation, cacheCreation5m, cacheCreation1h
+                    provider, cacheCreation, cacheCreation5m, cacheCreation1h,
+                    serviceTierPreference
                 ])
         }
     }
@@ -332,6 +335,48 @@ struct PricingValueBackfillTests {
     }
 
     // MARK: - codex Fast-Mode billing remaps to -fast catalog row
+
+    @Test("codex Fast-Mode: stored priority uses fast pricing when fallback is off")
+    func codexPriorityPreferenceOverridesDisabledFallback() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             serviceTierPreference: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 87.50) < 1e-6,
+                "stored priority expected 87.50 even with fallback off, got \(values[0])")
+    }
+
+    @Test("codex Fast-Mode: stored default uses base pricing when fallback is on")
+    func codexDefaultPreferenceOverridesEnabledFallback() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             serviceTierPreference: "default")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 35.00) < 1e-6,
+                "stored default expected 35.00 even with fallback on, got \(values[0])")
+    }
 
     @Test("codex Fast-Mode: gpt-5.5 event reprices against gpt-5.5-fast catalog row")
     func codexFastModeRoutesToFastVariant() throws {
