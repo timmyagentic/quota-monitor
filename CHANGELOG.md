@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 
+- Daily trend charts now keep the newest day's bar inside the plot instead of drawing it past the right axis.
 - Hovering the dashboard activity heatmap feels right again: the tooltip floats above the day square instead of covering it, and the whole square — including the small gaps between squares — now triggers it.
 
 ### Fixed
 
+- **Trend chart final-day alignment.** Daily bars now reserve the complete final calendar-day interval, so 7-day, 30-day, 90-day, and yearly views keep the newest bar and label inside the plot, including across daylight-saving changes.
 - **Activity heatmap tooltip position and hover range.** The hover tooltip kept a stale layout offset from an earlier design that placed month labels above the grid, so it rendered on top of the hovered square — where it could also intercept the cursor and flicker — and only the 13-pt square itself was hover-sensitive, leaving the 4-pt gaps as dead zones. The tooltip is now pinned just above the square and never intercepts the cursor, and each day's hover area covers the full grid pitch.
 
 ## [0.2.39] — 2026-07-10

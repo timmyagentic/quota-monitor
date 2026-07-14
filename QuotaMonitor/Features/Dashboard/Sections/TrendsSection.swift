@@ -231,13 +231,14 @@ struct TrendsSection: View {
     }
 
     private var xDomain: ClosedRange<Date> {
-        guard let first = windowedDaily.first?.date,
-              let last = windowedDaily.last?.date
-        else {
-            let now = Date()
-            return now...now
+        if let domain = TrendChartDomain.domain(
+            for: windowedDaily.map(\.date),
+            calendar: .current
+        ) {
+            return domain
         }
-        return first...last
+        let now = Date()
+        return now...now
     }
 
     private var selectedTrendSelection: TrendSelection? {
@@ -326,6 +327,32 @@ struct TrendsSection: View {
                 .notation(.compactName)
                 .precision(.fractionLength(0...1))
                 .locale(settings.tokenFormatLocale))
+    }
+}
+
+enum TrendChartDomain {
+    static func domain(
+        for orderedDates: [Date],
+        calendar: Calendar = .current
+    ) -> ClosedRange<Date>? {
+        guard let first = orderedDates.first,
+              let last = orderedDates.last
+        else {
+            return nil
+        }
+
+        let firstDay = calendar.startOfDay(for: first)
+        let lastDay = calendar.startOfDay(for: last)
+        guard firstDay <= lastDay,
+              let trailingBoundary = calendar.date(
+                  byAdding: .day,
+                  value: 1,
+                  to: lastDay)
+        else {
+            return nil
+        }
+
+        return firstDay...trailingBoundary
     }
 }
 
