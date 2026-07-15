@@ -164,7 +164,31 @@ final class PersistentUpdateAvailability {
     }
 
     func markDismissed() {
-        // "Later" is non-terminal. Task 2 adds its reminder schedule.
+        // Legacy dismissals preserve the badge without scheduling a reminder.
+    }
+
+    func markLater(now: Date = Date()) {
+        guard var snapshot else { return }
+        snapshot.nextReminderAt = UpdateReminderPolicy.nextDate(
+            after: now,
+            deliveredCount: snapshot.deliveredReminderCount)
+        self.snapshot = snapshot
+        persistSnapshot()
+    }
+
+    func consumeDueReminder(now: Date = Date()) -> String? {
+        guard var snapshot, UpdateReminderPolicy.isDue(snapshot, at: now) else {
+            return nil
+        }
+
+        snapshot.deliveredReminderCount += 1
+        snapshot.nextReminderAt = UpdateReminderPolicy.nextDate(
+            after: now,
+            deliveredCount: snapshot.deliveredReminderCount)
+        let displayVersion = snapshot.displayVersion
+        self.snapshot = snapshot
+        persistSnapshot()
+        return displayVersion
     }
 
     func markSkipped() {
