@@ -65,6 +65,12 @@ const english = Object.freeze({
   notFoundTitle: "Page not found",
   notFoundDescription: "The page you requested does not exist or may have moved.",
   backHome: "Back to Quota Monitor",
+  downloadErrorMetaTitle: "Download unavailable — QuotaMonitor",
+  downloadErrorTitle: "Download temporarily unavailable",
+  downloadErrorDescription: "We could not retrieve the latest release. Please try again shortly.",
+  downloadErrorActionsLabel: "Download actions",
+  downloadErrorRetry: "Try again",
+  downloadErrorBackHome: "Back home",
 });
 
 const simplifiedChinese = Object.freeze({
@@ -131,6 +137,12 @@ const simplifiedChinese = Object.freeze({
   notFoundTitle: "找不到页面",
   notFoundDescription: "你请求的页面不存在，或已被移动。",
   backHome: "返回 Quota Monitor 首页",
+  downloadErrorMetaTitle: "暂时无法下载 — QuotaMonitor",
+  downloadErrorTitle: "暂时无法开始下载",
+  downloadErrorDescription: "目前无法获取最新版本，请稍后重试。",
+  downloadErrorActionsLabel: "下载操作",
+  downloadErrorRetry: "重试",
+  downloadErrorBackHome: "返回首页",
 });
 
 export const translations = Object.freeze({
@@ -205,9 +217,12 @@ export function applyLanguage(language) {
   });
   localizeAttributes(locale);
 
-  const titleKey = document.body?.dataset.page === "not-found"
+  const page = document.body?.dataset.page;
+  const titleKey = page === "not-found"
     ? "notFoundMetaTitle"
-    : "metaTitle";
+    : page === "download-error"
+      ? "downloadErrorMetaTitle"
+      : "metaTitle";
   document.title = translations[locale][titleKey];
   document.querySelectorAll("[data-language]").forEach((button) => {
     button.setAttribute(

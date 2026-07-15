@@ -4,6 +4,8 @@ type ErrorPageCopy = {
   heading: string;
   description: string;
   actionsLabel: string;
+  retry: string;
+  backHome: string;
 };
 
 const COPY = {
@@ -13,6 +15,8 @@ const COPY = {
     heading: "Download temporarily unavailable",
     description: "We could not retrieve the latest release. Please try again shortly.",
     actionsLabel: "Download actions",
+    retry: "Try again",
+    backHome: "Back home",
   },
   zh: {
     lang: "zh-Hans",
@@ -20,6 +24,8 @@ const COPY = {
     heading: "暂时无法开始下载",
     description: "目前无法获取最新版本，请稍后重试。",
     actionsLabel: "下载操作",
+    retry: "重试",
+    backHome: "返回首页",
   },
 } as const satisfies Record<"en" | "zh", ErrorPageCopy>;
 
@@ -73,21 +79,22 @@ export function renderDownloadError(acceptLanguage: string | null): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <title>${escapeHTML(copy.title)}</title>
+  <title data-i18n="downloadErrorMetaTitle">${escapeHTML(copy.title)}</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body data-page="download-error">
   <main id="main-content" class="not-found" aria-labelledby="download-error-title">
     <div class="container not-found-content">
       <p class="not-found-eyebrow">Quota Monitor</p>
-      <h1 id="download-error-title">${escapeHTML(copy.heading)}</h1>
-      <p>${escapeHTML(copy.description)}</p>
-      <nav class="not-found-actions" aria-label="${escapeHTML(copy.actionsLabel)}">
-        <a href="/download" class="button button-primary">重试 / Retry</a>
-        <a href="/" class="button button-secondary">返回首页 / Back home</a>
+      <h1 id="download-error-title" data-i18n="downloadErrorTitle">${escapeHTML(copy.heading)}</h1>
+      <p data-i18n="downloadErrorDescription">${escapeHTML(copy.description)}</p>
+      <nav class="not-found-actions" aria-label="${escapeHTML(copy.actionsLabel)}" data-i18n-aria-label="downloadErrorActionsLabel">
+        <a href="/download" class="button button-primary" data-i18n="downloadErrorRetry">${escapeHTML(copy.retry)}</a>
+        <a href="/" class="button button-secondary" data-i18n="downloadErrorBackHome">${escapeHTML(copy.backHome)}</a>
       </nav>
     </div>
   </main>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>`;
 }

@@ -62,7 +62,10 @@ function assetsBinding(fetcher: Fetcher["fetch"] = vi.fn<Fetcher["fetch"]>()): F
 const successfulUpstream = (): Response =>
   new Response(new Uint8Array([0x44, 0x4d, 0x47]), {
     status: 200,
-    headers: { "Content-Length": String(RELEASE.size) },
+    headers: {
+      "Content-Length": String(RELEASE.size),
+      "Content-Type": "application/octet-stream",
+    },
   });
 
 describe("handleReleaseAPI", () => {
@@ -134,7 +137,10 @@ describe("handleDownload", () => {
     });
     const upstream = new Response(body, {
       status: 200,
-      headers: { "Content-Length": String(RELEASE.size) },
+      headers: {
+        "Content-Length": String(RELEASE.size),
+        "Content-Type": "Application/X-Apple-DiskImage; version=1",
+      },
     });
 
     const response = await handleDownload(
@@ -346,6 +352,32 @@ describe("handleDownload", () => {
     expect(fetcher).toHaveBeenCalledWith(RELEASE.upstreamUrl, MANUAL_FETCH_INIT);
   });
 
+  it("rejects and cancels a same-length HTML body instead of streaming it as a DMG", async () => {
+    const cancel = vi.fn();
+    const upstream = new Response(new ReadableStream({ cancel }), {
+      status: 200,
+      headers: {
+        "Content-Length": String(RELEASE.size),
+        "Content-Type": "text/html; charset=utf-8",
+      },
+    });
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download", {
+        headers: { "Accept-Language": "en-US" },
+      }),
+      async () => RELEASE,
+      vi.fn<typeof fetch>().mockResolvedValue(upstream),
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(await response.text()).toContain("Download temporarily unavailable");
+    expect(cancel).toHaveBeenCalledOnce();
+    expectSecurityHeaders(response);
+  });
+
   it("renders a Chinese error without fetching upstream when release lookup fails", async () => {
     const fetcher = vi.fn<typeof fetch>();
     const response = await handleDownload(
@@ -367,9 +399,30 @@ describe("handleDownload", () => {
 
 describe("renderDownloadError", () => {
   it.each([
-    ["Chinese", "zh-CN, en-US;q=0.8", 'lang="zh-Hans"', "暂时无法开始下载"],
-    ["English", "en-US, zh-CN;q=0.8", 'lang="en"', "Download temporarily unavailable"],
-  ])("renders safe %s copy with only retry and home actions", (_label, language, lang, copy) => {
+    [
+      "Chinese",
+      "zh-CN, en-US;q=0.8",
+      'lang="zh-Hans"',
+      "暂时无法开始下载",
+      "重试",
+      "返回首页",
+    ],
+    [
+      "English",
+      "en-US, zh-CN;q=0.8",
+      'lang="en"',
+      "Download temporarily unavailable",
+      "Try again",
+      "Back home",
+    ],
+  ])("renders safe %s copy with localizable retry and home actions", (
+    _label,
+    language,
+    lang,
+    copy,
+    retry,
+    backHome,
+  ) => {
     const html = renderDownloadError(language);
     const anchors = [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"[^>]*>([^<]+)<\/a>/gi)].map(
       ([, href, text]) => ({ href, text }),
@@ -380,16 +433,20 @@ describe("renderDownloadError", () => {
     expect(html).toContain(copy);
     expect(html).toContain('<meta name="robots" content="noindex">');
     expect(html).toContain('<link rel="stylesheet" href="/styles.css">');
+    expect(html).toContain('<title data-i18n="downloadErrorMetaTitle">');
     expect(html).toContain('<body data-page="download-error">');
     expect(html).toContain('<main id="main-content" class="not-found" aria-labelledby="download-error-title">');
     expect(html).toContain('<div class="container not-found-content">');
     expect(html).toContain('<p class="not-found-eyebrow">Quota Monitor</p>');
-    expect(html).toContain('<nav class="not-found-actions"');
-    expect(html).toContain('<a href="/download" class="button button-primary">重试 / Retry</a>');
-    expect(html).toContain('<a href="/" class="button button-secondary">返回首页 / Back home</a>');
+    expect(html).toContain('<h1 id="download-error-title" data-i18n="downloadErrorTitle">');
+    expect(html).toContain('<p data-i18n="downloadErrorDescription">');
+    expect(html).toContain('data-i18n-aria-label="downloadErrorActionsLabel"');
+    expect(html).toContain(`<a href="/download" class="button button-primary" data-i18n="downloadErrorRetry">${retry}</a>`);
+    expect(html).toContain(`<a href="/" class="button button-secondary" data-i18n="downloadErrorBackHome">${backHome}</a>`);
+    expect(html).toContain('<script type="module" src="/app.js"></script>');
     expect(anchors).toEqual([
-      { href: "/download", text: "重试 / Retry" },
-      { href: "/", text: "返回首页 / Back home" },
+      { href: "/download", text: retry },
+      { href: "/", text: backHome },
     ]);
     expect(html).not.toMatch(/github/i);
     expect(html).not.toMatch(/href=["'](?:https?:)?\/\//i);

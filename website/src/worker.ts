@@ -25,6 +25,19 @@ const upstreamFetchInit = {
 } as const;
 
 const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+const approvedDMGContentTypes = new Set([
+  "application/octet-stream",
+  "application/x-apple-diskimage",
+]);
+
+function hasApprovedDMGContentType(contentType: string | null): boolean {
+  if (contentType === null) {
+    return false;
+  }
+
+  const [mediaType = ""] = contentType.split(";", 1);
+  return approvedDMGContentTypes.has(mediaType.trim().toLowerCase());
+}
 
 function validatedAssetRedirect(location: string | null, canonicalUrl: string): string {
   if (location === null) {
@@ -110,12 +123,14 @@ export async function handleDownload(
       upstreamToCancel = upstream;
     }
     const contentLength = upstream.headers.get("Content-Length");
+    const contentType = upstream.headers.get("Content-Type");
 
     if (
       upstream.status !== 200 ||
       !upstream.body ||
       contentLength === null ||
-      !/^\d+$/.test(contentLength)
+      !/^\d+$/.test(contentLength) ||
+      !hasApprovedDMGContentType(contentType)
     ) {
       throw new Error("Invalid DMG response");
     }

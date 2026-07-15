@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const websiteDirectory = join(dirname(fileURLToPath(import.meta.url)), "..");
 const publicDirectory = join(websiteDirectory, "public");
@@ -494,6 +494,10 @@ describe("public product content", () => {
 });
 
 describe("language resolution", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("prefers a supported explicit choice", async () => {
     const { resolveLanguage } = await loadAppModule();
 
@@ -515,5 +519,54 @@ describe("language resolution", () => {
 
     expect(applyLanguage("unsupported")).toBe("en");
     await expect(hydrateRelease()).resolves.not.toThrow();
+  });
+
+  it.each([
+    [
+      "stored Chinese over an English browser",
+      "zh-Hans",
+      ["en-US"],
+      "zh-Hans",
+      "暂时无法开始下载",
+      "暂时无法下载 — QuotaMonitor",
+    ],
+    [
+      "stored English over a Chinese browser",
+      "en",
+      ["zh-CN"],
+      "en",
+      "Download temporarily unavailable",
+      "Download unavailable — QuotaMonitor",
+    ],
+  ])("localizes a download error using %s", async (
+    _label,
+    saved,
+    languages,
+    expectedLocale,
+    expectedHeading,
+    expectedTitle,
+  ) => {
+    const { applyLanguage, resolveLanguage } = await loadAppModule();
+    const heading = {
+      dataset: { i18n: "downloadErrorTitle" },
+      textContent: "initial server copy",
+    };
+    const documentElement = { lang: "en" };
+    const documentStub = {
+      body: { dataset: { page: "download-error" } },
+      documentElement,
+      title: "initial server title",
+      querySelectorAll(selector: string) {
+        return selector === "[data-i18n]" ? [heading] : [];
+      },
+    };
+    vi.stubGlobal("document", documentStub);
+
+    const locale = resolveLanguage(saved, languages);
+    expect(locale).toBe(expectedLocale);
+    expect(applyLanguage(locale)).toBe(expectedLocale);
+    expect(documentElement.lang).toBe(expectedLocale);
+    expect(heading.textContent).toBe(expectedHeading);
+    expect(documentStub.title).toBe(expectedTitle);
   });
 });
