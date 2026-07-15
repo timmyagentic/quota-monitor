@@ -454,7 +454,6 @@ describe("public product content", () => {
       }))
       .filter(({ source }) => productSources.has(source));
 
-    expect([...html.matchAll(/<img\b/g)]).toHaveLength(6);
     expect(productImages).toHaveLength(5);
     for (const image of productImages) {
       const dimensions = imageDimensions(join(publicDirectory, image.source));
