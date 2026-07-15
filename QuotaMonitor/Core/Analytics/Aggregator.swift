@@ -456,6 +456,18 @@ struct DaySummary: Sendable, Identifiable, Equatable {
     let sessionCount: Int
 }
 
+enum HistoryPageLoadTrigger: String, Sendable, Equatable {
+    case initial
+    case scroll
+    case retry
+}
+
+struct HistoryPage: Sendable, Equatable {
+    let days: [DaySummary]
+    let nextCursor: Date
+    let hasMore: Bool
+}
+
 struct DayDetail: Sendable, Equatable {
     let summary: DaySummary
     let modelBreakdown: [ModelShare]

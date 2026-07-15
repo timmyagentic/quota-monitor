@@ -1,6 +1,16 @@
 import Foundation
 import GRDB
 
+private struct HistoryDayRange {
+    let dayKey: String
+    let ordinal: Int
+    let start: Date
+    let end: Date
+
+    var lowerISO: String { ISO8601.fractional.string(from: start) }
+    var upperISO: String { ISO8601.fractional.string(from: end) }
+}
+
 // Day-bucketed history queries powering the History tab.
 //
 // All day grouping is local-calendar correct across DST: `fetchDays` buckets
@@ -11,6 +21,98 @@ import GRDB
 // history, mis-bucketing near-midnight events from the opposite DST half.
 
 extension Aggregator {
+
+    static func fetchHistoryPage(
+        db: Database,
+        before cursor: Date? = nil,
+        pageSize: Int = 7,
+        provider: ProviderFilter = .all,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> HistoryPage {
+        precondition(pageSize > 0)
+        let today = calendar.startOfDay(for: now)
+        let upper = cursor.map { calendar.startOfDay(for: $0) }
+            ?? calendar.date(byAdding: .day, value: 1, to: today)!
+        return try fetchHistoryWindow(
+            db: db,
+            upperBound: upper,
+            pageSize: pageSize,
+            provider: provider,
+            calendar: calendar)
+    }
+
+    private static func fetchHistoryWindow(
+        db: Database,
+        upperBound: Date,
+        pageSize: Int,
+        provider: ProviderFilter,
+        calendar: Calendar
+    ) throws -> HistoryPage {
+        let ranges = historyDayRanges(
+            endingAt: upperBound, pageSize: pageSize, calendar: calendar)
+        let branch = """
+            SELECT ? AS day_key, ? AS ordinal,
+                   SUM(value_usd) AS value_usd,
+                   SUM(total_tokens) AS tokens,
+                   COUNT(*) AS events,
+                   COUNT(DISTINCT session_id) AS sessions
+            FROM usage_events
+            WHERE timestamp >= ? AND timestamp < ?
+            \(provider.clause(table: "usage_events"))
+            """
+        let sql = Array(repeating: branch, count: ranges.count)
+            .joined(separator: "\nUNION ALL\n")
+        var arguments: [(any DatabaseValueConvertible)?] = []
+        for range in ranges {
+            arguments.append(range.dayKey)
+            arguments.append(range.ordinal)
+            arguments.append(range.lowerISO)
+            arguments.append(range.upperISO)
+        }
+        let rows = try Row.fetchAll(
+            db, sql: sql, arguments: StatementArguments(arguments))
+        let byOrdinal = Dictionary(uniqueKeysWithValues: ranges.map { ($0.ordinal, $0) })
+        let days = rows.compactMap { row -> DaySummary? in
+            let events: Int = row["events"] ?? 0
+            let ordinal: Int = row["ordinal"] ?? -1
+            guard events > 0, let range = byOrdinal[ordinal] else { return nil }
+            return DaySummary(
+                day: range.dayKey,
+                date: range.start,
+                valueUSD: row["value_usd"] ?? 0,
+                tokens: row["tokens"] ?? 0,
+                eventCount: events,
+                sessionCount: row["sessions"] ?? 0)
+        }.sorted { $0.date > $1.date }
+        let lower = ranges.last!.start
+        let older = try String.fetchOne(db, sql: """
+            SELECT timestamp
+            FROM usage_events
+            WHERE timestamp < ?
+            \(provider.clause(table: "usage_events"))
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """, arguments: [ISO8601.fractional.string(from: lower)])
+        return HistoryPage(days: days, nextCursor: lower, hasMore: older != nil)
+    }
+
+    private static func historyDayRanges(
+        endingAt upperBound: Date,
+        pageSize: Int,
+        calendar: Calendar
+    ) -> [HistoryDayRange] {
+        let formatter = dayKeyFormatter(calendar)
+        return (0..<pageSize).map { ordinal in
+            let end = calendar.date(byAdding: .day, value: -ordinal, to: upperBound)!
+            let start = calendar.date(byAdding: .day, value: -1, to: end)!
+            return HistoryDayRange(
+                dayKey: formatter.string(from: start),
+                ordinal: ordinal,
+                start: start,
+                end: end)
+        }
+    }
 
     /// Returns days that had at least one usage_event, newest first.
     /// Buckets by local-calendar day client-side (mirrors `fetchActivity`) so
