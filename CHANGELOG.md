@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Quota Monitor now has a bilingual website where you can explore the app and download the latest Mac installer in one click.
+
+### Added
+
+- **Quota Monitor product website.** The new English and Simplified Chinese site presents current features on desktop and mobile, and its download button serves the latest notarized DMG directly from the site.
+
 ## [0.2.40] — 2026-07-15
 
 #### Summary
