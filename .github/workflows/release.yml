@@ -5,9 +5,9 @@
 #
 # Each brand job runs the full pipeline (tools/release.sh: tests →
 # release build → Developer ID app + DMG notarization → sha256 →
-# mount-verify), creates a GitHub Release with the DMG + sha256 attached,
-# signs the EXACT published DMG with the Sparkle Ed25519 key, and lands the
-# signed <item> in that brand's feed.
+# mount-verify), signs that final DMG with the Sparkle Ed25519 key, verifies
+# signing did not change its bytes, uploads that exact path to a GitHub
+# Release, and lands the signed <item> in that brand's feed.
 #
 # Why sign in CI (not locally): the signature must be computed over the
 # byte-for-byte DMG users download. The old local-sign flow signed a
@@ -39,7 +39,7 @@
 #   SPARKLE_PRIVATE_KEY — base64 Ed25519 seed (`generate_keys -x`). Signs
 #     both brands' DMGs; its public half is SUPublicEDKey in Info.plist,
 #     so the same key is valid for CodexMonitor too.
-#   CODEX_MONITOR_PAT — token with contents:write on systemoutprintlnnnn/
+#   CODEX_MONITOR_PAT — token with contents:write on timmyagentic/
 #     codex-monitor. Lets this workflow publish the CodexMonitor release
 #     and push its appcast entry into that repo.
 
@@ -66,6 +66,34 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 15
     steps:
+      - name: Validate required release secrets
+        env:
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          CODEX_MONITOR_PAT: ${{ secrets.CODEX_MONITOR_PAT }}
+        run: |
+          required=(
+            DEVELOPER_ID_CERTIFICATE_BASE64
+            DEVELOPER_ID_CERTIFICATE_PASSWORD
+            APPLE_ID
+            APPLE_TEAM_ID
+            APPLE_APP_SPECIFIC_PASSWORD
+            SPARKLE_PRIVATE_KEY
+            CODEX_MONITOR_PAT
+          )
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::required release secret ${name} is missing"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
       - uses: actions/checkout@v6.0.2
         with:
           # CHANGELOG.md is committed so depth=1 would suffice, but full
@@ -191,63 +219,61 @@ jobs:
           cat "${NOTES_FILE}"
           echo "-----------------------"
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
-          BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
-            | sed 's/.*= "//;s/".*//')"
-          if [[ -z "${BRAND_CODE}" ]]; then
-            echo "error: could not extract branding" >&2; exit 1
-          fi
-          gh release create "${GITHUB_REF_NAME}" \
-            "dist/${BRAND_CODE}-${VERSION}.dmg" \
-            "dist/${BRAND_CODE}-${VERSION}.dmg.sha256" \
-            --title "${BRAND_CODE} ${VERSION}" \
-            --notes-file "${{ steps.notes.outputs.path }}"
-
-      - name: Sign published DMG + build appcast entry
-        # Sign the EXACT DMG just uploaded to the release so the appcast
-        # signature matches the bytes Sparkle downloads.
-        #
-        # Fail-safe: if SPARKLE_PRIVATE_KEY isn't configured we warn and
-        # skip — a missing secret must never block the release that
-        # already succeeded above.
+      - name: Sign release DMG + build appcast entry
+        # Validate and sign the final notarized DMG before publication. The
+        # signature command must not change the bytes described by the sidecar.
         id: appcast
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
-          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
-            echo "::warning::SPARKLE_PRIVATE_KEY not set — skipping appcast signing. Add the repo secret to auto-publish updates (see docs/release.md)."
-            echo "skip=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-          # Guard: the secret must be the key whose public half is embedded
-          # as SUPublicEDKey, else Sparkle rejects the update as improperly
-          # signed. Fail here instead of shipping it.
-          ./tools/verify-signing-key.sh
           VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
-          BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
-            | sed 's/.*= "//;s/".*//')"
-          # release-sparkle.sh signs dist/<BRAND_CODE>-<VERSION>.dmg with
-          # SPARKLE_PRIVATE_KEY and writes dist/appcast-item-<VERSION>.xml.
-          # Default RELEASE_REPO is this repo, so the enclosure URL points
-          # at the Quota Monitor release.
-          ./tools/release-sparkle.sh "dist/${BRAND_CODE}-${VERSION}.dmg"
+          DMG="dist/QuotaMonitor-${VERSION}.dmg"
+          SHA="${DMG}.sha256"
+          if [[ ! -f "${DMG}" ]]; then
+            echo "::error::release DMG ${DMG} is missing"
+            exit 1
+          fi
+          if [[ ! -f "${SHA}" ]]; then
+            echo "::error::release checksum ${SHA} is missing"
+            exit 1
+          fi
+          EXPECTED_SHA="$(awk '{print $1}' "${SHA}")"
+          PRE_SIGN_SHA="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
+          if [[ -z "${EXPECTED_SHA}" || "${EXPECTED_SHA}" != "${PRE_SIGN_SHA}" ]]; then
+            echo "::error::${SHA} does not match ${DMG} before Sparkle signing"
+            exit 1
+          fi
+          ./tools/verify-signing-key.sh
+          ./tools/release-sparkle.sh "${DMG}"
+          POST_SIGN_SHA="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
+          if [[ "${PRE_SIGN_SHA}" != "${POST_SIGN_SHA}" ]]; then
+            echo "::error::Sparkle signing changed ${DMG}"
+            exit 1
+          fi
           {
             echo "### Appcast entry for ${VERSION}"
             echo '```xml'
             cat "dist/appcast-item-${VERSION}.xml"
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
-          echo "skip=false" >> "${GITHUB_OUTPUT}"
+          echo "dmg=${DMG}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.appcast.outputs.dmg }}" \
+            "${{ steps.appcast.outputs.sha }}" \
+            --title "QuotaMonitor ${VERSION}" \
+            --notes-file "${{ steps.notes.outputs.path }}"
 
       - name: Open appcast PR
         # The feed is served from main (raw.githubusercontent.com/.../main
         # /appcast.xml) and main is branch-protected, so CI can't push the
         # entry directly — it opens a PR for the maintainer to merge.
-        if: ${{ steps.appcast.outputs.skip == 'false' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -335,15 +361,14 @@ jobs:
             QuotaMonitor/Core/Branding.swift
           sed -i '' 's/appCodeName = ".*"/appCodeName = "CodexMonitor"/' \
             QuotaMonitor/Core/Branding.swift
-          # Repoint the Sparkle feed at the codex-monitor appcast. This build
-          # publishes its DMG to systemoutprintlnnnn/codex-monitor, so the
-          # shipped app must poll THAT repo's appcast.xml. Left unchanged, a
-          # CodexMonitor install would check Quota Monitor's feed and either
-          # miss CodexMonitor updates or be offered the wrong branded DMG.
+          # Repoint the built-in feed to the legacy raw URL existing CodexMonitor
+          # installs already use. Release/API operations below use the canonical
+          # timmyagentic/codex-monitor repository; this installed-client URL stays
+          # stable independently of the repository's current owner.
           # (build.sh copies Resources/Info.plist verbatim apart from version
           # and brand-name injection, so editing it here flows into the build.)
           sed -i '' \
-            's#timmyagentic/quota-monitor/main/appcast.xml#systemoutprintlnnnn/codex-monitor/main/appcast.xml#' \
+            's#https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml#https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main/appcast.xml#' \
             Resources/Info.plist
           echo "==> Branding after switch:"
           grep -E 'app(DisplayName|CodeName)' QuotaMonitor/Core/Branding.swift
@@ -378,55 +403,59 @@ jobs:
           fi
           echo "path=${NOTES_FILE}" >> "${GITHUB_OUTPUT}"
 
-      - name: Create GitHub Release on codex-monitor repo
+      - name: Sign release DMG + build appcast entry
+        id: appcast
         env:
-          GH_TOKEN: ${{ secrets.CODEX_MONITOR_PAT }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
           DMG="dist/CodexMonitor-${VERSION}.dmg"
           SHA="${DMG}.sha256"
           if [[ ! -f "${DMG}" ]]; then
-            echo "error: ${DMG} not found" >&2; exit 1
+            echo "::error::release DMG ${DMG} is missing"
+            exit 1
           fi
-          gh release create "${GITHUB_REF_NAME}" \
-            "${DMG}" "${SHA}" \
-            --repo systemoutprintlnnnn/codex-monitor \
-            --title "CodexMonitor ${VERSION}" \
-            --notes-file "${{ steps.notes.outputs.path }}"
-
-      - name: Sign published DMG + build appcast entry
-        id: appcast
-        env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
-            echo "::warning::SPARKLE_PRIVATE_KEY not set — skipping CodexMonitor appcast signing."
-            echo "skip=true" >> "${GITHUB_OUTPUT}"
-            exit 0
+          if [[ ! -f "${SHA}" ]]; then
+            echo "::error::release checksum ${SHA} is missing"
+            exit 1
+          fi
+          EXPECTED_SHA="$(awk '{print $1}' "${SHA}")"
+          PRE_SIGN_SHA="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
+          if [[ -z "${EXPECTED_SHA}" || "${EXPECTED_SHA}" != "${PRE_SIGN_SHA}" ]]; then
+            echo "::error::${SHA} does not match ${DMG} before Sparkle signing"
+            exit 1
           fi
           # SUPublicEDKey is unchanged by the brand switch, so the same key
           # guard applies to the CodexMonitor build.
           ./tools/verify-signing-key.sh
-          VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
-          # Sign the exact CodexMonitor DMG just published, and point the
-          # enclosure URL at the codex-monitor release (RELEASE_REPO). The
-          # <item> title follows appCodeName (now "CodexMonitor").
-          #
-          # Point the release-notes links (NOTES_BASE_URL) at codex-monitor too,
-          # so the CodexMonitor feed is self-contained: the notes files are
-          # committed to codex-monitor below, rather than depending on the
-          # human-gated Quota Monitor appcast PR landing them on
-          # quota-monitor/main first (which would 404 the notes until merged).
-          RELEASE_REPO="systemoutprintlnnnn/codex-monitor" \
-          NOTES_BASE_URL="https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main" \
-            ./tools/release-sparkle.sh "dist/CodexMonitor-${VERSION}.dmg"
+          RELEASE_REPO="timmyagentic/codex-monitor" \
+          NOTES_BASE_URL="https://raw.githubusercontent.com/timmyagentic/codex-monitor/main" \
+            ./tools/release-sparkle.sh "${DMG}"
+          POST_SIGN_SHA="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
+          if [[ "${PRE_SIGN_SHA}" != "${POST_SIGN_SHA}" ]]; then
+            echo "::error::Sparkle signing changed ${DMG}"
+            exit 1
+          fi
           {
             echo "### CodexMonitor appcast entry for ${VERSION}"
             echo '```xml'
             cat "dist/appcast-item-${VERSION}.xml"
             echo '```'
           } >> "${GITHUB_STEP_SUMMARY}"
-          echo "skip=false" >> "${GITHUB_OUTPUT}"
+          echo "dmg=${DMG}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create GitHub Release on codex-monitor repo
+        env:
+          GH_TOKEN: ${{ secrets.CODEX_MONITOR_PAT }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.appcast.outputs.dmg }}" \
+            "${{ steps.appcast.outputs.sha }}" \
+            --repo timmyagentic/codex-monitor \
+            --title "CodexMonitor ${VERSION}" \
+            --notes-file "${{ steps.notes.outputs.path }}"
 
       - name: Publish appcast entry to codex-monitor
         # codex-monitor's main is unprotected, so the signed entry is
@@ -435,7 +464,6 @@ jobs:
         # construction. appcast-insert.py is idempotent and synthesizes a
         # minimal feed when codex-monitor has no appcast.xml yet, so re-runs
         # and first releases (even into a bare repo) are both safe.
-        if: ${{ steps.appcast.outputs.skip == 'false' }}
         env:
           GH_TOKEN: ${{ secrets.CODEX_MONITOR_PAT }}
         run: |
@@ -443,7 +471,7 @@ jobs:
           ITEM_FILE="$(pwd)/dist/appcast-item-${VERSION}.xml"   # gitignored; absolute so it survives the cd
           WORK="$(mktemp -d)"
           git clone --depth 1 \
-            "https://x-access-token:${GH_TOKEN}@github.com/systemoutprintlnnnn/codex-monitor.git" \
+            "https://x-access-token:${GH_TOKEN}@github.com/timmyagentic/codex-monitor.git" \
             "${WORK}"
           python3 tools/appcast-insert.py "${ITEM_FILE}" "${WORK}/appcast.xml"
           # Ship the linked release notes into codex-monitor too, so its feed is

@@ -15,6 +15,35 @@ class DeveloperIDReleaseTests(unittest.TestCase):
     def read_text(self, relative_path: str) -> str:
         return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
 
+    def workflow_job(
+        self,
+        workflow: str,
+        name: str,
+        next_name=None,
+    ) -> str:
+        start_marker = f"  {name}:"
+        start = workflow.index(start_marker)
+        if next_name is None:
+            return workflow[start:]
+        end = workflow.index(f"  {next_name}:", start + len(start_marker))
+        return workflow[start:end]
+
+    def workflow_step(
+        self,
+        job: str,
+        name: str,
+        next_name=None,
+    ) -> str:
+        start_marker = f"      - name: {name}"
+        start = job.index(start_marker)
+        if next_name is None:
+            return job[start:]
+        end = job.index(
+            f"      - name: {next_name}",
+            start + len(start_marker),
+        )
+        return job[start:end]
+
     def test_quota_monitor_distribution_urls_use_current_repository_owner(self):
         legacy_repo = "systemoutprintlnnnn" + "/quota-monitor"
         current_repo = "timmyagentic/quota-monitor"
@@ -88,6 +117,196 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("SPARKLE_PRIVATE_KEY", workflow)
         self.assertIn("./tools/verify-signing-key.sh", workflow)
         self.assertIn("./tools/release-sparkle.sh", workflow)
+
+    def test_shared_gate_checks_every_required_release_secret_before_checkout(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        shared_job = self.workflow_job(
+            workflow,
+            "test",
+            "release-quota-monitor",
+        )
+
+        self.assertIn(
+            "    steps:\n      - name: Validate required release secrets\n",
+            shared_job,
+        )
+        preflight_end = shared_job.index("      - uses: actions/checkout")
+        preflight = shared_job[:preflight_end]
+        required = (
+            "DEVELOPER_ID_CERTIFICATE_BASE64",
+            "DEVELOPER_ID_CERTIFICATE_PASSWORD",
+            "APPLE_ID",
+            "APPLE_TEAM_ID",
+            "APPLE_APP_SPECIFIC_PASSWORD",
+            "SPARKLE_PRIVATE_KEY",
+            "CODEX_MONITOR_PAT",
+        )
+        required_block_start = preflight.index("required=(")
+        required_block_end = preflight.index(")", required_block_start)
+        required_block = preflight[required_block_start:required_block_end]
+        required_entries = tuple(
+            line.strip()
+            for line in required_block.splitlines()[1:]
+            if line.strip()
+        )
+
+        for secret in required:
+            with self.subTest(secret=secret):
+                self.assertIn(
+                    f"          {secret}: ${{{{ secrets.{secret} }}}}",
+                    preflight,
+                )
+                self.assertIn(secret, required_block)
+
+        self.assertEqual(required_entries, required)
+        self.assertNotIn("DEVELOPER_ID_APPLICATION", preflight)
+        self.assertIn('for name in "${required[@]}"; do', preflight)
+        self.assertIn(
+            'echo "::error::required release secret ${name} is missing"',
+            preflight,
+        )
+        self.assertIn("missing=0", preflight)
+        self.assertIn("missing=1", preflight)
+        self.assertLess(preflight.index("done"), preflight.index('exit "${missing}"'))
+
+        quota_job = self.workflow_job(
+            workflow,
+            "release-quota-monitor",
+            "release-codex-monitor",
+        )
+        codex_job = self.workflow_job(workflow, "release-codex-monitor")
+        self.assertIn("    needs: test", quota_job)
+        self.assertIn("    needs: test", codex_job)
+
+    def test_release_workflow_never_skips_required_appcast_publication(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+
+        self.assertNotIn("skip=true", workflow)
+        self.assertNotIn("skipping appcast signing", workflow.lower())
+        self.assertNotIn("steps.appcast.outputs.skip", workflow)
+
+    def test_each_brand_signs_the_final_dmg_before_uploading_the_same_paths(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        jobs = (
+            (
+                "quota-monitor",
+                self.workflow_job(
+                    workflow,
+                    "release-quota-monitor",
+                    "release-codex-monitor",
+                ),
+                "QuotaMonitor",
+                "Create GitHub Release",
+                "Open appcast PR",
+            ),
+            (
+                "codex-monitor",
+                self.workflow_job(workflow, "release-codex-monitor"),
+                "CodexMonitor",
+                "Create GitHub Release on codex-monitor repo",
+                "Publish appcast entry to codex-monitor",
+            ),
+        )
+
+        for brand, job, app_name, create_name, publish_name in jobs:
+            with self.subTest(brand=brand):
+                for step_name in (
+                    "Run release pipeline",
+                    "Extract CHANGELOG section for this release",
+                    "Sign release DMG + build appcast entry",
+                    create_name,
+                    publish_name,
+                ):
+                    self.assertIn(f"      - name: {step_name}", job)
+                pipeline = job.index("      - name: Run release pipeline")
+                notes = job.index(
+                    "      - name: Extract CHANGELOG section for this release"
+                )
+                sign = job.index(
+                    "      - name: Sign release DMG + build appcast entry"
+                )
+                create = job.index(f"      - name: {create_name}")
+                publish = job.index(f"      - name: {publish_name}")
+                self.assertLess(pipeline, notes)
+                self.assertLess(notes, sign)
+                self.assertLess(sign, create)
+                self.assertLess(create, publish)
+
+                sign_step = self.workflow_step(
+                    job,
+                    "Sign release DMG + build appcast entry",
+                    create_name,
+                )
+                release_step = self.workflow_step(job, create_name, publish_name)
+                self.assertIn("        id: appcast", sign_step)
+                self.assertIn(
+                    f'DMG="dist/{app_name}-${{VERSION}}.dmg"',
+                    sign_step,
+                )
+                self.assertIn('SHA="${DMG}.sha256"', sign_step)
+                self.assertIn('! -f "${DMG}"', sign_step)
+                self.assertIn('! -f "${SHA}"', sign_step)
+                self.assertIn('EXPECTED_SHA="$(awk', sign_step)
+                self.assertIn('PRE_SIGN_SHA="$(shasum -a 256 "${DMG}"', sign_step)
+                self.assertIn('"${EXPECTED_SHA}" != "${PRE_SIGN_SHA}"', sign_step)
+                self.assertIn("./tools/verify-signing-key.sh", sign_step)
+                self.assertIn('./tools/release-sparkle.sh "${DMG}"', sign_step)
+                self.assertIn('POST_SIGN_SHA="$(shasum -a 256 "${DMG}"', sign_step)
+                self.assertIn('"${PRE_SIGN_SHA}" != "${POST_SIGN_SHA}"', sign_step)
+                self.assertIn(
+                    'echo "dmg=${DMG}" >> "${GITHUB_OUTPUT}"',
+                    sign_step,
+                )
+                self.assertIn(
+                    'echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"',
+                    sign_step,
+                )
+                self.assertIn('"${{ steps.appcast.outputs.dmg }}"', release_step)
+                self.assertIn('"${{ steps.appcast.outputs.sha }}"', release_step)
+
+    def test_codex_publication_is_canonical_but_bundled_feed_stays_legacy(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        codex_job = self.workflow_job(workflow, "release-codex-monitor")
+        sparkle = self.read_text("tools/release-sparkle.sh")
+        legacy_feed = (
+            "https://raw.githubusercontent.com/systemoutprintlnnnn/"
+            "codex-monitor/main/appcast.xml"
+        )
+
+        self.assertEqual(codex_job.count(legacy_feed), 1)
+        self.assertIn("--repo timmyagentic/codex-monitor", codex_job)
+        self.assertIn('RELEASE_REPO="timmyagentic/codex-monitor"', codex_job)
+        self.assertIn(
+            'NOTES_BASE_URL="https://raw.githubusercontent.com/'
+            'timmyagentic/codex-monitor/main"',
+            codex_job,
+        )
+        self.assertIn(
+            "@github.com/timmyagentic/codex-monitor.git",
+            codex_job,
+        )
+        self.assertNotIn("--repo systemoutprintlnnnn/codex-monitor", codex_job)
+        self.assertNotIn(
+            'RELEASE_REPO="systemoutprintlnnnn/codex-monitor"',
+            codex_job,
+        )
+        self.assertNotIn(
+            'NOTES_BASE_URL="https://raw.githubusercontent.com/'
+            'systemoutprintlnnnn/codex-monitor/main"',
+            codex_job,
+        )
+        self.assertNotIn(
+            "@github.com/systemoutprintlnnnn/codex-monitor.git",
+            codex_job,
+        )
+        self.assertIn(
+            "RELEASE_REPO=timmyagentic/codex-monitor",
+            sparkle,
+        )
+        self.assertNotIn(
+            "RELEASE_REPO=systemoutprintlnnnn/codex-monitor",
+            sparkle,
+        )
 
     def test_developer_id_helpers_are_present_and_do_not_hide_notary_status(self):
         common = self.read_text("tools/developer-id-common.sh")
