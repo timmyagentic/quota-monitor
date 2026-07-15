@@ -18,6 +18,10 @@ struct HistoryView: View {
     @State private var detailRequestID: UUID?
 
     var body: some View {
+        let pageRequest = pagination.inFlightRequest
+        let selectedDay = selection
+        let selectedCalendar = historyCalendar
+
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
@@ -36,13 +40,14 @@ struct HistoryView: View {
             loadingDetail = false
             pagination.reset()
         }
-        .task(id: pagination.inFlightRequest?.id) {
-            guard let request = pagination.inFlightRequest else { return }
+        .task(id: pageRequest?.id) {
+            guard let request = pageRequest else { return }
             do {
+                try Task.checkCancellation()
                 let page = try await env.fetchHistoryPage(
                     before: request.cursor,
                     now: Date(),
-                    calendar: historyCalendar,
+                    calendar: selectedCalendar,
                     trigger: request.trigger)
                 try Task.checkCancellation()
                 guard pagination.complete(page, for: request) else { return }
@@ -60,8 +65,8 @@ struct HistoryView: View {
                 pagination.fail(String(describing: error), for: request)
             }
         }
-        .task(id: selection) {
-            await loadDetail(for: selection, calendar: historyCalendar)
+        .task(id: selectedDay) {
+            await loadDetail(for: selectedDay, calendar: selectedCalendar)
         }
         .onReceive(NotificationCenter.default.publisher(
             for: Notification.Name.NSSystemTimeZoneDidChange)) { _ in
@@ -192,6 +197,7 @@ struct HistoryView: View {
         for id: DaySummary.ID?,
         calendar: Calendar
     ) async {
+        guard !Task.isCancelled else { return }
         guard let id else {
             detailRequestID = nil
             loadingDetail = false
