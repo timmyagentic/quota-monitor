@@ -32,6 +32,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var pulseTask: Task<Void, Never>?
     private var pulseGeneration: UInt = 0
     private var emphasizedUpdateVersion: String?
+    private var isStopped = false
 
     var updateMarkerIsEmphasized: Bool {
         guard let emphasizedUpdateVersion else { return false }
@@ -87,13 +88,25 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         renderAndObserve()
     }
 
-    isolated deinit {
+    /// Explicit AppKit teardown keeps this type compatible with Swift 6.1,
+    /// where actor-isolated deinitializers still require an experimental flag.
+    /// The app delegate calls this on the main actor before releasing its owner.
+    func stop() {
+        guard !isStopped else { return }
+        isStopped = true
+        pulseGeneration &+= 1
         pulseTask?.cancel()
-        NSStatusBar.system.removeStatusItem(statusItem)
+        pulseTask = nil
+        emphasizedUpdateVersion = nil
+        onScreenChange = nil
         NotificationCenter.default.removeObserver(self)
+        statusItem.button?.target = nil
+        statusItem.button?.action = nil
+        NSStatusBar.system.removeStatusItem(statusItem)
     }
 
     func pulseUpdateMarker(version: String) {
+        guard !isStopped else { return }
         guard updater.updateAvailability.version == version else { return }
         pulseGeneration &+= 1
         let generation = pulseGeneration
@@ -126,6 +139,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// the `@Observable` properties inside the tracking closure, so any
     /// change to them fires `onChange`, where we re-render and re-arm.
     private func renderAndObserve() {
+        guard !isStopped else { return }
         withObservationTracking {
             renderLabel()
         } onChange: { [weak self] in
@@ -134,6 +148,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private func renderLabel() {
+        guard !isStopped else { return }
         guard let button = statusItem.button else { return }
         _ = localization.tickForceRedraw
         let updateVersion = StatusItemUpdateMarker.normalizedVersion(

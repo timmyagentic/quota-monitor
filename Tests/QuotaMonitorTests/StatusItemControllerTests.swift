@@ -26,6 +26,8 @@ struct StatusItemControllerTests {
                 settings: SettingsStore(defaults: defaults, hasExistingAppData: { false }),
                 updater: updater)
             weakController = controller
+            controller.stop()
+            controller.stop()
         }
 
         #expect(weakController == nil)
@@ -54,6 +56,7 @@ struct StatusItemControllerTests {
             settings: SettingsStore(defaults: defaults, hasExistingAppData: { false }),
             updater: updater,
             pulseSleep: { duration in try await sleeper.sleep(duration) })
+        defer { controller.stop() }
 
         controller.pulseUpdateMarker(version: "0.2.42")
         await Task.yield()
@@ -121,12 +124,32 @@ struct StatusItemControllerTests {
             #expect(!body.contains(symbol), "Pulse must not call \(symbol)")
         }
         #expect(body.contains("renderLabel()"))
+    }
+
+    @Test("Teardown avoids experimental isolated deinit syntax")
+    func teardownIsSwift61Compatible() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
+        #expect(!source.contains("\n    isolated deinit"))
 
         let teardown = try Self.sourceSlice(
             source,
-            from: "deinit {",
+            from: "func stop()",
             to: "func pulseUpdateMarker")
+        #expect(teardown.contains("guard !isStopped else { return }"))
+        #expect(teardown.contains("pulseTask?.cancel()"))
         #expect(teardown.contains("NSStatusBar.system.removeStatusItem(statusItem)"))
+
+        let observation = try Self.sourceSlice(
+            source,
+            from: "private func renderAndObserve()",
+            to: "private func renderLabel()")
+        #expect(observation.contains("guard !isStopped else { return }"))
+
+        let render = try Self.sourceSlice(
+            source,
+            from: "private func renderLabel()",
+            to: "private static let gaugeImage")
+        #expect(render.contains("guard !isStopped else { return }"))
     }
 
     @Test("Popover window can appear above full-screen Spaces")

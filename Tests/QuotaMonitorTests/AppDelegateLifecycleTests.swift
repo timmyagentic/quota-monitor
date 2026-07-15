@@ -38,12 +38,16 @@ struct AppDelegateLifecycleTests {
     @Test("Application termination stops reminder scheduling")
     func terminationStopsUpdateReminders() throws {
         let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
-        let termination = try Self.sourceSlice(
+        let termination = String(try Self.sourceSlice(
             source,
             from: "func applicationWillTerminate",
-            to: "func applicationShouldTerminateAfterLastWindowClosed")
+            to: "func applicationShouldTerminateAfterLastWindowClosed"))
 
-        #expect(termination.contains("updater?.stopUpdateReminders()"))
+        let reminders = try Self.offset(of: "updater?.stopUpdateReminders()", in: termination)
+        let statusItem = try Self.offset(of: "statusItemController?.stop()", in: termination)
+        let release = try Self.offset(of: "statusItemController = nil", in: termination)
+        #expect(reminders < statusItem)
+        #expect(statusItem < release)
     }
 
     private static func offset(of needle: String, in source: String) throws -> String.Index {
