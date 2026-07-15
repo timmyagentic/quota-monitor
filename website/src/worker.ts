@@ -1,6 +1,10 @@
 import { renderDownloadError } from "./error-page";
 import { handleDailyActive } from "./daily-active";
 import { fetchLatestRelease, type ReleaseInfo } from "./release";
+import {
+  aggregateClosedDays,
+  handleVersionDistribution,
+} from "./version-distribution";
 
 type ReleaseLoader = () => Promise<ReleaseInfo>;
 
@@ -16,6 +20,14 @@ const securityHeaders = {
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
 } as const;
+
+const dashboardSecurityHeaders = {
+  ...securityHeaders,
+  "Content-Security-Policy": securityHeaders["Content-Security-Policy"].replace(
+    "form-action 'none'",
+    "form-action 'self'",
+  ),
+};
 
 const upstreamFetchInit = {
   redirect: "manual",
@@ -70,6 +82,21 @@ function methodNotAllowed(allow: string): Response {
       "Content-Type": "text/plain; charset=utf-8",
     },
   });
+}
+
+function optionalStringBinding(env: Env, name: string): string | undefined {
+  const value: unknown = Reflect.get(env, name);
+  return typeof value === "string" ? value : undefined;
+}
+
+function withSecurityHeaders(
+  response: Response,
+  headers: Readonly<Record<string, string>> = securityHeaders,
+): Response {
+  for (const [name, value] of Object.entries(headers)) {
+    response.headers.set(name, value);
+  }
+  return response;
 }
 
 export async function handleReleaseAPI(
@@ -183,12 +210,19 @@ export default {
       const response = await handleDailyActive(
         request,
         env.VERSION_STATS_DB,
+        env.DAILY_ACTIVE_GLOBAL_RATE_LIMITER,
         env.DAILY_ACTIVE_RATE_LIMITER,
       );
-      for (const [name, value] of Object.entries(securityHeaders)) {
-        response.headers.set(name, value);
-      }
-      return response;
+      return withSecurityHeaders(response);
+    }
+    if (url.pathname === "/maintainer/versions") {
+      const response = await handleVersionDistribution(
+        request,
+        env.VERSION_STATS_DB,
+        optionalStringBinding(env, "VERSION_STATS_ADMIN_TOKEN"),
+        env.ADMIN_VERSION_STATS_RATE_LIMITER,
+      );
+      return withSecurityHeaders(response, dashboardSecurityHeaders);
     }
     if (url.pathname === "/api/release") {
       if (request.method !== "GET") {
@@ -208,9 +242,10 @@ export default {
 
     const asset = await env.ASSETS.fetch(request);
     const response = new Response(asset.body, asset);
-    for (const [name, value] of Object.entries(securityHeaders)) {
-      response.headers.set(name, value);
-    }
-    return response;
+    return withSecurityHeaders(response);
+  },
+
+  async scheduled(controller, env, _ctx): Promise<void> {
+    await aggregateClosedDays(env.VERSION_STATS_DB, controller.scheduledTime);
   },
 } satisfies ExportedHandler<Env>;

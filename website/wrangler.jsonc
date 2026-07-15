@@ -9,7 +9,12 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/download", "/api/release", "/api/v1/daily-active"]
+    "run_worker_first": [
+      "/download",
+      "/api/release",
+      "/api/v1/daily-active",
+      "/maintainer/versions"
+    ]
   },
   "d1_databases": [
     {
@@ -26,8 +31,27 @@
         "limit": 120,
         "period": 60
       }
+    },
+    {
+      "name": "DAILY_ACTIVE_GLOBAL_RATE_LIMITER",
+      "namespace_id": "2026071602",
+      "simple": {
+        "limit": 5000,
+        "period": 60
+      }
+    },
+    {
+      "name": "ADMIN_VERSION_STATS_RATE_LIMITER",
+      "namespace_id": "2026071603",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
     }
   ],
+  "triggers": {
+    "crons": ["15 * * * *"]
+  },
   "routes": [
     {
       "pattern": "quota-monitor.timmyagentic.com",

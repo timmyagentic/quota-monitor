@@ -150,6 +150,7 @@ describe("public product content", () => {
       "/download",
       "/api/release",
       "/api/v1/daily-active",
+      "/maintainer/versions",
     ]);
     expect(config.d1_databases).toEqual([
       {
@@ -164,7 +165,18 @@ describe("public product content", () => {
         namespace_id: "2026071601",
         simple: { limit: 120, period: 60 },
       },
+      {
+        name: "DAILY_ACTIVE_GLOBAL_RATE_LIMITER",
+        namespace_id: "2026071602",
+        simple: { limit: 5000, period: 60 },
+      },
+      {
+        name: "ADMIN_VERSION_STATS_RATE_LIMITER",
+        namespace_id: "2026071603",
+        simple: { limit: 30, period: 60 },
+      },
     ]);
+    expect(config.triggers).toEqual({ crons: ["15 * * * *"] });
     expect(config.routes).toContainEqual({
       pattern: "quota-monitor.timmyagentic.com",
       custom_domain: true,
@@ -195,6 +207,17 @@ describe("public product content", () => {
     expect(manifest.scripts.check).toBe(
       "npm run typecheck && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler check startup --outfile .wrangler/worker-startup.cpuprofile",
     );
+  });
+
+  it("awaits the scheduled aggregation without destructuring its execution context", () => {
+    const worker = readFileSync(join(websiteDirectory, "src", "worker.ts"), "utf8");
+
+    expect(worker).toMatch(/async scheduled\s*\(\s*controller,\s*env,\s*_?ctx\s*\)/);
+    expect(worker).toMatch(
+      /await aggregateClosedDays\s*\(\s*env\.VERSION_STATS_DB,\s*controller\.scheduledTime\s*\)/,
+    );
+    expect(worker).not.toMatch(/(?:const|let|var)\s*\{[^}]*\}\s*=\s*_?ctx\b/);
+    expect(worker).not.toMatch(/console\.(?:debug|info|log|warn|error)\s*\(/);
   });
 
   it("provides the semantic product journey and direct download actions", () => {

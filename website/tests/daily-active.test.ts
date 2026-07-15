@@ -124,8 +124,9 @@ async function handle(
   request: Request = requestFor(),
   digest?: (bytes: Uint8Array) => Promise<ArrayBuffer>,
   limiter: RecordingLimiter = new RecordingLimiter(),
+  globalLimiter: RecordingLimiter = new RecordingLimiter(),
 ): Promise<Response> {
-  return handleDailyActive(request, database, limiter, {
+  return handleDailyActive(request, database, globalLimiter, limiter, {
     now: () => FIXED_NOW,
     ...(digest === undefined ? {} : { digest }),
   });
@@ -344,6 +345,68 @@ describe("daily active request validation", () => {
 });
 
 describe("daily active abuse limiting", () => {
+  it("checks the fixed per-colo global circuit breaker before the per-IP limiter", async () => {
+    const database = new RecordingDatabase();
+    const globalLimiter = new RecordingLimiter();
+    const ipLimiter = new RecordingLimiter();
+
+    const response = await handle(
+      database,
+      requestFor(VALID_PAYLOAD, { connectingIP: "203.0.113.40" }),
+      undefined,
+      ipLimiter,
+      globalLimiter,
+    );
+
+    expect(response.status).toBe(204);
+    expect(globalLimiter.keys).toEqual(["daily-active-global"]);
+    expect(ipLimiter.keys).toEqual(["203.0.113.40"]);
+  });
+
+  it("returns 429 before the per-IP limiter, body read, or D1 when the global limit is exceeded", async () => {
+    const database = new RecordingDatabase();
+    const globalLimiter = new RecordingLimiter();
+    const ipLimiter = new RecordingLimiter();
+    globalLimiter.success = false;
+
+    const response = await handle(
+      database,
+      requestFor(undefined, { body: "{malformed", connectingIP: "203.0.113.41" }),
+      undefined,
+      ipLimiter,
+      globalLimiter,
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(await response.text()).toBe("");
+    expect(globalLimiter.keys).toEqual(["daily-active-global"]);
+    expect(ipLimiter.keys).toEqual([]);
+    expect(database.preparedSQL).toEqual([]);
+  });
+
+  it("fails closed before the per-IP limiter and D1 when the global limiter is unavailable", async () => {
+    const database = new RecordingDatabase();
+    const globalLimiter = new RecordingLimiter();
+    const ipLimiter = new RecordingLimiter();
+    globalLimiter.shouldFail = true;
+
+    const response = await handle(
+      database,
+      requestFor(undefined, { body: "{malformed" }),
+      undefined,
+      ipLimiter,
+      globalLimiter,
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(globalLimiter.keys).toEqual(["daily-active-global"]);
+    expect(ipLimiter.keys).toEqual([]);
+    expect(database.preparedSQL).toEqual([]);
+  });
+
   it("uses the Cloudflare connecting IP only as the edge rate-limit key", async () => {
     const database = new RecordingDatabase();
     const limiter = new RecordingLimiter();

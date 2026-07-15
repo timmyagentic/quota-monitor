@@ -192,6 +192,7 @@ function hexEncoded(bytes: ArrayBuffer): string {
 export async function handleDailyActive(
   request: Request,
   database: DailyActiveDatabase,
+  globalRateLimiter: DailyActiveRateLimiter,
   rateLimiter: DailyActiveRateLimiter,
   dependencies: DailyActiveDependencies = {},
 ): Promise<Response> {
@@ -211,6 +212,15 @@ export async function handleDailyActive(
   const contentEncoding = request.headers.get("Content-Encoding");
   if (contentEncoding !== null && contentEncoding !== "identity") {
     return emptyResponse(415);
+  }
+
+  try {
+    const { success } = await globalRateLimiter.limit({ key: "daily-active-global" });
+    if (!success) {
+      return emptyResponse(429, { "Retry-After": "60" });
+    }
+  } catch {
+    return emptyResponse(503);
   }
 
   const connectingIP = request.headers.get("CF-Connecting-IP");
