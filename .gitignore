@@ -25,6 +25,11 @@ __pycache__/
 .vscode/
 .idea/
 
+# Website
+website/node_modules/
+website/.wrangler/
+website/startup-profile.*
+
 # App-local
 *.dmg
 *.app

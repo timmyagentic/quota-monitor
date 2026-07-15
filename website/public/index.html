@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title data-i18n="metaTitle">Quota Monitor — Know your quota. Keep your flow.</title>
+  <meta name="description" content="Quota Monitor brings Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details into one lightweight macOS menu-bar app." data-i18n-content="metaDescription">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Quota Monitor — Know your quota. Keep your flow." data-i18n-content="ogTitle">
+  <meta property="og:description" content="See Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details in one native macOS app." data-i18n-content="ogDescription">
+  <meta property="og:url" content="https://quota-monitor.timmyagentic.com/">
+  <meta property="og:image" content="https://quota-monitor.timmyagentic.com/assets/social-card.webp">
+  <meta property="og:image:alt" content="Quota Monitor product page with a native macOS dashboard window" data-i18n-content="ogImageAlt">
+  <link rel="canonical" href="https://quota-monitor.timmyagentic.com/">
+  <link rel="icon" href="/assets/app-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script id="software-application" type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Quota Monitor",
+    "operatingSystem": "macOS 14 or later",
+    "softwareVersion": "0.2.40",
+    "applicationCategory": "UtilitiesApplication",
+    "license": "MIT License",
+    "url": "https://quota-monitor.timmyagentic.com/",
+    "downloadUrl": "https://quota-monitor.timmyagentic.com/download"
+  }
+  </script>
+</head>
+<body data-page="home">
+  <a class="skip-link" href="#main-content" data-i18n="skipLink">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand-lockup">
+        <img class="brand-icon" src="/assets/app-icon.png" width="48" height="48" alt="Quota Monitor app icon" data-i18n-alt="appIconAlt">
+        <span class="brand-name" data-i18n="brand">Quota Monitor</span>
+      </div>
+      <nav class="site-navigation" aria-label="Primary navigation" data-i18n-aria-label="primaryNavigationLabel">
+        <a href="#features" data-i18n="featuresNav">Features</a>
+        <a href="#privacy" data-i18n="privacyNav">Privacy</a>
+      </nav>
+      <div class="language-control" role="group" aria-label="Choose display language" data-i18n-aria-label="languageLabel">
+        <button type="button" data-language="zh-Hans" aria-label="Switch to Simplified Chinese" data-i18n-aria-label="chooseChinese" aria-pressed="false">中</button>
+        <span aria-hidden="true">/</span>
+        <button type="button" data-language="en" aria-label="Switch to English" data-i18n-aria-label="chooseEnglish" aria-pressed="true">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="container hero-layout">
+        <div class="hero-copy">
+          <h1 id="hero-title"><span class="hero-title-line" data-i18n="heroTitleFirstLine">Know your quota.</span><span class="hero-title-line" data-i18n="heroTitleSecondLine"> Keep your flow.</span></h1>
+          <p class="hero-description" data-i18n="heroDescription">Quota Monitor brings Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details into one lightweight macOS menu-bar app.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="/download">
+              <span data-i18n="downloadAction">Download QuotaMonitor</span>
+              <span data-version>0.2.40</span>
+            </a>
+            <a class="button button-secondary" href="#features" data-i18n="exploreFeatures">Explore features</a>
+          </div>
+          <ul class="download-metadata" aria-label="Download requirements and security" data-i18n-aria-label="downloadRequirementsLabel">
+            <li data-i18n="systemRequirement">macOS 14+</li>
+            <li data-i18n="signedStatus">Developer ID signed</li>
+            <li data-i18n="notarizedStatus">Apple notarized</li>
+          </ul>
+        </div>
+        <a class="product-image-link" href="/assets/dashboard-hero.webp">
+          <picture class="product-window hero-window">
+            <source srcset="/assets/dashboard-hero.webp" type="image/webp">
+            <img src="/assets/dashboard-hero.webp" width="980" height="732" alt="Quota Monitor dashboard showing Codex and Claude Code quota cards, token trends, and API-equivalent cost estimates with synthetic data" data-i18n-alt="dashboardHeroAlt">
+          </picture>
+          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="features" class="feature-story feature-story-quota" aria-labelledby="feature-quota-title">
+      <div class="container feature-layout">
+        <div class="feature-copy">
+          <h2 id="feature-quota-title" data-i18n="featureQuotaTitle">Live quota clarity</h2>
+          <p class="feature-lead" data-i18n="featureQuotaLead">See exact quota usage for Codex and Claude Code at a glance.</p>
+          <p data-i18n="featureQuotaBody">Know how much you have used and how much is left, when each window resets, and whether each provider is available.</p>
+        </div>
+        <a class="product-image-link" href="/assets/dashboard-hero.webp">
+          <picture class="product-window detail-window quota-window">
+            <source srcset="/assets/dashboard-hero.webp" type="image/webp">
+            <img src="/assets/dashboard-hero.webp" width="980" height="732" loading="lazy" alt="Quota Monitor dashboard showing active quota windows, used percentages, remaining capacity, and provider status with synthetic data" data-i18n-alt="dashboardQuotaAlt">
+          </picture>
+          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="feature-story feature-story-trends" aria-labelledby="feature-trends-title">
+      <div class="container feature-layout feature-layout-reversed">
+        <div class="feature-copy">
+          <h2 id="feature-trends-title" data-i18n="featureTrendsTitle">Trends and forecast</h2>
+          <p class="feature-lead" data-i18n="featureTrendsLead">Visualize token consumption over time for each tool.</p>
+          <p data-i18n="featureTrendsBody">Move from 7-day detail through yearly history, then use burn-rate projection, activity, and composition to understand where usage is heading.</p>
+        </div>
+        <a class="product-image-link" href="/assets/dashboard-insights.webp">
+          <picture class="product-window detail-window trends-window">
+            <source srcset="/assets/dashboard-insights.webp" type="image/webp">
+            <img src="/assets/dashboard-insights.webp" width="980" height="732" loading="lazy" alt="Quota Monitor dashboard showing activity metrics, a 12-month heatmap, and provider and model composition with synthetic data" data-i18n-alt="dashboardTrendsAlt">
+          </picture>
+          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="feature-story feature-story-sessions" aria-labelledby="feature-sessions-title">
+      <div class="container feature-layout">
+        <div class="feature-copy">
+          <h2 id="feature-sessions-title" data-i18n="featureSessionsTitle">Session drill-down</h2>
+          <p class="feature-lead" data-i18n="featureSessionsLead">Open Sessions to inspect every run.</p>
+          <p data-i18n="featureSessionsBody">Search and sort sessions, then review models, token details, event timing, and API-equivalent cost estimates.</p>
+        </div>
+        <a class="product-image-link" href="/assets/sessions-detail.webp">
+          <picture class="product-window detail-window sessions-window">
+            <source srcset="/assets/sessions-detail.webp" type="image/webp">
+            <img src="/assets/sessions-detail.webp" width="980" height="732" loading="lazy" alt="Quota Monitor Sessions view showing searchable model, token, event timing, and API-equivalent cost estimate details with synthetic data" data-i18n-alt="sessionsDetailAlt">
+          </picture>
+          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="feature-story feature-story-history" aria-labelledby="feature-history-title">
+      <div class="container feature-layout feature-layout-reversed">
+        <div class="feature-copy">
+          <h2 id="feature-history-title" data-i18n="featureHistoryTitle">Local history</h2>
+          <p class="feature-lead" data-i18n="featureHistoryLead">Keep a useful history without sending it to a separate website.</p>
+          <p data-i18n="featureHistoryBody">Quota Monitor indexes local Codex and Claude Code history into its local SQLite database, where you can review and manage it on your Mac.</p>
+        </div>
+        <a class="product-image-link" href="/assets/history-detail.webp">
+          <picture class="product-window detail-window history-window">
+            <source srcset="/assets/history-detail.webp" type="image/webp">
+            <img src="/assets/history-detail.webp" width="980" height="732" loading="lazy" alt="Quota Monitor History view showing 23 active days, daily model breakdowns, and synthetic session details" data-i18n-alt="historyDetailAlt">
+          </picture>
+          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+        </a>
+      </div>
+    </section>
+
+    <section id="privacy" class="privacy-section" aria-labelledby="privacy-title">
+      <div class="container privacy-layout">
+        <div class="privacy-heading">
+          <h2 id="privacy-title" data-i18n="privacyTitle">Privacy first</h2>
+          <p data-i18n="privacyIntro">Your history stays local; live quota refreshes still contact the corresponding provider services.</p>
+        </div>
+        <div class="privacy-detail">
+          <h3 data-i18n="privacyLocalTitle">Local by default</h3>
+          <p data-i18n="privacyLocalBody">Session history is indexed in Quota Monitor's local SQLite database on your Mac. You decide what to keep or export.</p>
+        </div>
+        <div class="privacy-detail">
+          <h3 data-i18n="privacyRefreshTitle">Live quota refresh</h3>
+          <p data-i18n="privacyRefreshBody">Current quota and usage are fetched from the corresponding Codex and Claude Code provider services.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="installation" class="installation-section" aria-labelledby="installation-title">
+      <div class="container">
+        <div class="section-heading">
+          <h2 id="installation-title" data-i18n="installationTitle">Get started in minutes</h2>
+          <p data-i18n="installationIntro">Install Quota Monitor like any other native Mac app.</p>
+        </div>
+        <ol class="installation-steps">
+          <li>
+            <span class="step-number" aria-hidden="true">1</span>
+            <h3 data-i18n="stepOneTitle">Download the latest DMG</h3>
+            <p data-i18n="stepOneBody">Get the current Developer ID signed and Apple notarized disk image.</p>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">2</span>
+            <h3 data-i18n="stepTwoTitle">Drag Quota Monitor into Applications</h3>
+            <p data-i18n="stepTwoBody">Move Quota Monitor to your Applications folder like any other Mac app.</p>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">3</span>
+            <h3 data-i18n="stepThreeTitle">Open and choose tools to track</h3>
+            <p data-i18n="stepThreeBody">Select Codex, Claude Code, or both, then start monitoring quota right away.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="final-cta" aria-labelledby="final-title">
+      <div class="container final-cta-layout">
+        <div>
+          <h2 id="final-title" data-i18n="finalTitle">Know your quota. Keep your flow.</h2>
+          <p data-i18n="finalDescription">Stay in control of your usage so you can keep building.</p>
+        </div>
+        <div class="final-download">
+          <a class="button button-primary" href="/download">
+            <span data-i18n="downloadAction">Download QuotaMonitor</span>
+            <span data-version>0.2.40</span>
+          </a>
+          <ul class="download-metadata" aria-label="Download requirements and security" data-i18n-aria-label="downloadRequirementsLabel">
+            <li data-i18n="systemRequirement">macOS 14+</li>
+            <li data-i18n="signedStatus">Developer ID signed</li>
+            <li data-i18n="notarizedStatus">Apple notarized</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-layout" aria-label="Footer information" data-i18n-aria-label="footerNavigationLabel">
+      <span data-i18n="brand">Quota Monitor</span>
+      <span data-i18n="license">MIT License</span>
+      <span data-i18n="copyright">© 2026 Quota Monitor</span>
+      <div class="language-control" role="group" aria-label="Choose display language" data-i18n-aria-label="languageLabel">
+        <button type="button" data-language="zh-Hans" aria-label="Switch to Simplified Chinese" data-i18n-aria-label="chooseChinese" aria-pressed="false">中</button>
+        <span aria-hidden="true">/</span>
+        <button type="button" data-language="en" aria-label="Switch to English" data-i18n-aria-label="chooseEnglish" aria-pressed="true">EN</button>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
