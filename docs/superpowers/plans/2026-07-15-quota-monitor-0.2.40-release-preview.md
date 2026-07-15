@@ -47,22 +47,22 @@ Set the hero to:
 
 ```html
 <p class="qm-release-eyebrow">Release highlights</p>
-<h2 class="qm-release-title">Clearer limits. More accurate costs.</h2>
-<p class="qm-release-subtitle">This update makes Codex limits and costs easier to understand.</p>
+<h2 class="qm-release-title">Closer to your real Codex usage</h2>
+<p class="qm-release-subtitle">Weekly-only quotas and complete Fast pricing support.</p>
 ```
 
 Set card 1 to:
 
 ```html
 <span class="qm-release-number">1</span>
-<p><b>Quota windows stay in sync.</b> QuotaMonitor shows only the limits Codex currently uses. If the 5-hour limit returns, it appears automatically.</p>
+<p><b>Weekly-only quotas are now supported.</b> When Codex offers only a weekly limit, QuotaMonitor follows it as-is. If the 5-hour limit returns, it appears automatically.</p>
 ```
 
 Set card 2 to:
 
 ```html
 <span class="qm-release-number">2</span>
-<p><b>Fast pricing is more accurate.</b> Only recorded Fast usage uses Fast rates. Other tiers use the right rates, and subagent usage is no longer counted twice.</p>
+<p><b>Complete Fast pricing support.</b> QuotaMonitor now prices each request from its recorded tier and correctly handles Standard, Flex, long-context, and subagent usage.</p>
 ```
 
 - [ ] **Step 3: Replace the Simplified-Chinese content in structural parity**
@@ -71,22 +71,22 @@ Set the hero to:
 
 ```html
 <p class="qm-release-eyebrow">更新亮点</p>
-<h2 class="qm-release-title">额度更准，费用更清楚</h2>
-<p class="qm-release-subtitle">这次更新让 Codex 的额度和费用更容易看懂。</p>
+<h2 class="qm-release-title">更贴合 Codex 的真实用量</h2>
+<p class="qm-release-subtitle">支持仅周额度模式，并完整覆盖 Fast 计费规则。</p>
 ```
 
 Set card 1 to:
 
 ```html
 <span class="qm-release-number">1</span>
-<p><b>额度窗口自动同步。</b> 只显示 Codex 当前启用的额度；5 小时额度恢复后会自动出现。</p>
+<p><b>支持仅周额度模式。</b> 当 Codex 只提供周额度时，QuotaMonitor 会按实际状态显示；5 小时额度恢复后也会自动出现。</p>
 ```
 
 Set card 2 to:
 
 ```html
 <span class="qm-release-number">2</span>
-<p><b>Fast 计费更准确。</b> 只有明确记录为 Fast 才按 Fast 估算；其他用量会使用正确档位，子会话也不再重复计费。</p>
+<p><b>全面支持 Fast 计费规则。</b> QuotaMonitor 会按每次请求记录的档位估算费用，并正确处理 Standard、Flex、长上下文和子会话用量。</p>
 ```
 
 - [ ] **Step 4: Validate both fragments**
