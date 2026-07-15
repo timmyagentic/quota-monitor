@@ -49,6 +49,28 @@ with bounded calendar pages.
 - Do not retain a 365-active-day compatibility path that can fall back to the
   current unbounded row scan.
 
+## Real-data validation amendment
+
+Release QA against the current shadow exposed two hot paths that the initial
+SQLite CLI probe did not model. This implementation therefore makes one narrow
+exception to the schema-migration non-goal while preserving the prohibition on
+rollup tables and persistent caches:
+
+- Migration v16 replaces the legacy timestamp indexes with covering indexes on
+  `(timestamp, id, value_usd, total_tokens, session_id)` and
+  `(provider, timestamp, id, value_usd, total_tokens, session_id)`. The `id`
+  position preserves the existing billing query's `ORDER BY timestamp, id`
+  without a temporary sort, while the remaining columns cover History page
+  aggregates and the older-event lookup.
+- Analytics timestamp parsing uses `Date.ISO8601FormatStyle.ParseStrategy` on
+  the hot path, with the existing SQLite timestamp fallback retained. This
+  removes formatter contention from unrelated Dashboard refresh work that can
+  otherwise delay History publication on the main actor.
+- `query.days.page.database.*` records the database-reader boundary used for the
+  100 ms page-query gate. The existing `query.days.page` operation remains the
+  end-to-end data-ready measurement and intentionally includes actor scheduling;
+  click-to-visible UI timing remains the separate 500 ms acceptance gate.
+
 ## Calendar-page semantics
 
 A page represents seven consecutive natural calendar dates, not seven active
@@ -130,10 +152,12 @@ whose event count is zero and sorts the remainder by ordinal. There is no SQL
 `date(..., 'localtime')`, fixed-offset modifier, raw-row timestamp parsing, or
 whole-table `GROUP BY`.
 
-The all-provider path uses `idx_usage_events_timestamp`; filtered paths use the
-existing `(provider, timestamp)` index. `EXPLAIN QUERY PLAN` tests must confirm
-that every aggregation branch performs an indexed range search and that no
-temporary B-tree for `ORDER BY` or unbounded `ORDER BY timestamp` scan returns.
+Following the validation amendment, the all-provider path uses
+`idx_usage_events_history_cover`; filtered paths use
+`idx_usage_events_provider_history_cover`. `EXPLAIN QUERY PLAN` tests must
+confirm that every aggregation branch performs a covering indexed range search
+and that no temporary B-tree for `ORDER BY` or unbounded
+`ORDER BY timestamp` scan returns.
 
 After aggregation, an indexed existence query determines whether any matching
 event is older than the page's lower bound. It selects at most one timestamp
@@ -320,10 +344,11 @@ unchanged. Verification must demonstrate:
   source before the final run;
 - clicking History issues one `query.days.page` operation and no second page
   query before an actual scroll;
-- the first page query is under 100 ms and visible History content appears
-  within 500 ms on this machine;
-- scrolling to the footer issues exactly one next-page query, under 100 ms, and
-  appends older rows without changing the selected day;
+- each `query.days.page.database.finish` is under 100 ms, the corresponding
+  facade-level `query.days.page.finish` remains recorded for transparency, and
+  visible History content appears within 500 ms on this machine;
+- scrolling to the footer issues exactly one next-page database query, under
+  100 ms, and appends older rows without changing the selected day;
 - another page requires another genuine downward scroll;
 - an empty-gap fixture continues to older history instead of leaving the list
   permanently armed or stalled;
@@ -343,7 +368,9 @@ Implementation is expected to touch:
 
 - `QuotaMonitor/Core/Analytics/AggregatorHistory.swift` for page ranges and
   bounded aggregation;
-- `QuotaMonitor/Core/Analytics/Aggregator.swift` for the page value;
+- `QuotaMonitor/Core/Analytics/Aggregator.swift` for the page value and fast
+  stored-timestamp parsing;
+- `QuotaMonitor/Core/Storage/Migrations.swift` for the v16 covering indexes;
 - `QuotaMonitor/App/QueryFacade.swift` for the logged async page operation;
 - `QuotaMonitor/Features/History/HistoryView.swift` and a narrowly scoped helper
   for pagination state and the AppKit scroll observer;

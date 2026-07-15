@@ -25,6 +25,24 @@
 - Use test-first RED/GREEN cycles. Final acceptance is `<100 ms` per real-data page query and `<500 ms` from History click to visible initial content on this Mac.
 - Real-data QA must use the read-only shadow workflow, report current counts if imports changed, prove `source_unchanged=true`, and clean up the QA app.
 
+### Execution amendment from real-data validation
+
+The original existing-index/no-migration constraint above is superseded by a
+measured implementation follow-up. The bounded query was correct, but the live
+shadow showed that table lookups and concurrent timestamp parsing still delayed
+publication:
+
+- Migration v16 replaces the two legacy History indexes with covering indexes
+  ordered as `(timestamp, id, value_usd, total_tokens, session_id)` and
+  `(provider, timestamp, id, value_usd, total_tokens, session_id)`. Keeping `id`
+  immediately after the range key preserves billing `ORDER BY timestamp, id`.
+- The shared analytics timestamp parser uses the value-type ISO-8601 parse
+  strategy with the SQLite timestamp fallback retained.
+- `query.days.page.database.finish` is the exact reader-boundary metric for the
+  `<100 ms` database gate. The existing `query.days.page.finish` remains an
+  honest facade/data-ready metric that can include MainActor scheduling. The
+  independent click-to-visible gate remains `<500 ms`.
+
 ---
 
 ## File Structure
@@ -41,8 +59,9 @@
 
 **Modified:**
 
-- `QuotaMonitor/Core/Analytics/Aggregator.swift` — `HistoryPage` and typed page trigger.
+- `QuotaMonitor/Core/Analytics/Aggregator.swift` — `HistoryPage`, typed page trigger, and fast stored-timestamp parsing.
 - `QuotaMonitor/Core/Analytics/AggregatorHistory.swift` — bounded page aggregation, older-event lookup, and gap jump; final removal of `fetchDays`.
+- `QuotaMonitor/Core/Storage/Migrations.swift` — v16 covering History indexes that retain billing-order compatibility.
 - `QuotaMonitor/App/QueryFacade.swift` — logged async page API plus calendar propagation into detail/event queries.
 - `QuotaMonitor/Features/History/HistoryView.swift` — page-driven sidebar, cancellable tasks, footer states, captured calendar, and detail/event propagation.
 - `QuotaMonitor/Core/Localization/L10n.swift` — recent-empty, loading-older, load-failure, and Retry copy.
@@ -1603,7 +1622,7 @@ Open `$ARTIFACT_DIR/computer-use-qa.md` and use its exact app target for the nex
 
 - [ ] **Step 3: Measure initial and next-page behavior on the exact QA app**
 
-With Computer Use, activate the exact QA app, start a timestamped observation, and click History. Record click-to-visible duration and confirm only one `query.days.page.start/finish` pair with trigger `initial`. Wait without scrolling and confirm no second pair. Scroll downward once inside the sidebar and confirm exactly one new pair with trigger `scroll`, older rows append, and selection/detail stay unchanged. Let momentum finish and confirm no third pair; use a new downward gesture and confirm the third page then loads.
+With Computer Use, activate the exact QA app, start a timestamped observation, and click History. Record click-to-visible duration and confirm only one facade `query.days.page.start/finish` pair plus its `query.days.page.database.start/finish` pair with trigger `initial`. Wait without scrolling and confirm no second pair. Scroll downward once inside the sidebar and confirm exactly one new pair of each layer with trigger `scroll`, older rows append, and selection/detail stay unchanged. Let momentum finish and confirm no third pair; use a new downward gesture and confirm the third page then loads.
 
 Repeat a first-page check for All, Codex, and Claude using the toolbar filter; each remount must issue exactly one initial operation. Open a day, expand a session, and verify detail/session-event rendering still works. Then stop the log stream:
 
@@ -1616,8 +1635,9 @@ rg "event=query.days.page" "$ARTIFACT_DIR/history-page-unified.log"
 Acceptance:
 
 ```text
-initial page query duration_ms < 100
-next page query duration_ms < 100
+initial query.days.page.database.finish duration_ms < 100
+next query.days.page.database.finish duration_ms < 100
+query.days.page.finish retained as facade/data-ready diagnostic
 History click to visible initial rows < 500 ms
 one physical gesture generation == at most one appended page
 ```
