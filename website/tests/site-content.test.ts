@@ -299,6 +299,15 @@ describe("public product content", () => {
   });
 
   it("ships complete, correctly sized raster design and production assets", () => {
+    for (const source of [
+      "assets/dashboard-hero.webp",
+      "assets/dashboard-insights.webp",
+      "assets/sessions-detail.webp",
+      "assets/history-detail.webp",
+    ]) {
+      expect(existsSync(join(publicDirectory, source)), source).toBe(true);
+    }
+
     const assets = [
       {
         path: join(designDirectory, "native-focus-homepage.png"),
@@ -311,8 +320,11 @@ describe("public product content", () => {
         minimumBytes: 100_000,
         minimumWidth: 1_200,
         minimumHeight: 600,
-        sha256: "9aa8c51e6026ee4f724226ba5850bd97d6e6772125368f1782bffed67b0f3245",
-        retiredSha256: "9eb6706d56d169d2282ccba3b0a1fd6a5dbc1a59a8ad114da5e06b21e018b6c6",
+        sha256: "13ba8a1214a3f51bbffff1e7ad039bf05ede3c331c80561c30231a5d15017ae1",
+        retiredSha256: [
+          "9eb6706d56d169d2282ccba3b0a1fd6a5dbc1a59a8ad114da5e06b21e018b6c6",
+          "9aa8c51e6026ee4f724226ba5850bd97d6e6772125368f1782bffed67b0f3245",
+        ],
       },
       {
         path: join(publicDirectory, "assets/app-icon.png"),
@@ -325,15 +337,38 @@ describe("public product content", () => {
         minimumBytes: 20_000,
         exactWidth: 980,
         exactHeight: 732,
-        sha256: "3aad57e87b8116f171f93d39c3ca260d4c8f4dc2bd4650827ee371348f200411",
-        retiredSha256: "10e0a8a0e5358628a95cd9253980ef1cdebdb99b6c0bce1e240d5ad94e5fd3e8",
+        sha256: "890cd3a1a0a3485a9a8521228aebc31f84a16ac6f1ed56814c622fac3b1e5034",
+        retiredSha256: [
+          "10e0a8a0e5358628a95cd9253980ef1cdebdb99b6c0bce1e240d5ad94e5fd3e8",
+          "3aad57e87b8116f171f93d39c3ca260d4c8f4dc2bd4650827ee371348f200411",
+        ],
+        landscape: true,
+      },
+      {
+        path: join(publicDirectory, "assets/dashboard-insights.webp"),
+        minimumBytes: 20_000,
+        exactWidth: 980,
+        exactHeight: 732,
+        sha256: "0a2369eebc7229df57f7296e06bc36e270784855be12c44791497a1a2b386457",
         landscape: true,
       },
       {
         path: join(publicDirectory, "assets/sessions-detail.webp"),
         minimumBytes: 20_000,
-        minimumWidth: 900,
-        minimumHeight: 600,
+        exactWidth: 980,
+        exactHeight: 732,
+        sha256: "a59e0504c5bb0a7a10313ed6138ca08c8fe90618f823eb6f1551be205557564d",
+        retiredSha256: [
+          "516ca8ba3bae48db581b91cdcc9f0575ffe6cbd02bb60494466784b742c86b65",
+        ],
+        landscape: true,
+      },
+      {
+        path: join(publicDirectory, "assets/history-detail.webp"),
+        minimumBytes: 20_000,
+        exactWidth: 980,
+        exactHeight: 732,
+        sha256: "a5fcd5f80eb4b29405041e7da655347fab51471a8590b5c6f7f35d10f9c08595",
         landscape: true,
       },
       {
@@ -341,8 +376,11 @@ describe("public product content", () => {
         minimumBytes: 20_000,
         exactWidth: 1_200,
         exactHeight: 630,
-        sha256: "a94e9bece876af2316a48abdfa99d1a31943dc6ac0358ad50f487698aa188a43",
-        retiredSha256: "98a7b5ca1c1c30b447453fc9bf461522a90bc404f92c59a2de598d240e8acdcf",
+        sha256: "c7942bac7e5c16ad2d4e88980b77bd1abd49670f4f4c6d15a77bcb8cef2c5228",
+        retiredSha256: [
+          "98a7b5ca1c1c30b447453fc9bf461522a90bc404f92c59a2de598d240e8acdcf",
+          "a94e9bece876af2316a48abdfa99d1a31943dc6ac0358ad50f487698aa188a43",
+        ],
         landscape: true,
       },
     ];
@@ -372,7 +410,7 @@ describe("public product content", () => {
       }
       if ("retiredSha256" in asset) {
         const digest = createHash("sha256").update(readFileSync(asset.path)).digest("hex");
-        expect(digest, `${asset.path} retired composition`).not.toBe(asset.retiredSha256);
+        expect(asset.retiredSha256, `${asset.path} retired composition`).not.toContain(digest);
       }
       if (asset.landscape) {
         expect(dimensions.width / dimensions.height, asset.path).toBeGreaterThan(1.2);
@@ -389,6 +427,8 @@ describe("public product content", () => {
     expect(rasterSources).toEqual(new Set([
       "/assets/app-icon.png",
       "/assets/dashboard-hero.webp",
+      "/assets/dashboard-insights.webp",
+      "/assets/history-detail.webp",
       "/assets/sessions-detail.webp",
     ]));
     for (const source of rasterSources) {
@@ -401,6 +441,8 @@ describe("public product content", () => {
     const html = readPublic("index.html");
     const productSources = new Set([
       "/assets/dashboard-hero.webp",
+      "/assets/dashboard-insights.webp",
+      "/assets/history-detail.webp",
       "/assets/sessions-detail.webp",
     ]);
     const productImages = [...html.matchAll(/<img\b([^>]*)>/g)]
@@ -412,12 +454,75 @@ describe("public product content", () => {
       }))
       .filter(({ source }) => productSources.has(source));
 
-    expect(productImages).toHaveLength(4);
+    expect([...html.matchAll(/<img\b/g)]).toHaveLength(6);
+    expect(productImages).toHaveLength(5);
     for (const image of productImages) {
       const dimensions = imageDimensions(join(publicDirectory, image.source));
       expect(image.width, `${image.source} width`).toBe(dimensions.width);
       expect(image.height, `${image.source} height`).toBe(dimensions.height);
     }
+  });
+
+  it("maps each feature story to its verified real-app capture", () => {
+    const html = readPublic("index.html");
+    const hero = html.match(/<section\b[^>]*class="hero"[\s\S]*?<\/section>/)?.[0] ?? "";
+    const quota = html.match(/<section\b[^>]*feature-story-quota[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
+    const trends = html.match(/<section\b[^>]*feature-story-trends[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
+    const sessions = html.match(/<section\b[^>]*feature-story-sessions[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
+    const history = html.match(/<section\b[^>]*feature-story-history[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
+
+    for (const block of [hero, quota]) {
+      expect(block).toContain('srcset="/assets/dashboard-hero.webp"');
+      expect(block).toContain('src="/assets/dashboard-hero.webp"');
+    }
+    expect(trends).toContain('srcset="/assets/dashboard-insights.webp"');
+    expect(trends).toContain('src="/assets/dashboard-insights.webp"');
+    expect(sessions).toContain('srcset="/assets/sessions-detail.webp"');
+    expect(sessions).toContain('src="/assets/sessions-detail.webp"');
+    expect(history).toContain('srcset="/assets/history-detail.webp"');
+    expect(history).toContain('src="/assets/history-detail.webp"');
+  });
+
+  it("links each product capture to its same-origin full-size asset", async () => {
+    const html = readPublic("index.html");
+    const css = readPublic("styles.css");
+    const { translations } = await loadAppModule();
+    const productLinks = [...html.matchAll(
+      /<a\b[^>]*class="product-image-link"[^>]*href="([^\"]+)"[^>]*>([\s\S]*?)<\/a>/g,
+    )];
+
+    expect(productLinks).toHaveLength(5);
+    for (const [, href = "", contents = ""] of productLinks) {
+      expect(href).toMatch(/^\/assets\/(?:dashboard-hero|dashboard-insights|sessions-detail|history-detail)\.webp$/);
+      expect(contents).toContain(`src="${href}"`);
+      expect(contents).toContain('data-i18n="viewImageFullSize"');
+    }
+
+    expect(translations.en.viewImageFullSize).toBe("View image full size");
+    expect(translations["zh-Hans"].viewImageFullSize).toBe("查看完整尺寸图片");
+    expect(ruleBody(css, ".view-image-full-size")).toMatch(/display:\s*none\s*;/);
+    const mobileStart = css.search(/@media\s*\(max-width:\s*(?:759|760)px\)\s*\{/);
+    const mobileCss = css.slice(Math.max(0, mobileStart));
+    expect(ruleBody(mobileCss, ".view-image-full-size")).toMatch(/display:\s*inline-flex\s*;/);
+  });
+
+  it("describes Sessions event timing without claiming a duration field", async () => {
+    const html = readPublic("index.html");
+    const { translations } = await loadAppModule();
+    const english = `${translations.en.featureSessionsBody}\n${translations.en.sessionsDetailAlt}`;
+    const chinese = `${translations["zh-Hans"].featureSessionsBody}\n${translations["zh-Hans"].sessionsDetailAlt}`;
+
+    expect(translations.en.featureSessionsBody).toBe(
+      "Search and sort sessions, then review models, token details, event timing, and API-equivalent cost estimates.",
+    );
+    expect(translations["zh-Hans"].featureSessionsBody).toBe(
+      "搜索和排序会话，查看模型、Token 明细、事件时间与 API 等价费用估算。",
+    );
+    expect(english).not.toMatch(/\bduration\b/i);
+    expect(english).toMatch(/event timing/i);
+    expect(chinese).not.toContain("时长");
+    expect(chinese).toContain("事件时间");
+    expect(html).not.toMatch(/(?:duration|时长)/i);
   });
 
   it("implements the Native Focus visual and accessibility contract", () => {

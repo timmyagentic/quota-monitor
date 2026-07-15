@@ -32,11 +32,11 @@ window copy.
 
 #### Summary
 
-- Quota Monitor now has a bilingual website where you can explore the app and download the latest Mac installer in one click.
+- Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
 
 ### Added
 
-- **Quota Monitor product website.** The new English and Simplified Chinese site presents current features on desktop and mobile, and its download button serves the latest notarized DMG directly from the site.
+- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile, and its download button serves the latest notarized DMG directly from the site.
 
 ## [0.2.40] — 2026-07-15
 

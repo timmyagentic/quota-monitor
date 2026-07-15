@@ -307,6 +307,23 @@ p {
     background: var(--surface);
 }
 
+.product-image-link {
+    display: block;
+    width: 100%;
+    color: var(--blue);
+    text-decoration: none;
+}
+
+.product-image-link:focus-visible {
+    border-radius: var(--radius-window);
+    outline: 3px solid var(--blue);
+    outline-offset: 6px;
+}
+
+.view-image-full-size {
+    display: none;
+}
+
 .hero-window {
     align-self: center;
 }
@@ -337,8 +354,7 @@ p {
     grid-column: 2;
 }
 
-.feature-layout-reversed .product-window,
-.feature-layout-reversed .local-history-visual {
+.feature-layout-reversed .product-image-link {
     grid-row: 1;
     grid-column: 1;
 }
@@ -384,21 +400,6 @@ p {
 .detail-window {
     border-radius: 22px;
     box-shadow: 0 24px 64px rgba(36, 75, 122, 0.15);
-}
-
-.local-history-visual {
-    display: grid;
-    min-height: 380px;
-    place-items: center;
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    background: var(--surface);
-    box-shadow: 0 24px 64px rgba(36, 75, 122, 0.12);
-}
-
-.local-history-visual img {
-    width: clamp(116px, 18vw, 172px);
-    filter: drop-shadow(0 18px 30px rgba(36, 75, 122, 0.18));
 }
 
 .privacy-section {
@@ -742,8 +743,7 @@ body[data-page="download-error"] .not-found {
     }
 
     .feature-layout-reversed .feature-copy,
-    .feature-layout-reversed .product-window,
-    .feature-layout-reversed .local-history-visual {
+    .feature-layout-reversed .product-image-link {
         grid-row: auto;
         grid-column: auto;
     }
@@ -755,8 +755,13 @@ body[data-page="download-error"] .not-found {
         font-size: clamp(2rem, 9vw, 2.55rem);
     }
 
-    .local-history-visual {
-        min-height: 260px;
+    .view-image-full-size {
+        display: inline-flex;
+        margin-top: 14px;
+        border-bottom: 1px solid currentColor;
+        font-size: 14px;
+        font-weight: 650;
+        line-height: 1.4;
     }
 
     .privacy-section,
@@ -882,7 +887,6 @@ body[data-page="download-error"] .not-found {
     .privacy-section,
     .site-footer,
     .product-window,
-    .local-history-visual,
     .final-cta-layout,
     .installation-steps li,
     .privacy-detail {
@@ -890,7 +894,6 @@ body[data-page="download-error"] .not-found {
     }
 
     .product-window,
-    .local-history-visual,
     .button-primary {
         box-shadow: none;
     }
