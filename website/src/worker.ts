@@ -22,7 +22,10 @@ const securityHeaders = {
 
 const upstreamFetchInit = {
   redirect: "manual",
-  cf: { cacheEverything: true, cacheTtl: 86_400 },
+  cf: {
+    cacheEverything: true,
+    cacheTtlByStatus: { "200-299": 86_400, "300-599": 0 },
+  },
 } as const;
 
 const redirectStatuses = new Set([301, 302, 303, 307, 308]);
@@ -94,15 +97,21 @@ export async function handleDownload(
   load: ReleaseLoader = fetchLatestRelease,
   fetcher: typeof fetch = fetch,
 ): Promise<Response> {
+  let upstreamToCancel: Response | undefined;
+
   try {
     const release = await load();
     let upstream = await fetcher(release.upstreamUrl, upstreamFetchInit);
+    upstreamToCancel = upstream;
     if (redirectStatuses.has(upstream.status)) {
       const target = validatedAssetRedirect(
         upstream.headers.get("Location"),
         release.upstreamUrl,
       );
+      await upstream.body?.cancel();
+      upstreamToCancel = undefined;
       upstream = await fetcher(target, upstreamFetchInit);
+      upstreamToCancel = upstream;
     }
     const contentLength = upstream.headers.get("Content-Length");
 
@@ -124,6 +133,7 @@ export async function handleDownload(
       throw new Error("Invalid DMG length");
     }
 
+    upstreamToCancel = undefined;
     return new Response(upstream.body, {
       status: 200,
       headers: {
@@ -135,6 +145,13 @@ export async function handleDownload(
       },
     });
   } catch {
+    if (upstreamToCancel?.body) {
+      try {
+        await upstreamToCancel.body.cancel();
+      } catch {
+        // Preserve the visitor-facing download error if stream cleanup fails.
+      }
+    }
     return new Response(renderDownloadError(request.headers.get("Accept-Language")), {
       status: 503,
       headers: {

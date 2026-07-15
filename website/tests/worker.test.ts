@@ -25,7 +25,10 @@ const ASSET_URL =
 
 const MANUAL_FETCH_INIT = {
   redirect: "manual",
-  cf: { cacheEverything: true, cacheTtl: 86_400 },
+  cf: {
+    cacheEverything: true,
+    cacheTtlByStatus: { "200-299": 86_400, "300-599": 0 },
+  },
 } as const;
 
 const SECURITY_HEADERS = {
@@ -120,6 +123,35 @@ describe("handleDownload", () => {
     expectSecurityHeaders(response);
   });
 
+  it("passes through a successful DMG stream without canceling or buffering it", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([0x44, 0x4d, 0x47]));
+        controller.close();
+      },
+      cancel,
+    });
+    const upstream = new Response(body, {
+      status: 200,
+      headers: { "Content-Length": String(RELEASE.size) },
+    });
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      vi.fn<typeof fetch>().mockResolvedValue(upstream),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toBe(upstream.body);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([0x44, 0x4d, 0x47]),
+    );
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
   it("follows one validated official asset redirect and streams the final response", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -138,6 +170,8 @@ describe("handleDownload", () => {
     expect(fetcher).toHaveBeenNthCalledWith(1, RELEASE.upstreamUrl, MANUAL_FETCH_INIT);
     expect(fetcher).toHaveBeenNthCalledWith(2, ASSET_URL, MANUAL_FETCH_INIT);
     expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(MANUAL_FETCH_INIT.cf.cacheTtlByStatus["300-599"]).toBe(0);
+    expect(MANUAL_FETCH_INIT.cf).not.toHaveProperty("cacheTtl");
     expect(response.headers.get("Location")).toBeNull();
     expect([...response.headers].join("\n")).not.toContain(ASSET_URL);
     expect([...response.headers].join("\n")).not.toContain("release-assets.githubusercontent.com");
@@ -145,6 +179,39 @@ describe("handleDownload", () => {
       new Uint8Array([0x44, 0x4d, 0x47]),
     );
     expectSecurityHeaders(response);
+  });
+
+  it("awaits redirect-body cancellation before requesting the official asset", async () => {
+    const events: string[] = [];
+    const redirect = new Response(
+      new ReadableStream({
+        async cancel() {
+          events.push("cancel:start");
+          await Promise.resolve();
+          events.push("cancel:end");
+        },
+      }),
+      { status: 302, headers: { Location: ASSET_URL } },
+    );
+    let requestCount = 0;
+    const fetcher = vi.fn<typeof fetch>(async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return redirect;
+      }
+      events.push("fetch:asset");
+      return successfulUpstream();
+    });
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+
+    expect(response.status).toBe(200);
+    expect(events).toEqual(["cancel:start", "cancel:end", "fetch:asset"]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("rejects a foreign redirect before making a second request", async () => {
@@ -258,6 +325,25 @@ describe("handleDownload", () => {
     expect(await response.text()).toContain("Download temporarily unavailable");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expectSecurityHeaders(response);
+  });
+
+  it("cancels an invalid upstream body before returning the error response", async () => {
+    const cancel = vi.fn();
+    const upstream = new Response(new ReadableStream({ cancel }), {
+      status: 502,
+      headers: { "Content-Length": String(RELEASE.size) },
+    });
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(upstream);
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+
+    expect(response.status).toBe(503);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledWith(RELEASE.upstreamUrl, MANUAL_FETCH_INIT);
   });
 
   it("renders a Chinese error without fetching upstream when release lookup fails", async () => {
