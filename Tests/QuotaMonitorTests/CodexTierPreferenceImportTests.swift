@@ -6,7 +6,7 @@ import Testing
 @Suite("Codex tier preference import")
 struct CodexTierPreferenceImportTests {
 
-    @Test("rollout-only scan persists turn ID and tier preference")
+    @Test("rollout-only scan persists turn IDs and explicit tier preferences")
     func rolloutOnlyScanPersistsTurnIdAndTierPreference() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -32,6 +32,11 @@ struct CodexTierPreferenceImportTests {
         {"timestamp":"2026-07-15T00:00:02.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-priority"}}
         {"timestamp":"2026-07-15T00:00:03.000Z","type":"turn_context","payload":{"turn_id":"turn-priority","model":"gpt-5.5"}}
         {"timestamp":"2026-07-15T00:00:04.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":25,"output_tokens":10,"reasoning_output_tokens":2,"total_tokens":110}}}}
+        {"timestamp":"2026-07-15T00:00:05.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-priority"}}
+        {"timestamp":"2026-07-15T00:00:06.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"flex"}}}
+        {"timestamp":"2026-07-15T00:00:07.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-flex"}}
+        {"timestamp":"2026-07-15T00:00:08.000Z","type":"turn_context","payload":{"turn_id":"turn-flex","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-15T00:00:09.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"cached_input_tokens":10,"output_tokens":5,"reasoning_output_tokens":1,"total_tokens":55}}}}
         """#
         .appending("\n")
         .write(to: rollout, atomically: true, encoding: .utf8)
@@ -47,18 +52,25 @@ struct CodexTierPreferenceImportTests {
         ).performScan()
 
         #expect(report.changedFiles == 1)
-        #expect(report.importedEvents == 1)
+        #expect(report.importedEvents == 2)
         #expect(report.errors.isEmpty)
 
-        let row = try #require(try await database.pool.read { db in
-            try Row.fetchOne(db, sql: """
+        let rows = try await database.pool.read { db in
+            try Row.fetchAll(db, sql: """
                 SELECT codex_turn_id, codex_service_tier_preference
                 FROM usage_events
                 WHERE session_id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+                ORDER BY timestamp
                 """)
-        })
-        #expect(row["codex_turn_id"] as String? == "turn-priority")
-        #expect(row["codex_service_tier_preference"] as String? == "priority")
+        }
+        let persisted = rows.map { row in
+            (
+                row["codex_turn_id"] as String?,
+                row["codex_service_tier_preference"] as String?
+            )
+        }
+        #expect(persisted.map(\.0) == ["turn-priority", "turn-flex"])
+        #expect(persisted.map(\.1) == ["priority", "flex"])
         #expect(!FileManager.default.fileExists(atPath: logsDatabase.path))
     }
 }

@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Attribute Codex Fast pricing estimates per turn from rollout-recorded service-tier preferences, while keeping the existing Fast switch only as a fallback for untagged history.
+**Goal:** Attribute Codex Standard, Fast, and Flex pricing estimates per turn from rollout-recorded service-tier preferences, while keeping the existing Fast switch only as a fallback for untagged history and excluding replayed parent usage from child sessions.
 
-**Architecture:** Extend the typed rollout decoder with settings and task lifecycle events, then freeze a pending preference into each active turn in `RolloutParser`. Persist the turn ID and tri-state preference on `usage_events`; pricing selects a Fast or base catalog row from that event before consulting the legacy fallback. A two-step v13/v14 migration stays compatible with databases created by the unpublished PR #91 build and forces a provider-based Codex reread without assuming a default home path.
+**Architecture:** Extend the typed rollout decoder with settings and task lifecycle events, then freeze a pending preference into each active turn in `RolloutParser`. A child-session gate seeds cumulative baselines without emitting replayed usage until the first self-timed task. Persist the turn ID and explicit preference on `usage_events`; pricing selects a Fast, Flex, or base catalog row before consulting the legacy fallback. A two-step v13/v14 migration stays compatible with databases created by the unpublished PR #91 build and forces a provider-based Codex reread without assuming a default home path.
 
 **Tech Stack:** Swift 6, Swift Testing, SwiftPM, GRDB/SQLite, SwiftUI localization, shell QA, GitHub pull requests.
 
@@ -12,9 +12,9 @@
 
 - Work only in `/Volumes/SamsungDisk/Code/.worktrees/quota-monitor-codex-fast-rollout-preference` on `codex/codex-fast-rollout-preference`; never edit the primary checkout or `main`.
 - Treat `thread_settings_applied` as a future-turn preference, not a confirmed transmitted or served tier.
-- `priority` estimates Fast, explicit `default` estimates Standard, and unknown/NULL alone consults the existing global fallback.
+- `priority` estimates Fast, explicit `default` estimates Standard, explicit `flex` estimates Flex, and unknown/NULL alone consults the existing global fallback.
 - A settings update during a turn must not change that turn's frozen preference.
-- Preserve Codex token math, current Fast model multipliers, Claude behavior, and non-Fast model behavior.
+- Preserve the Codex token formula, current Fast model multipliers, Claude behavior, and unsupported-model behavior; add only published Flex rates.
 - Do not copy real rollouts, credentials, local paths, or substantial OpenUsage code into the repository.
 - Update both changelogs and use test-first red/green cycles for every behavior change.
 
@@ -40,7 +40,7 @@
 
 ## Interfaces
 
-- `CodexServiceTierPreference.init?(rolloutValue: String?)` returns `.priority`, `.standard`, or `nil`; `.standard` persists with raw value `default`.
+- `CodexServiceTierPreference.init?(rolloutValue: String?)` returns `.priority`, `.standard`, `.flex`, or `nil`; `.standard` persists with raw value `default`.
 - `UsageDelta` produces `turnId: String?` and `serviceTierPreference: CodexServiceTierPreference?`.
 - `UsageEventRecord` persists `codex_turn_id` and `codex_service_tier_preference`.
 - `PricingService.backfillAllValues(in:codexFastModeBilling:)` keeps its public signature.
@@ -64,7 +64,7 @@ Add tests with these assertions:
 #expect(CodexServiceTierPreference(rolloutValue: " FAST ") == .priority)
 #expect(CodexServiceTierPreference(rolloutValue: "default") == .standard)
 #expect(CodexServiceTierPreference(rolloutValue: nil) == nil)
-#expect(CodexServiceTierPreference(rolloutValue: "flex") == nil)
+#expect(CodexServiceTierPreference(rolloutValue: "flex") == .flex)
 ```
 
 Decode both canonical nested and compatible top-level settings shapes:
@@ -89,11 +89,13 @@ import Foundation
 enum CodexServiceTierPreference: String, Codable, Sendable {
     case priority
     case standard = "default"
+    case flex
 
     init?(rolloutValue: String?) {
         switch rolloutValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "priority", "fast": self = .priority
         case "default": self = .standard
+        case "flex": self = .flex
         default: return nil
         }
     }
@@ -107,7 +109,11 @@ Add `turnId` to `TurnContextPayload`, plus:
 ```swift
 struct TaskLifecyclePayload: Decodable {
     let turnId: String?
-    enum CodingKeys: String, CodingKey { case turnId = "turn_id" }
+    let startedAt: TimeInterval?
+    enum CodingKeys: String, CodingKey {
+        case turnId = "turn_id"
+        case startedAt = "started_at"
+    }
 }
 
 struct ThreadSettingsAppliedPayload: Decodable {
@@ -254,7 +260,7 @@ Run both suites and commit Task 3 files with `Persist Codex tier preference per 
 
 ---
 
-### Task 4: Price by preference before legacy fallback
+### Task 4: Price Standard, Fast, and Flex by preference before legacy fallback
 
 **Files:**
 
@@ -267,7 +273,7 @@ Add `serviceTierPreference: String? = nil` and insert it into `codex_service_tie
 
 - [ ] **Step 2: Write failing precedence tests**
 
-With a `gpt-5.5` base row worth `$35` and Fast row worth `$87.50`, prove priority gives `$87.50` while global fallback is off, explicit default gives `$35` while it is on, and NULL still gives `$87.50` while it is on. Keep non-Fast and Claude tests as controls.
+With a `gpt-5.5` base row worth `$35`, Fast row worth `$87.50`, and Flex row worth `$17.50` for uncached tokens, prove priority gives Fast while global fallback is off, explicit default gives Standard while it is on, explicit flex gives Flex while it is on, and NULL still follows the Fast fallback. Keep unsupported-model and Claude tests as controls.
 
 - [ ] **Step 3: Confirm RED**
 
@@ -282,6 +288,8 @@ For recognized Codex models use:
 CASE
   WHEN usage_events.codex_service_tier_preference = 'priority'
     THEN usage_events.model_id || '-fast'
+  WHEN usage_events.codex_service_tier_preference = 'flex'
+    THEN usage_events.model_id || '-flex'
   WHEN usage_events.codex_service_tier_preference = 'default'
     THEN usage_events.model_id
   WHEN usage_events.codex_service_tier_preference IS NULL AND \(globalFast) = 1
@@ -294,7 +302,7 @@ Retain the provider/model guards and current GPT-5.6/5.5/5.4 map.
 
 - [ ] **Step 5: Confirm GREEN and commit**
 
-Run the pricing suite and commit with `Estimate Codex Fast pricing per turn`.
+Run the pricing suite and commit with `Estimate Codex service-tier pricing per turn`.
 
 ---
 
@@ -325,7 +333,7 @@ Run `swift test --disable-keychain --filter BrandingLocalizationTests`, observe 
 
 - [ ] **Step 3: Update docs and both changelogs**
 
-Document the new columns, future-turn freeze, pricing precedence, compatibility migration, and served-tier boundary. Change README wording to “Codex Fast estimation for untagged history.” Add one user-readable Summary bullet and one detail under Unreleased in both languages.
+Document the new columns, future-turn freeze, child replay gate, pricing precedence, compatibility migration, and served-tier boundary. Change README wording to “Codex service-tier estimates and Fast fallback for untagged history.” Add user-readable Summary and detail entries under Unreleased in both languages.
 
 - [ ] **Step 4: Confirm GREEN and commit**
 

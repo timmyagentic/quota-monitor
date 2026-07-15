@@ -27,6 +27,8 @@ struct SessionMetaPayload: Decodable {
     let source: JSONValue?      // sometimes nested with subagent thread_spawn info
     let parentSessionId: String?
     let forkedFromId: String?
+    let parentThreadId: String?
+    let threadSource: String?
     let agentNickname: String?
     let agentRole: String?
 
@@ -35,6 +37,8 @@ struct SessionMetaPayload: Decodable {
         case cliVersion = "cli_version"
         case parentSessionId = "parent_session_id"
         case forkedFromId = "forked_from_id"
+        case parentThreadId = "parent_thread_id"
+        case threadSource = "thread_source"
         case agentNickname = "agent_nickname"
         case agentRole = "agent_role"
     }
@@ -47,7 +51,21 @@ struct SessionMetaPayload: Decodable {
     var resolvedParentSessionId: String? {
         if let p = parentSessionId, !p.isEmpty { return p }
         if let f = forkedFromId, !f.isEmpty { return f }
+        if let p = parentThreadId, !p.isEmpty { return p }
         return threadSpawn?["parent_thread_id"].flatMap(Self.string)
+    }
+
+    /// Child rollouts begin with a replay of their parent's history. The first
+    /// session_meta carries one of these markers even when the nested spawn
+    /// metadata is absent.
+    var isChildSession: Bool {
+        if resolvedParentSessionId != nil { return true }
+        if threadSource?.lowercased() == "subagent" { return true }
+        guard case .object(let obj) = source ?? .null,
+              let subagent = obj["subagent"]
+        else { return false }
+        if case .null = subagent { return false }
+        return true
     }
 
     /// Effective nickname: top-level wins, else nested under thread_spawn.
@@ -92,9 +110,11 @@ struct TurnContextPayload: Decodable {
 
 struct TaskLifecyclePayload: Decodable {
     let turnId: String?
+    let startedAt: TimeInterval?
 
     enum CodingKeys: String, CodingKey {
         case turnId = "turn_id"
+        case startedAt = "started_at"
     }
 }
 

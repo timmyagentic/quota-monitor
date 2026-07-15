@@ -218,8 +218,8 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 110, 110])
     }
 
-    @Test("same cumulative total with different last_token_usage is kept")
-    func sameTotalWithDifferentLastUsageIsKept() throws {
+    @Test("unchanged cumulative total skips stale last_token_usage")
+    func unchangedTotalSkipsStaleLastUsage() throws {
         let url = try writeRollout(#"""
         {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
         {"timestamp":"2026-05-20T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.5"}}
@@ -228,7 +228,44 @@ struct RolloutParserTests {
         """# + "\n")
         let parsed = try #require(try RolloutParser.parse(fileURL: url))
 
-        #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 30])
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [110])
+    }
+
+    // MARK: - child-session replay
+
+    @Test("child replay is skipped until its first live task and seeds totals baseline")
+    func childReplayIsSkippedUntilFirstLiveTask() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-07-14T15:04:55.408Z","forked_from_id":"11111111-2222-3333-4444-555555555555","source":{"subagent":{"thread_spawn":{"parent_thread_id":"11111111-2222-3333-4444-555555555555"}}}}}
+        {"timestamp":"2026-07-14T15:04:55.545Z","type":"session_meta","payload":{"id":"11111111-2222-3333-4444-555555555555","timestamp":"2026-07-14T15:03:02.805Z","source":"vscode"}}
+        {"timestamp":"2026-07-14T15:04:55.545Z","type":"event_msg","payload":{"type":"task_started","turn_id":"parent-turn","started_at":1784041383}}
+        {"timestamp":"2026-07-14T15:04:56.100Z","type":"turn_context","payload":{"turn_id":"parent-turn","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-14T15:04:56.200Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":50,"total_tokens":1200},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":50,"total_tokens":1200}}}}
+        {"timestamp":"2026-07-14T15:04:57.300Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":150,"output_tokens":300,"reasoning_output_tokens":75,"total_tokens":1800},"last_token_usage":{"input_tokens":500,"cached_input_tokens":50,"output_tokens":100,"reasoning_output_tokens":25,"total_tokens":600}}}}
+        {"timestamp":"2026-07-14T15:04:57.400Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"flex"}}}
+        {"timestamp":"2026-07-14T15:04:58.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"child-turn","started_at":1784041498}}
+        {"timestamp":"2026-07-14T15:04:58.100Z","type":"turn_context","payload":{"turn_id":"child-turn","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-14T15:04:59.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1600,"cached_input_tokens":160,"output_tokens":320,"reasoning_output_tokens":80,"total_tokens":1920}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.inputTokens) == [100])
+        #expect(parsed.usageDeltas.map(\.cachedInputTokens) == [10])
+        #expect(parsed.usageDeltas.map(\.outputTokens) == [20])
+        #expect(parsed.usageDeltas.map(\.turnId) == ["child-turn"])
+        #expect(parsed.usageDeltas.map { $0.serviceTierPreference?.rawValue } == ["flex"])
+    }
+
+    @Test("child without a live task emits no replayed usage")
+    func childWithoutLiveTaskEmitsNoUsage() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","forked_from_id":"11111111-2222-3333-4444-555555555555"}}
+        {"timestamp":"2026-07-14T15:04:55.545Z","type":"event_msg","payload":{"type":"task_started","turn_id":"parent-turn","started_at":1784041383}}
+        {"timestamp":"2026-07-14T15:04:56.200Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":50,"total_tokens":1200}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.isEmpty)
     }
 
     // MARK: - per-turn service tier preference
@@ -369,7 +406,8 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas.map(\.turnId) == [
             "turn-missing", "turn-null", "turn-unknown",
         ])
-        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [nil, nil, nil])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference).map { $0?.rawValue }
+            == [nil, nil, "flex"])
     }
 
     @Test("only matching task completion clears the active turn")

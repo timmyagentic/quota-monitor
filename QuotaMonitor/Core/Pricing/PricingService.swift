@@ -80,12 +80,29 @@ enum CodexFastMode {
     static let suffix = "-fast"
 }
 
+/// Codex Flex uses the published Flex-processing rates. These are half of
+/// standard input, cached-input, and output prices for the supported models.
+/// As with Fast, rollout preference is pricing evidence rather than proof of
+/// the tier ultimately served by OpenAI.
+enum CodexFlexMode {
+    static let multipliers: [String: Double] = [
+        "gpt-5.6-sol": 0.5,
+        "gpt-5.6-terra": 0.5,
+        "gpt-5.6-luna": 0.5,
+        "gpt-5.5": 0.5,
+        "gpt-5.4": 0.5,
+        "gpt-5.4-mini": 0.5,
+        "gpt-5.4-nano": 0.5,
+    ]
+    static let suffix = "-flex"
+}
+
 enum PricingSeed {
     /// Concrete catalog entries shipped with the binary. Includes the
     /// real model rows plus synthetic `*-fast` siblings derived from
     /// `CodexFastMode.multipliers` so per-event preference and fallback
     /// selection can JOIN against them directly.
-    static let entries: [PricingEntry] = base + fastVariants
+    static let entries: [PricingEntry] = base + fastVariants + flexVariants
 
     private static let base: [PricingEntry] = [
         // Legacy fallback used by RolloutParser when no model_id was ever
@@ -249,6 +266,29 @@ enum PricingSeed {
                 sourceUrl: b.sourceUrl)
         }
         // Sort so seeding is deterministic across launches / test runs.
+        .sorted { $0.modelId < $1.modelId }
+    }()
+
+    /// Synthetic `*-flex` rows derived from OpenAI's published Flex rates.
+    private static let flexVariants: [PricingEntry] = {
+        let byId = Dictionary(uniqueKeysWithValues: base.map { ($0.modelId, $0) })
+        return CodexFlexMode.multipliers.compactMap { (baseId, mul) -> PricingEntry? in
+            guard let b = byId[baseId] else {
+                assertionFailure("CodexFlexMode multiplier references unknown base model '\(baseId)'")
+                return nil
+            }
+            return PricingEntry(
+                modelId: b.modelId + CodexFlexMode.suffix,
+                displayName: "\(b.displayName) (Flex)",
+                inputPricePerMillion: b.inputPricePerMillion * mul,
+                cachedInputPricePerMillion: b.cachedInputPricePerMillion * mul,
+                outputPricePerMillion: b.outputPricePerMillion * mul,
+                cacheCreationPricePerMillion: b.cacheCreationPricePerMillion * mul,
+                effectiveModelId: b.effectiveModelId,
+                isOfficial: false,
+                note: "Codex Flex tier (= \(mul)× standard). Synthetic row selected by recorded flex preference.",
+                sourceUrl: "https://developers.openai.com/api/docs/pricing?latest-pricing=flex")
+        }
         .sorted { $0.modelId < $1.modelId }
     }()
 }
@@ -418,6 +458,41 @@ enum PricingService {
                     ])
                 updated += db.changesCount
             }
+
+            // Flex rows are also derived from the refreshed base rates. Keep
+            // them synchronized so a LiteLLM update cannot leave stale Flex
+            // prices behind.
+            if let mul = CodexFlexMode.multipliers[modelId] {
+                let flexId = modelId + CodexFlexMode.suffix
+                try db.execute(sql: """
+                    UPDATE pricing_catalog
+                    SET input_price_per_million = ?,
+                        cached_input_price_per_million = ?,
+                        output_price_per_million = ?,
+                        cache_creation_price_per_million = ?,
+                        above_200k_input_price_per_million = ?,
+                        above_200k_output_price_per_million = ?,
+                        max_input_tokens = ?,
+                        max_output_tokens = ?,
+                        price_source = 'litellm',
+                        fetched_at = ?,
+                        updated_at = ?
+                    WHERE model_id = ? AND price_source != 'local'
+                    """, arguments: [
+                        inP * mul,
+                        cachedP * mul,
+                        outP * mul,
+                        (entry.perMillionCacheCreation ?? 0) * mul,
+                        entry.perMillionAbove200kInput.map { $0 * mul },
+                        entry.perMillionAbove200kOutput.map { $0 * mul },
+                        entry.maxInputTokens,
+                        entry.maxOutputTokens,
+                        now,
+                        now,
+                        flexId
+                    ])
+                updated += db.changesCount
+            }
         }
 
         if updated > 0 {
@@ -441,10 +516,10 @@ enum PricingService {
     ///     at the catalog write rate, and 1-hour cache writes are billed at
     ///     2x base input. No subtraction needed.
     ///
-    /// For codex events whose model_id is in `CodexFastMode.multipliers`, a
-    /// stored `priority` preference selects the synthetic `<model>-fast` row,
-    /// a stored `default` selects the base row, and `codexFastModeBilling`
-    /// chooses the fallback only when the stored preference is unknown.
+    /// For codex events, a stored `priority` or `flex` preference selects the
+    /// matching synthetic tier row when supported. A stored `default` selects
+    /// the base row, and `codexFastModeBilling` chooses the Fast fallback only
+    /// when the stored preference is unknown.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
@@ -503,34 +578,44 @@ enum PricingService {
     /// preference wins; the Fast-Mode setting only handles unknown rows.
     /// Other providers and models keep `usage_events.model_id`.
     ///
-    /// We string-interpolate the model id list and the suffix because
-    /// they're code-controlled (sourced from `CodexFastMode`), never
+    /// We string-interpolate the model id lists and suffixes because
+    /// they're code-controlled (sourced from the tier maps), never
     /// user input. Single-quote escaping is unnecessary here, but the
     /// model id assertion below makes the assumption explicit.
     private static func effectiveModelIdSQL(codexFastModeBilling: Bool) -> String {
-        guard !CodexFastMode.multipliers.isEmpty else {
+        guard !CodexFastMode.multipliers.isEmpty,
+              !CodexFlexMode.multipliers.isEmpty
+        else {
             return "usage_events.model_id"
         }
         // Determinism + simpler diffs.
-        let ids = CodexFastMode.multipliers.keys.sorted()
-        for id in ids {
+        let fastIds = CodexFastMode.multipliers.keys.sorted()
+        let flexIds = CodexFlexMode.multipliers.keys.sorted()
+        for id in Set(fastIds + flexIds) {
             assert(!id.contains("'"),
-                   "CodexFastMode multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
+                   "Codex tier multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
         }
-        let quoted = ids.map { "'\($0)'" }.joined(separator: ",")
-        let suffix = CodexFastMode.suffix
+        let quotedFast = fastIds.map { "'\($0)'" }.joined(separator: ",")
+        let quotedFlex = flexIds.map { "'\($0)'" }.joined(separator: ",")
+        let fastSuffix = CodexFastMode.suffix
+        let flexSuffix = CodexFlexMode.suffix
         let globalFast = codexFastModeBilling ? 1 : 0
         return """
         CASE
           WHEN usage_events.provider = 'codex'
-               AND usage_events.model_id IN (\(quoted))
           THEN CASE
             WHEN usage_events.codex_service_tier_preference = 'priority'
-              THEN usage_events.model_id || '\(suffix)'
+                 AND usage_events.model_id IN (\(quotedFast))
+              THEN usage_events.model_id || '\(fastSuffix)'
+            WHEN usage_events.codex_service_tier_preference = 'flex'
+                 AND usage_events.model_id IN (\(quotedFlex))
+              THEN usage_events.model_id || '\(flexSuffix)'
             WHEN usage_events.codex_service_tier_preference = 'default'
               THEN usage_events.model_id
-            WHEN usage_events.codex_service_tier_preference IS NULL AND \(globalFast) = 1
-              THEN usage_events.model_id || '\(suffix)'
+            WHEN usage_events.codex_service_tier_preference IS NULL
+                 AND \(globalFast) = 1
+                 AND usage_events.model_id IN (\(quotedFast))
+              THEN usage_events.model_id || '\(fastSuffix)'
             ELSE usage_events.model_id
           END
           ELSE usage_events.model_id

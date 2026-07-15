@@ -12,7 +12,7 @@ struct RolloutEventDecoderTests {
         #expect(CodexServiceTierPreference(rolloutValue: "default") == .standard)
         #expect(CodexServiceTierPreference.standard.rawValue == "default")
         #expect(CodexServiceTierPreference(rolloutValue: nil) == nil)
-        #expect(CodexServiceTierPreference(rolloutValue: "flex") == nil)
+        #expect(CodexServiceTierPreference(rolloutValue: "flex")?.rawValue == "flex")
     }
 
     @Test("nested thread settings decode the service tier")
@@ -63,7 +63,7 @@ struct RolloutEventDecoderTests {
     @Test("task started decodes its turn ID")
     func taskStarted() throws {
         let line = Data(#"""
-        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a","started_at":1784041495}}
         """#.utf8)
 
         let event = try #require(RolloutEvent.decode(line: line))
@@ -72,6 +72,7 @@ struct RolloutEventDecoderTests {
             return
         }
         #expect(payload.turnId == "turn-a")
+        #expect(payload.startedAt == 1_784_041_495)
     }
 
     @Test("task complete preserves a null turn ID")

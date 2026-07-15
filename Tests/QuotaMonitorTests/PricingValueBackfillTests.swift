@@ -378,6 +378,97 @@ struct PricingValueBackfillTests {
                 "stored default expected 35.00 even with fallback on, got \(values[0])")
     }
 
+    @Test("codex Flex: stored flex uses half-price row even when Fast fallback is on")
+    func codexFlexPreferenceUsesFlexPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-flex",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 1_000_000, cached: 200_000, output: 1_000_000,
+                             serviceTierPreference: "flex")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+
+        let values = try valueUSD(in: db)
+        // Gross input includes cached input:
+        //   0.8M * $2.50 + 0.2M * $0.25 + 1M * $15 = $17.05.
+        #expect(abs(values[0] - 17.05) < 1e-6,
+                "stored flex expected 17.05 even with Fast fallback on, got \(values[0])")
+    }
+
+    @Test("database initialization seeds current Codex Flex prices")
+    func databaseInitializationSeedsCodexFlexPrices() throws {
+        let db = try makeDatabase()
+
+        let row = try db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT input_price_per_million,
+                       cached_input_price_per_million,
+                       output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id = 'gpt-5.5-flex'
+                """)
+        }
+
+        #expect(row != nil)
+        #expect(abs((row?["input_price_per_million"] as Double? ?? 0) - 2.50) < 1e-6)
+        #expect(abs((row?["cached_input_price_per_million"] as Double? ?? 0) - 0.25) < 1e-6)
+        #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 15.00) < 1e-6)
+    }
+
+    @Test("LiteLLM refresh keeps Fast and Flex rows derived from the base price")
+    func liteLLMRefreshKeepsCodexTierRowsInSync() throws {
+        let db = try makeDatabase()
+        let entry = LiteLLMEntry(
+            modelId: "gpt-5.5",
+            provider: "openai",
+            inputCostPerToken: 6.0 / 1_000_000,
+            outputCostPerToken: 36.0 / 1_000_000,
+            cacheReadInputTokenCost: 0.6 / 1_000_000,
+            cacheCreationInputTokenCost: nil,
+            inputCostAbove200kTokens: nil,
+            outputCostAbove200kTokens: nil,
+            maxInputTokens: nil,
+            maxOutputTokens: nil)
+
+        _ = try db.pool.write { conn in
+            try PricingService.applyLiteLLMUpdate(entries: [entry], in: conn)
+        }
+
+        let rows = try db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT model_id, input_price_per_million,
+                       cached_input_price_per_million, output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id IN ('gpt-5.5', 'gpt-5.5-fast', 'gpt-5.5-flex')
+                ORDER BY model_id
+                """)
+        }
+        let prices = Dictionary(uniqueKeysWithValues: rows.map { row in
+            (row["model_id"] as String, (
+                row["input_price_per_million"] as Double,
+                row["cached_input_price_per_million"] as Double,
+                row["output_price_per_million"] as Double))
+        })
+
+        #expect(abs((prices["gpt-5.5"]?.0 ?? 0) - 6.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5"]?.1 ?? 0) - 0.6) < 1e-9)
+        #expect(abs((prices["gpt-5.5"]?.2 ?? 0) - 36.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-fast"]?.0 ?? 0) - 15.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-fast"]?.1 ?? 0) - 1.5) < 1e-9)
+        #expect(abs((prices["gpt-5.5-fast"]?.2 ?? 0) - 90.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-flex"]?.0 ?? 0) - 3.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-flex"]?.1 ?? 0) - 0.3) < 1e-9)
+        #expect(abs((prices["gpt-5.5-flex"]?.2 ?? 0) - 18.0) < 1e-9)
+    }
+
     @Test("codex Fast-Mode: gpt-5.5 event reprices against gpt-5.5-fast catalog row")
     func codexFastModeRoutesToFastVariant() throws {
         let db = try makeDatabase()

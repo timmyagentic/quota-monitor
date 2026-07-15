@@ -1,4 +1,4 @@
-# Codex Fast Rollout Preference Attribution
+# Codex Service-Tier Rollout Preference Attribution
 
 **Date:** 2026-07-15
 **Status:** Approved for implementation
@@ -6,14 +6,15 @@
 
 ## Goal
 
-Estimate Codex Fast pricing per turn from durable rollout evidence instead of
+Estimate Codex service-tier pricing per turn from durable rollout evidence instead of
 applying one account-wide setting to all history or depending on transient
 `logs_2.sqlite` trace rows.
 
-The result must distinguish three states:
+The result must distinguish four states:
 
 - `priority`: the rollout recorded a Fast/Priority preference for this turn;
 - `default`: the rollout explicitly recorded the default preference;
+- `flex`: the rollout explicitly recorded the Flex preference;
 - unknown: no usable preference was recorded for the turn.
 
 These values are pricing hints, not confirmation of the service tier that the
@@ -48,8 +49,7 @@ The names in storage and documentation deliberately use **preference**, not
 - Do not infer Standard merely because no Priority trace row was found.
 - Do not copy OpenUsage source or tests; use its commit as an attributed design
   reference and implement against QuotaMonitor's typed importer.
-- Do not change Fast multipliers, base token formulas, Claude pricing, or model
-  coverage.
+- Do not change Fast multipliers, base token formulas, or Claude pricing.
 - Do not close PR #91 until the replacement PR exists and is verified.
 
 ## Rollout decoding
@@ -58,7 +58,7 @@ The names in storage and documentation deliberately use **preference**, not
 
 ```swift
 case threadSettingsApplied(serviceTier: String?, timestamp: String?)
-case taskStarted(turnId: String?, timestamp: String?)
+case taskStarted(turnId: String?, startedAt: TimeInterval?, timestamp: String?)
 case taskComplete(turnId: String?, timestamp: String?)
 ```
 
@@ -71,7 +71,8 @@ intentionally narrow:
 | --- | --- |
 | `priority`, `fast` | `priority` |
 | `default` | `default` |
-| missing, `null`, empty, `auto`, `flex`, unknown | unknown |
+| `flex` | `flex` |
+| missing, `null`, empty, `auto`, unknown | unknown |
 
 A syntactically valid full settings event with no recognized tier clears the
 pending preference to unknown. A malformed event that cannot be decoded stays
@@ -111,6 +112,15 @@ Transitions:
 This pins the important regression: `priority → task A → default update →`
 more task-A tokens must keep task A as `priority`; task B becomes `default`.
 
+### Child replay gate
+
+A child or fork rollout can replay the parent's full history with rewritten
+envelope timestamps. The first child `session_meta` arms a replay gate. During
+the gate, token totals update the cumulative baseline but emit no usage. The
+gate opens only at the first `task_started` whose `started_at` is at or after
+the child creation time. Repeated rows whose cumulative `total_token_usage`
+did not change are also non-billable even when `last_token_usage` differs.
+
 ## Storage and migration
 
 `usage_events` gains:
@@ -118,7 +128,7 @@ more task-A tokens must keep task A as `priority`; task B becomes `default`.
 | Column | Meaning |
 | --- | --- |
 | `codex_turn_id TEXT NULL` | Stable Codex turn identifier when present. |
-| `codex_service_tier_preference TEXT NULL` | `priority`, `default`, or unknown. |
+| `codex_service_tier_preference TEXT NULL` | `priority`, `default`, `flex`, or unknown. |
 
 The replacement keeps PR #91's unpublished migration identifier
 `v13-codex-billing-tier` as a compatibility bridge for developers who ran that
@@ -136,11 +146,12 @@ stale trace inference.
 
 ## Pricing policy
 
-For Codex models listed in `CodexFastMode.multipliers`:
+For Codex models listed in the corresponding tier maps:
 
 | Per-event preference | Effective catalog row |
 | --- | --- |
 | `priority` | `model_id + "-fast"`, regardless of the global fallback |
+| `flex` | `model_id + "-flex"`, regardless of the global fallback |
 | `default` | `model_id`, regardless of the global fallback |
 | unknown and fallback enabled | `model_id + "-fast"` |
 | unknown and fallback disabled | `model_id` |
@@ -150,7 +161,9 @@ fallback. Its user-facing label and help text must say that recent tagged
 turns override it and that the amount remains an estimate from a recorded
 preference.
 
-Non-Fast models and Claude rows retain their existing catalog selection.
+Flex rows use OpenAI's published `0.5x` Standard rates for supported models.
+Unsupported tier/model combinations and Claude rows retain their base catalog
+selection.
 
 ## Documentation and release notes
 
@@ -171,12 +184,14 @@ or documentation.
 Automated coverage must prove:
 
 - typed decoding of nested/top-level preferences and task lifecycle events;
-- priority/default normalization plus unknown preservation;
+- priority/default/flex normalization plus unknown preservation;
+- child replay exclusion, cumulative-baseline seeding, and unchanged-total
+  deduplication;
 - sticky settings, turn-start freezing, mid-turn updates, missing IDs,
   `turn_context` fallback, task completion, and stray tokens;
 - schema compatibility and provider-based invalidation for a custom path;
 - importer persistence without any `logs_2.sqlite` file;
-- priority/default/unknown pricing precedence, non-Fast model behavior, and
+- priority/default/flex/unknown pricing precedence, unsupported-model behavior, and
   Claude isolation;
 - exact bilingual fallback-setting copy.
 

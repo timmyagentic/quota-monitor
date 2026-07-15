@@ -64,6 +64,24 @@ private struct ActiveCodexTurn {
     let serviceTierPreference: CodexServiceTierPreference?
 }
 
+private enum ChildReplayGate {
+    case childCreatedAt(TimeInterval)
+    case firstSelfTimedTask
+
+    func isCleared(by task: TaskLifecyclePayload, lineTimestamp: String?) -> Bool {
+        guard let startedAt = task.startedAt else { return false }
+        switch self {
+        case .childCreatedAt(let createdAt):
+            return startedAt >= createdAt
+        case .firstSelfTimedTask:
+            guard let lineTimestamp,
+                  let eventTime = ISO8601.parse(lineTimestamp)
+            else { return false }
+            return startedAt >= floor(eventTime.timeIntervalSince1970)
+        }
+    }
+}
+
 struct RateLimitSampleDraft {
     let bucket: String              // semantic "primary" (5h) | "secondary" (7d)
     let windowDuration: TimeInterval?
@@ -95,6 +113,8 @@ enum RolloutParser {
         var latestPlanType: String?
         var pendingServiceTierPreference: CodexServiceTierPreference?
         var activeTurn: ActiveCodexTurn?
+        var sawSessionMeta = false
+        var childReplayGate: ChildReplayGate?
 
         var previousUsage: TokenUsageWire?
         var seenUsageSnapshots: Set<UsageSnapshotKey> = []
@@ -107,6 +127,17 @@ enum RolloutParser {
             switch event {
             case .sessionMeta(let meta, let envelopeTs):
                 let ts = envelopeTs ?? meta.timestamp
+                if !sawSessionMeta {
+                    sawSessionMeta = true
+                    if meta.isChildSession {
+                        if let ts, let createdAt = ISO8601.parse(ts) {
+                            childReplayGate = .childCreatedAt(
+                                floor(createdAt.timeIntervalSince1970))
+                        } else {
+                            childReplayGate = .firstSelfTimedTask
+                        }
+                    }
+                }
                 if sessionId == nil, let id = meta.id { sessionId = id }
                 if startedAt == nil { startedAt = ts ?? meta.timestamp }
                 if updatedAt == nil { updatedAt = ts ?? meta.timestamp }
@@ -143,7 +174,13 @@ enum RolloutParser {
                 pendingServiceTierPreference = CodexServiceTierPreference(
                     rolloutValue: settings.resolvedServiceTier)
 
-            case .taskStarted(let task, _):
+            case .taskStarted(let task, let envelopeTs):
+                if childReplayGate?.isCleared(
+                    by: task,
+                    lineTimestamp: envelopeTs) == true
+                {
+                    childReplayGate = nil
+                }
                 activeTurn = ActiveCodexTurn(
                     id: task.turnId,
                     serviceTierPreference: pendingServiceTierPreference)
@@ -156,8 +193,10 @@ enum RolloutParser {
             case .tokenCount(let tc, let envelopeTs):
                 let timestamp = envelopeTs ?? ISO8601.fractional.string(from: Date())
                 if let plan = tc.rateLimits?.planType { latestPlanType = plan }
-                rateLimitSamples.append(contentsOf:
-                    extractSamples(from: tc.rateLimits, at: timestamp))
+                if childReplayGate == nil {
+                    rateLimitSamples.append(contentsOf:
+                        extractSamples(from: tc.rateLimits, at: timestamp))
+                }
 
                 guard let info = tc.info else { continue }
 
@@ -185,7 +224,7 @@ enum RolloutParser {
                     from: info,
                     previousTotal: &previousUsage,
                     seenUsageSnapshots: &seenUsageSnapshots)
-                if let delta {
+                if childReplayGate == nil, let delta {
                     deltas.append(UsageDelta(
                         timestamp: timestamp,
                         modelId: resolvedModel,
@@ -242,6 +281,7 @@ enum RolloutParser {
         seenUsageSnapshots: inout Set<UsageSnapshotKey>
     ) -> TokenUsageWire? {
         if let total = info.totalTokenUsage {
+            if total == previousTotal { return nil }
             let snapshot = UsageSnapshotKey(total: total, last: info.lastTokenUsage)
             if seenUsageSnapshots.contains(snapshot) { return nil }
             seenUsageSnapshots.insert(snapshot)
