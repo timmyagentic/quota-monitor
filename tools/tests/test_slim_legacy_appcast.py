@@ -295,6 +295,22 @@ class SlimFeedTests(unittest.TestCase):
 
         self.assertEqual(result, expected)
 
+    def test_only_direct_item_description_is_removed(self):
+        nested_description = (
+            "<metadata><description><![CDATA[KEEP]]></description></metadata>"
+        )
+        direct_description = (
+            "<description><![CDATA[REMOVE]]></description>"
+        )
+        payload = (
+            "<item>" + nested_description + direct_description + "</item>"
+        )
+        expected = "<item>" + nested_description + "</item>"
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result, expected)
+
     def test_only_item_cdata_descriptions_are_removed_byte_for_byte(self):
         payload, channel, first, second, plain = legacy_fixture()
         expected = payload.replace(first, "").replace(second, "")

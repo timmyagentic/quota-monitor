@@ -17,8 +17,8 @@ class SlimFeedError(Exception):
 
 _TAG_ATTRIBUTES = r'''(?:[^>"']|"[^"]*"|'[^']*')*'''
 _CDATA = r"<!\[CDATA\[(?:(?!\]\]>)[\s\S])*\]\]>"
-_ITEM_TAG = re.compile(
-    r"<item\b" + _TAG_ATTRIBUTES + r">|</item\s*>"
+_ELEMENT_TAG = re.compile(
+    r"<(?P<closing>/)?(?P<name>[^\s/>]+)" + _TAG_ATTRIBUTES + r">"
 )
 _DESCRIPTION_CORE = (
     r"<description\b"
@@ -86,55 +86,54 @@ def _doctype_end(payload, start):
 
 
 def _protected_masks(payload):
-    item_mask = list(payload)
+    element_mask = list(payload)
     description_mask = list(payload)
     index = 0
     while index < len(payload):
         if payload.startswith(_COMMENT_OPEN, index):
             close = payload.find(_COMMENT_CLOSE, index + len(_COMMENT_OPEN))
             end = close + len(_COMMENT_CLOSE)
-            _mask_range(item_mask, index, end)
+            _mask_range(element_mask, index, end)
             _mask_range(description_mask, index, end)
         elif payload.startswith(_CDATA_OPEN, index):
             content_start = index + len(_CDATA_OPEN)
             content_end = payload.find(_CDATA_CLOSE, content_start)
             end = content_end + len(_CDATA_CLOSE)
-            _mask_range(item_mask, index, end)
+            _mask_range(element_mask, index, end)
             _mask_range(description_mask, content_start, content_end)
         elif payload.startswith(_PI_OPEN, index):
             close = payload.find(_PI_CLOSE, index + len(_PI_OPEN))
             end = close + len(_PI_CLOSE)
-            _mask_range(item_mask, index, end)
+            _mask_range(element_mask, index, end)
             _mask_range(description_mask, index, end)
         elif payload.startswith(_DOCTYPE_OPEN, index):
             end = _doctype_end(payload, index)
-            _mask_range(item_mask, index, end)
+            _mask_range(element_mask, index, end)
             _mask_range(description_mask, index, end)
         else:
             index += 1
             continue
         index = end
-    return "".join(item_mask), "".join(description_mask)
+    return "".join(element_mask), "".join(description_mask)
 
 
-def _item_spans(item_mask):
-    spans = []
-    depth = 0
-    outer_start = None
-    for match in _ITEM_TAG.finditer(item_mask):
+def _direct_item_descriptions(element_mask):
+    descriptions = {}
+    stack = []
+    for match in _ELEMENT_TAG.finditer(element_mask):
         tag = match.group(0)
-        if tag.startswith("</"):
-            if depth == 0:
-                continue
-            depth -= 1
-            if depth == 0:
-                spans.append((outer_start, match.end()))
-                outer_start = None
-        elif not tag.rstrip().endswith("/>"):
-            if depth == 0:
-                outer_start = match.start()
-            depth += 1
-    return spans
+        if match.group("closing") is not None:
+            if stack:
+                stack.pop()
+            continue
+        if tag.rstrip().endswith("/>"):
+            continue
+
+        name = match.group("name")
+        if name == "description" and stack and stack[-1][0] == "item":
+            descriptions[match.start()] = stack[-1][1]
+        stack.append((name, match.start()))
+    return descriptions
 
 
 def _line_removal_span(payload, start, end, item_start):
@@ -150,14 +149,16 @@ def _line_removal_span(payload, start, end, item_start):
     return line_start, end + len(trailing.group(0))
 
 
-def _description_removals(payload, description_mask, item_spans):
+def _description_removals(payload, description_mask, direct_descriptions):
     removals = []
-    for item_start, item_end in item_spans:
-        masked_item = description_mask[item_start:item_end]
-        for match in _ITEM_CDATA_DESCRIPTION.finditer(masked_item):
-            start = item_start + match.start()
-            end = item_start + match.end()
-            removals.append(_line_removal_span(payload, start, end, item_start))
+    for match in _ITEM_CDATA_DESCRIPTION.finditer(description_mask):
+        start = match.start()
+        item_start = direct_descriptions.get(start)
+        if item_start is None:
+            continue
+        removals.append(
+            _line_removal_span(payload, start, match.end(), item_start)
+        )
     return removals
 
 
@@ -175,9 +176,13 @@ def slim_feed(payload: str) -> str:
     """Remove only CDATA description elements contained by item blocks."""
 
     _validate_xml(payload, "input")
-    item_mask, description_mask = _protected_masks(payload)
-    item_spans = _item_spans(item_mask)
-    removals = _description_removals(payload, description_mask, item_spans)
+    element_mask, description_mask = _protected_masks(payload)
+    direct_descriptions = _direct_item_descriptions(element_mask)
+    removals = _description_removals(
+        payload,
+        description_mask,
+        direct_descriptions,
+    )
     slimmed = _remove_spans(payload, removals)
     _validate_xml(slimmed, "output")
     return slimmed
