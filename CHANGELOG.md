@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- History now opens quickly with the latest week and loads older weeks only when you scroll down.
+
+### Fixed
+
+- **Faster History loading.** History now queries seven calendar days at a time and loads the previous week only after a downward scroll, avoiding a full-history scan whenever the page opens.
+
 ## [0.2.40] — 2026-07-15
 
 #### Summary
