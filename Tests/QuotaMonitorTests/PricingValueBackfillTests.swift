@@ -336,15 +336,15 @@ struct PricingValueBackfillTests {
 
     // MARK: - codex Fast-Mode billing remaps to -fast catalog row
 
-    @Test("codex Fast-Mode: stored priority uses fast pricing when fallback is off")
-    func codexPriorityPreferenceOverridesDisabledFallback() throws {
+    @Test("codex Fast-Mode: stored priority uses fast pricing")
+    func codexPriorityPreferenceUsesFastPricing() throws {
         let db = try makeDatabase()
         try insertPriceRow(in: db, modelId: "gpt-5.5",
                            input: 5.00, cached: 0.50, output: 30.00)
         try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
                            input: 12.50, cached: 1.25, output: 75.00)
         try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
-                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             input: 100_000, cached: 0, output: 100_000,
                              serviceTierPreference: "priority")
 
         try db.pool.write { conn in
@@ -353,19 +353,19 @@ struct PricingValueBackfillTests {
         }
 
         let values = try valueUSD(in: db)
-        #expect(abs(values[0] - 87.50) < 1e-6,
-                "stored priority expected 87.50 even with fallback off, got \(values[0])")
+        #expect(abs(values[0] - 8.75) < 1e-6,
+                "stored priority expected 8.75, got \(values[0])")
     }
 
-    @Test("codex Fast-Mode: stored default uses base pricing when fallback is on")
-    func codexDefaultPreferenceOverridesEnabledFallback() throws {
+    @Test("codex Fast-Mode: stored default uses base pricing when legacy flag is on")
+    func codexDefaultPreferenceUsesStandardWithLegacyFlag() throws {
         let db = try makeDatabase()
         try insertPriceRow(in: db, modelId: "gpt-5.5",
                            input: 5.00, cached: 0.50, output: 30.00)
         try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
                            input: 12.50, cached: 1.25, output: 75.00)
         try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
-                             input: 1_000_000, cached: 0, output: 1_000_000,
+                             input: 100_000, cached: 0, output: 100_000,
                              serviceTierPreference: "default")
 
         try db.pool.write { conn in
@@ -374,11 +374,11 @@ struct PricingValueBackfillTests {
         }
 
         let values = try valueUSD(in: db)
-        #expect(abs(values[0] - 35.00) < 1e-6,
-                "stored default expected 35.00 even with fallback on, got \(values[0])")
+        #expect(abs(values[0] - 3.50) < 1e-6,
+                "stored default expected 3.50 even with legacy flag on, got \(values[0])")
     }
 
-    @Test("codex Flex: stored flex uses half-price row even when Fast fallback is on")
+    @Test("codex Flex: stored flex uses half-price row when legacy flag is on")
     func codexFlexPreferenceUsesFlexPricing() throws {
         let db = try makeDatabase()
         try insertPriceRow(in: db, modelId: "gpt-5.5",
@@ -388,7 +388,7 @@ struct PricingValueBackfillTests {
         try insertPriceRow(in: db, modelId: "gpt-5.5-flex",
                            input: 2.50, cached: 0.25, output: 15.00)
         try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
-                             input: 1_000_000, cached: 200_000, output: 1_000_000,
+                             input: 100_000, cached: 20_000, output: 100_000,
                              serviceTierPreference: "flex")
 
         try db.pool.write { conn in
@@ -398,9 +398,9 @@ struct PricingValueBackfillTests {
 
         let values = try valueUSD(in: db)
         // Gross input includes cached input:
-        //   0.8M * $2.50 + 0.2M * $0.25 + 1M * $15 = $17.05.
-        #expect(abs(values[0] - 17.05) < 1e-6,
-                "stored flex expected 17.05 even with Fast fallback on, got \(values[0])")
+        //   0.08M * $2.50 + 0.02M * $0.25 + 0.1M * $15 = $1.705.
+        #expect(abs(values[0] - 1.705) < 1e-6,
+                "stored flex expected 1.705 even with legacy flag on, got \(values[0])")
     }
 
     @Test("database initialization seeds current Codex Flex prices")
@@ -469,8 +469,8 @@ struct PricingValueBackfillTests {
         #expect(abs((prices["gpt-5.5-flex"]?.2 ?? 0) - 18.0) < 1e-9)
     }
 
-    @Test("codex Fast-Mode: gpt-5.5 event reprices against gpt-5.5-fast catalog row")
-    func codexFastModeRoutesToFastVariant() throws {
+    @Test("codex without recorded tier stays Standard even when legacy fallback is on")
+    func codexUnknownTierStaysStandard() throws {
         let db = try makeDatabase()
         // Standard rate (matches base PricingSeed shape; numbers chosen
         // so the maths is hand-verifiable).
@@ -479,29 +479,29 @@ struct PricingValueBackfillTests {
         // Synthetic fast row = 2.5× base (mirrors `CodexFastMode.multipliers`).
         try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
                            input: 12.50, cached: 1.25, output: 75.00)
-        // 1_000_000 input, 0 cached, 1_000_000 output:
-        //   Standard: 1*5 + 0 + 1*30 = $35.00
-        //   Fast:     1*12.5 + 0 + 1*75 = $87.50  (= 35 * 2.5)
+        // 100_000 input, 0 cached, 100_000 output:
+        //   Standard: 0.1*5 + 0 + 0.1*30 = $3.50
+        //   Fast:     0.1*12.5 + 0 + 0.1*75 = $8.75
         try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
-                             input: 1_000_000, cached: 0, output: 1_000_000)
+                             input: 100_000, cached: 0, output: 100_000)
 
-        // Standard billing leaves us at $35.
+        // Standard billing produces $3.50.
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn,
                                                  codexFastModeBilling: false)
         }
         let standard = try valueUSD(in: db)
-        #expect(abs(standard[0] - 35.00) < 1e-6,
-                "standard-tier expected 35.00, got \(standard[0])")
+        #expect(abs(standard[0] - 3.50) < 1e-6,
+                "standard-tier expected 3.50, got \(standard[0])")
 
-        // Fast-mode flips the JOIN to gpt-5.5-fast → $87.50.
+        // The retired fallback must not turn missing evidence into Fast.
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn,
                                                  codexFastModeBilling: true)
         }
-        let fast = try valueUSD(in: db)
-        #expect(abs(fast[0] - 87.50) < 1e-6,
-                "fast-tier expected 87.50 (= 35 * 2.5), got \(fast[0])")
+        let legacyFallbackEnabled = try valueUSD(in: db)
+        #expect(abs(legacyFallbackEnabled[0] - 3.50) < 1e-6,
+                "missing tier evidence must remain Standard")
 
         // And toggling back puts us right where we started — the flag
         // is the only thing that changed, not the event row.
@@ -510,8 +510,82 @@ struct PricingValueBackfillTests {
                                                  codexFastModeBilling: false)
         }
         let backToStandard = try valueUSD(in: db)
-        #expect(abs(backToStandard[0] - 35.00) < 1e-6,
-                "toggling Fast-Mode off must restore standard pricing")
+        #expect(abs(backToStandard[0] - 3.50) < 1e-6)
+    }
+
+    @Test("codex Standard long context doubles input and uses 1.5x output")
+    func codexStandardLongContextPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 300_000, cached: 100_000, output: 10_000)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        // 0.2M * $5 + 0.1M * $0.50 + 0.01M * $22.50 = $1.275.
+        #expect(abs(values[0] - 1.275) < 1e-6)
+    }
+
+    @Test("codex Priority long context falls back to Standard long-context pricing")
+    func codexPriorityLongContextUsesStandardLongPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.4-fast",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 300_000, cached: 100_000, output: 10_000,
+                             serviceTierPreference: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 1.275) < 1e-6)
+    }
+
+    @Test("codex Flex long context applies long-context multipliers to Flex rates")
+    func codexFlexLongContextPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.4-flex",
+                           input: 1.25, cached: 0.125, output: 7.50)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 300_000, cached: 100_000, output: 10_000,
+                             serviceTierPreference: "flex")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        // 0.2M * $2.50 + 0.1M * $0.25 + 0.01M * $11.25 = $0.6375.
+        #expect(abs(values[0] - 0.6375) < 1e-6)
+    }
+
+    @Test("exactly 272K input remains eligible for Priority short-context pricing")
+    func codexPriorityAtLongContextBoundary() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.4-fast",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 272_000, cached: 72_000, output: 10_000,
+                             serviceTierPreference: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 1.336) < 1e-6)
     }
 
     @Test("codex Fast-Mode: only listed models reroute; gpt-5-codex stays on its own row")

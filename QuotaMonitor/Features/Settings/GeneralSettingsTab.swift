@@ -71,23 +71,6 @@ struct GeneralSettingsTab: View {
                 }
             }
 
-            // Codex Fast estimation fallback. Per-turn `priority` or `default`
-            // preferences win; this switch only re-prices older or untagged
-            // supported-model usage. Only shown when Codex is tracked.
-            if settings.enabledProviders.contains("codex") {
-                Section(L10n.sectionCodexBilling) {
-                    Toggle(L10n.codexFastModeBillingLabel,
-                           isOn: $settings.codexFastModeBilling)
-                        .onChange(of: settings.codexFastModeBilling) { _, _ in
-                            env.applyCodexFastModeBilling()
-                        }
-                    Text(L10n.codexFastModeBillingHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
             Section(L10n.sectionLanguage) {
                 LabeledContent(L10n.languagePickerLabel) {
                     Picker("", selection: Binding(

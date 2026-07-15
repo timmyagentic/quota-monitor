@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Attribute Codex Standard, Fast, and Flex pricing estimates per turn from rollout-recorded service-tier preferences, while keeping the existing Fast switch only as a fallback for untagged history and excluding replayed parent usage from child sessions.
+**Goal:** Attribute Codex Standard, Fast, and Flex pricing estimates per turn from rollout-recorded service-tier preferences, default unknown history to Standard, apply Codex long-context pricing, and exclude replayed parent usage from child sessions.
 
-**Architecture:** Extend the typed rollout decoder with settings and task lifecycle events, then freeze a pending preference into each active turn in `RolloutParser`. A child-session gate seeds cumulative baselines without emitting replayed usage until the first self-timed task. Persist the turn ID and explicit preference on `usage_events`; pricing selects a Fast, Flex, or base catalog row before consulting the legacy fallback. A two-step v13/v14 migration stays compatible with databases created by the unpublished PR #91 build and forces a provider-based Codex reread without assuming a default home path.
+**Architecture:** Extend the typed rollout decoder with settings and task lifecycle events, then freeze a pending preference into each active turn in `RolloutParser`. A child-session gate seeds cumulative baselines without emitting replayed usage until the first self-timed task. Persist the turn ID and explicit preference on `usage_events`; pricing selects a Fast, Flex, or base catalog row, defaults missing evidence to Standard, and applies request-level long-context multipliers. v13/v14 stay compatible with databases created by the unpublished PR #91 build and force a provider-based Codex reread without assuming a default home path; v15 immediately reprices stored derived values so unchanged files cannot retain the retired fallback.
 
 **Tech Stack:** Swift 6, Swift Testing, SwiftPM, GRDB/SQLite, SwiftUI localization, shell QA, GitHub pull requests.
 
@@ -12,7 +12,8 @@
 
 - Work only in `/Volumes/SamsungDisk/Code/.worktrees/quota-monitor-codex-fast-rollout-preference` on `codex/codex-fast-rollout-preference`; never edit the primary checkout or `main`.
 - Treat `thread_settings_applied` as a future-turn preference, not a confirmed transmitted or served tier.
-- `priority` estimates Fast, explicit `default` estimates Standard, explicit `flex` estimates Flex, and unknown/NULL alone consults the existing global fallback.
+- `priority` estimates Fast, explicit `default` estimates Standard, explicit `flex` estimates Flex, and unknown/NULL estimates Standard.
+- For supported models, input above 272K applies 2x input/cached-input and 1.5x output; Priority falls back to Standard because long context is unsupported there.
 - A settings update during a turn must not change that turn's frozen preference.
 - Preserve the Codex token formula, current Fast model multipliers, Claude behavior, and unsupported-model behavior; add only published Flex rates.
 - Do not copy real rollouts, credentials, local paths, or substantial OpenUsage code into the repository.
@@ -34,7 +35,7 @@
 - `QuotaMonitor/Core/Importer/RolloutEvent.swift`, `RolloutParser.swift`, and `ImportEngine.swift` — decode, freeze, and persist the preference.
 - `QuotaMonitor/Core/Storage/Records.swift` and `Migrations.swift` — nullable fields and compatibility migration.
 - `QuotaMonitor/Core/Pricing/PricingService.swift` — per-event catalog-row selection.
-- `QuotaMonitor/Core/Settings/SettingsStore.swift`, `QuotaMonitor/Core/Localization/L10n.swift`, and `QuotaMonitor/Features/Settings/GeneralSettingsTab.swift` — fallback semantics and copy.
+- `QuotaMonitor/Core/Settings/SettingsStore.swift`, `QuotaMonitor/Core/Localization/L10n.swift`, and `QuotaMonitor/Features/Settings/GeneralSettingsTab.swift` — retire the misleading unknown-as-Fast setting.
 - `Tests/QuotaMonitorTests/RolloutEventDecoderTests.swift`, `RolloutParserTests.swift`, `MigrationsTests.swift`, `PricingValueBackfillTests.swift`, and `BrandingLocalizationTests.swift` — focused regression coverage.
 - `docs/billing-logic.md`, `README.md`, `CHANGELOG.md`, and `CHANGELOG.zh-Hans.md` — current behavior and release notes.
 
@@ -260,7 +261,7 @@ Run both suites and commit Task 3 files with `Persist Codex tier preference per 
 
 ---
 
-### Task 4: Price Standard, Fast, and Flex by preference before legacy fallback
+### Task 4: Price Standard, Fast, Flex, and long context from recorded evidence
 
 **Files:**
 
@@ -273,16 +274,18 @@ Add `serviceTierPreference: String? = nil` and insert it into `codex_service_tie
 
 - [ ] **Step 2: Write failing precedence tests**
 
-With a `gpt-5.5` base row worth `$35`, Fast row worth `$87.50`, and Flex row worth `$17.50` for uncached tokens, prove priority gives Fast while global fallback is off, explicit default gives Standard while it is on, explicit flex gives Flex while it is on, and NULL still follows the Fast fallback. Keep unsupported-model and Claude tests as controls.
+With controlled base, Fast, and Flex rows, prove priority gives Fast, explicit default gives Standard, explicit flex gives Flex, and NULL stays Standard even when the retained compatibility argument is true. Add supported-model tests above 272K for Standard, Priority, and Flex plus an exact-272K Priority boundary test. Keep unsupported-model and Claude tests as controls.
 
 - [ ] **Step 3: Confirm RED**
 
 Run `swift test --disable-keychain --filter PricingValueBackfillTests`.
-Expected: priority/default overrides fail under global-only SQL.
+Expected: unknown-as-Standard and long-context tests fail under the old SQL.
 
 - [ ] **Step 4: Replace only the effective-model CASE**
 
-For recognized Codex models use:
+For recognized Codex models, select recorded Priority/Flex only when supported,
+otherwise use the base row. Long-context selection runs before Priority so it
+falls back to Standard; Flex remains Flex. Unknown always reaches the base row:
 
 ```sql
 CASE
@@ -292,21 +295,27 @@ CASE
     THEN usage_events.model_id || '-flex'
   WHEN usage_events.codex_service_tier_preference = 'default'
     THEN usage_events.model_id
-  WHEN usage_events.codex_service_tier_preference IS NULL AND \(globalFast) = 1
-    THEN usage_events.model_id || '-fast'
   ELSE usage_events.model_id
 END
 ```
 
-Retain the provider/model guards and current GPT-5.6/5.5/5.4 map.
+Retain the provider/model guards and current GPT-5.6/5.5/5.4 map. Multiply
+input and cached-input by `2.0` and output by `1.5` when supported-model
+`input_tokens > 272_000`.
 
 - [ ] **Step 5: Confirm GREEN and commit**
 
 Run the pricing suite and commit with `Estimate Codex service-tier pricing per turn`.
 
+- [ ] **Step 6: Reprice upgraded databases**
+
+Add `v15-codex-pricing-policy-reprice`, which seeds the catalog and runs
+`backfillAllValues` during migration. Test that an existing NULL-tier event
+holding an old Fast value is rewritten to Standard before any file scan.
+
 ---
 
-### Task 5: Explain fallback semantics and update release surfaces
+### Task 5: Retire fallback UI and update release surfaces
 
 **Files:**
 
@@ -316,26 +325,17 @@ Run the pricing suite and commit with `Estimate Codex service-tier pricing per t
 - Test: `Tests/QuotaMonitorTests/BrandingLocalizationTests.swift`
 - Modify: `docs/billing-logic.md`, `README.md`, `CHANGELOG.md`, and `CHANGELOG.zh-Hans.md`
 
-- [ ] **Step 1: Write the failing bilingual copy test**
+- [ ] **Step 1: Remove the fallback surface**
 
-Pin:
+Remove the General settings section, localized strings, stored setting plumbing,
+controller callback, and diagnostic fields. Keep the pricing function's Boolean
+argument temporarily so external/source callers remain compatible, but ignore it.
 
-```swift
-#expect(en.0 == "Untagged Codex Usage as Fast")
-#expect(en.1 == "Recent Codex usage is estimated per turn from its recorded service-tier preference. This switch only treats older or untagged usage as Fast; explicitly Standard turns stay Standard.")
-#expect(zh.0 == "未标记的 Codex 用量按 Fast 估算")
-#expect(zh.1 == "近期 Codex 用量会按每个 turn 记录的服务档位偏好估算。此开关只把旧版或未标记用量按 Fast 计费；明确记录为 Standard 的 turn 仍按 Standard。")
-```
+- [ ] **Step 2: Update docs and both changelogs**
 
-- [ ] **Step 2: Confirm RED, then update exact copy**
+Document the new columns, future-turn freeze, child replay gate, Standard-on-unknown policy, 272K pricing boundary, compatibility migration, and served-tier boundary. Change README wording to “Codex service-tier estimates.” Add user-readable Summary and detail entries under Unreleased in both languages.
 
-Run `swift test --disable-keychain --filter BrandingLocalizationTests`, observe the old copy fail, apply the tested strings, and update comments without changing the UserDefaults key or controller method name.
-
-- [ ] **Step 3: Update docs and both changelogs**
-
-Document the new columns, future-turn freeze, child replay gate, pricing precedence, compatibility migration, and served-tier boundary. Change README wording to “Codex service-tier estimates and Fast fallback for untagged history.” Add user-readable Summary and detail entries under Unreleased in both languages.
-
-- [ ] **Step 4: Confirm GREEN and commit**
+- [ ] **Step 3: Confirm GREEN and commit**
 
 Run the localization suite plus `git diff --check`; commit docs, copy, spec, and plan with `Document Codex Fast preference estimates`.
 

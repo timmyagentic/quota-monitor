@@ -65,24 +65,4 @@ struct BrandingLocalizationTests {
         #expect(en.2 == "No active cards")
     }
 
-    @Test("Codex Fast fallback copy is precise in both languages")
-    func codexFastFallbackCopy() {
-        let en = LocalizationTestSupport.withLanguage(.english) {
-            (
-                L10n.codexFastModeBillingLabel,
-                L10n.codexFastModeBillingHelp
-            )
-        }
-        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            (
-                L10n.codexFastModeBillingLabel,
-                L10n.codexFastModeBillingHelp
-            )
-        }
-
-        #expect(en.0 == "Untagged Codex Usage as Fast")
-        #expect(en.1 == "Recent Codex usage is estimated per turn from its recorded service-tier preference. This switch only treats older or untagged usage as Fast; explicitly Standard turns stay Standard.")
-        #expect(zh.0 == "未标记的 Codex 用量按 Fast 估算")
-        #expect(zh.1 == "近期 Codex 用量会按每个 turn 记录的服务档位偏好估算。此开关只把旧版或未标记用量按 Fast 计费；明确记录为 Standard 的 turn 仍按 Standard。")
-    }
 }

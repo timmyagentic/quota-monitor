@@ -18,7 +18,8 @@ The result must distinguish four states:
 - unknown: no usable preference was recorded for the turn.
 
 These values are pricing hints, not confirmation of the service tier that the
-server ultimately served.
+server ultimately served. Unknown values remain `NULL` in storage and use
+Standard pricing; Fast must never be inferred without a recorded `priority`.
 
 ## Evidence and terminology
 
@@ -46,7 +47,8 @@ The names in storage and documentation deliberately use **preference**, not
 
 - Do not recover exact served tiers that Codex did not persist.
 - Do not keep or extend the `logs_2.sqlite` reader/tagger from PR #91.
-- Do not infer Standard merely because no Priority trace row was found.
+- Keep missing evidence as unknown/`NULL`; Standard is only its conservative
+  pricing fallback, not an inferred or server-confirmed served tier.
 - Do not copy OpenUsage source or tests; use its commit as an attributed design
   reference and implement against QuotaMonitor's typed importer.
 - Do not change Fast multipliers, base token formulas, or Claude pricing.
@@ -150,20 +152,28 @@ For Codex models listed in the corresponding tier maps:
 
 | Per-event preference | Effective catalog row |
 | --- | --- |
-| `priority` | `model_id + "-fast"`, regardless of the global fallback |
-| `flex` | `model_id + "-flex"`, regardless of the global fallback |
-| `default` | `model_id`, regardless of the global fallback |
-| unknown and fallback enabled | `model_id + "-fast"` |
-| unknown and fallback disabled | `model_id` |
+| `priority` at or below 272K input | `model_id + "-fast"` |
+| `flex` | `model_id + "-flex"` |
+| `default` | `model_id` |
+| unknown | `model_id` |
 
-The existing setting remains useful but becomes a legacy/unknown-data
-fallback. Its user-facing label and help text must say that recent tagged
-turns override it and that the amount remains an estimate from a recorded
-preference.
+The legacy setting that treated unknown usage as Fast is retired. Its stored
+UserDefaults value is harmless and ignored; no UI remains for changing it.
+
+A one-time pricing-policy migration seeds current catalog rows and runs the
+full value backfill during database initialization. Existing databases must
+therefore adopt Standard-on-unknown and long-context pricing before any launch
+query, even when no rollout file changes.
 
 Flex rows use OpenAI's published `0.5x` Standard rates for supported models.
 Unsupported tier/model combinations and Claude rows retain their base catalog
 selection.
+
+For supported models, requests with `input_tokens > 272_000` multiply the
+entire request's Standard or Flex input/cached-input rates by `2.0` and output
+rate by `1.5`. Priority does not support long context, so a recorded
+`priority` above this boundary selects the Standard row before applying those
+multipliers. Exactly 272K remains eligible for ordinary Priority pricing.
 
 ## Documentation and release notes
 
@@ -193,7 +203,7 @@ Automated coverage must prove:
 - importer persistence without any `logs_2.sqlite` file;
 - priority/default/flex/unknown pricing precedence, unsupported-model behavior, and
   Claude isolation;
-- exact bilingual fallback-setting copy.
+- missing-tier Standard behavior and 272K boundary behavior.
 
 Required gates:
 

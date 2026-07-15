@@ -341,5 +341,14 @@ enum Migrations {
                 )
                 """)
         }
+
+        // Recompute the derived dollar values after replacing the legacy
+        // unknown-as-Fast fallback and adding Codex long-context pricing.
+        // This must be a migration rather than relying on the next history
+        // scan: unchanged rollouts may otherwise retain stale values forever.
+        migrator.registerMigration("v15-codex-pricing-policy-reprice") { db in
+            try PricingService.seedCatalog(in: db)
+            try PricingService.backfillAllValues(in: db)
+        }
     }
 }

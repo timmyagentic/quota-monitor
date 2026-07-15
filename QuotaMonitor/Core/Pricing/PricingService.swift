@@ -54,9 +54,9 @@ struct PricingEntry: Sendable, Hashable {
 
 /// Codex Fast estimation multipliers. Rollout JSONL can record a service-tier
 /// preference that the importer freezes per turn. Stored `priority` selects a
-/// synthetic Fast row, stored `default` selects the base row, and only unknown
-/// preferences follow the global fallback. The preference is pricing evidence,
-/// not confirmation of the tier ultimately served by OpenAI.
+/// synthetic Fast row while stored `default` and unknown preferences select
+/// the base row. The preference is pricing evidence, not confirmation of the
+/// tier ultimately served by OpenAI.
 ///
 /// **Why a hard-coded map, not catalog rows.** We seed synthetic
 /// `-fast` rows in `PricingSeed.entries` derived from these numbers so
@@ -95,6 +95,24 @@ enum CodexFlexMode {
         "gpt-5.4-nano": 0.5,
     ]
     static let suffix = "-flex"
+}
+
+/// OpenAI prices supported requests above 272K input tokens at 2x input
+/// (including cached input) and 1.5x output. Priority processing does not
+/// support long context, so an explicitly requested Priority turn uses the
+/// base Standard row once it crosses this threshold. Flex keeps its Flex row
+/// and receives the same long-context multipliers.
+enum CodexLongContextPricing {
+    static let inputTokenThreshold: Int64 = 272_000
+    static let inputMultiplier = 2.0
+    static let outputMultiplier = 1.5
+    static let modelIds: Set<String> = [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.4",
+    ]
 }
 
 enum PricingSeed {
@@ -262,7 +280,7 @@ enum PricingSeed {
                 cacheCreationPricePerMillion: b.cacheCreationPricePerMillion * mul,
                 effectiveModelId: b.effectiveModelId,
                 isOfficial: false,
-                note: "Codex Fast-Mode tier (= \(mul)× standard). Synthetic row used when 'Bill as Fast Mode' is enabled.",
+                note: "Codex Fast-Mode tier (= \(mul)× standard). Synthetic row used for turns recorded as Priority.",
                 sourceUrl: b.sourceUrl)
         }
         // Sort so seeding is deterministic across launches / test runs.
@@ -517,16 +535,24 @@ enum PricingService {
     ///     2x base input. No subtraction needed.
     ///
     /// For codex events, a stored `priority` or `flex` preference selects the
-    /// matching synthetic tier row when supported. A stored `default` selects
-    /// the base row, and `codexFastModeBilling` chooses the Fast fallback only
-    /// when the stored preference is unknown.
+    /// matching synthetic tier row when supported. A stored `default` or an
+    /// unknown preference selects the base Standard row. Requests above 272K
+    /// input tokens use OpenAI's long-context multipliers; Priority falls back
+    /// to Standard pricing there because Priority does not support long context.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
         in db: Database,
         codexFastModeBilling: Bool = false
     ) throws {
-        let effectiveExpr = effectiveModelIdSQL(codexFastModeBilling: codexFastModeBilling)
+        // Keep the argument for source compatibility with callers and older
+        // settings, but missing tier evidence is now always Standard.
+        _ = codexFastModeBilling
+        let effectiveExpr = effectiveModelIdSQL()
+        let inputMultiplierExpr = longContextMultiplierSQL(
+            multiplier: CodexLongContextPricing.inputMultiplier)
+        let outputMultiplierExpr = longContextMultiplierSQL(
+            multiplier: CodexLongContextPricing.outputMultiplier)
         try db.execute(sql: """
             UPDATE usage_events
             SET value_usd = (
@@ -557,10 +583,13 @@ enum PricingService {
                     ELSE
                       (MAX(usage_events.input_tokens - usage_events.cached_input_tokens, 0)
                           * pc.input_price_per_million
+                          * \(inputMultiplierExpr)
                        + usage_events.cached_input_tokens
                           * pc.cached_input_price_per_million
+                          * \(inputMultiplierExpr)
                        + usage_events.output_tokens
                           * pc.output_price_per_million
+                          * \(outputMultiplierExpr)
                       ) / 1000000.0
                   END
               FROM pricing_catalog pc
@@ -575,14 +604,15 @@ enum PricingService {
 
     /// SQL expression that resolves to the catalog `model_id` we should
     /// price this event against. A recognized codex event's stored tier
-    /// preference wins; the Fast-Mode setting only handles unknown rows.
+    /// preference wins; unknown rows stay Standard. Long-context Priority
+    /// requests also use Standard because that service tier is unsupported.
     /// Other providers and models keep `usage_events.model_id`.
     ///
     /// We string-interpolate the model id lists and suffixes because
     /// they're code-controlled (sourced from the tier maps), never
     /// user input. Single-quote escaping is unnecessary here, but the
     /// model id assertion below makes the assumption explicit.
-    private static func effectiveModelIdSQL(codexFastModeBilling: Bool) -> String {
+    private static func effectiveModelIdSQL() -> String {
         guard !CodexFastMode.multipliers.isEmpty,
               !CodexFlexMode.multipliers.isEmpty
         else {
@@ -591,19 +621,28 @@ enum PricingService {
         // Determinism + simpler diffs.
         let fastIds = CodexFastMode.multipliers.keys.sorted()
         let flexIds = CodexFlexMode.multipliers.keys.sorted()
-        for id in Set(fastIds + flexIds) {
+        let longContextIds = CodexLongContextPricing.modelIds.sorted()
+        for id in Set(fastIds + flexIds + longContextIds) {
             assert(!id.contains("'"),
                    "Codex tier multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
         }
         let quotedFast = fastIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedFlex = flexIds.map { "'\($0)'" }.joined(separator: ",")
+        let quotedLongContext = longContextIds.map { "'\($0)'" }.joined(separator: ",")
         let fastSuffix = CodexFastMode.suffix
         let flexSuffix = CodexFlexMode.suffix
-        let globalFast = codexFastModeBilling ? 1 : 0
         return """
         CASE
           WHEN usage_events.provider = 'codex'
           THEN CASE
+            WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
+                 AND usage_events.model_id IN (\(quotedLongContext))
+                 AND usage_events.codex_service_tier_preference = 'flex'
+                 AND usage_events.model_id IN (\(quotedFlex))
+              THEN usage_events.model_id || '\(flexSuffix)'
+            WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
+                 AND usage_events.model_id IN (\(quotedLongContext))
+              THEN usage_events.model_id
             WHEN usage_events.codex_service_tier_preference = 'priority'
                  AND usage_events.model_id IN (\(quotedFast))
               THEN usage_events.model_id || '\(fastSuffix)'
@@ -612,13 +651,27 @@ enum PricingService {
               THEN usage_events.model_id || '\(flexSuffix)'
             WHEN usage_events.codex_service_tier_preference = 'default'
               THEN usage_events.model_id
-            WHEN usage_events.codex_service_tier_preference IS NULL
-                 AND \(globalFast) = 1
-                 AND usage_events.model_id IN (\(quotedFast))
-              THEN usage_events.model_id || '\(fastSuffix)'
             ELSE usage_events.model_id
           END
           ELSE usage_events.model_id
+        END
+        """
+    }
+
+    private static func longContextMultiplierSQL(multiplier: Double) -> String {
+        let modelIds = CodexLongContextPricing.modelIds.sorted()
+        for id in modelIds {
+            assert(!id.contains("'"),
+                   "Codex long-context model id '\(id)' has a single quote — SQL not safe to interpolate")
+        }
+        let quoted = modelIds.map { "'\($0)'" }.joined(separator: ",")
+        return """
+        CASE
+          WHEN usage_events.provider = 'codex'
+               AND usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
+               AND usage_events.model_id IN (\(quoted))
+            THEN \(multiplier)
+          ELSE 1.0
         END
         """
     }

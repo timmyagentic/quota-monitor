@@ -34,6 +34,48 @@ struct MigrationsTests {
         #expect(!columns.contains("codex_billing_tier"))
     }
 
+    @Test("pricing policy migration reprices unknown Codex tiers as Standard")
+    func pricingPolicyMigrationRepricesUnknownCodexTier() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-codex-pricing-policy")
+        let manager = try DatabaseManager(url: url)
+        let migrationId = "v15-codex-pricing-policy-reprice"
+        let stamp = "2026-07-15T00:00:00Z"
+
+        try manager.pool.write { db in
+            try db.execute(
+                sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+                arguments: [migrationId])
+            try db.execute(sql: """
+                INSERT INTO sessions
+                    (session_id, root_session_id, started_at, updated_at,
+                     last_model_id, created_at, imported_at, provider)
+                VALUES
+                    ('legacy-fast', 'legacy-fast', ?, ?, 'gpt-5.5', ?, ?, 'codex')
+                """, arguments: [stamp, stamp, stamp, stamp])
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (session_id, timestamp, model_id,
+                     input_tokens, cached_input_tokens, output_tokens,
+                     reasoning_output_tokens, total_tokens, value_usd,
+                     provider, codex_service_tier_preference)
+                VALUES
+                    ('legacy-fast', ?, 'gpt-5.5',
+                     100000, 0, 100000, 0, 200000, 8.75,
+                     'codex', NULL)
+                """, arguments: [stamp])
+        }
+
+        _ = try DatabaseManager(url: url)
+
+        let repriced = try manager.pool.read { db in
+            try Double.fetchOne(db, sql: """
+                SELECT value_usd FROM usage_events
+                WHERE session_id = 'legacy-fast'
+                """)
+        }
+        #expect(abs((repriced ?? 0) - 3.50) < 1e-6)
+    }
+
     @Test("pre-v14 schema clears only Codex tiers and invalidates Codex sessions")
     func preV14SchemaMigratesCodexTierPreferences() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-tier-v14")

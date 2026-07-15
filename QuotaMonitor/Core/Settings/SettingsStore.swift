@@ -115,19 +115,6 @@ final class SettingsStore {
         didSet { defaults.set(tokenUnitLanguage.rawValue,
                               forKey: Keys.tokenUnitLanguage) }
     }
-    /// Fallback for Codex usage whose rollout did not record a usable
-    /// service-tier preference. Stored `priority` and `default` preferences
-    /// always win; only unknown rows for models in `CodexFastMode.multipliers`
-    /// follow this switch. Toggling re-runs `backfillAllValues`, but does not
-    /// override explicitly tagged turns. The preference remains an estimate,
-    /// not proof of the tier ultimately served by OpenAI.
-    ///
-    /// Default OFF: older and untagged usage stays on Standard pricing unless
-    /// the user explicitly chooses the Fast fallback.
-    var codexFastModeBilling: Bool {
-        didSet { defaults.set(codexFastModeBilling,
-                              forKey: Keys.codexFastModeBilling) }
-    }
     /// Developer diagnostics mode. When enabled, app lifecycle,
     /// refresh, scan, pricing, query, and settings actions are mirrored
     /// to a local plain-text file under Application Support so a dev can
@@ -370,10 +357,6 @@ final class SettingsStore {
             .flatMap(QuotaDisplayMode.init(rawValue:))) ?? .used
         self.tokenUnitLanguage = (defaults.string(forKey: Keys.tokenUnitLanguage)
             .flatMap(TokenUnitLanguage.init(rawValue:))) ?? .followLanguage
-        // Default false. A missing key reads as false via
-        // `defaults.bool(forKey:)`, so older and untagged Codex usage stays
-        // on Standard pricing until the user enables the Fast fallback.
-        self.codexFastModeBilling = defaults.bool(forKey: Keys.codexFastModeBilling)
         self.developerModeEnabled = defaults.bool(forKey: Keys.developerModeEnabled)
         self.hasShownFirstRunPresentation =
             defaults.bool(forKey: Keys.firstRunPresentationShown)
@@ -646,7 +629,6 @@ final class SettingsStore {
             launchAtLoginEnabled:
                 (d.object(forKey: Keys.launchAtLoginEnabled) as? Bool) ?? true,
             enabledProviders: providers,
-            codexFastModeBilling: d.bool(forKey: Keys.codexFastModeBilling),
             developerModeEnabled: d.bool(forKey: Keys.developerModeEnabled),
             // SettingsStore.init writes the resolved value to this key on
             // every launch (see `defaults.set(resolvedDone, …)` near the
@@ -711,7 +693,6 @@ final class SettingsStore {
         let mirrorClaudeKeychainToFile: Bool
         let launchAtLoginEnabled: Bool
         let enabledProviders: Set<String>
-        let codexFastModeBilling: Bool
         let developerModeEnabled: Bool
         let hasCompletedProviderOnboarding: Bool
     }
@@ -725,7 +706,6 @@ final class SettingsStore {
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"
-        static let codexFastModeBilling = "settings.codexFastModeBilling"
         static let developerModeEnabled = "settings.developerModeEnabled"
         static let firstRunPresentationShown = "discoverability.firstRunPresentationShown"
         static let firstRunHintDismissed = "discoverability.firstRunHintDismissed"

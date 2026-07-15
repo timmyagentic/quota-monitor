@@ -40,8 +40,7 @@ struct QuotaMonitorApp: App {
                     "database_path": .string(DatabaseManager.defaultURL().path),
                     "enabled_providers": .string(snap.enabledProviders.sorted().joined(separator: ",")),
                     "poll_interval_seconds": .int(snap.pollIntervalSeconds),
-                    "onboarding_done": .bool(snap.hasCompletedProviderOnboarding),
-                    "codex_fast_mode_billing": .bool(snap.codexFastModeBilling)
+                    "onboarding_done": .bool(snap.hasCompletedProviderOnboarding)
                 ])
         }
     }
