@@ -86,13 +86,14 @@ struct HistoryScrollLoadGate {
     }
 
     mutating func registerWheel(
+        windowMatches: Bool = true,
         isInsideScrollView: Bool,
         downwardIntent: Bool,
         phase: HistoryScrollPhase,
         momentumPhase: HistoryScrollPhase,
         timestamp: TimeInterval
     ) {
-        guard isInsideScrollView else { return }
+        guard windowMatches else { return }
         let isAvailable = isEnabled && !isLoading
 
         if momentumPhase != .none {
@@ -101,7 +102,7 @@ struct HistoryScrollLoadGate {
             }
             updateIntent(
                 isAvailable: isAvailable,
-                downwardIntent: downwardIntent)
+                downwardIntent: isInsideScrollView && downwardIntent)
             return
         }
 
@@ -114,37 +115,34 @@ struct HistoryScrollLoadGate {
             if startsNewBurst {
                 startGeneration(
                     kind: .phaseLessWheel,
-                    isConsumable: isAvailable)
+                    isConsumable: isAvailable && isInsideScrollView)
             }
             lastPhaseLessWheelAt = timestamp
             updateIntent(
                 isAvailable: isAvailable,
-                downwardIntent: downwardIntent)
+                downwardIntent: isInsideScrollView && downwardIntent)
             return
         }
 
         if phase == .began {
             startGeneration(
                 kind: .phasedWheel,
-                isConsumable: isAvailable)
+                isConsumable: isAvailable && isInsideScrollView)
         } else if activeGeneration == nil {
-            guard generation == 0,
-                  phase != .ended,
-                  phase != .cancelled else { return }
-            startGeneration(
-                kind: .phasedWheel,
-                isConsumable: isAvailable)
+            return
         }
         updateIntent(
             isAvailable: isAvailable,
-            downwardIntent: downwardIntent)
+            downwardIntent: isInsideScrollView && downwardIntent)
     }
 
     mutating func finishWheelEvent(
+        windowMatches: Bool = true,
         isInsideScrollView _: Bool,
         phase: HistoryScrollPhase,
         momentumPhase: HistoryScrollPhase
     ) {
+        guard windowMatches else { return }
         if momentumPhase == .ended || momentumPhase == .cancelled ||
            phase == .cancelled {
             closeActiveGesture()
@@ -478,15 +476,18 @@ extension HistoryPaginationScrollBridge {
 
         private func observeWheel(_ event: NSEvent) {
             guard let scrollView else { return }
+            let windowMatches = event.window === scrollView.window
+            guard windowMatches else { return }
             let point = scrollView.convert(event.locationInWindow, from: nil)
             let inside = HistoryScrollGeometry.eventIsInsideScrollView(
-                windowMatches: event.window === scrollView.window,
+                windowMatches: windowMatches,
                 location: point,
                 scrollViewBounds: scrollView.bounds)
             let phase = Self.phase(event.phase)
             let momentumPhase = Self.phase(event.momentumPhase)
             gate.expirePhaseLessGesture(at: event.timestamp)
             gate.registerWheel(
+                windowMatches: windowMatches,
                 isInsideScrollView: inside,
                 downwardIntent: HistoryScrollGeometry.hasDownwardIntent(
                     deltaX: event.scrollingDeltaX,
@@ -497,6 +498,7 @@ extension HistoryPaginationScrollBridge {
             refreshFooterVisibility()
             evaluate(at: event.timestamp)
             gate.finishWheelEvent(
+                windowMatches: windowMatches,
                 isInsideScrollView: inside,
                 phase: phase,
                 momentumPhase: momentumPhase)

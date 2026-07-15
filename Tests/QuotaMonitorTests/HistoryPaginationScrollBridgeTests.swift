@@ -243,6 +243,236 @@ struct HistoryPaginationScrollBridgeTests {
         #expect(!didLoadWrongWindow)
     }
 
+    @Test("outside phased origin stays quarantined when the pointer enters")
+    func outsidePhasedOriginStaysQuarantined() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.updateFooterVisibility(true)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: false,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 54)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .changed,
+            momentumPhase: .none,
+            timestamp: 54.1)
+
+        let didLoadContinuation = gate.consumeIfEligible()
+        #expect(!didLoadContinuation)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 54.2)
+        let didLoadAtEnd = gate.consumeIfEligible()
+        #expect(!didLoadAtEnd)
+        gate.finishWheelEvent(
+            windowMatches: true,
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 55)
+        let didLoadNewOrigin = gate.consumeIfEligible()
+        #expect(didLoadNewOrigin)
+    }
+
+    @Test("wrong-window origin cannot promote an orphan inside continuation")
+    func wrongWindowOriginCannotPromoteContinuation() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.updateFooterVisibility(true)
+        gate.registerWheel(
+            windowMatches: false,
+            isInsideScrollView: false,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 56)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .changed,
+            momentumPhase: .none,
+            timestamp: 56.1)
+
+        let didLoadOrphanContinuation = gate.consumeIfEligible()
+        #expect(!didLoadOrphanContinuation)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 57)
+        let didLoadObservedOrigin = gate.consumeIfEligible()
+        #expect(didLoadObservedOrigin)
+    }
+
+    @Test("same-window outside momentum restores its inside origin once")
+    func outsideMomentumRestoresInsideOrigin() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 58)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: false,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 58.1)
+        gate.finishWheelEvent(
+            windowMatches: true,
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+        gate.updateFooterVisibility(true)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: false,
+            downwardIntent: false,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 58.2)
+        let didLoadMomentum = gate.consumeIfEligible()
+        #expect(didLoadMomentum)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: false,
+            downwardIntent: false,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 58.3)
+        let didLoadFurtherMomentum = gate.consumeIfEligible()
+        #expect(!didLoadFurtherMomentum)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: false,
+            downwardIntent: false,
+            phase: .none,
+            momentumPhase: .ended,
+            timestamp: 58.4)
+        gate.finishWheelEvent(
+            windowMatches: true,
+            isInsideScrollView: false,
+            phase: .none,
+            momentumPhase: .ended)
+        gate.registerLiveMovement(isDownward: true)
+        let didLoadAfterTerminal = gate.consumeIfEligible()
+        #expect(didLoadAfterTerminal)
+    }
+
+    @Test("wrong-window momentum cannot mutate a pending inside origin")
+    func wrongWindowMomentumCannotMutateInsideOrigin() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 59)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: false,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 59.1)
+        gate.finishWheelEvent(
+            windowMatches: true,
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+        gate.updateFooterVisibility(true)
+
+        gate.registerWheel(
+            windowMatches: false,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 59.2)
+        let didLoadWrongWindow = gate.consumeIfEligible()
+        #expect(!didLoadWrongWindow)
+        gate.finishWheelEvent(
+            windowMatches: false,
+            isInsideScrollView: true,
+            phase: .none,
+            momentumPhase: .ended)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: false,
+            downwardIntent: false,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 59.3)
+        let didLoadBoundOrigin = gate.consumeIfEligible()
+        #expect(didLoadBoundOrigin)
+    }
+
+    @Test("phase-less burst latches its first event scope until idle")
+    func phaseLessBurstLatchesFirstEventScope() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.updateFooterVisibility(true)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: false,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 59.5)
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 59.6)
+
+        let didLoadContinuation = gate.consumeIfEligible()
+        #expect(!didLoadContinuation)
+
+        gate.registerWheel(
+            windowMatches: true,
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 59.851)
+        let didLoadAfterIdle = gate.consumeIfEligible()
+        #expect(didLoadAfterIdle)
+    }
+
     @Test("loading-time and disabled wheel input cannot arm a future load")
     func unavailableWheelInput() {
         var gate = HistoryScrollLoadGate()
@@ -778,6 +1008,16 @@ struct HistoryPaginationScrollBridgeTests {
             source,
             from: "private func observeWheel(_ event: NSEvent)",
             to: "private func beginLiveScroll()")
+        #expect(observeWheel.contains(
+            "let windowMatches = event.window === scrollView.window"))
+        #expect(Self.occurrences(
+            of: "windowMatches: windowMatches", in: observeWheel) == 3)
+        let rejectWrongWindow = try Self.offset(
+            of: "guard windowMatches else { return }", in: observeWheel)
+        let convertLocation = try Self.offset(
+            of: "scrollView.convert(event.locationInWindow, from: nil)",
+            in: observeWheel)
+        #expect(rejectWrongWindow < convertLocation)
         let refreshGeometry = try Self.offset(
             of: "refreshFooterVisibility()", in: observeWheel)
         let evaluate = try Self.offset(of: "evaluate(at:", in: observeWheel)
