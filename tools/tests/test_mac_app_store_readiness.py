@@ -61,8 +61,20 @@ class MacAppStoreReadinessTests(unittest.TestCase):
 
         self.assertIn("QMDistributionChannel", channel)
         self.assertIn("app-store", channel)
-        self.assertIn("DistributionChannel.current == .appStore", updater)
-        self.assertIn("Sparkle disabled for App Store build", updater)
+        self.assertRegex(updater, r"distribution:\s*\.current")
+        self.assertRegex(
+            updater,
+            r"let\s+isAppStore\s*=\s*distribution\s*==\s*\.appStore",
+        )
+        self.assertRegex(updater, r"persistenceEnabled:\s*!isAppStore")
+        self.assertRegex(
+            updater,
+            r"sparkleEnabled:\s*!isAppStore\s*&&\s*!localQAActive",
+        )
+        self.assertRegex(
+            updater,
+            r"reminderPresentationEnabled:\s*!isAppStore\s*&&\s*!localQAActive",
+        )
         self.assertIn("if DistributionChannel.current != .appStore", settings)
 
     def test_readiness_doc_records_submission_boundary_and_remaining_risks(self):

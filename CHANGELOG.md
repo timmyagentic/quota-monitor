@@ -33,10 +33,21 @@ window copy.
 #### Summary
 
 - Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
+- Update reminders now survive relaunches, remain visible in the menu bar, and return gently instead of disappearing after Later.
 
 ### Added
 
 - **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile, and its download button serves the latest notarized DMG directly from the site without retaining routine visitor request logs or reusing a stale browser-cached installer.
+
+### Changed
+
+- **Gentle reminder cadence.** Choosing Later schedules the first reminder for exactly 24 hours later, followed by another reminder every 3 days until the update is resolved.
+- **Quiet menu-bar reminders.** A due reminder emphasizes the native menu-bar status item for eight seconds without stealing focus, opening a window, or requesting notification permission.
+- **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
+
+### Fixed
+
+- **Pending updates no longer disappear.** The pending version and menu-bar marker survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
 
 ## [0.2.40] — 2026-07-15
 
