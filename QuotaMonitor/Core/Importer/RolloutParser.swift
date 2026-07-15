@@ -46,6 +46,8 @@ struct ParsedSession {
 struct UsageDelta {
     let timestamp: String
     let modelId: String
+    let turnId: String?
+    let serviceTierPreference: CodexServiceTierPreference?
     let inputTokens: Int64
     let cachedInputTokens: Int64
     let outputTokens: Int64
@@ -55,6 +57,70 @@ struct UsageDelta {
     /// `turn_context` ever set the model in this session). Surfaced in UI
     /// so the user knows the cost is approximate.
     let modelInferred: Bool
+}
+
+private struct ActiveCodexTurn {
+    var id: String?
+    let serviceTierPreference: CodexServiceTierPreference?
+}
+
+private extension TaskLifecyclePayload {
+    /// Codex turn IDs are UUIDv7 in current rollouts. Their first 48 bits are
+    /// Unix epoch milliseconds, which gives us durable task timing when older
+    /// `task_started` payloads omit `started_at` and envelope timestamps were
+    /// rewritten by a child-session replay.
+    var uuidV7StartedAt: TimeInterval? {
+        guard let turnId else { return nil }
+        let parts = turnId.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 5,
+              parts[0].count == 8,
+              parts[1].count == 4,
+              parts[2].first == "7",
+              let milliseconds = UInt64(parts[0] + parts[1], radix: 16)
+        else { return nil }
+        return TimeInterval(milliseconds) / 1_000
+    }
+}
+
+private enum ChildReplayGate {
+    case childCreatedAt(TimeInterval)
+    case firstSelfTimedTask
+
+    func isCleared(
+        by task: TaskLifecyclePayload,
+        lineTimestamp: String?,
+        sawReplayedSessionMeta: Bool
+    ) -> Bool {
+        switch self {
+        case .childCreatedAt(let createdAt):
+            if let startedAt = task.startedAt {
+                return startedAt >= floor(createdAt)
+            }
+            if let uuidStartedAt = task.uuidV7StartedAt {
+                return uuidStartedAt >= createdAt
+            }
+            // A direct child rollout has no replayed session_meta before its
+            // first task, so that task is the child's own even in old formats
+            // that lack both started_at and UUIDv7 turn IDs.
+            if !sawReplayedSessionMeta { return true }
+            // Last-resort compatibility for a replayed old-format rollout:
+            // require a strictly later envelope time. Equality is deliberately
+            // excluded because parent snapshots are commonly rewritten to the
+            // child creation timestamp.
+            guard let lineTimestamp,
+                  let eventTime = ISO8601.parse(lineTimestamp)
+            else { return false }
+            return eventTime.timeIntervalSince1970 > createdAt
+        case .firstSelfTimedTask:
+            guard let startedAt = task.startedAt ?? task.uuidV7StartedAt else {
+                return !sawReplayedSessionMeta
+            }
+            guard let lineTimestamp,
+                  let eventTime = ISO8601.parse(lineTimestamp)
+            else { return false }
+            return startedAt >= floor(eventTime.timeIntervalSince1970)
+        }
+    }
 }
 
 struct RateLimitSampleDraft {
@@ -86,6 +152,11 @@ enum RolloutParser {
         var currentModelIsFallback = false
         var seenModels: Set<String> = []
         var latestPlanType: String?
+        var pendingServiceTierPreference: CodexServiceTierPreference?
+        var activeTurn: ActiveCodexTurn?
+        var sawSessionMeta = false
+        var childReplayGate: ChildReplayGate?
+        var sawReplayedSessionMeta = false
 
         var previousUsage: TokenUsageWire?
         var seenUsageSnapshots: Set<UsageSnapshotKey> = []
@@ -98,6 +169,25 @@ enum RolloutParser {
             switch event {
             case .sessionMeta(let meta, let envelopeTs):
                 let ts = envelopeTs ?? meta.timestamp
+                if sawSessionMeta,
+                   childReplayGate != nil,
+                   let childId = sessionId,
+                   let replayedId = meta.id,
+                   replayedId != childId
+                {
+                    sawReplayedSessionMeta = true
+                }
+                if !sawSessionMeta {
+                    sawSessionMeta = true
+                    if meta.isChildSession {
+                        if let ts, let createdAt = ISO8601.parse(ts) {
+                            childReplayGate = .childCreatedAt(
+                                createdAt.timeIntervalSince1970)
+                        } else {
+                            childReplayGate = .firstSelfTimedTask
+                        }
+                    }
+                }
                 if sessionId == nil, let id = meta.id { sessionId = id }
                 if startedAt == nil { startedAt = ts ?? meta.timestamp }
                 if updatedAt == nil { updatedAt = ts ?? meta.timestamp }
@@ -114,11 +204,50 @@ enum RolloutParser {
                     seenModels.insert(normalized)
                 }
 
+                if let turn = activeTurn {
+                    if turn.id == nil {
+                        activeTurn?.id = tc.turnId
+                    } else if let contextTurnId = tc.turnId,
+                              turn.id != contextTurnId
+                    {
+                        activeTurn = ActiveCodexTurn(
+                            id: contextTurnId,
+                            serviceTierPreference: nil)
+                    }
+                } else {
+                    activeTurn = ActiveCodexTurn(
+                        id: tc.turnId,
+                        serviceTierPreference: nil)
+                }
+
+            case .threadSettingsApplied(let settings, _):
+                pendingServiceTierPreference = CodexServiceTierPreference(
+                    rolloutValue: settings.resolvedServiceTier)
+
+            case .taskStarted(let task, let envelopeTs):
+                if childReplayGate?.isCleared(
+                    by: task,
+                    lineTimestamp: envelopeTs,
+                    sawReplayedSessionMeta: sawReplayedSessionMeta) == true
+                {
+                    childReplayGate = nil
+                }
+                activeTurn = ActiveCodexTurn(
+                    id: task.turnId,
+                    serviceTierPreference: pendingServiceTierPreference)
+
+            case .taskComplete(let task, _):
+                if let turn = activeTurn, turn.id == task.turnId {
+                    activeTurn = nil
+                }
+
             case .tokenCount(let tc, let envelopeTs):
                 let timestamp = envelopeTs ?? ISO8601.fractional.string(from: Date())
                 if let plan = tc.rateLimits?.planType { latestPlanType = plan }
-                rateLimitSamples.append(contentsOf:
-                    extractSamples(from: tc.rateLimits, at: timestamp))
+                if childReplayGate == nil {
+                    rateLimitSamples.append(contentsOf:
+                        extractSamples(from: tc.rateLimits, at: timestamp))
+                }
 
                 guard let info = tc.info else { continue }
 
@@ -146,10 +275,12 @@ enum RolloutParser {
                     from: info,
                     previousTotal: &previousUsage,
                     seenUsageSnapshots: &seenUsageSnapshots)
-                if let delta {
+                if childReplayGate == nil, let delta {
                     deltas.append(UsageDelta(
                         timestamp: timestamp,
                         modelId: resolvedModel,
+                        turnId: activeTurn?.id,
+                        serviceTierPreference: activeTurn?.serviceTierPreference,
                         inputTokens: delta.inputTokens,
                         cachedInputTokens: delta.cachedInputTokens,
                         outputTokens: delta.outputTokens,
@@ -201,6 +332,7 @@ enum RolloutParser {
         seenUsageSnapshots: inout Set<UsageSnapshotKey>
     ) -> TokenUsageWire? {
         if let total = info.totalTokenUsage {
+            if total == previousTotal { return nil }
             let snapshot = UsageSnapshotKey(total: total, last: info.lastTokenUsage)
             if seenUsageSnapshots.contains(snapshot) { return nil }
             seenUsageSnapshots.insert(snapshot)

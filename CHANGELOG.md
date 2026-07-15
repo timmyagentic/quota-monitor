@@ -35,9 +35,21 @@ window copy.
 - Codex quota cards and the menu-bar label now follow the quota windows that are actually active, so the temporary weekly-only policy no longer appears as a false 5-hour limit or a stale weekly value.
 - Daily trend charts now keep the newest day's bar inside the plot instead of drawing it past the right axis.
 - Hovering the dashboard activity heatmap feels right again: the tooltip floats above the day square instead of covering it, and the whole square — including the small gaps between squares — now triggers it.
+- Codex cost estimates now distinguish recorded Standard, Fast, and Flex turns, treat missing tier evidence as Standard, apply long-context pricing, and avoid duplicated parent usage in subagent history.
+
+### Changed
+
+- **Per-turn Codex service-tier estimates.** Recent Codex turns now use their recorded Standard, Fast, or Flex preference; Flex uses its published lower rates, while older or untagged usage conservatively stays on Standard pricing.
+
+### Removed
+
+- **Unknown Codex usage Fast fallback.** The setting that treated older or untagged Codex history as Fast has been removed because missing tier evidence must default to Standard.
 
 ### Fixed
 
+- **Accurate Codex child-session costs.** Parent history replayed into a child or forked rollout is now excluded until the child's first real task while still seeding cumulative-token baselines. Older tasks that omit `started_at` use their UUIDv7 turn time without trusting rewritten envelope timestamps, and unchanged cumulative snapshots are no longer billed again when stale last-usage details differ.
+- **Codex long-context pricing.** Supported requests above 272K input tokens now use 2× input and 1.5× output rates. Priority is not applied beyond that boundary because OpenAI does not support Priority for long context; Flex keeps its published tier before the long-context multipliers are applied.
+- **Existing Codex costs are repriced on upgrade.** A one-time pricing-policy migration recalculates stored dollar values immediately, so databases previously priced with the unknown-as-Fast fallback cannot keep stale totals while waiting for a rollout file to change.
 - **Dynamic Codex quota windows.** QuotaMonitor now identifies 5-hour and 7-day quotas by their actual duration, treats a missing window as absent instead of mixing in older database data, and automatically brings the 5-hour display back if Codex restores it.
 - **Trend chart final-day alignment.** Daily bars now reserve the complete final calendar-day interval, so 7-day, 30-day, 90-day, and yearly views keep the newest bar and label inside the plot, including across daylight-saving changes.
 - **Activity heatmap tooltip position and hover range.** The hover tooltip kept a stale layout offset from an earlier design that placed month labels above the grid, so it rendered on top of the hovered square — where it could also intercept the cursor and flicker — and only the 13-pt square itself was hover-sensitive, leaving the 4-pt gaps as dead zones. The tooltip is now pinned just above the square and never intercepts the cursor, and each day's hover area covers the full grid pitch.

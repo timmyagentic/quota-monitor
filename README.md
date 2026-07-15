@@ -45,7 +45,7 @@ shasum -c QuotaMonitor-<version>.dmg.sha256
   drilldown to event-level token breakdown.
 - **History** — per-day rollups + per-session inspection on each day.
 - **Settings** — two tabs:
-  - **General** — language, Dock-icon visibility, Codex Fast-Mode billing,
+  - **General** — language, Dock-icon visibility, Codex service-tier estimates,
     menu-bar display window, tracked tools toggle.
   - **Advanced** — Codex poll interval, Claude Keychain policy + optional
     credentials mirror, database location, CSV export, pricing catalog

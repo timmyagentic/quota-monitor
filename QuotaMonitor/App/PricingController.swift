@@ -99,11 +99,8 @@ extension AppEnvironment {
         do {
             let (db, _) = try ensureServices()
             let entries = try await pricingSource.fetch()
-            let fastMode = SettingsStore.snapshot().codexFastModeBilling
             let updated = try await db.pool.write { conn in
-                try PricingService.applyLiteLLMUpdate(
-                    entries: entries, in: conn,
-                    codexFastModeBilling: fastMode)
+                try PricingService.applyLiteLLMUpdate(entries: entries, in: conn)
             }
             // Stamp the most-recent fetched_at we can see (any non-local row).
             let latest = try await db.pool.read { conn -> Date? in
@@ -119,8 +116,7 @@ extension AppEnvironment {
                 op,
                 fields: [
                     "updated": .int(updated),
-                    "latest": .string(latest.map { ISO8601.fractional.string(from: $0) } ?? ""),
-                    "codex_fast_mode_billing": .bool(fastMode)
+                    "latest": .string(latest.map { ISO8601.fractional.string(from: $0) } ?? "")
                 ])
             return updated
         } catch {
@@ -136,46 +132,15 @@ extension AppEnvironment {
             trigger: "settings")
         do {
             let (db, _) = try ensureServices()
-            let fastMode = SettingsStore.snapshot().codexFastModeBilling
             try await db.pool.write { conn in
                 try PricingService.seedCatalog(in: conn)
-                try PricingService.backfillAllValues(
-                    in: conn, codexFastModeBilling: fastMode)
+                try PricingService.backfillAllValues(in: conn)
             }
             refreshDashboard(trigger: "pricing", parentOperation: op)
-            DeveloperLog.finishOperation(op, fields: ["codex_fast_mode_billing": .bool(fastMode)])
+            DeveloperLog.finishOperation(op)
         } catch {
             DeveloperLog.failOperation(op, error: error)
             throw error
-        }
-    }
-
-    /// Re-price every event under the new Codex Fast-Mode setting and
-    /// refresh menu-bar + dashboard so the user sees the new dollar
-    /// totals immediately. Called from the Advanced tab toggle's
-    /// `onChange`. Swallows errors into `lastError` rather than throwing
-    /// so a transient DB hiccup doesn't crash the settings sheet.
-    func applyCodexFastModeBilling() {
-        let op = DeveloperLog.startOperation(
-            "pricing.codex_fast_mode.apply",
-            category: "pricing",
-            trigger: "settings",
-            fields: ["enabled": .bool(SettingsStore.shared.codexFastModeBilling)])
-        Task { [op] in
-            do {
-                let (db, _) = try ensureServices()
-                let fastMode = SettingsStore.shared.codexFastModeBilling
-                try await db.pool.write { conn in
-                    try PricingService.backfillAllValues(
-                        in: conn, codexFastModeBilling: fastMode)
-                }
-                refreshDashboard(trigger: "pricing", parentOperation: op)
-                refreshMenuBar(trigger: "pricing", parentOperation: op)
-                DeveloperLog.finishOperation(op, fields: ["enabled": .bool(fastMode)])
-            } catch {
-                self.lastError = "Codex Fast-Mode billing apply failed: \(error.localizedDescription)"
-                DeveloperLog.failOperation(op, error: error)
-            }
         }
     }
 

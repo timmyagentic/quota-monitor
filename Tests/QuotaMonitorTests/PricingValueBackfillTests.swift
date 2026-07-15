@@ -77,6 +77,7 @@ struct PricingValueBackfillTests {
         output: Int64, cacheCreation: Int64 = 0,
         cacheCreation5m: Int64 = 0,
         cacheCreation1h: Int64 = 0,
+        serviceTierPreference: String? = nil,
         seedValueUSD: Double = -1
     ) throws {
         let stamp = "2026-04-29T10:00:00Z"
@@ -100,14 +101,16 @@ struct PricingValueBackfillTests {
                  reasoning_output_tokens, total_tokens, value_usd,
                  provider, cache_creation_tokens,
                  cache_creation_5m_tokens, cache_creation_1h_tokens,
+                 codex_service_tier_preference,
                  model_inferred)
-                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 0)
+                VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 0)
                 """, arguments: [
                     sid, stamp, modelId,
                     input, cached, output,
                     input + output + cacheCreation,
                     seedValueUSD,
-                    provider, cacheCreation, cacheCreation5m, cacheCreation1h
+                    provider, cacheCreation, cacheCreation5m, cacheCreation1h,
+                    serviceTierPreference
                 ])
         }
     }
@@ -333,8 +336,141 @@ struct PricingValueBackfillTests {
 
     // MARK: - codex Fast-Mode billing remaps to -fast catalog row
 
-    @Test("codex Fast-Mode: gpt-5.5 event reprices against gpt-5.5-fast catalog row")
-    func codexFastModeRoutesToFastVariant() throws {
+    @Test("codex Fast-Mode: stored priority uses fast pricing")
+    func codexPriorityPreferenceUsesFastPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 100_000, cached: 0, output: 100_000,
+                             serviceTierPreference: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: false)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 8.75) < 1e-6,
+                "stored priority expected 8.75, got \(values[0])")
+    }
+
+    @Test("codex Fast-Mode: stored default uses base pricing when legacy flag is on")
+    func codexDefaultPreferenceUsesStandardWithLegacyFlag() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 100_000, cached: 0, output: 100_000,
+                             serviceTierPreference: "default")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 3.50) < 1e-6,
+                "stored default expected 3.50 even with legacy flag on, got \(values[0])")
+    }
+
+    @Test("codex Flex: stored flex uses half-price row when legacy flag is on")
+    func codexFlexPreferenceUsesFlexPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.5",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
+                           input: 12.50, cached: 1.25, output: 75.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.5-flex",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
+                             input: 100_000, cached: 20_000, output: 100_000,
+                             serviceTierPreference: "flex")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn,
+                                                 codexFastModeBilling: true)
+        }
+
+        let values = try valueUSD(in: db)
+        // Gross input includes cached input:
+        //   0.08M * $2.50 + 0.02M * $0.25 + 0.1M * $15 = $1.705.
+        #expect(abs(values[0] - 1.705) < 1e-6,
+                "stored flex expected 1.705 even with legacy flag on, got \(values[0])")
+    }
+
+    @Test("database initialization seeds current Codex Flex prices")
+    func databaseInitializationSeedsCodexFlexPrices() throws {
+        let db = try makeDatabase()
+
+        let row = try db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT input_price_per_million,
+                       cached_input_price_per_million,
+                       output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id = 'gpt-5.5-flex'
+                """)
+        }
+
+        #expect(row != nil)
+        #expect(abs((row?["input_price_per_million"] as Double? ?? 0) - 2.50) < 1e-6)
+        #expect(abs((row?["cached_input_price_per_million"] as Double? ?? 0) - 0.25) < 1e-6)
+        #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 15.00) < 1e-6)
+    }
+
+    @Test("LiteLLM refresh keeps Fast and Flex rows derived from the base price")
+    func liteLLMRefreshKeepsCodexTierRowsInSync() throws {
+        let db = try makeDatabase()
+        let entry = LiteLLMEntry(
+            modelId: "gpt-5.5",
+            provider: "openai",
+            inputCostPerToken: 6.0 / 1_000_000,
+            outputCostPerToken: 36.0 / 1_000_000,
+            cacheReadInputTokenCost: 0.6 / 1_000_000,
+            cacheCreationInputTokenCost: nil,
+            inputCostAbove200kTokens: nil,
+            outputCostAbove200kTokens: nil,
+            maxInputTokens: nil,
+            maxOutputTokens: nil)
+
+        _ = try db.pool.write { conn in
+            try PricingService.applyLiteLLMUpdate(entries: [entry], in: conn)
+        }
+
+        let rows = try db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT model_id, input_price_per_million,
+                       cached_input_price_per_million, output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id IN ('gpt-5.5', 'gpt-5.5-fast', 'gpt-5.5-flex')
+                ORDER BY model_id
+                """)
+        }
+        let prices = Dictionary(uniqueKeysWithValues: rows.map { row in
+            (row["model_id"] as String, (
+                row["input_price_per_million"] as Double,
+                row["cached_input_price_per_million"] as Double,
+                row["output_price_per_million"] as Double))
+        })
+
+        #expect(abs((prices["gpt-5.5"]?.0 ?? 0) - 6.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5"]?.1 ?? 0) - 0.6) < 1e-9)
+        #expect(abs((prices["gpt-5.5"]?.2 ?? 0) - 36.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-fast"]?.0 ?? 0) - 15.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-fast"]?.1 ?? 0) - 1.5) < 1e-9)
+        #expect(abs((prices["gpt-5.5-fast"]?.2 ?? 0) - 90.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-flex"]?.0 ?? 0) - 3.0) < 1e-9)
+        #expect(abs((prices["gpt-5.5-flex"]?.1 ?? 0) - 0.3) < 1e-9)
+        #expect(abs((prices["gpt-5.5-flex"]?.2 ?? 0) - 18.0) < 1e-9)
+    }
+
+    @Test("codex without recorded tier stays Standard even when legacy fallback is on")
+    func codexUnknownTierStaysStandard() throws {
         let db = try makeDatabase()
         // Standard rate (matches base PricingSeed shape; numbers chosen
         // so the maths is hand-verifiable).
@@ -343,29 +479,29 @@ struct PricingValueBackfillTests {
         // Synthetic fast row = 2.5× base (mirrors `CodexFastMode.multipliers`).
         try insertPriceRow(in: db, modelId: "gpt-5.5-fast",
                            input: 12.50, cached: 1.25, output: 75.00)
-        // 1_000_000 input, 0 cached, 1_000_000 output:
-        //   Standard: 1*5 + 0 + 1*30 = $35.00
-        //   Fast:     1*12.5 + 0 + 1*75 = $87.50  (= 35 * 2.5)
+        // 100_000 input, 0 cached, 100_000 output:
+        //   Standard: 0.1*5 + 0 + 0.1*30 = $3.50
+        //   Fast:     0.1*12.5 + 0 + 0.1*75 = $8.75
         try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.5",
-                             input: 1_000_000, cached: 0, output: 1_000_000)
+                             input: 100_000, cached: 0, output: 100_000)
 
-        // Standard billing leaves us at $35.
+        // Standard billing produces $3.50.
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn,
                                                  codexFastModeBilling: false)
         }
         let standard = try valueUSD(in: db)
-        #expect(abs(standard[0] - 35.00) < 1e-6,
-                "standard-tier expected 35.00, got \(standard[0])")
+        #expect(abs(standard[0] - 3.50) < 1e-6,
+                "standard-tier expected 3.50, got \(standard[0])")
 
-        // Fast-mode flips the JOIN to gpt-5.5-fast → $87.50.
+        // The retired fallback must not turn missing evidence into Fast.
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn,
                                                  codexFastModeBilling: true)
         }
-        let fast = try valueUSD(in: db)
-        #expect(abs(fast[0] - 87.50) < 1e-6,
-                "fast-tier expected 87.50 (= 35 * 2.5), got \(fast[0])")
+        let legacyFallbackEnabled = try valueUSD(in: db)
+        #expect(abs(legacyFallbackEnabled[0] - 3.50) < 1e-6,
+                "missing tier evidence must remain Standard")
 
         // And toggling back puts us right where we started — the flag
         // is the only thing that changed, not the event row.
@@ -374,8 +510,82 @@ struct PricingValueBackfillTests {
                                                  codexFastModeBilling: false)
         }
         let backToStandard = try valueUSD(in: db)
-        #expect(abs(backToStandard[0] - 35.00) < 1e-6,
-                "toggling Fast-Mode off must restore standard pricing")
+        #expect(abs(backToStandard[0] - 3.50) < 1e-6)
+    }
+
+    @Test("codex Standard long context doubles input and uses 1.5x output")
+    func codexStandardLongContextPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 300_000, cached: 100_000, output: 10_000)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        // 0.2M * $5 + 0.1M * $0.50 + 0.01M * $22.50 = $1.275.
+        #expect(abs(values[0] - 1.275) < 1e-6)
+    }
+
+    @Test("codex Priority long context falls back to Standard long-context pricing")
+    func codexPriorityLongContextUsesStandardLongPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.4-fast",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 300_000, cached: 100_000, output: 10_000,
+                             serviceTierPreference: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 1.275) < 1e-6)
+    }
+
+    @Test("codex Flex long context applies long-context multipliers to Flex rates")
+    func codexFlexLongContextPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.4-flex",
+                           input: 1.25, cached: 0.125, output: 7.50)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 300_000, cached: 100_000, output: 10_000,
+                             serviceTierPreference: "flex")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        // 0.2M * $2.50 + 0.1M * $0.25 + 0.01M * $11.25 = $0.6375.
+        #expect(abs(values[0] - 0.6375) < 1e-6)
+    }
+
+    @Test("exactly 272K input remains eligible for Priority short-context pricing")
+    func codexPriorityAtLongContextBoundary() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(in: db, modelId: "gpt-5.4",
+                           input: 2.50, cached: 0.25, output: 15.00)
+        try insertPriceRow(in: db, modelId: "gpt-5.4-fast",
+                           input: 5.00, cached: 0.50, output: 30.00)
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.4",
+                             input: 272_000, cached: 72_000, output: 10_000,
+                             serviceTierPreference: "priority")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 1.336) < 1e-6)
     }
 
     @Test("codex Fast-Mode: only listed models reroute; gpt-5-codex stays on its own row")

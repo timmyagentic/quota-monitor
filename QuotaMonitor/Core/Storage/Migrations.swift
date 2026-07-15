@@ -310,5 +310,45 @@ enum Migrations {
                    OR source_path LIKE '%/.config/claude/projects/%'
                 """)
         }
+
+        // Compatibility bridge for databases created by the unpublished
+        // trace-based implementation.
+        migrator.registerMigration("v13-codex-billing-tier") { db in
+            try db.alter(table: "usage_events") { t in
+                t.add(column: "codex_turn_id", .text)
+                t.add(column: "codex_billing_tier", .text)
+            }
+        }
+
+        // Replace trace-derived tiers with durable rollout preferences and
+        // force Codex sessions to rebuild from their source rollouts.
+        migrator.registerMigration("v14-codex-rollout-tier-preference") { db in
+            try db.alter(table: "usage_events") { t in
+                t.rename(
+                    column: "codex_billing_tier",
+                    to: "codex_service_tier_preference")
+            }
+            try db.execute(sql: """
+                UPDATE usage_events
+                SET codex_service_tier_preference = NULL
+                WHERE provider = 'codex'
+                """)
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1, file_mtime_ms = -1, byte_offset = 0
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
+                """)
+        }
+
+        // Recompute the derived dollar values after replacing the legacy
+        // unknown-as-Fast fallback and adding Codex long-context pricing.
+        // This must be a migration rather than relying on the next history
+        // scan: unchanged rollouts may otherwise retain stale values forever.
+        migrator.registerMigration("v15-codex-pricing-policy-reprice") { db in
+            try PricingService.seedCatalog(in: db)
+            try PricingService.backfillAllValues(in: db)
+        }
     }
 }

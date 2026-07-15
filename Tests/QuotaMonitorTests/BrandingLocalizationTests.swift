@@ -64,4 +64,5 @@ struct BrandingLocalizationTests {
         #expect(en.1 == "2 available")
         #expect(en.2 == "No active cards")
     }
+
 }

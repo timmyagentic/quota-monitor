@@ -132,7 +132,6 @@ extension AppEnvironment {
                         ? HistoryRootAuthorizationStore.shared.authorizedProviders(from: enabled)
                         : [],
                     isAppStore: isAppStore)
-                let fastMode = snap.codexFastModeBilling
                 DeveloperLog.eventRecord(
                     "scan.providers",
                     category: "scan",
@@ -140,8 +139,7 @@ extension AppEnvironment {
                     trigger: trigger,
                     fields: [
                         "enabled_providers": .string(enabled.sorted().joined(separator: ",")),
-                        "scan_providers": .string(scanProviders.sorted().joined(separator: ",")),
-                        "codex_fast_mode_billing": .bool(fastMode)
+                        "scan_providers": .string(scanProviders.sorted().joined(separator: ","))
                     ])
                 let progressHandler: ScanProgressHandler = { [weak self] update in
                     await MainActor.run {
@@ -182,8 +180,7 @@ extension AppEnvironment {
                     if merged.changedFiles > 0 {
                         await MainActor.run { self.markScanPricing(runID: scanRunID) }
                         try await db.pool.write {
-                            try PricingService.backfillAllValues(
-                                in: $0, codexFastModeBilling: fastMode)
+                            try PricingService.backfillAllValues(in: $0)
                         }
                     }
                     return merged
