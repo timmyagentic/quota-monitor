@@ -157,11 +157,34 @@ describe("public product content", () => {
     expect(html).toContain("Know your quota. Keep your flow.");
     expect(html).toContain("Quota Monitor brings Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details into one lightweight macOS menu-bar app.");
     expect(html.match(/<section\b/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
-    expect(html).toMatch(/<h1\b[^>]*data-i18n="heroTitle"/);
+    expect(html).toMatch(/<h1\b[^>]*id="hero-title"/);
     expect(html).toContain('src="/assets/dashboard-hero.webp"');
     expect(html).toContain('src="/assets/sessions-detail.webp"');
     expect(html).toContain('href="/styles.css"');
     expect(html).toContain('src="/app.js"');
+  });
+
+  it("keeps the desktop English hero promise on its approved two-line phrase boundary", async () => {
+    const html = readPublic("index.html");
+    const css = readPublic("styles.css");
+    const { translations } = await loadAppModule();
+
+    expect(html).toContain(
+      '<span class="hero-title-line" data-i18n="heroTitleFirstLine">Know your quota.</span><span class="hero-title-line" data-i18n="heroTitleSecondLine"> Keep your flow.</span>',
+    );
+    expect(translations.en.heroTitleFirstLine).toBe("Know your quota.");
+    expect(translations.en.heroTitleSecondLine).toBe(" Keep your flow.");
+    const mobileLine = ruleBody(css, ".hero-title-line");
+    expect(mobileLine).toMatch(/display:\s*inline\s*;/);
+    expect(mobileLine).toMatch(/white-space:\s*normal\s*;/);
+
+    const desktopStart = css.search(/@media\s*\(min-width:\s*981px\)\s*\{/);
+    expect(desktopStart, "missing above-980px hero title rules").toBeGreaterThanOrEqual(0);
+    const desktopEnd = css.indexOf("@media", desktopStart + 1);
+    const desktopCss = css.slice(desktopStart, desktopEnd);
+    const desktopLine = ruleBody(desktopCss, ".hero-title-line");
+    expect(desktopLine).toMatch(/display:\s*block\s*;/);
+    expect(desktopLine).toMatch(/white-space:\s*nowrap\s*;/);
   });
 
   it("keeps every visitor-facing link and full URL on the product domain", () => {

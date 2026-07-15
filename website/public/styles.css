@@ -216,6 +216,11 @@ p {
     line-height: 0.98;
 }
 
+.hero-title-line {
+    display: inline;
+    white-space: normal;
+}
+
 .hero-description {
     max-width: 37rem;
     margin-bottom: 0;
@@ -594,6 +599,13 @@ body[data-page="download-error"] .not-found {
     flex-wrap: wrap;
     justify-content: center;
     gap: 12px;
+}
+
+@media (min-width: 981px) {
+    .hero-title-line {
+        display: block;
+        white-space: nowrap;
+    }
 }
 
 @media (max-width: 980px) and (min-width: 760px) {
