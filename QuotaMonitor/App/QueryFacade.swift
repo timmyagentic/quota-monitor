@@ -83,25 +83,67 @@ extension AppEnvironment {
             ])
         do {
             let (db, _) = try ensureServices()
-            let page = try await db.pool.read { conn in
-                try Aggregator.fetchHistoryPage(
-                    db: conn,
-                    before: cursor,
-                    pageSize: pageSize,
-                    provider: filter,
-                    now: now,
-                    calendar: calendar)
+            // Keep query.days.page as end-to-end data-ready latency. The
+            // database child metric captures the reader boundary separately,
+            // before SwiftUI/MainActor scheduling can delay publication.
+            DeveloperLog.eventRecord(
+                "query.days.page.database.start",
+                category: "query",
+                operation: op,
+                fields: ["filter": .string(filter.rawValue)])
+            let databaseStartedAt = ContinuousClock.now
+            let measured: (
+                page: HistoryPage,
+                databaseFinishedAt: ContinuousClock.Instant
+            )
+            do {
+                measured = try await db.pool.read { conn in
+                    let page = try Aggregator.fetchHistoryPage(
+                        db: conn,
+                        before: cursor,
+                        pageSize: pageSize,
+                        provider: filter,
+                        now: now,
+                        calendar: calendar)
+                    return (
+                        page: page,
+                        databaseFinishedAt: ContinuousClock.now)
+                }
+            } catch {
+                DeveloperLog.eventRecord(
+                    "query.days.page.database.fail",
+                    level: .error,
+                    category: "query",
+                    operation: op,
+                    result: "failure",
+                    message: String(describing: error),
+                    fields: [
+                        "filter": .string(filter.rawValue),
+                        "error_type": .string(String(describing: type(of: error))),
+                        "error_message": .string(error.localizedDescription)
+                    ])
+                throw error
             }
+            let page = measured.page
             let upper = calendar.date(
                 byAdding: .day, value: pageSize, to: page.nextCursor)!
-            DeveloperLog.finishOperation(op, fields: [
+            let resultFields: [String: DeveloperLogValue] = [
                 "rows": .int(page.days.count),
                 "has_more": .bool(page.hasMore),
                 "lower_bound": .string(
                     ISO8601.fractional.string(from: page.nextCursor)),
                 "upper_bound": .string(ISO8601.fractional.string(from: upper)),
                 "filter": .string(filter.rawValue)
-            ])
+            ]
+            DeveloperLog.eventRecord(
+                "query.days.page.database.finish",
+                category: "query",
+                operation: op,
+                durationMilliseconds: historyDurationMilliseconds(
+                    databaseStartedAt.duration(to: measured.databaseFinishedAt)),
+                result: "success",
+                fields: resultFields)
+            DeveloperLog.finishOperation(op, fields: resultFields)
             return page
         } catch {
             DeveloperLog.failOperation(op, error: error, fields: ["filter": .string(filter.rawValue)])
@@ -182,4 +224,11 @@ extension AppEnvironment {
             throw error
         }
     }
+}
+
+private func historyDurationMilliseconds(_ duration: Duration) -> Int {
+    let components = duration.components
+    return max(0, Int(
+        components.seconds * 1_000
+            + components.attoseconds / 1_000_000_000_000_000))
 }

@@ -141,18 +141,36 @@ struct HistoryViewWiringTests {
         }
     }
 
-    @Test("History query facade exposes only logged page reads")
-    func queryFacadeExposesOnlyLoggedPageReads() throws {
-        let source = Self.normalized(try Self.source(
-            named: "QuotaMonitor/App/QueryFacade.swift"))
+    @Test("History query facade exposes separate database and data-ready timings")
+    func queryFacadeExposesSeparatePageTimings() throws {
+        let rawSource = try Self.source(
+            named: "QuotaMonitor/App/QueryFacade.swift")
+        let source = Self.normalized(rawSource)
+        let historyPage = Self.normalized(try Self.sourceSlice(
+            rawSource,
+            from: "func fetchHistoryPage(",
+            to: "func fetchDayDetail("))
 
         #expect(source.contains("func fetchHistoryPage("))
         #expect(source.contains("\"query.days.page\""))
+        #expect(source.contains("\"query.days.page.database.start\""))
+        #expect(source.contains("\"query.days.page.database.finish\""))
+        #expect(source.contains("\"query.days.page.database.fail\""))
         #expect(source.contains("Aggregator.fetchHistoryPage("))
         #expect(source.contains("func fetchDayDetail(day: String, calendar: Calendar)"))
         #expect(source.contains("func fetchSessionEventsOnDay(sessionId: String, day: String, calendar: Calendar"))
         #expect(!source.contains("query.days." + "list"))
         #expect(!source.contains("fetchDays" + "List"))
+
+        let databaseCompleted = try #require(historyPage.range(
+            of: "databaseFinishedAt: ContinuousClock.now"))
+        let databaseFinishLog = try #require(historyPage.range(
+            of: "DeveloperLog.eventRecord(\"query.days.page.database.finish\""))
+        let facadeFinishLog = try #require(historyPage.range(
+            of: "DeveloperLog.finishOperation(op"))
+        #expect(databaseCompleted.lowerBound < databaseFinishLog.lowerBound)
+        #expect(databaseFinishLog.lowerBound < facadeFinishLog.lowerBound)
+        #expect(!historyPage.contains("databaseStartedAt.duration(to: .now)"))
     }
 
     private static func source(named relativePath: String) throws -> String {
