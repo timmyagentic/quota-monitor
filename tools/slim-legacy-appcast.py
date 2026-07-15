@@ -34,6 +34,7 @@ _CDATA_OPEN = "<![CDATA["
 _CDATA_CLOSE = "]]>"
 _PI_OPEN = "<?"
 _PI_CLOSE = "?>"
+_DOCTYPE_OPEN = "<!DOCTYPE"
 
 
 def _validate_xml(payload, label):
@@ -48,6 +49,40 @@ def _validate_xml(payload, label):
 def _mask_range(characters, start, end):
     for index in range(start, end):
         characters[index] = "\0"
+
+
+def _doctype_end(payload, start):
+    index = start + len(_DOCTYPE_OPEN)
+    subset_depth = 0
+    quote = None
+    while index < len(payload):
+        if quote is not None:
+            if payload[index] == quote:
+                quote = None
+            index += 1
+            continue
+
+        if payload.startswith(_COMMENT_OPEN, index):
+            close = payload.find(_COMMENT_CLOSE, index + len(_COMMENT_OPEN))
+            index = close + len(_COMMENT_CLOSE)
+            continue
+        if payload.startswith(_PI_OPEN, index):
+            close = payload.find(_PI_CLOSE, index + len(_PI_OPEN))
+            index = close + len(_PI_CLOSE)
+            continue
+
+        character = payload[index]
+        if character in "\"'":
+            quote = character
+        elif character == "[":
+            subset_depth += 1
+        elif character == "]" and subset_depth > 0:
+            subset_depth -= 1
+        elif character == ">" and subset_depth == 0:
+            return index + 1
+        index += 1
+
+    raise SlimFeedError("input XML has an unterminated DOCTYPE declaration")
 
 
 def _protected_masks(payload):
@@ -69,6 +104,10 @@ def _protected_masks(payload):
         elif payload.startswith(_PI_OPEN, index):
             close = payload.find(_PI_CLOSE, index + len(_PI_OPEN))
             end = close + len(_PI_CLOSE)
+            _mask_range(item_mask, index, end)
+            _mask_range(description_mask, index, end)
+        elif payload.startswith(_DOCTYPE_OPEN, index):
+            end = _doctype_end(payload, index)
             _mask_range(item_mask, index, end)
             _mask_range(description_mask, index, end)
         else:

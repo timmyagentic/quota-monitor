@@ -244,6 +244,57 @@ class SlimFeedTests(unittest.TestCase):
 
         self.assertEqual(result, payload)
 
+    def test_internal_dtd_entity_is_preserved_byte_for_byte(self):
+        declaration = (
+            '<!DOCTYPE rss [<!ENTITY sample "<item><description><![CDATA[fake]]>'
+            '</description></item>">]>\n'
+        )
+        payload = (
+            declaration
+            + "<rss><channel><item><description><![CDATA[real]]></description>"
+            "</item></channel></rss>\n"
+        )
+        expected = declaration + "<rss><channel><item></item></channel></rss>\n"
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result, expected)
+
+    def test_complete_doctype_internal_subset_is_preserved_byte_for_byte(self):
+        declaration = "".join(
+            (
+                "<!DOCTYPE rss [\n",
+                '  <!ENTITY punctuation "keep > [ ] exact">\n',
+                "  <!ENTITY sample '<item><description><![CDATA[fake]]>"
+                "</description></item> > [ ]'>\n",
+                "  <!-- keep > [ ] <item><description><![CDATA[comment fake]]>"
+                "</description></item> exact -->\n",
+                "  <?audit keep=\"> [ ] <item><description><![CDATA[PI fake]]>"
+                "</description></item>\"?>\n",
+                "]>\n",
+            )
+        )
+        real_description = (
+            "      <description><![CDATA[real]]></description>\n"
+        )
+        payload = "".join(
+            (
+                declaration,
+                "<rss>\n",
+                "  <channel>\n",
+                "    <item>\n",
+                real_description,
+                "    </item>\n",
+                "  </channel>\n",
+                "</rss>\n",
+            )
+        )
+        expected = payload.replace(real_description, "")
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result, expected)
+
     def test_only_item_cdata_descriptions_are_removed_byte_for_byte(self):
         payload, channel, first, second, plain = legacy_fixture()
         expected = payload.replace(first, "").replace(second, "")
