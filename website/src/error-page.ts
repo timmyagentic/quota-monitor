@@ -76,15 +76,17 @@ export function renderDownloadError(acceptLanguage: string | null): string {
   <title>${escapeHTML(copy.title)}</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body>
-  <main>
-    <p class="eyebrow">QuotaMonitor</p>
-    <h1>${escapeHTML(copy.heading)}</h1>
-    <p>${escapeHTML(copy.description)}</p>
-    <nav aria-label="${escapeHTML(copy.actionsLabel)}">
-      <a href="/download">重试 / Retry</a>
-      <a href="/">返回首页 / Back home</a>
-    </nav>
+<body data-page="download-error">
+  <main id="main-content" class="not-found" aria-labelledby="download-error-title">
+    <div class="container not-found-content">
+      <p class="not-found-eyebrow">Quota Monitor</p>
+      <h1 id="download-error-title">${escapeHTML(copy.heading)}</h1>
+      <p>${escapeHTML(copy.description)}</p>
+      <nav class="not-found-actions" aria-label="${escapeHTML(copy.actionsLabel)}">
+        <a href="/download" class="button button-primary">重试 / Retry</a>
+        <a href="/" class="button button-secondary">返回首页 / Back home</a>
+      </nav>
+    </div>
   </main>
 </body>
 </html>`;

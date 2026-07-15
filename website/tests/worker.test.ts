@@ -380,6 +380,13 @@ describe("renderDownloadError", () => {
     expect(html).toContain(copy);
     expect(html).toContain('<meta name="robots" content="noindex">');
     expect(html).toContain('<link rel="stylesheet" href="/styles.css">');
+    expect(html).toContain('<body data-page="download-error">');
+    expect(html).toContain('<main id="main-content" class="not-found" aria-labelledby="download-error-title">');
+    expect(html).toContain('<div class="container not-found-content">');
+    expect(html).toContain('<p class="not-found-eyebrow">Quota Monitor</p>');
+    expect(html).toContain('<nav class="not-found-actions"');
+    expect(html).toContain('<a href="/download" class="button button-primary">重试 / Retry</a>');
+    expect(html).toContain('<a href="/" class="button button-secondary">返回首页 / Back home</a>');
     expect(anchors).toEqual([
       { href: "/download", text: "重试 / Retry" },
       { href: "/", text: "返回首页 / Back home" },

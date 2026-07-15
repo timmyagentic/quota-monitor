@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -253,8 +254,9 @@ describe("public product content", () => {
       {
         path: join(publicDirectory, "assets/dashboard-hero.webp"),
         minimumBytes: 20_000,
-        minimumWidth: 900,
-        minimumHeight: 600,
+        exactWidth: 980,
+        exactHeight: 732,
+        sha256: "10e0a8a0e5358628a95cd9253980ef1cdebdb99b6c0bce1e240d5ad94e5fd3e8",
         landscape: true,
       },
       {
@@ -292,6 +294,10 @@ describe("public product content", () => {
       if (asset.exactHeight !== undefined) {
         expect(dimensions.height, asset.path).toBe(asset.exactHeight);
       }
+      if ("sha256" in asset) {
+        const digest = createHash("sha256").update(readFileSync(asset.path)).digest("hex");
+        expect(digest, `${asset.path} approved composition`).toBe(asset.sha256);
+      }
       if (asset.landscape) {
         expect(dimensions.width / dimensions.height, asset.path).toBeGreaterThan(1.2);
         expect(dimensions.width / dimensions.height, asset.path).toBeLessThan(2.4);
@@ -312,6 +318,29 @@ describe("public product content", () => {
     for (const source of rasterSources) {
       expect(source).toMatch(/\.(?:png|webp)$/);
       expect(existsSync(join(publicDirectory, source))).toBe(true);
+    }
+  });
+
+  it("declares the real intrinsic dimensions for every product screenshot", () => {
+    const html = readPublic("index.html");
+    const productSources = new Set([
+      "/assets/dashboard-hero.webp",
+      "/assets/sessions-detail.webp",
+    ]);
+    const productImages = [...html.matchAll(/<img\b([^>]*)>/g)]
+      .map((match) => match[1] ?? "")
+      .map((attributes) => ({
+        source: attributes.match(/\bsrc="([^"]+)"/)?.[1] ?? "",
+        width: Number(attributes.match(/\bwidth="(\d+)"/)?.[1]),
+        height: Number(attributes.match(/\bheight="(\d+)"/)?.[1]),
+      }))
+      .filter(({ source }) => productSources.has(source));
+
+    expect(productImages).toHaveLength(4);
+    for (const image of productImages) {
+      const dimensions = imageDimensions(join(publicDirectory, image.source));
+      expect(image.width, `${image.source} width`).toBe(dimensions.width);
+      expect(image.height, `${image.source} height`).toBe(dimensions.height);
     }
   });
 
@@ -352,12 +381,19 @@ describe("public product content", () => {
     expect(heroLayout).toMatch(/display:\s*grid\s*;/);
     expect(heroLayout).toMatch(/grid-template-columns:\s*minmax\([^;]+\)\s+minmax\([^;]+\)\s*;/);
     expect(ruleBody(css, ".button")).toMatch(/min-height:\s*48px\s*;/);
+    expect(ruleBody(css, 'body[data-page="download-error"] .not-found')).toMatch(
+      /min-height:\s*100vh\s*;/,
+    );
+    expect(ruleBody(css, ".not-found-eyebrow")).toMatch(/color:\s*var\(--blue\)\s*;/);
+    expect(ruleBody(css, ".not-found-actions")).toMatch(/display:\s*flex\s*;/);
+    expect(ruleBody(css, ".not-found-actions")).toMatch(/gap:\s*12px\s*;/);
 
     const mobileStart = css.search(/@media\s*\(max-width:\s*(?:759|760)px\)\s*\{/);
     expect(mobileStart, "missing below-760px responsive rules").toBeGreaterThanOrEqual(0);
     const mobileCss = css.slice(Math.max(0, mobileStart));
     expect(mobileCss).toMatch(/\.hero-layout[\s\S]*?grid-template-columns:\s*1fr\s*;/);
     expect(mobileCss).toMatch(/\.feature-layout[\s\S]*?grid-template-columns:\s*1fr\s*;/);
+    expect(mobileCss).toMatch(/\.not-found-actions[\s\S]*?flex-direction:\s*column\s*;/);
 
     expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px\s+solid\s+var\(--blue\)\s*;/s);
     expect(css).not.toMatch(/outline:\s*none\b/i);
