@@ -23,6 +23,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let env: AppEnvironment
+    private let localization: LocalizationStore
     private let settings: SettingsStore
     private let updater: UpdaterController
 
@@ -35,6 +36,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
          settings: SettingsStore,
          updater: UpdaterController) {
         self.env = env
+        self.localization = localization
         self.settings = settings
         self.updater = updater
         self.statusItem = NSStatusBar.system.statusItem(
@@ -87,6 +89,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func renderLabel() {
         guard let button = statusItem.button else { return }
+        _ = localization.tickForceRedraw
+        let updateVersion = StatusItemUpdateMarker.normalizedVersion(
+            updater.updateAvailability.version)
         let rows = MenuBarLabelModel.rows(
             iconProviders: settings.menuBarIconProviders,
             enabledProviders: settings.enabledProviders,
@@ -95,17 +100,35 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             codexQuota: env.dashboardSnapshot?.codexQuota,
             displayMode: settings.quotaDisplayMode)
         let style = settings.menuBarLabelStyle
+        let baseTitle: NSAttributedString
+
+        // Reset version-specific tooltip copy on every pass. Accessibility is
+        // assigned explicitly below because AppKit does not restore an inferred
+        // title after an explicit accessibility label is cleared with nil.
+        button.toolTip = nil
 
         if rows.isEmpty {
             // Same gauge fallback the app shipped with — as a template image
             // so it auto-adapts to the menu bar's light/dark appearance.
-            button.attributedTitle = NSAttributedString(string: "")
+            baseTitle = NSAttributedString(string: "")
             button.image = Self.gaugeImage
-            button.imagePosition = .imageOnly
+            button.imagePosition = updateVersion == nil ? .imageOnly : .imageLeading
         } else {
             button.image = nil
             button.imagePosition = .noImage
-            button.attributedTitle = MenuBarTitleBuilder.make(rows: rows, style: style)
+            baseTitle = MenuBarTitleBuilder.make(rows: rows, style: style)
+        }
+
+        button.attributedTitle = StatusItemUpdateMarker.title(
+            base: baseTitle,
+            version: updateVersion)
+        let accessibilityLabel = StatusItemUpdateMarker.accessibilityLabel(
+            base: baseTitle,
+            fallback: Branding.appDisplayName,
+            version: updateVersion)
+        button.setAccessibilityLabel(accessibilityLabel)
+        if let updateVersion {
+            button.toolTip = L10n.statusItemUpdateTooltip(updateVersion)
         }
     }
 
@@ -246,6 +269,33 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 }
 
 // MARK: - native title builder
+
+/// Adds the compact update affordance without rewriting the quota title.
+enum StatusItemUpdateMarker {
+    static func normalizedVersion(_ version: String?) -> String? {
+        guard let version, !version.isEmpty else { return nil }
+        return version
+    }
+
+    static func title(base: NSAttributedString, version: String?) -> NSAttributedString {
+        guard normalizedVersion(version) != nil else { return base }
+        let decorated = NSMutableAttributedString(attributedString: base)
+        decorated.append(NSAttributedString(
+            string: " ↓",
+            attributes: [.foregroundColor: NSColor.systemOrange]))
+        return decorated
+    }
+
+    static func accessibilityLabel(
+        base: NSAttributedString,
+        fallback: String,
+        version: String?
+    ) -> String {
+        let baseLabel = base.string.isEmpty ? fallback : base.string
+        guard let version = normalizedVersion(version) else { return baseLabel }
+        return "\(baseLabel). \(L10n.statusItemUpdateAccessibilityLabel(version))"
+    }
+}
 
 /// Builds the `NSAttributedString` for the menu-bar label in the chosen
 /// style. Kept separate from the controller so the typography is easy to
