@@ -244,6 +244,8 @@ describe("public product content", () => {
         minimumBytes: 100_000,
         minimumWidth: 1_200,
         minimumHeight: 600,
+        sha256: "9aa8c51e6026ee4f724226ba5850bd97d6e6772125368f1782bffed67b0f3245",
+        retiredSha256: "9eb6706d56d169d2282ccba3b0a1fd6a5dbc1a59a8ad114da5e06b21e018b6c6",
       },
       {
         path: join(publicDirectory, "assets/app-icon.png"),
@@ -256,7 +258,8 @@ describe("public product content", () => {
         minimumBytes: 20_000,
         exactWidth: 980,
         exactHeight: 732,
-        sha256: "10e0a8a0e5358628a95cd9253980ef1cdebdb99b6c0bce1e240d5ad94e5fd3e8",
+        sha256: "3aad57e87b8116f171f93d39c3ca260d4c8f4dc2bd4650827ee371348f200411",
+        retiredSha256: "10e0a8a0e5358628a95cd9253980ef1cdebdb99b6c0bce1e240d5ad94e5fd3e8",
         landscape: true,
       },
       {
@@ -271,6 +274,8 @@ describe("public product content", () => {
         minimumBytes: 20_000,
         exactWidth: 1_200,
         exactHeight: 630,
+        sha256: "a94e9bece876af2316a48abdfa99d1a31943dc6ac0358ad50f487698aa188a43",
+        retiredSha256: "98a7b5ca1c1c30b447453fc9bf461522a90bc404f92c59a2de598d240e8acdcf",
         landscape: true,
       },
     ];
@@ -297,6 +302,10 @@ describe("public product content", () => {
       if ("sha256" in asset) {
         const digest = createHash("sha256").update(readFileSync(asset.path)).digest("hex");
         expect(digest, `${asset.path} approved composition`).toBe(asset.sha256);
+      }
+      if ("retiredSha256" in asset) {
+        const digest = createHash("sha256").update(readFileSync(asset.path)).digest("hex");
+        expect(digest, `${asset.path} retired composition`).not.toBe(asset.retiredSha256);
       }
       if (asset.landscape) {
         expect(dimensions.width / dimensions.height, asset.path).toBeGreaterThan(1.2);
@@ -394,6 +403,12 @@ describe("public product content", () => {
     expect(mobileCss).toMatch(/\.hero-layout[\s\S]*?grid-template-columns:\s*1fr\s*;/);
     expect(mobileCss).toMatch(/\.feature-layout[\s\S]*?grid-template-columns:\s*1fr\s*;/);
     expect(mobileCss).toMatch(/\.not-found-actions[\s\S]*?flex-direction:\s*column\s*;/);
+
+    const compactStart = css.search(/@media\s*\(max-width:\s*359px\)\s*\{/);
+    expect(compactStart, "missing below-360px responsive rules").toBeGreaterThanOrEqual(0);
+    const compactEnd = css.indexOf("@media", compactStart + 1);
+    const compactCss = css.slice(compactStart, compactEnd);
+    expect(ruleBody(compactCss, ".language-control button")).toMatch(/min-width:\s*44px\s*;/);
 
     expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:\s*3px\s+solid\s+var\(--blue\)\s*;/s);
     expect(css).not.toMatch(/outline:\s*none\b/i);
