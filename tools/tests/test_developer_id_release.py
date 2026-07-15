@@ -179,6 +179,54 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("    needs: test", quota_job)
         self.assertIn("    needs: test", codex_job)
 
+    def test_release_workflow_scopes_write_permissions_to_quota_job(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        shared_job = self.workflow_job(
+            workflow,
+            "test",
+            "release-quota-monitor",
+        )
+        quota_job = self.workflow_job(
+            workflow,
+            "release-quota-monitor",
+            "release-codex-monitor",
+        )
+        codex_job = self.workflow_job(workflow, "release-codex-monitor")
+
+        permissions_start = workflow.index("permissions:")
+        permissions_end = workflow.index("\n\n", permissions_start)
+        self.assertEqual(
+            workflow[permissions_start:permissions_end],
+            "permissions:\n  contents: read",
+        )
+        self.assertNotRegex(shared_job, r"(?m)^    permissions:")
+
+        permission_pattern = re.compile(
+            r"(?m)^    permissions:\n(?:^      [a-z-]+: (?:read|write)\n)+"
+        )
+        quota_permissions = permission_pattern.search(quota_job)
+        codex_permissions = permission_pattern.search(codex_job)
+        self.assertIsNotNone(quota_permissions)
+        self.assertIsNotNone(codex_permissions)
+        self.assertEqual(
+            quota_permissions.group(0).strip(),
+            "permissions:\n"
+            "      contents: write\n"
+            "      pull-requests: write",
+        )
+        self.assertEqual(
+            codex_permissions.group(0).strip(),
+            "permissions:\n      contents: read",
+        )
+        self.assertEqual(
+            re.findall(r"(?m)^      contents: write$", workflow),
+            ["      contents: write"],
+        )
+        self.assertEqual(
+            re.findall(r"(?m)^      pull-requests: write$", workflow),
+            ["      pull-requests: write"],
+        )
+
     def test_release_workflow_never_skips_required_appcast_publication(self):
         workflow = self.read_text(".github/workflows/release.yml")
 

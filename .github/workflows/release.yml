@@ -49,9 +49,9 @@ on:
   push:
     tags: ['v*']
 
+# Keep the built-in token read-only unless a job writes this repository.
 permissions:
-  contents: write        # gh release create + push the appcast branch (this repo)
-  pull-requests: write   # open the appcast PR back to main (this repo)
+  contents: read
 
 # Don't cancel an in-flight release for the same tag — releases write
 # external state (GitHub Release, uploaded assets), cancelling mid-flight
@@ -133,6 +133,11 @@ jobs:
   # ── Quota Monitor (this repo) ─────────────────────────────────────
   release-quota-monitor:
     needs: test
+    # This job creates this repo's Release, pushes the Appcast branch, and
+    # opens its PR, so only this job receives built-in-token write access.
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: macos-15
     # Two sequential notary submissions can each wait up to NOTARYTOOL_TIMEOUT.
     # Leave enough room for app + DMG notarization plus build/upload/appcast work.
@@ -305,6 +310,10 @@ jobs:
   # ── CodexMonitor (codex-monitor repo) ─────────────────────────────
   release-codex-monitor:
     needs: test
+    # External publication uses CODEX_MONITOR_PAT; the built-in token only
+    # needs to read this source repository.
+    permissions:
+      contents: read
     runs-on: macos-15
     # Two sequential notary submissions can each wait up to NOTARYTOOL_TIMEOUT.
     # Leave enough room for app + DMG notarization plus build/upload/appcast work.
