@@ -4,7 +4,7 @@
 
 **Goal:** Replace the website's sparse product imagery with reproducible, high-density synthetic Quota Monitor captures that visibly demonstrate Forecast, Trends, Activity, Composition, and Sessions.
 
-**Architecture:** A checked-in showcase scenario describes safe product-demo density, while a Node generator materializes date-relative Codex and Claude JSONL files inside an isolated QA home. The existing fixture-smoke launcher imports that home into its isolated SQLite database; three real-app captures then replace the public imagery and feed the existing static site and social card.
+**Architecture:** A checked-in showcase scenario describes safe product-demo density, while a Node generator materializes date-relative Codex and Claude JSONL files inside an isolated QA home. The existing fixture-smoke launcher imports that home into its isolated SQLite database; four real-app captures then replace the public imagery and feed the existing static site and social card.
 
 **Tech Stack:** Node.js 22, Vitest, existing Quota Monitor JSONL importers and local-QA fixture launcher, SwiftUI macOS app, `cwebp`, static HTML/CSS, Cloudflare Workers/Wrangler.
 
@@ -29,9 +29,11 @@
 - `website/public/assets/dashboard-hero.webp` — real-app Forecast and 30-day Trends capture.
 - `website/public/assets/dashboard-insights.webp` — real-app Activity and Composition capture.
 - `website/public/assets/sessions-detail.webp` — real-app dense Sessions capture.
+- `website/public/assets/history-detail.webp` — real-app populated day-by-day History capture.
 - `website/design/social-card-source.png` and `website/public/assets/social-card.webp` — social composition using the verified new Dashboard overview.
 - `website/public/index.html` — routes the Trends feature block to the distinct insights capture and declares exact intrinsic dimensions.
 - `website/public/app.js` — keeps English and Simplified Chinese Sessions copy aligned with fields present in the current app.
+- `website/public/styles.css` — provides a phone-only localized full-size-view affordance without changing the approved Native Focus layout.
 - `website/tests/site-content.test.ts` — locks the new asset inventory, dimensions, and retirement of sparse assets.
 - `CHANGELOG.md` and `CHANGELOG.zh-Hans.md` — describe the richer website product tour in both release-note languages.
 
@@ -114,9 +116,11 @@ git commit -m "Add reproducible website showcase data"
 - Modify: `website/tests/site-content.test.ts`
 - Modify: `website/public/index.html`
 - Modify: `website/public/app.js`
+- Modify: `website/public/styles.css`
 - Replace: `website/public/assets/dashboard-hero.webp`
 - Create: `website/public/assets/dashboard-insights.webp`
 - Replace: `website/public/assets/sessions-detail.webp`
+- Create: `website/public/assets/history-detail.webp`
 - Replace: `website/design/social-card-source.png`
 - Replace: `website/public/assets/social-card.webp`
 - Modify: `CHANGELOG.md`
@@ -124,11 +128,11 @@ git commit -m "Add reproducible website showcase data"
 
 **Interfaces:**
 - Consumes: the Task 1 generator and existing fixture-smoke QA launcher.
-- Produces: three 980×732 verified product WebPs and one 1200×630 social WebP referenced by the static website.
+- Produces: four 980×732 verified product WebPs and one 1200×630 social WebP referenced by the static website.
 
 - [ ] **Step 1: Extend the asset tests first**
 
-Require `/assets/dashboard-insights.webp`, require all three product screenshots to be exactly 980×732, require five product-image occurrences in HTML, and add each currently sparse asset digest to a `retiredSha256` array so the test fails until the imagery is replaced. Require the Trends block to source `dashboard-insights.webp` while Hero and Live quota clarity source `dashboard-hero.webp`. Require English and Simplified Chinese Sessions copy and alt text to omit `duration` / `时长` and name event timing instead.
+Require `/assets/dashboard-insights.webp` and `/assets/history-detail.webp`, require all four product screenshots to be exactly 980×732, require six product-image occurrences in HTML, and add each currently sparse asset digest to a `retiredSha256` array so the test fails until the imagery is replaced. Require the Trends block to source `dashboard-insights.webp`, Local history to source `history-detail.webp`, and Hero plus Live quota clarity to source `dashboard-hero.webp`. Require English and Simplified Chinese Sessions copy and alt text to omit `duration` / `时长` and name event timing instead. Require each product image to be wrapped by a same-origin full-size asset link with the localized `viewImageFullSize` label visible under the mobile media query.
 
 - [ ] **Step 2: Run the content test and observe the missing/reused-image failure**
 
@@ -159,13 +163,14 @@ QUOTAMONITOR_QA_STEPS="refresh-all,open-dashboard,wait,snapshot" \
 
 Expected: `qa-boundary.json` reports `fixture`, SQLite reports 28 showcase sessions plus the small baseline fixture, both providers have usage, and the only imported paths/titles are synthetic.
 
-- [ ] **Step 4: Capture three real-app states**
+- [ ] **Step 4: Capture four real-app states**
 
 Use Computer Use only on `.build/QuotaMonitor-WebsiteShowcase.app`. Capture at one stable 980×732 content size:
 
 1. Dashboard top: 30-day headline, populated Codex/Claude Forecast cards, and a dense multi-series 30-day Trends chart.
 2. Dashboard lower scroll: Activity metrics/heatmap and Composition provider/model breakdown.
 3. Sessions: at least ten visible rows and the selected eight-event synthetic session detail.
+4. History: at least eighteen day rows, a populated latest-day model breakdown, and multiple sessions in the detail pane.
 
 Save PNG sources under `.build/qa-artifacts/website-showcase/screenshots/`, inspect each with `view_image`, and run `./qa/check-artifacts.sh .build/qa-artifacts/website-showcase`.
 
@@ -177,9 +182,10 @@ Run:
 cwebp -q 90 -resize 980 732 .build/qa-artifacts/website-showcase/screenshots/dashboard.png -o website/public/assets/dashboard-hero.webp
 cwebp -q 90 -resize 980 732 .build/qa-artifacts/website-showcase/screenshots/dashboard-insights.png -o website/public/assets/dashboard-insights.webp
 cwebp -q 90 -resize 980 732 .build/qa-artifacts/website-showcase/screenshots/sessions.png -o website/public/assets/sessions-detail.webp
+cwebp -q 90 -resize 980 732 .build/qa-artifacts/website-showcase/screenshots/history.png -o website/public/assets/history-detail.webp
 ```
 
-Change only the Trends block's `source` and `img` to `/assets/dashboard-insights.webp`, retaining localized alt text and declaring `width="980" height="732"`. Change Sessions copy to “models, token details, event timing, and API-equivalent cost estimates” / “模型、Token 明细、事件时间与 API 等价费用估算”, and remove the unsupported duration claim from both localized alt strings.
+Change only the Trends block's `source` and `img` to `/assets/dashboard-insights.webp`, and replace the Local history icon treatment with `/assets/history-detail.webp`; retain localized alt text and declare `width="980" height="732"`. Change Sessions copy to “models, token details, event timing, and API-equivalent cost estimates” / “模型、Token 明细、事件时间与 API 等价费用估算”, and remove the unsupported duration claim from both localized alt strings. Wrap all product captures in same-origin asset links, add `viewImageFullSize` to both locale dictionaries, and show that label only below 760 px.
 
 - [ ] **Step 6: Recompose the social card from the verified Dashboard overview**
 
@@ -229,7 +235,7 @@ Expected: all website tests/type checks/dry-run checks and the repository static
 
 - [ ] **Step 2: Compare local desktop and mobile renders**
 
-Capture the local site at 1440×1100 and 390×844. Inspect the prior approved Native Focus concept, new desktop render, new mobile render, all three app assets, and social card in the same visual comparison pass. Confirm no cropping, distortion, private data, invented UI, horizontal overflow, or GitHub visitor link.
+Capture the local site at 1440×1100 and 390×844. Inspect the prior approved Native Focus concept, new desktop render, new mobile render, all four app assets, and social card in the same visual comparison pass. Confirm no cropping, distortion, private data, invented UI, horizontal overflow, or GitHub visitor link.
 
 - [ ] **Step 3: Commit QA assets and request review**
 

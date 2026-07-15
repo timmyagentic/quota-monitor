@@ -73,8 +73,9 @@ Product screenshots must use a reproducible, isolated showcase profile rather th
 - Both Codex and Claude Code contribute visible usage, with at least five model or service-tier series in total.
 - The newest Codex and Claude sessions are recent enough to populate both Forecast cards; the Codex sample includes current 5-hour and 7-day windows.
 - The selected Sessions row contains at least six events so model, token, time, and API-equivalent value columns are visibly exercised.
-- The website uses three distinct current-app captures: the Dashboard overview for Forecast and Trends, a scrolled Dashboard state for Activity and Composition, and the Sessions drill-down. The social card reuses the verified Dashboard overview instead of inventing another product UI.
+- The website uses four distinct current-app captures: the Dashboard overview for Forecast and Trends, a scrolled Dashboard state for Activity and Composition, the Sessions drill-down, and populated day-by-day History. The social card reuses the verified Dashboard overview instead of inventing another product UI.
 - All capture source data and the resulting images are visually inspected for private information before publication.
+- Every product capture is a same-origin link to its full-size asset. On phone layouts the link includes a localized visible “view full size” hint so dense current-app UI remains inspectable instead of only being reduced to the content column width.
 
 ### Feature Story
 
@@ -145,6 +146,7 @@ No visitor-facing response, redirect, HTML anchor, or metadata field contains a 
 - Meet WCAG AA contrast for text and controls.
 - Preserve a clear first viewport from 320 px phone width through large desktop widths.
 - Stack product imagery below the hero copy on phones and keep the download button thumb-friendly.
+- Keep screenshots tappable at phone widths and expose a localized full-size-view hint.
 - Respect reduced-motion and high-contrast preferences.
 - Provide localized document titles/descriptions, Open Graph imagery, favicon assets, canonical URL, and structured SoftwareApplication metadata.
 - Structured data may identify the license as MIT but must not include a GitHub URL.
