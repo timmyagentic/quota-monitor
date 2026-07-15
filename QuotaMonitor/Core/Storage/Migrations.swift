@@ -354,18 +354,22 @@ enum Migrations {
         // v16: History pages aggregate value, token, event, and distinct-session
         // totals from a bounded timestamp range. Cover every projected column
         // so SQLite does not bounce from the timestamp index into usage_events
-        // once per matching event. These indexes retain the prefixes used by
-        // the prior timestamp-only indexes, so they replace rather than duplicate
-        // those read paths.
+        // once per matching event. Keep id directly after the range keys so
+        // BillingBlocks can also satisfy ORDER BY timestamp, id without a sort.
+        // These indexes retain the prefixes used by the prior timestamp-only
+        // indexes, so they replace rather than duplicate those read paths.
         migrator.registerMigration("v16-history-covering-indexes") { db in
             try db.execute(sql: """
                 CREATE INDEX IF NOT EXISTS idx_usage_events_history_cover
-                ON usage_events(timestamp, value_usd, total_tokens, session_id)
+                ON usage_events(
+                    timestamp, id, value_usd, total_tokens, session_id
+                )
                 """)
             try db.execute(sql: """
                 CREATE INDEX IF NOT EXISTS idx_usage_events_provider_history_cover
                 ON usage_events(
-                    provider, timestamp, value_usd, total_tokens, session_id
+                    provider, timestamp, id,
+                    value_usd, total_tokens, session_id
                 )
                 """)
             try db.execute(sql: """
