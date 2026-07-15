@@ -23,10 +23,11 @@
 #     correct by construction (signed over the exact published DMG), and
 #     this needs only contents:write on the PAT — no PR-create scope.
 #
-# Failure handling: deliberately no auto-tag-deletion. If anything fails
-# the tag stays put so the developer can investigate, then either re-run
-# the failed job from the Actions UI, or delete + recut the tag manually
-# (git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z).
+# Failure handling: deliberately no automatic cleanup. Once a GitHub Release
+# exists, assets have been uploaded, or Appcast publication has started, do
+# not only re-run the job or delete only the tag. Inspect and complete the same
+# Release and Appcast using docs/release.md. Only when a full republish is
+# required, delete both the GitHub Release and tag, then recreate them.
 #
 # Secret setup (one-time):
 #   DEVELOPER_ID_CERTIFICATE_BASE64 — base64-encoded .p12 export containing
