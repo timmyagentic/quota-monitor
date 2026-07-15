@@ -67,7 +67,7 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 解析器把 `priority` / `fast` 归一为 `priority`，把明确的 `default` 保存为 `default`，并把明确的 `flex` 保存为 `flex`；缺失、空值或不支持的值保存为未知。`thread_settings_applied` 只能证明 Codex 记录了这个未来-turn 偏好：客户端仍可能按模型或功能支持情况过滤它，rollout 也没有持久化服务端最终响应的 tier。因此这些字段用于估价，不是偏好已传输或 OpenAI 最终按该 tier 提供服务的证明。
 
-子代理或 fork rollout 会先重放父会话历史，并可能重写外层事件时间。解析器在首个 child `session_meta` 上建立门禁：重放期间的 `token_count` 只更新累计量基线、不生成 `usage_events`；只有遇到 `task_started.started_at >= 子会话创建时间` 的首个真实任务后才开始计费。累计 `total_token_usage` 与上一条完全相同时，即使 `last_token_usage` 内容变化也视为陈旧重发，不产生新增消费。
+子代理或 fork rollout 会先重放父会话历史，并可能重写外层事件时间。解析器在首个 child `session_meta` 上建立门禁：重放期间的 `token_count` 只更新累计量基线、不生成 `usage_events`；通常只有遇到 `task_started.started_at >= 子会话创建时间` 的首个真实任务后才开始计费。旧格式缺少 `started_at` 时，优先从 UUIDv7 `turn_id` 的毫秒时间判断；没有父 `session_meta` 重放的直接子任务则可在首个 task 开门，最后才使用严格晚于创建时间的外层时间兼容无法解析 UUIDv7 的旧数据，避免把等于创建时间的重放事件误当真实任务。累计 `total_token_usage` 与上一条完全相同时，即使 `last_token_usage` 内容变化也视为陈旧重发，不产生新增消费。
 
 ### 存储与兼容迁移
 

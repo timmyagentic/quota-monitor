@@ -123,6 +123,11 @@ gate opens only at the first `task_started` whose `started_at` is at or after
 the child creation time. Repeated rows whose cumulative `total_token_usage`
 did not change are also non-billable even when `last_token_usage` differs.
 
+For older `task_started` rows without `started_at`, extract the millisecond
+timestamp from a UUIDv7 `turn_id`. A direct child with no replayed parent
+`session_meta` may open on its first task; rewritten envelope timestamps are
+only a last resort and must be strictly later than child creation.
+
 ## Storage and migration
 
 `usage_events` gains:

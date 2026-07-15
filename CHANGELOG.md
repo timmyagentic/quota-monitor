@@ -47,7 +47,7 @@ window copy.
 
 ### Fixed
 
-- **Accurate Codex child-session costs.** Parent history replayed into a child or forked rollout is now excluded until the child's first real task while still seeding cumulative-token baselines, and unchanged cumulative snapshots are no longer billed again when stale last-usage details differ.
+- **Accurate Codex child-session costs.** Parent history replayed into a child or forked rollout is now excluded until the child's first real task while still seeding cumulative-token baselines. Older tasks that omit `started_at` use their UUIDv7 turn time without trusting rewritten envelope timestamps, and unchanged cumulative snapshots are no longer billed again when stale last-usage details differ.
 - **Codex long-context pricing.** Supported requests above 272K input tokens now use 2× input and 1.5× output rates. Priority is not applied beyond that boundary because OpenAI does not support Priority for long context; Flex keeps its published tier before the long-context multipliers are applied.
 - **Existing Codex costs are repriced on upgrade.** A one-time pricing-policy migration recalculates stored dollar values immediately, so databases previously priced with the unknown-as-Fast fallback cannot keep stale totals while waiting for a rollout file to change.
 - **Dynamic Codex quota windows.** QuotaMonitor now identifies 5-hour and 7-day quotas by their actual duration, treats a missing window as absent instead of mixing in older database data, and automatically brings the 5-hour display back if Codex restores it.

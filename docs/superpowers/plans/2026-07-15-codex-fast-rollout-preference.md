@@ -15,6 +15,8 @@
 - `priority` estimates Fast, explicit `default` estimates Standard, explicit `flex` estimates Flex, and unknown/NULL estimates Standard.
 - For supported models, input above 272K applies 2x input/cached-input and 1.5x output; Priority falls back to Standard because long context is unsupported there.
 - A settings update during a turn must not change that turn's frozen preference.
+- A child task without `started_at` must still open the replay gate from UUIDv7
+  turn time or the direct-child fallback without accepting rewritten parent time.
 - Preserve the Codex token formula, current Fast model multipliers, Claude behavior, and unsupported-model behavior; add only published Flex rates.
 - Do not copy real rollouts, credentials, local paths, or substantial OpenUsage code into the repository.
 - Update both changelogs and use test-first red/green cycles for every behavior change.

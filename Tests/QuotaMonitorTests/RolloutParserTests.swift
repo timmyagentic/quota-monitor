@@ -268,6 +268,42 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas.isEmpty)
     }
 
+    @Test("direct child task without started_at opens the replay gate")
+    func directChildTaskWithoutStartedAtEmitsUsage() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","source":{"subagent":{"thread_spawn":{}}}}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"event_msg","payload":{"type":"task_started","turn_id":"child-turn"}}
+        {"timestamp":"2026-07-14T15:04:55.545Z","type":"turn_context","payload":{"turn_id":"child-turn","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-14T15:04:56.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":120}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [120])
+        #expect(parsed.usageDeltas.map(\.turnId) == ["child-turn"])
+    }
+
+    @Test("UUIDv7 task time distinguishes replay from live child when started_at is absent")
+    func childTaskUUIDTimeReplacesMissingStartedAt() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"session_meta","payload":{"id":"019f6128-dbf8-7000-8000-000000000000","forked_from_id":"11111111-2222-3333-4444-555555555555"}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"session_meta","payload":{"id":"11111111-2222-3333-4444-555555555555","timestamp":"2026-07-14T15:03:00.000Z"}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"event_msg","payload":{"type":"task_started","turn_id":"019f6127-18a0-7000-8000-000000000001"}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"turn_context","payload":{"turn_id":"019f6127-18a0-7000-8000-000000000001","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":50,"total_tokens":1200},"last_token_usage":{"input_tokens":1000,"cached_input_tokens":100,"output_tokens":200,"reasoning_output_tokens":50,"total_tokens":1200}}}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"event_msg","payload":{"type":"task_started","turn_id":"019f6128-e590-7000-8000-000000000001"}}
+        {"timestamp":"2026-07-14T15:04:55.544Z","type":"turn_context","payload":{"turn_id":"019f6128-e590-7000-8000-000000000001","model":"gpt-5.5"}}
+        {"timestamp":"2026-07-14T15:04:59.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1100,"cached_input_tokens":110,"output_tokens":220,"reasoning_output_tokens":55,"total_tokens":1320}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.inputTokens) == [100])
+        #expect(parsed.usageDeltas.map(\.cachedInputTokens) == [10])
+        #expect(parsed.usageDeltas.map(\.outputTokens) == [20])
+        #expect(parsed.usageDeltas.map(\.turnId) == [
+            "019f6128-e590-7000-8000-000000000001",
+        ])
+    }
+
     // MARK: - per-turn service tier preference
 
     @Test("service tier preference is frozen at task start in file order")

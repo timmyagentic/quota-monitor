@@ -64,16 +64,57 @@ private struct ActiveCodexTurn {
     let serviceTierPreference: CodexServiceTierPreference?
 }
 
+private extension TaskLifecyclePayload {
+    /// Codex turn IDs are UUIDv7 in current rollouts. Their first 48 bits are
+    /// Unix epoch milliseconds, which gives us durable task timing when older
+    /// `task_started` payloads omit `started_at` and envelope timestamps were
+    /// rewritten by a child-session replay.
+    var uuidV7StartedAt: TimeInterval? {
+        guard let turnId else { return nil }
+        let parts = turnId.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 5,
+              parts[0].count == 8,
+              parts[1].count == 4,
+              parts[2].first == "7",
+              let milliseconds = UInt64(parts[0] + parts[1], radix: 16)
+        else { return nil }
+        return TimeInterval(milliseconds) / 1_000
+    }
+}
+
 private enum ChildReplayGate {
     case childCreatedAt(TimeInterval)
     case firstSelfTimedTask
 
-    func isCleared(by task: TaskLifecyclePayload, lineTimestamp: String?) -> Bool {
-        guard let startedAt = task.startedAt else { return false }
+    func isCleared(
+        by task: TaskLifecyclePayload,
+        lineTimestamp: String?,
+        sawReplayedSessionMeta: Bool
+    ) -> Bool {
         switch self {
         case .childCreatedAt(let createdAt):
-            return startedAt >= createdAt
+            if let startedAt = task.startedAt {
+                return startedAt >= floor(createdAt)
+            }
+            if let uuidStartedAt = task.uuidV7StartedAt {
+                return uuidStartedAt >= createdAt
+            }
+            // A direct child rollout has no replayed session_meta before its
+            // first task, so that task is the child's own even in old formats
+            // that lack both started_at and UUIDv7 turn IDs.
+            if !sawReplayedSessionMeta { return true }
+            // Last-resort compatibility for a replayed old-format rollout:
+            // require a strictly later envelope time. Equality is deliberately
+            // excluded because parent snapshots are commonly rewritten to the
+            // child creation timestamp.
+            guard let lineTimestamp,
+                  let eventTime = ISO8601.parse(lineTimestamp)
+            else { return false }
+            return eventTime.timeIntervalSince1970 > createdAt
         case .firstSelfTimedTask:
+            guard let startedAt = task.startedAt ?? task.uuidV7StartedAt else {
+                return !sawReplayedSessionMeta
+            }
             guard let lineTimestamp,
                   let eventTime = ISO8601.parse(lineTimestamp)
             else { return false }
@@ -115,6 +156,7 @@ enum RolloutParser {
         var activeTurn: ActiveCodexTurn?
         var sawSessionMeta = false
         var childReplayGate: ChildReplayGate?
+        var sawReplayedSessionMeta = false
 
         var previousUsage: TokenUsageWire?
         var seenUsageSnapshots: Set<UsageSnapshotKey> = []
@@ -127,12 +169,20 @@ enum RolloutParser {
             switch event {
             case .sessionMeta(let meta, let envelopeTs):
                 let ts = envelopeTs ?? meta.timestamp
+                if sawSessionMeta,
+                   childReplayGate != nil,
+                   let childId = sessionId,
+                   let replayedId = meta.id,
+                   replayedId != childId
+                {
+                    sawReplayedSessionMeta = true
+                }
                 if !sawSessionMeta {
                     sawSessionMeta = true
                     if meta.isChildSession {
                         if let ts, let createdAt = ISO8601.parse(ts) {
                             childReplayGate = .childCreatedAt(
-                                floor(createdAt.timeIntervalSince1970))
+                                createdAt.timeIntervalSince1970)
                         } else {
                             childReplayGate = .firstSelfTimedTask
                         }
@@ -177,7 +227,8 @@ enum RolloutParser {
             case .taskStarted(let task, let envelopeTs):
                 if childReplayGate?.isCleared(
                     by: task,
-                    lineTimestamp: envelopeTs) == true
+                    lineTimestamp: envelopeTs,
+                    sawReplayedSessionMeta: sawReplayedSessionMeta) == true
                 {
                     childReplayGate = nil
                 }
