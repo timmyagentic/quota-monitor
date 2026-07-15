@@ -270,6 +270,53 @@ creation. Its existing Appcast entry was signed against those exact published
 bytes; the missing operation is only opening the PR from the branch that the
 workflow already prepared.
 
+### Scheduled release/feed health monitor
+
+`.github/workflows/update-feed-health.yml` runs once a day and can also be
+started manually with `workflow_dispatch`. It is strictly read-only
+(`contents: read`) and checks these two release/feed pairs independently:
+
+| Brand | Latest-release repository | Installed-client feed |
+|---|---|---|
+| QuotaMonitor | `timmyagentic/quota-monitor` | `https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml` |
+| CodexMonitor | `timmyagentic/codex-monitor` | `https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main/appcast.xml` |
+
+The CodexMonitor split is intentional. GitHub release metadata and assets use
+the canonical `timmyagentic/codex-monitor` repository, while existing installed
+clients continue polling the legacy raw feed URL. Do not migrate that client
+URL merely to make the two owner names look alike.
+
+Each matrix row compares the latest GitHub Release tag with the first direct
+Appcast item and rejects a feed larger than **100,000 bytes (100 KB)**. The
+matrix uses `fail-fast: false`, so one brand's failure does not hide the other
+brand's result. Start an on-demand read-only check with:
+
+```sh
+gh workflow run update-feed-health.yml
+```
+
+When a row fails, inspect its Actions log and reproduce the same check locally
+before changing anything:
+
+```sh
+python3 tools/check-update-feed-health.py \
+  --repo OWNER/REPO \
+  --feed-url HTTPS_INSTALLED_CLIENT_FEED \
+  --max-bytes 100000
+```
+
+Check whether the failure is an oversized or malformed feed, a mismatch
+between the latest release tag and the first direct Appcast item, or a network
+failure. For QuotaMonitor, confirm the generated Appcast PR was merged; for
+CodexMonitor, inspect the canonical repository and the intentionally retained
+legacy raw URL as one publication path. The monitor never repairs or writes a
+feed automatically.
+
+`tools/slim-legacy-appcast.py` is a separate, deliberate maintenance tool for
+removing only item-level CDATA release-note descriptions. It validates XML
+before and after the surgical edit and requires `--in-place` for an atomic
+same-path replacement; it is not invoked by the scheduled monitor.
+
 ## One-time setup: Sparkle Ed25519 signing
 
 You only do this once per machine, ever. The QuotaMonitor maintainer

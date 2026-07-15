@@ -2,6 +2,7 @@
 import pathlib
 import plistlib
 import os
+import re
 import subprocess
 import tempfile
 import textwrap
@@ -307,6 +308,55 @@ class DeveloperIDReleaseTests(unittest.TestCase):
             "RELEASE_REPO=systemoutprintlnnnn/codex-monitor",
             sparkle,
         )
+
+    def test_update_feed_health_workflow_is_read_only_and_checks_both_brands(self):
+        workflow_path = REPO_ROOT / ".github/workflows/update-feed-health.yml"
+        self.assertTrue(
+            workflow_path.is_file(),
+            "expected the scheduled update-feed health workflow",
+        )
+        workflow = workflow_path.read_text(encoding="utf-8")
+
+        self.assertRegex(workflow, r"(?m)^  schedule:\n    - cron: .+$")
+        self.assertRegex(workflow, r"(?m)^  workflow_dispatch:\s*$")
+        permissions_start = workflow.index("permissions:")
+        jobs_start = workflow.index("jobs:", permissions_start)
+        permissions = workflow[permissions_start:jobs_start].strip()
+        self.assertEqual(permissions, "permissions:\n  contents: read")
+        self.assertNotRegex(workflow, r"(?m)^\s+[A-Za-z-]+:\s*write\s*$")
+
+        pairs = tuple(
+            (repo.strip('"\''), feed.strip('"\''))
+            for repo, feed in re.findall(
+                r"(?m)^\s+- release_repo:\s*(\S+)\s*$\n"
+                r"^\s+feed_url:\s*(\S+)\s*$",
+                workflow,
+            )
+        )
+        self.assertEqual(
+            pairs,
+            (
+                (
+                    "timmyagentic/quota-monitor",
+                    "https://raw.githubusercontent.com/timmyagentic/"
+                    "quota-monitor/main/appcast.xml",
+                ),
+                (
+                    "timmyagentic/codex-monitor",
+                    "https://raw.githubusercontent.com/systemoutprintlnnnn/"
+                    "codex-monitor/main/appcast.xml",
+                ),
+            ),
+        )
+        self.assertIn("    timeout-minutes: 10", workflow)
+        self.assertIn("      fail-fast: false", workflow)
+        self.assertIn("uses: actions/checkout@v6.0.2", workflow)
+        self.assertIn("python3 tools/check-update-feed-health.py", workflow)
+        self.assertIn('--repo "${{ matrix.release_repo }}"', workflow)
+        self.assertIn('--feed-url "${{ matrix.feed_url }}"', workflow)
+        self.assertIn("--max-bytes 100000", workflow)
+        self.assertIn("--token-env GITHUB_TOKEN", workflow)
+        self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
 
     def test_developer_id_helpers_are_present_and_do_not_hide_notary_status(self):
         common = self.read_text("tools/developer-id-common.sh")
