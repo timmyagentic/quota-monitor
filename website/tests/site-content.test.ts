@@ -166,7 +166,7 @@ describe("public product content", () => {
         simple: { limit: 120, period: 60 },
       },
       {
-        name: "DAILY_ACTIVE_GLOBAL_RATE_LIMITER",
+        name: "DAILY_ACTIVE_COLO_RATE_LIMITER",
         namespace_id: "2026071602",
         simple: { limit: 5000, period: 60 },
       },
@@ -176,17 +176,18 @@ describe("public product content", () => {
         simple: { limit: 30, period: 60 },
       },
     ]);
+    expect(config).not.toHaveProperty("durable_objects");
     expect(config.triggers).toEqual({ crons: ["15 * * * *"] });
     expect(config.routes).toContainEqual({
       pattern: "quota-monitor.timmyagentic.com",
       custom_domain: true,
     });
     expect(config.observability).toEqual({
-      enabled: false,
+      enabled: true,
       logs: {
-        enabled: false,
+        enabled: true,
         invocation_logs: false,
-        persist: false,
+        persist: true,
       },
     });
   });
@@ -204,9 +205,16 @@ describe("public product content", () => {
     expect(worker).not.toMatch(/\b(?:interface|type)\s+Env\b/);
     expect(manifest.scripts.typegen).toBe("wrangler types");
     expect(manifest.scripts.typecheck).toBe("wrangler types --check && tsc --noEmit");
-    expect(manifest.scripts.check).toBe(
-      "npm run typecheck && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler check startup --outfile .wrangler/worker-startup.cpuprofile",
+    expect(manifest.scripts["test:integration"]).toBe(
+      "vitest run --config vitest.integration.config.ts",
     );
+    expect(manifest.scripts.check).toBe(
+      "npm run typecheck && npm test && npm run test:integration && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler check startup --outfile .wrangler/worker-startup.cpuprofile",
+    );
+    expect(manifest.devDependencies["@cloudflare/vitest-pool-workers"]).toBe("0.18.5");
+    expect(existsSync(join(websiteDirectory, "vitest.integration.config.ts"))).toBe(true);
+    expect(existsSync(join(websiteDirectory, "tests", "d1.integration.test.ts"))).toBe(true);
+    expect(existsSync(join(websiteDirectory, "tests", "d1-integration-setup.ts"))).toBe(true);
   });
 
   it("awaits the scheduled aggregation without destructuring its execution context", () => {
@@ -214,10 +222,11 @@ describe("public product content", () => {
 
     expect(worker).toMatch(/async scheduled\s*\(\s*controller,\s*env,\s*_?ctx\s*\)/);
     expect(worker).toMatch(
-      /await aggregateClosedDays\s*\(\s*env\.VERSION_STATS_DB,\s*controller\.scheduledTime\s*\)/,
+      /await aggregateClosedDays\s*\(\s*env\.VERSION_STATS_DB,\s*controller\.scheduledTime,?\s*\)/,
     );
     expect(worker).not.toMatch(/(?:const|let|var)\s*\{[^}]*\}\s*=\s*_?ctx\b/);
-    expect(worker).not.toMatch(/console\.(?:debug|info|log|warn|error)\s*\(/);
+    expect(worker).toMatch(/console\.info\s*\(/);
+    expect(worker).toMatch(/console\.error\s*\(/);
   });
 
   it("provides the semantic product journey and direct download actions", () => {

@@ -210,7 +210,7 @@ export default {
       const response = await handleDailyActive(
         request,
         env.VERSION_STATS_DB,
-        env.DAILY_ACTIVE_GLOBAL_RATE_LIMITER,
+        env.DAILY_ACTIVE_COLO_RATE_LIMITER,
         env.DAILY_ACTIVE_RATE_LIMITER,
       );
       return withSecurityHeaders(response);
@@ -246,6 +246,23 @@ export default {
   },
 
   async scheduled(controller, env, _ctx): Promise<void> {
-    await aggregateClosedDays(env.VERSION_STATS_DB, controller.scheduledTime);
+    const day = new Date(controller.scheduledTime).toISOString().slice(0, 10);
+    try {
+      const changes = await aggregateClosedDays(
+        env.VERSION_STATS_DB,
+        controller.scheduledTime,
+      );
+      console.info({
+        event: "version_distribution_aggregation_succeeded",
+        day,
+        ...changes,
+      });
+    } catch {
+      console.error({
+        event: "version_distribution_aggregation_failed",
+        day,
+      });
+      throw new Error("Scheduled aggregation failed");
+    }
   },
 } satisfies ExportedHandler<Env>;

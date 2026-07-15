@@ -74,6 +74,12 @@ export interface VersionDistributionDependencies {
   authCrypto?: AdminAuthCrypto;
 }
 
+export type AggregationBatchChanges = {
+  aggregateChanges: number;
+  rawDeleteChanges: number;
+  retentionDeleteChanges: number;
+};
+
 type CountRow = {
   day: unknown;
   version: unknown;
@@ -95,7 +101,7 @@ function dayOffset(day: string, offset: number): string {
 export async function aggregateClosedDays(
   database: D1Database,
   scheduledTime: number,
-): Promise<void> {
+): Promise<AggregationBatchChanges> {
   const today = utcDay(new Date(scheduledTime));
   const retentionCutoff = dayOffset(today, -RETENTION_DAYS);
   const aggregate = database
@@ -108,7 +114,13 @@ export async function aggregateClosedDays(
     .prepare(DELETE_EXPIRED_AGGREGATES_SQL)
     .bind(retentionCutoff);
 
-  await database.batch([aggregate, deleteRaw, deleteExpired]);
+  const [aggregateResult, rawDeleteResult, retentionDeleteResult] =
+    await database.batch([aggregate, deleteRaw, deleteExpired]);
+  return {
+    aggregateChanges: aggregateResult?.meta.changes ?? 0,
+    rawDeleteChanges: rawDeleteResult?.meta.changes ?? 0,
+    retentionDeleteChanges: retentionDeleteResult?.meta.changes ?? 0,
+  };
 }
 
 export function parseVersionDistributionFilters(
@@ -263,8 +275,11 @@ function trendMarkup(
   days: number,
 ): string {
   const start = dayOffset(today, -days);
-  const totals = rowsByDay(historical.filter((row) => row.day >= start));
-  const values = [...totals.values()].map(sum);
+  const totals = rowsByDay(
+    historical.filter((row) => row.day >= start && row.day < today),
+  );
+  const recordedDays = [...totals.keys()].sort();
+  const values = recordedDays.map((day) => sum(totals.get(day) ?? []));
   const average = values.length === 0
     ? 0
     : values.reduce((total, value) => total + value, 0) / values.length;
@@ -272,11 +287,21 @@ function trendMarkup(
   const last = values.at(-1) ?? 0;
   const change = last - first;
   const direction = change > 0 ? "+" : "";
+  const sampleLabel = values.length === 1 ? "sample" : "samples";
+  const missingDays = Math.max(0, days - values.length);
+  const changeMarkup = values.length < 2
+    ? "At least 2 recorded days are needed for a change comparison."
+    : `${direction}${change} from first to latest recorded day`;
+  const missingMarkup = missingDays === 0
+    ? `All ${days} days have recorded check-ins.`
+    : `${missingDays} ${missingDays === 1 ? "day has" : "days have"} no recorded check-ins; trend comparisons use recorded days only.`;
   return `
           <article class="privacy-detail">
             <h3>${days}-day trend</h3>
             <p><strong>${average.toFixed(1)}</strong> average recorded daily check-ins</p>
-            <p>${direction}${change} from first to latest recorded day</p>
+            <p>${values.length} recorded-day ${sampleLabel} in this ${days}-day window</p>
+            <p>${missingMarkup}</p>
+            <p>${changeMarkup}</p>
           </article>`;
 }
 
@@ -293,14 +318,21 @@ function anomalyMarkup(historical: VersionCount[]): string {
   }
   const latestTotal = sum(grouped.get(latestDay) ?? []);
   const previousDays = days.slice(-8, -1);
+  if (previousDays.length === 0) {
+    return `
+        <aside class="privacy-detail" aria-labelledby="anomaly-title">
+          <h2 id="anomaly-title">Anomaly signal</h2>
+          <p>${escapeHTML(latestDay)}, the latest complete day; no prior recorded days are available for comparison.</p>
+        </aside>`;
+  }
   const previousTotals = previousDays.map((day) => sum(grouped.get(day) ?? []));
-  const previousAverage = previousTotals.length === 0
-    ? 0
-    : previousTotals.reduce((total, value) => total + value, 0) / previousTotals.length;
+  const previousAverage = previousTotals.reduce((total, value) => total + value, 0) /
+    previousTotals.length;
   const isSpike = latestTotal >= 10 && previousAverage > 0 && latestTotal > previousAverage * 2;
+  const priorLabel = `${previousDays.length} recorded ${previousDays.length === 1 ? "day" : "days"}`;
   const detail = isSpike
-    ? `${escapeHTML(latestDay)} is more than twice the prior 7-day average. Treat this as a possible retry or abuse spike, not exact growth.`
-    : "No complete-day count is more than twice the prior 7-day average at the current threshold.";
+    ? `${escapeHTML(latestDay)}, the latest complete day, is more than twice the average of the prior ${priorLabel}. Treat this as a possible retry or abuse spike, not exact growth.`
+    : `${escapeHTML(latestDay)}, the latest complete day, is not more than twice the average of the prior ${priorLabel} at the current threshold.`;
   return `
         <aside class="privacy-detail" aria-labelledby="anomaly-title">
           <h2 id="anomaly-title">Anomaly signal</h2>
@@ -344,7 +376,12 @@ function tableRows(view: VersionDistributionView): string {
 export function renderVersionDistributionHTML(
   view: VersionDistributionView,
 ): string {
-  const historicalByDay = rowsByDay(view.historical);
+  const selectedStart = dayOffset(view.today, -view.filters.range);
+  const selectedHistorical = view.historical.filter((row) =>
+    row.day >= selectedStart && row.day < view.today
+  );
+  const selectedView = { ...view, historical: selectedHistorical };
+  const historicalByDay = rowsByDay(selectedHistorical);
   const completeDays = [...historicalByDay.keys()].sort();
   const latestCompleteDay = completeDays.at(-1) ?? null;
   const latestCompleteRows = latestCompleteDay === null
@@ -352,7 +389,7 @@ export function renderVersionDistributionHTML(
     : historicalByDay.get(latestCompleteDay) ?? [];
   const latestCompleteTotal = sum(latestCompleteRows);
   const provisionalTotal = sum(view.provisional);
-  const newest = newestVersion([...view.historical, ...view.provisional]);
+  const newest = newestVersion([...selectedHistorical, ...view.provisional]);
   const adoptionRows = provisionalTotal > 0 ? view.provisional : latestCompleteRows;
   const adoptionTotal = sum(adoptionRows);
   const newestCount = newest === null
@@ -434,7 +471,7 @@ export function renderVersionDistributionHTML(
             </select>
             <button class="button button-primary" type="submit">Apply filters</button>
           </form>
-          ${anomalyMarkup(view.historical)}
+          ${anomalyMarkup(selectedHistorical)}
         </div>
       </section>
 
@@ -458,7 +495,7 @@ export function renderVersionDistributionHTML(
               <tr><th scope="col">Day</th><th scope="col">Version</th><th scope="col">Brand</th><th scope="col">Channel</th><th scope="col">Count</th><th scope="col">Share</th></tr>
             </thead>
             <tbody>
-              ${tableRows(view)}
+              ${tableRows(selectedView)}
             </tbody>
           </table>
         </div>
@@ -498,6 +535,9 @@ export async function handleVersionDistribution(
 ): Promise<Response> {
   if (request.method !== "GET") {
     return privateText("Method Not Allowed", 405, { Allow: "GET" });
+  }
+  if (new URL(request.url).protocol !== "https:") {
+    return privateText("HTTPS required", 400);
   }
   if (secret === undefined || secret.trim() === "") {
     return privateText("Service unavailable", 503);

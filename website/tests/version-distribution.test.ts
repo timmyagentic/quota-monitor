@@ -26,6 +26,14 @@ function d1Result<T>(results: T[]): D1Result<T> {
   return { success: true, meta: D1_META, results };
 }
 
+function d1ResultWithChanges<T>(changes: number): D1Result<T> {
+  return {
+    success: true,
+    meta: { ...D1_META, changed_db: changes > 0, changes },
+    results: [],
+  };
+}
+
 type QueryResolver = (query: string, bindings: unknown[]) => unknown[];
 
 class RecordingStatement implements D1PreparedStatement {
@@ -130,7 +138,11 @@ function authorization(secret = "dashboard-secret"): string {
 
 function dashboardRequest(
   query = "",
-  options: { authorization?: string | null; connectingIP?: string } = {},
+  options: {
+    authorization?: string | null;
+    connectingIP?: string;
+    protocol?: "http" | "https";
+  } = {},
 ): Request {
   const headers = new Headers();
   if (options.authorization !== null) {
@@ -139,10 +151,28 @@ function dashboardRequest(
   if (options.connectingIP !== undefined) {
     headers.set("CF-Connecting-IP", options.connectingIP);
   }
-  return new Request(`https://quota-monitor.test/maintainer/versions${query}`, { headers });
+  return new Request(
+    `${options.protocol ?? "https"}://quota-monitor.test/maintainer/versions${query}`,
+    { headers },
+  );
 }
 
 describe("closed-day aggregation", () => {
+  it("returns only the three D1 batch meta change counts", async () => {
+    const database = new RecordingDatabase();
+    database.batch = async <T = unknown>() => [
+      d1ResultWithChanges<T>(12),
+      d1ResultWithChanges<T>(9),
+      d1ResultWithChanges<T>(2),
+    ];
+
+    await expect(aggregateClosedDays(database, SCHEDULED_TIME)).resolves.toEqual({
+      aggregateChanges: 12,
+      rawDeleteChanges: 9,
+      retentionDeleteChanges: 2,
+    });
+  });
+
   it("uses one atomic D1 batch to upsert every missed closed day before cleanup", async () => {
     const database = new RecordingDatabase();
 
@@ -283,6 +313,44 @@ describe("version distribution queries and filters", () => {
 });
 
 describe("private maintainer dashboard", () => {
+  it.each([
+    ["missing", null],
+    ["correct", authorization()],
+    ["wrong", authorization("wrong")],
+  ])(
+    "rejects HTTP with a generic response before reading %s authorization, limiting, or querying D1",
+    async (_label, suppliedAuthorization) => {
+      const database = new RecordingDatabase();
+      const limiter = new RecordingLimiter();
+      const digest = vi.fn<AdminAuthCrypto["digest"]>();
+
+      const response = await handleVersionDistribution(
+        dashboardRequest("", {
+          authorization: suppliedAuthorization,
+          connectingIP: "203.0.113.9",
+          protocol: "http",
+        }),
+        database,
+        "dashboard-secret",
+        limiter,
+        {
+          authCrypto: {
+            digest,
+            timingSafeEqual: vi.fn(() => false),
+          },
+        },
+      );
+
+      expect(response.status).toBe(400);
+      expect(await response.text()).toBe("HTTPS required");
+      expect(response.headers.get("WWW-Authenticate")).toBeNull();
+      expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+      expect(digest).not.toHaveBeenCalled();
+      expect(limiter.keys).toEqual([]);
+      expect(database.prepareCount).toBe(0);
+    },
+  );
+
   it.each([undefined, "", "   "])(
     "fails closed with a generic 503 when the admin secret is %j",
     async (secret) => {
@@ -408,7 +476,7 @@ describe("private maintainer dashboard", () => {
     expect(html).toContain('value="developer-id"');
     expect(html).toContain("Count and share by version");
     expect(html).toContain("Anomaly signal");
-    expect(html).toContain("more than twice the prior 7-day average");
+    expect(html).toContain("more than twice the average of the prior 2 recorded days");
     expect(html).toContain("Best-effort public unauthenticated sample");
     expect(html).toContain("estimated active installations");
     expect(html).toContain("date-scoped deduplication");
@@ -419,6 +487,79 @@ describe("private maintainer dashboard", () => {
     expect(html).not.toMatch(/\btoken(?:_hash)?\b/i);
     expect(html).not.toMatch(/authorization/i);
     expect(html).not.toContain("daily_active_observations");
+  });
+
+  it("uses out-of-range history only for trends, never selected-range summaries or rows", () => {
+    const view: VersionDistributionView = {
+      today: TODAY,
+      filters: { range: 7, brand: null, channel: null },
+      provisional: [],
+      historical: [
+        { day: "2026-04-20", version: "99.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 90 },
+        { day: "2026-07-14", version: "1.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 2 },
+        { day: "2026-07-15", version: "1.1.0", brand: "quota-monitor", channel: "developer-id", activeCount: 3 },
+      ],
+    };
+
+    const html = renderVersionDistributionHTML(view);
+
+    expect(html).toContain("2026-07-15");
+    expect(html).toContain(">3<");
+    expect(html).toContain("<strong>1.1.0</strong>");
+    expect(html).toContain("100.0% of latest complete-day check-ins");
+    expect(html).not.toContain("99.0.0");
+    expect(html).not.toContain("2026-04-20");
+    expect(html).not.toContain(">90<");
+  });
+
+  it("shows an empty selected range even when older trend-only history exists", () => {
+    const html = renderVersionDistributionHTML({
+      today: TODAY,
+      filters: { range: 7, brand: null, channel: null },
+      provisional: [],
+      historical: [
+        { day: "2026-06-01", version: "8.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 8 },
+      ],
+    });
+
+    expect(html).toContain("No complete day");
+    expect(html).toContain("<strong>No data</strong>");
+    expect(html).toContain("No check-ins in this range.");
+    expect(html).not.toContain("8.0.0");
+    expect(html).not.toContain("2026-06-01");
+  });
+
+  it("reports recorded-day samples and gap warnings without treating gaps as zeroes", () => {
+    const html = renderVersionDistributionHTML({
+      today: TODAY,
+      filters: { range: 30, brand: null, channel: null },
+      provisional: [],
+      historical: [
+        { day: "2026-07-09", version: "1.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 2 },
+        { day: "2026-07-13", version: "1.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 3 },
+        { day: "2026-07-15", version: "1.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 10 },
+      ],
+    });
+
+    expect(html).toContain("3 recorded-day samples in this 7-day window");
+    expect(html).toContain("4 days have no recorded check-ins; trend comparisons use recorded days only.");
+    expect(html).toContain("2026-07-15, the latest complete day");
+    expect(html).toContain("prior 2 recorded days");
+  });
+
+  it("states when trends and anomaly detection have insufficient recorded-day samples", () => {
+    const html = renderVersionDistributionHTML({
+      today: TODAY,
+      filters: { range: 7, brand: null, channel: null },
+      provisional: [],
+      historical: [
+        { day: "2026-07-15", version: "1.0.0", brand: "quota-monitor", channel: "developer-id", activeCount: 10 },
+      ],
+    });
+
+    expect(html).toContain("1 recorded-day sample in this 7-day window");
+    expect(html).toContain("At least 2 recorded days are needed for a change comparison.");
+    expect(html).toContain("no prior recorded days are available for comparison");
   });
 
   it("returns an authenticated non-cacheable dashboard without secret or raw-row material", async () => {

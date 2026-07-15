@@ -33,7 +33,8 @@
       }
     },
     {
-      "name": "DAILY_ACTIVE_GLOBAL_RATE_LIMITER",
+      // Per-colo best-effort circuit breaker; this is not a global Durable Object.
+      "name": "DAILY_ACTIVE_COLO_RATE_LIMITER",
       "namespace_id": "2026071602",
       "simple": {
         "limit": 5000,
@@ -59,11 +60,11 @@
     }
   ],
   "observability": {
-    "enabled": false,
+    "enabled": true,
     "logs": {
-      "enabled": false,
+      "enabled": true,
       "invocation_logs": false,
-      "persist": false
+      "persist": true
     }
   }
 }

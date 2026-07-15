@@ -76,8 +76,12 @@ const TEST_D1_META: D1Meta & Record<string, unknown> = {
   changes: 0,
 };
 
-function testD1Result<T>(results: T[]): D1Result<T> {
-  return { success: true, meta: TEST_D1_META, results };
+function testD1Result<T>(results: T[], changes = 0): D1Result<T> {
+  return {
+    success: true,
+    meta: { ...TEST_D1_META, changed_db: changes > 0, changes },
+    results,
+  };
 }
 
 class WorkerTestStatement implements D1PreparedStatement {
@@ -120,6 +124,8 @@ class WorkerTestStatement implements D1PreparedStatement {
 class WorkerTestDatabase implements D1Database {
   readonly statements: WorkerTestStatement[] = [];
   readonly batchCalls: D1PreparedStatement[][] = [];
+  batchChanges = [0, 0, 0];
+  batchFailure: Error | null = null;
 
   constructor(
     private readonly rows: (query: string) => Record<string, unknown>[] = () => [],
@@ -137,7 +143,10 @@ class WorkerTestDatabase implements D1Database {
 
   async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
     this.batchCalls.push(statements);
-    return statements.map(() => testD1Result<T>([]));
+    if (this.batchFailure !== null) throw this.batchFailure;
+    return statements.map((_, index) =>
+      testD1Result<T>([], this.batchChanges[index] ?? 0)
+    );
   }
 
   async exec(): Promise<D1ExecResult> {
@@ -164,7 +173,7 @@ function allowLimiter(): RateLimit {
 function workerEnv(
   assets: Fetcher = assetsBinding(),
   rateLimiter: RateLimit = allowLimiter(),
-  globalRateLimiter: RateLimit = allowLimiter(),
+  coloRateLimiter: RateLimit = allowLimiter(),
   adminRateLimiter: RateLimit = allowLimiter(),
   database: D1Database = new WorkerTestDatabase(() => [], true),
   adminSecret?: string,
@@ -172,7 +181,7 @@ function workerEnv(
   const env = {
     ASSETS: assets,
     DAILY_ACTIVE_RATE_LIMITER: rateLimiter,
-    DAILY_ACTIVE_GLOBAL_RATE_LIMITER: globalRateLimiter,
+    DAILY_ACTIVE_COLO_RATE_LIMITER: coloRateLimiter,
     ADMIN_VERSION_STATS_RATE_LIMITER: adminRateLimiter,
     VERSION_STATS_DB: database,
   };
@@ -600,6 +609,7 @@ describe("Worker routes", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("serves public metadata from /api/release without exposing the upstream URL", async () => {
@@ -729,10 +739,10 @@ describe("Worker routes", () => {
     expectSecurityHeaders(response);
   });
 
-  it("routes ingest through the global circuit breaker before its per-IP limiter", async () => {
+  it("routes ingest through the per-colo best-effort circuit breaker before its per-IP limiter", async () => {
     const assetsFetch = vi.fn<Fetcher["fetch"]>();
     const ipLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: true });
-    const globalLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: false });
+    const coloLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: false });
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/api/v1/daily-active", {
@@ -746,14 +756,14 @@ describe("Worker routes", () => {
       workerEnv(
         assetsBinding(assetsFetch),
         { limit: ipLimit },
-        { limit: globalLimit },
+        { limit: coloLimit },
       ),
     );
 
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("60");
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(globalLimit).toHaveBeenCalledWith({ key: "daily-active-global" });
+    expect(coloLimit).toHaveBeenCalledWith({ key: "daily-active-colo" });
     expect(ipLimit).not.toHaveBeenCalled();
     expect(assetsFetch).not.toHaveBeenCalled();
     expectSecurityHeaders(response);
@@ -857,6 +867,9 @@ describe("Worker routes", () => {
 
   it("awaits scheduled closed-day aggregation in one three-statement batch", async () => {
     const database = new WorkerTestDatabase();
+    database.batchChanges = [12, 9, 2];
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const scheduledTime = Date.parse("2026-07-16T07:15:00.000Z");
     const controller: ScheduledController = {
       scheduledTime,
@@ -883,5 +896,50 @@ describe("Worker routes", () => {
       ["2026-07-16"],
       ["2025-06-11"],
     ]);
+    expect(info).toHaveBeenCalledExactlyOnceWith({
+      event: "version_distribution_aggregation_succeeded",
+      day: "2026-07-16",
+      aggregateChanges: 12,
+      rawDeleteChanges: 9,
+      retentionDeleteChanges: 2,
+    });
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("logs only a fixed event and UTC day when scheduled aggregation fails", async () => {
+    const database = new WorkerTestDatabase();
+    database.batchFailure = new Error(
+      "Authorization https://private.test token_hash=secret body=private 203.0.113.70",
+    );
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const controller: ScheduledController = {
+      scheduledTime: Date.parse("2026-07-16T23:15:00.000Z"),
+      cron: "15 * * * *",
+      noRetry: vi.fn(),
+    };
+
+    await expect(
+      worker.scheduled(
+        controller,
+        workerEnv(
+          assetsBinding(),
+          allowLimiter(),
+          allowLimiter(),
+          allowLimiter(),
+          database,
+        ),
+        undefined!,
+      ),
+    ).rejects.toThrow("Scheduled aggregation failed");
+
+    expect(info).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledExactlyOnceWith({
+      event: "version_distribution_aggregation_failed",
+      day: "2026-07-16",
+    });
+    expect(JSON.stringify(error.mock.calls)).not.toMatch(
+      /Authorization|https?:|token|hash|body|203\.0\.113\.70|private/i,
+    );
   });
 });

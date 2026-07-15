@@ -192,7 +192,7 @@ function hexEncoded(bytes: ArrayBuffer): string {
 export async function handleDailyActive(
   request: Request,
   database: DailyActiveDatabase,
-  globalRateLimiter: DailyActiveRateLimiter,
+  coloRateLimiter: DailyActiveRateLimiter,
   rateLimiter: DailyActiveRateLimiter,
   dependencies: DailyActiveDependencies = {},
 ): Promise<Response> {
@@ -215,7 +215,8 @@ export async function handleDailyActive(
   }
 
   try {
-    const { success } = await globalRateLimiter.limit({ key: "daily-active-global" });
+    // Workers RateLimit bindings are per-colo and best-effort, not a global Durable Object.
+    const { success } = await coloRateLimiter.limit({ key: "daily-active-colo" });
     if (!success) {
       return emptyResponse(429, { "Retry-After": "60" });
     }
