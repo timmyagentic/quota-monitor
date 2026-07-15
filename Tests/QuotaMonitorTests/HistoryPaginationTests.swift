@@ -432,7 +432,7 @@ struct HistoryPaginationTests {
             !$0.contains("TEMP B-TREE FOR ORDER BY")
         })
         #expect(trace.aggregatePlan.contains {
-            $0.contains("idx_usage_events_timestamp")
+            $0.contains("USING COVERING INDEX idx_usage_events_history_cover")
         })
     }
 
@@ -454,7 +454,8 @@ struct HistoryPaginationTests {
             !$0.contains("SCAN usage_events")
         })
         #expect(trace.aggregatePlan.contains {
-            $0.contains("index_usage_events_on_provider_timestamp")
+            $0.contains(
+                "USING COVERING INDEX idx_usage_events_provider_history_cover")
         })
     }
 
@@ -472,7 +473,8 @@ struct HistoryPaginationTests {
         }
 
         #expect(trace.olderPlan.contains {
-            $0.contains("SEARCH usage_events USING COVERING INDEX idx_usage_events_timestamp")
+            $0.contains(
+                "SEARCH usage_events USING COVERING INDEX idx_usage_events_history_cover")
         })
         #expect(normalizedStatements.allSatisfy {
             !$0.contains("SELECT timestamp, value_usd, total_tokens, session_id")
