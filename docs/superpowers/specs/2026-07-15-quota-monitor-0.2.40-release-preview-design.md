@@ -39,42 +39,37 @@ implementation terminology.
 English:
 
 - Eyebrow: `Release highlights`
-- Title: `Clearer limits. More trustworthy costs.`
-- Subtitle: `QuotaMonitor now follows the limits Codex actually uses and makes every cost estimate more precise.`
+- Title: `Clearer limits. More accurate costs.`
+- Subtitle: `This update makes Codex limits and costs easier to understand.`
 
 Simplified Chinese:
 
 - Eyebrow: `更新亮点`
-- Title: `额度更清楚，费用更可信`
-- Subtitle: `QuotaMonitor 现在会跟随 Codex 实际启用的额度，并让每一笔费用估算更加准确。`
+- Title: `额度更准，费用更清楚`
+- Subtitle: `这次更新让 Codex 的额度和费用更容易看懂。`
 
 ### Card 1: active quota windows
 
 English:
 
-> **Only the limits Codex actually uses.** When Codex temporarily offers a
-> weekly limit only, the menu bar and quota cards no longer invent a 5-hour
-> limit or revive stale values. If the 5-hour window returns, it appears
-> automatically.
+> **Quota windows stay in sync.** QuotaMonitor shows only the limits Codex
+> currently uses. If the 5-hour limit returns, it appears automatically.
 
 Simplified Chinese:
 
-> **只显示 Codex 实际启用的额度。** 当 Codex 暂时只提供周额度时，菜单栏和额度卡不会再显示虚假的
-> 5 小时限制或过期数据；5 小时窗口恢复后会自动重新出现。
+> **额度窗口自动同步。** 只显示 Codex 当前启用的额度；5 小时额度恢复后会自动出现。
 
 ### Card 2: trustworthy Codex costs
 
 English:
 
-> **Fast costs are counted only when the record says Fast.** Standard, Fast,
-> Flex, and long-context turns use the right rates; untagged history stays on
-> Standard, and replayed parent usage is no longer counted again in subagent
-> sessions.
+> **Fast pricing is more accurate.** Only recorded Fast usage uses Fast rates.
+> Other tiers use the right rates, and subagent usage is no longer counted
+> twice.
 
 Simplified Chinese:
 
-> **只有明确记录为 Fast 的请求才按 Fast 计费。** Standard、Fast、Flex 和长上下文请求会使用各自正确的
-> 价格；没有档位记录的历史用量按 Standard 估算，子会话也不会再重复计算父会话用量。
+> **Fast 计费更准确。** 只有明确记录为 Fast 才按 Fast 估算；其他用量会使用正确档位，子会话也不再重复计费。
 
 The final HTML keeps the cards visually balanced and may tighten line breaks
 without changing meaning. It does not use the 0.2.39 `DAY-ONE` badge.
