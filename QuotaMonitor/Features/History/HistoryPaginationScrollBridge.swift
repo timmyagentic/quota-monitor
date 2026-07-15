@@ -153,7 +153,7 @@ struct HistoryScrollLoadGate {
 
     mutating func expirePhaseLessGesture(at timestamp: TimeInterval) {
         guard let deadline = phaseLessExpiryDeadline,
-              timestamp >= deadline else { return }
+              timestamp > deadline else { return }
         closeActiveGesture()
     }
 
@@ -328,6 +328,8 @@ struct HistoryPaginationScrollBridge: NSViewRepresentable {
 extension HistoryPaginationScrollBridge {
     @MainActor
     final class Coordinator {
+        private static let phaseLessExpiryBoundaryDelay: TimeInterval = 0.001
+
         private weak var probe: FooterProbeView?
         private weak var scrollView: NSScrollView?
         private var eventMonitor: Any?
@@ -454,7 +456,8 @@ extension HistoryPaginationScrollBridge {
             guard let deadline else { return }
 
             scheduledPhaseLessExpiry = deadline
-            let delay = max(deadline - referenceTimestamp, 0)
+            let delay = max(deadline - referenceTimestamp, 0) +
+                Self.phaseLessExpiryBoundaryDelay
             phaseLessExpiryTimer = Timer.scheduledTimer(withTimeInterval: delay,
                                                         repeats: false) {
                 [weak self] _ in
@@ -463,7 +466,9 @@ extension HistoryPaginationScrollBridge {
                           self.scheduledPhaseLessExpiry == deadline else { return }
                     self.phaseLessExpiryTimer = nil
                     self.scheduledPhaseLessExpiry = nil
-                    self.gate.expirePhaseLessGesture(at: deadline)
+                    let timestamp = ProcessInfo.processInfo.systemUptime
+                    self.gate.expirePhaseLessGesture(at: timestamp)
+                    self.synchronizePhaseLessExpiry(referenceTimestamp: timestamp)
                 }
             }
         }

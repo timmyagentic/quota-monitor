@@ -156,6 +156,70 @@ struct HistoryPaginationScrollBridgeTests {
         #expect(!didLoadRepeatedWheel)
     }
 
+    @Test("phase-less wheel at exactly 250 milliseconds stays in one generation")
+    func phaseLessWheelAtIdleBoundary() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.updateFooterVisibility(true)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 35)
+        let didLoadInitially = gate.consumeIfEligible()
+        #expect(didLoadInitially)
+
+        gate.expirePhaseLessGesture(at: 35.250)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 35.250)
+        let didLoadAtBoundary = gate.consumeIfEligible()
+        #expect(!didLoadAtBoundary)
+
+        gate.expirePhaseLessGesture(at: 35.501)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 35.501)
+        let didLoadAfterIdle = gate.consumeIfEligible()
+        #expect(didLoadAfterIdle)
+    }
+
+    @Test("phase-less expiry closes only strictly after its deadline")
+    func phaseLessExpiryIsStrict() {
+        var boundaryGate = HistoryScrollLoadGate()
+        boundaryGate.updateAvailability(isEnabled: true, isLoading: false)
+        boundaryGate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 36)
+        boundaryGate.expirePhaseLessGesture(at: 36.250)
+        boundaryGate.updateFooterVisibility(true)
+        let didLoadAtBoundary = boundaryGate.consumeIfEligible()
+        #expect(didLoadAtBoundary)
+
+        var afterBoundaryGate = HistoryScrollLoadGate()
+        afterBoundaryGate.updateAvailability(isEnabled: true, isLoading: false)
+        afterBoundaryGate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 37)
+        afterBoundaryGate.expirePhaseLessGesture(at: 37.250_001)
+        afterBoundaryGate.updateFooterVisibility(true)
+        let didLoadAfterBoundary = afterBoundaryGate.consumeIfEligible()
+        #expect(!didLoadAfterBoundary)
+    }
+
     @Test("phase-less wheel after 251 milliseconds starts a new generation")
     func phaseLessWheelAfterIdleBoundary() {
         var gate = HistoryScrollLoadGate()
@@ -974,9 +1038,24 @@ struct HistoryPaginationScrollBridgeTests {
 
         #expect(source.contains("private var phaseLessExpiryTimer: Timer?"))
         #expect(source.contains("Timer.scheduledTimer(withTimeInterval:"))
-        #expect(source.contains("gate.expirePhaseLessGesture(at: deadline)"))
         #expect(source.contains("phaseLessExpiryTimer?.invalidate()"))
         #expect(source.contains("ProcessInfo.processInfo.systemUptime"))
+
+        let expiryTimer = try Self.sourceSlice(
+            source,
+            from: "private func synchronizePhaseLessExpiry",
+            to: "private func cancelPhaseLessExpiry")
+        #expect(expiryTimer.contains("phaseLessExpiryBoundaryDelay"))
+        #expect(expiryTimer.contains(
+            "let timestamp = ProcessInfo.processInfo.systemUptime"))
+        #expect(expiryTimer.contains(
+            "gate.expirePhaseLessGesture(at: timestamp)"))
+        #expect(expiryTimer.contains(
+            "synchronizePhaseLessExpiry(referenceTimestamp: timestamp)"))
+        #expect(expiryTimer.contains(
+            "self.scheduledPhaseLessExpiry == deadline"))
+        #expect(!expiryTimer.contains(
+            "gate.expirePhaseLessGesture(at: deadline)"))
 
         let detach = try Self.sourceSlice(
             source,
