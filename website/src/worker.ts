@@ -149,7 +149,7 @@ export async function handleDownload(
       status: 200,
       headers: {
         ...securityHeaders,
-        "Cache-Control": "public, max-age=3600",
+        "Cache-Control": "no-store",
         "Content-Disposition": `attachment; filename="${release.filename}"`,
         "Content-Length": String(length),
         "Content-Type": "application/x-apple-diskimage",

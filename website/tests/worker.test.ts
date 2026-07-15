@@ -495,6 +495,7 @@ describe("Worker routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(upstreamFetch).toHaveBeenCalledOnce();
     expectSecurityHeaders(response);
   });

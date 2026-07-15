@@ -21,6 +21,8 @@ const generatorPath = join(
   "generate-showcase-fixtures.mjs",
 );
 const fixedNow = "2026-07-15T12:00:00.000Z";
+const showcaseHomeMarker = ".quota-monitor-showcase-home-v1";
+const showcaseHomeMarkerContents = "quota-monitor-showcase-home-v1\n";
 const forbiddenSyntheticData =
   /\/Users\/|\/Volumes\/|github\.com|timmy|token=|api[_-]?key|sk-/i;
 
@@ -116,6 +118,34 @@ describe("showcase fixture generator", () => {
     }
   });
 
+  it("refuses an opted-in foreign home and preserves its Codex index", () => {
+    const protectedHome = mkdtempSync(join(tmpdir(), "quota-monitor-showcase-foreign-"));
+    const indexPath = join(protectedHome, ".codex", "session_index.jsonl");
+    const sentinel = '{"id":"real-session","thread_name":"keep me"}\n';
+
+    try {
+      mkdirSync(dirname(indexPath), { recursive: true });
+      writeFileSync(indexPath, sentinel, "utf8");
+
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          [
+            generatorPath,
+            protectedHome,
+            "--allow-showcase-overwrite",
+            `--now=${fixedNow}`,
+          ],
+          { encoding: "utf8", stdio: "pipe" },
+        ),
+      ).toThrow(/isolated showcase home/i);
+      expect(readFileSync(indexPath, "utf8")).toBe(sentinel);
+      expect(existsSync(join(protectedHome, showcaseHomeMarker))).toBe(false);
+    } finally {
+      rmSync(protectedHome, { recursive: true, force: true });
+    }
+  });
+
   it("generates a reproducible, dense, synthetic month of app history", () => {
     const scenario = JSON.parse(readFileSync(scenarioPath, "utf8")) as Scenario;
     const firstHome = mkdtempSync(join(tmpdir(), "quota-monitor-showcase-a-"));
@@ -128,7 +158,16 @@ describe("showcase fixture generator", () => {
           [generatorPath, home, "--allow-showcase-overwrite", `--now=${fixedNow}`],
           { encoding: "utf8" },
         );
+        expect(readFileSync(join(home, showcaseHomeMarker), "utf8")).toBe(
+          showcaseHomeMarkerContents,
+        );
       }
+
+      execFileSync(
+        process.execPath,
+        [generatorPath, firstHome, "--allow-showcase-overwrite", `--now=${fixedNow}`],
+        { encoding: "utf8" },
+      );
 
       expect(scenario.sessionCount).toBe(28);
       expect(scenario.sessionCount).toBeGreaterThanOrEqual(24);

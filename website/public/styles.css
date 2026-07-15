@@ -183,9 +183,15 @@ p {
     transition: color 160ms ease;
 }
 
-.language-control button:hover,
+.language-control button:hover {
+    color: var(--blue);
+}
+
 .language-control button[aria-pressed="true"] {
     color: var(--blue);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 5px;
 }
 
 .hero {
@@ -906,5 +912,10 @@ body[data-page="download-error"] .not-found {
 
     .button-primary {
         border: 2px solid ButtonText;
+    }
+
+    .language-control button[aria-pressed="true"] {
+        outline: 2px solid ButtonText;
+        outline-offset: -4px;
     }
 }

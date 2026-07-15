@@ -151,6 +151,14 @@ describe("public product content", () => {
       pattern: "quota-monitor.timmyagentic.com",
       custom_domain: true,
     });
+    expect(config.observability).toEqual({
+      enabled: false,
+      logs: {
+        enabled: false,
+        invocation_logs: false,
+        persist: false,
+      },
+    });
   });
 
   it("publishes the exact public robots policy", () => {
@@ -613,6 +621,13 @@ describe("public product content", () => {
     expect(css).toMatch(/@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?transition:\s*none\s*!important\s*;/);
     expect(css).toMatch(/@media\s*\(forced-colors:\s*active\)\s*\{/);
     expect(css).toMatch(/@media\s*\(forced-colors:\s*active\)[\s\S]*?forced-color-adjust:\s*auto\s*;/);
+    expect(ruleBody(css, '.language-control button[aria-pressed="true"]')).toMatch(
+      /text-decoration:\s*underline\s*;/,
+    );
+    const forcedColorsCss = css.slice(css.search(/@media\s*\(forced-colors:\s*active\)\s*\{/));
+    expect(
+      ruleBody(forcedColorsCss, '.language-control button[aria-pressed="true"]'),
+    ).toMatch(/outline:\s*2px\s+solid\s+ButtonText\s*;/);
 
     expect(css).not.toMatch(/github/i);
     expect(css).not.toMatch(/(?:linear|radial|conic)-gradient\s*\(/i);

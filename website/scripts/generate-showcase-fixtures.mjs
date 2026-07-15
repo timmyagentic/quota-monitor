@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,7 +42,49 @@ if (Number.isNaN(now.getTime())) {
 const qaHome = resolve(qaHomeArgument);
 const codexRoot = join(qaHome, ".codex");
 const codexShowcaseRoot = join(codexRoot, "sessions", "showcase");
+const claudeRoot = join(qaHome, ".claude");
 const claudeProjectsRoot = join(qaHome, ".claude", "projects");
+const showcaseHomeMarker = join(qaHome, ".quota-monitor-showcase-home-v1");
+const showcaseHomeMarkerContents = "quota-monitor-showcase-home-v1\n";
+
+async function lstatIfExists(path) {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (error?.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+await mkdir(qaHome, { recursive: true });
+if ((await realpath(qaHome)) === (await realpath(homedir()))) {
+  throw new Error("Refusing to use the real OS home as an isolated showcase home.");
+}
+
+const markerInfo = await lstatIfExists(showcaseHomeMarker);
+if (markerInfo) {
+  if (
+    !markerInfo.isFile() ||
+    markerInfo.isSymbolicLink() ||
+    (await readFile(showcaseHomeMarker, "utf8")) !== showcaseHomeMarkerContents
+  ) {
+    throw new Error("Refusing to use a target without a valid isolated showcase home marker.");
+  }
+} else {
+  if ((await lstatIfExists(codexRoot)) || (await lstatIfExists(claudeRoot))) {
+    throw new Error("Refusing to initialize an isolated showcase home over existing Codex or Claude data.");
+  }
+  await writeFile(showcaseHomeMarker, showcaseHomeMarkerContents, {
+    encoding: "utf8",
+    flag: "wx",
+  });
+}
+
+for (const dataRoot of [codexRoot, claudeRoot]) {
+  if ((await lstatIfExists(dataRoot))?.isSymbolicLink()) {
+    throw new Error("Refusing symlinked data roots in an isolated showcase home.");
+  }
+}
 
 const codexSessionId = (index) =>
   `c0de0000-0000-7000-8000-${String(index + 1).padStart(12, "0")}`;

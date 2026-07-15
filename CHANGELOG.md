@@ -36,7 +36,7 @@ window copy.
 
 ### Added
 
-- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile, and its download button serves the latest notarized DMG directly from the site.
+- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile, and its download button serves the latest notarized DMG directly from the site without retaining routine visitor request logs or reusing a stale browser-cached installer.
 
 ## [0.2.40] — 2026-07-15
 
