@@ -8,13 +8,13 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm test && wrangler types --check && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler check startup",
+    "typegen": "wrangler types",
+    "typecheck": "wrangler types --check && tsc --noEmit",
+    "check": "npm run typecheck && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler check startup --outfile .wrangler/worker-startup.cpuprofile",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "latest",
     "@types/node": "latest",
     "typescript": "latest",
     "vitest": "latest",

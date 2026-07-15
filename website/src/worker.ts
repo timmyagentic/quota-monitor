@@ -1,10 +1,6 @@
 import { renderDownloadError } from "./error-page";
 import { fetchLatestRelease, type ReleaseInfo } from "./release";
 
-export interface Env {
-  ASSETS: Fetcher;
-}
-
 type ReleaseLoader = () => Promise<ReleaseInfo>;
 
 const securityHeaders = {

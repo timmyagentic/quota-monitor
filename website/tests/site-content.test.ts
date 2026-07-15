@@ -8,6 +8,12 @@ const websiteDirectory = join(dirname(fileURLToPath(import.meta.url)), "..");
 const publicDirectory = join(websiteDirectory, "public");
 const designDirectory = join(websiteDirectory, "design");
 
+function stripJSONComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+}
+
 function readPublic(name: string): string {
   return readFileSync(join(publicDirectory, name), "utf8");
 }
@@ -101,6 +107,44 @@ async function loadAppModule(): Promise<SiteModule> {
 }
 
 describe("public product content", () => {
+  it("defines the production Worker and static asset deployment contract", () => {
+    const configPath = join(websiteDirectory, "wrangler.jsonc");
+    expect(existsSync(configPath), "website/wrangler.jsonc").toBe(true);
+    const config = JSON.parse(stripJSONComments(readFileSync(configPath, "utf8")));
+
+    expect(config.name).toBe("quota-monitor-site");
+    expect(config.main).toBe("src/worker.ts");
+    expect(config.compatibility_date).toBe("2026-07-15");
+    expect(config.compatibility_flags).toEqual(["nodejs_compat"]);
+    expect(config.workers_dev).toBe(false);
+    expect(config.assets.directory).toBe("./public");
+    expect(config.assets.binding).toBe("ASSETS");
+    expect(config.assets.not_found_handling).toBe("404-page");
+    expect(config.assets.run_worker_first).toEqual(["/download", "/api/release"]);
+    expect(config.routes).toContainEqual({
+      pattern: "quota-monitor.timmyagentic.com",
+      custom_domain: true,
+    });
+  });
+
+  it("publishes the exact public robots policy", () => {
+    expect(readPublic("robots.txt")).toBe("User-agent: *\nAllow: /\n");
+  });
+
+  it("uses generated Worker bindings and exposes the complete validation scripts", () => {
+    const worker = readFileSync(join(websiteDirectory, "src", "worker.ts"), "utf8");
+    const manifest = JSON.parse(
+      readFileSync(join(websiteDirectory, "package.json"), "utf8"),
+    );
+
+    expect(worker).not.toMatch(/\b(?:interface|type)\s+Env\b/);
+    expect(manifest.scripts.typegen).toBe("wrangler types");
+    expect(manifest.scripts.typecheck).toBe("wrangler types --check && tsc --noEmit");
+    expect(manifest.scripts.check).toBe(
+      "npm run typecheck && npm test && wrangler deploy --dry-run --outdir .wrangler/dry-run && wrangler check startup --outfile .wrangler/worker-startup.cpuprofile",
+    );
+  });
+
   it("provides the semantic product journey and direct download actions", () => {
     const html = readPublic("index.html");
 
@@ -121,7 +165,7 @@ describe("public product content", () => {
   });
 
   it("keeps every visitor-facing link and full URL on the product domain", () => {
-    const files = ["index.html", "404.html", "_headers", "app.js"].map(readPublic);
+    const files = ["index.html", "404.html", "_headers", "app.js", "robots.txt"].map(readPublic);
     const combined = files.join("\n");
 
     expect(combined).not.toMatch(/github/i);
