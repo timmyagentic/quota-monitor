@@ -98,12 +98,14 @@ final class PersistentUpdateAvailability {
         userInitiated: Bool,
         now: Date = Date()) -> DiscoveryPresentation
     {
-        _ = userInitiated
         guard !internalVersion.isEmpty else {
             clear()
             return .presentWindow
         }
         let visibleVersion = displayVersion.isEmpty ? internalVersion : displayVersion
+        let dismissSilently = !userInitiated
+            && snapshot?.internalVersion == internalVersion
+            && snapshot?.nextReminderAt != nil
 
         if let existing = snapshot, existing.internalVersion == internalVersion {
             snapshot = PendingUpdateSnapshot(
@@ -124,7 +126,7 @@ final class PersistentUpdateAvailability {
         }
         primaryAction = .install
         persistSnapshot()
-        return .presentWindow
+        return dismissSilently ? .dismissSilently : .presentWindow
     }
 
     func markAvailable(version: String) {

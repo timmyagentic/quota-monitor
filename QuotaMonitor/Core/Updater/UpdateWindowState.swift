@@ -24,7 +24,24 @@ final class UpdateWindowState {
         case done                         // Window closes
     }
 
+    enum UpdateAction: Equatable, Sendable {
+        case install
+        case skip
+        case later
+    }
+
     var phase: Phase = .idle
+
+    var availableActions: [UpdateAction] {
+        switch phase {
+        case .updateAvailable:
+            [.skip, .later, .install]
+        case .readyToInstall:
+            [.later, .install]
+        default:
+            []
+        }
+    }
 
     // MARK: - Update metadata
 

@@ -125,6 +125,66 @@ struct PersistentUpdateAvailabilityTests {
     }
 
     @Test
+    func automaticSameVersionRediscoveryStaysSilentWhileSnoozed() {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let availability = PersistentUpdateAvailability(
+            defaults: defaults,
+            currentInternalVersion: "40")
+        let firstSeenAt = Date(timeIntervalSince1970: 100)
+        availability.recordDiscovery(
+            internalVersion: "41",
+            displayVersion: "0.2.41",
+            userInitiated: false,
+            now: firstSeenAt)
+        availability.markLater(now: Date(timeIntervalSince1970: 200))
+        let snoozedSnapshot = availability.snapshot
+
+        let presentation = availability.recordDiscovery(
+            internalVersion: "41",
+            displayVersion: "Version 0.2.41",
+            userInitiated: false,
+            now: Date(timeIntervalSince1970: 300))
+
+        #expect(presentation == .dismissSilently)
+        #expect(availability.snapshot?.firstSeenAt == snoozedSnapshot?.firstSeenAt)
+        #expect(availability.snapshot?.nextReminderAt == snoozedSnapshot?.nextReminderAt)
+        #expect(availability.snapshot?.deliveredReminderCount
+            == snoozedSnapshot?.deliveredReminderCount)
+        #expect(availability.snapshot?.displayVersion == "Version 0.2.41")
+    }
+
+    @Test
+    func manualSameVersionAndAutomaticReplacementStillPresent() {
+        let availability = PersistentUpdateAvailability()
+        availability.recordDiscovery(
+            internalVersion: "41",
+            displayVersion: "0.2.41",
+            userInitiated: false,
+            now: Date(timeIntervalSince1970: 100))
+        availability.markLater(now: Date(timeIntervalSince1970: 200))
+
+        let manualPresentation = availability.recordDiscovery(
+            internalVersion: "41",
+            displayVersion: "0.2.41",
+            userInitiated: true,
+            now: Date(timeIntervalSince1970: 300))
+        #expect(manualPresentation == .presentWindow)
+
+        let replacementPresentation = availability.recordDiscovery(
+            internalVersion: "42",
+            displayVersion: "0.2.42",
+            userInitiated: false,
+            now: Date(timeIntervalSince1970: 400))
+        #expect(replacementPresentation == .presentWindow)
+        #expect(availability.snapshot?.internalVersion == "42")
+        #expect(availability.snapshot?.firstSeenAt
+            == Date(timeIntervalSince1970: 400))
+        #expect(availability.snapshot?.nextReminderAt == nil)
+        #expect(availability.snapshot?.deliveredReminderCount == 0)
+    }
+
+    @Test
     func readyToInstallPersistsPhaseButNotTheLiveInstallerAction() {
         let (defaults, suiteName) = makeDefaults(named: #function)
         defer { defaults.removePersistentDomain(forName: suiteName) }

@@ -249,8 +249,10 @@ struct UpdateWindowView: View {
 
     private var actionButtons: some View {
         HStack {
-            Button(L10n.updateSkipButton) { state.fireSkip() }
-                .buttonStyle(.bordered)
+            if state.availableActions.contains(.skip) {
+                Button(L10n.updateSkipButton) { state.fireSkip() }
+                    .buttonStyle(.bordered)
+            }
             Spacer()
             Button(L10n.updateLaterButton) { state.fireDismiss() }
                 .buttonStyle(.bordered)

@@ -29,6 +29,41 @@ struct CustomUserDriverBadgeSelfHealTests {
         #expect(definitiveNotFound.contains("updateAvailability.clear()"))
     }
 
+    @Test("Discovery records Sparkle versions and silently dismisses a snoozed automatic check")
+    func discoveryUsesExactVersionAndPresentationSemantics() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/CustomUserDriver.swift")
+        let discovery = try Self.methodBody(
+            source, signature: "func showUpdateFound")
+
+        #expect(discovery.contains("internalVersion: appcastItem.versionString"))
+        #expect(discovery.contains("displayVersion: appcastItem.displayVersionString"))
+        #expect(discovery.contains("userInitiated: state.userInitiated"))
+        #expect(discovery.contains("presentation == .dismissSilently"))
+        #expect(discovery.contains("updateAvailability.markSkipped()"))
+        #expect(discovery.contains("updateAvailability.markLater()"))
+
+        let dismiss = try #require(discovery.range(of: "presentation == .dismissSilently"))
+        let reset = try #require(discovery.range(of: "s.reset()"))
+        #expect(dismiss.lowerBound < reset.lowerBound)
+        let silentDismissPath = String(discovery[dismiss.lowerBound..<reset.lowerBound])
+        #expect(silentDismissPath.components(separatedBy: "reply(.dismiss)").count == 2)
+        #expect(silentDismissPath.contains("return"))
+        #expect(!silentDismissPath.contains("windowController.show()"))
+    }
+
+    @Test("Ready to install offers Later but never assigns Skip")
+    func readyToInstallHasNoSkipReply() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/CustomUserDriver.swift")
+        let ready = try Self.methodBody(
+            source, signature: "func showReady(toInstallAndRelaunch")
+
+        #expect(ready.contains("updateAvailability.markLater()"))
+        #expect(!ready.contains("state.onSkip"))
+        #expect(!ready.contains("reply(.skip)"))
+    }
+
     /// The slice of `source` from `signature` up to the next method declaration.
     private static func methodBody(_ source: String, signature: String) throws -> String {
         guard let start = source.range(of: signature) else {
