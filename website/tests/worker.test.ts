@@ -20,6 +20,14 @@ const RELEASE: ReleaseInfo = {
     "https://github.com/timmyagentic/quota-monitor/releases/download/v0.2.40/QuotaMonitor-0.2.40.dmg",
 };
 
+const ASSET_URL =
+  "https://release-assets.githubusercontent.com/github-production-release-asset/123456/abcdef01?sp=r&sv=2025-01-05&sr=b&sig=signed";
+
+const MANUAL_FETCH_INIT = {
+  redirect: "manual",
+  cf: { cacheEverything: true, cacheTtl: 86_400 },
+} as const;
+
 const SECURITY_HEADERS = {
   "Content-Security-Policy":
     "default-src 'self'; base-uri 'none'; connect-src 'self'; font-src 'self'; form-action 'none'; frame-ancestors 'none'; frame-src 'none'; img-src 'self' data:; manifest-src 'self'; media-src 'self'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; worker-src 'none'; upgrade-insecure-requests",
@@ -107,14 +115,131 @@ describe("handleDownload", () => {
       new Uint8Array([0x44, 0x4d, 0x47]),
     );
     expect(fetcher).toHaveBeenCalledWith(RELEASE.upstreamUrl, {
-      redirect: "follow",
-      cf: { cacheEverything: true, cacheTtl: 86_400 },
+      ...MANUAL_FETCH_INIT,
     });
+    expectSecurityHeaders(response);
+  });
+
+  it("follows one validated official asset redirect and streams the final response", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { Location: ASSET_URL } }),
+      )
+      .mockResolvedValueOnce(successfulUpstream());
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenNthCalledWith(1, RELEASE.upstreamUrl, MANUAL_FETCH_INIT);
+    expect(fetcher).toHaveBeenNthCalledWith(2, ASSET_URL, MANUAL_FETCH_INIT);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(response.headers.get("Location")).toBeNull();
+    expect([...response.headers].join("\n")).not.toContain(ASSET_URL);
+    expect([...response.headers].join("\n")).not.toContain("release-assets.githubusercontent.com");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(
+      new Uint8Array([0x44, 0x4d, 0x47]),
+    );
+    expectSecurityHeaders(response);
+  });
+
+  it("rejects a foreign redirect before making a second request", async () => {
+    const target = "https://downloads.example.test/github-production-release-asset/file";
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 302, headers: { Location: target } }));
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(body).not.toContain(target);
+    expect([...response.headers].join("\n")).not.toContain(target);
+    expectSecurityHeaders(response);
+  });
+
+  it.each([
+    ["HTTP protocol", ASSET_URL.replace("https://", "http://")],
+    ["credentials", ASSET_URL.replace("https://", "https://user:secret@")],
+    [
+      "custom port",
+      ASSET_URL.replace("release-assets.githubusercontent.com", "release-assets.githubusercontent.com:8443"),
+    ],
+    [
+      "wrong path",
+      "https://release-assets.githubusercontent.com/not-github-production-release-asset/file?sig=signed",
+    ],
+    ["invalid URL", "https://[invalid"],
+  ])("rejects an official asset redirect with %s", async (_label, location) => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 302, headers: { Location: location } }));
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+
+    expect(response.status).toBe(503);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(await response.text()).not.toContain(location);
+    expectSecurityHeaders(response);
+  });
+
+  it("rejects a redirect without a Location header", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 302 }));
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+
+    expect(response.status).toBe(503);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expectSecurityHeaders(response);
+  });
+
+  it("rejects a second redirect without following it", async () => {
+    const secondTarget = `${ASSET_URL}&retry=1`;
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { Location: ASSET_URL } }),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, { status: 307, headers: { Location: secondTarget } }),
+      );
+
+    const response = await handleDownload(
+      new Request("https://quota-monitor.test/download"),
+      async () => RELEASE,
+      fetcher,
+    );
+    const body = await response.text();
+
+    expect(response.status).toBe(503);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(body).not.toContain(ASSET_URL);
+    expect([...response.headers].join("\n")).not.toContain(ASSET_URL);
     expectSecurityHeaders(response);
   });
 
   it.each([
     ["non-OK response", new Response("upstream failure", { status: 502, headers: { "Content-Length": String(RELEASE.size) } })],
+    ["non-200 final response", new Response(new Uint8Array([0x44]), { status: 206, headers: { "Content-Length": String(RELEASE.size) } })],
     ["missing body", new Response(null, { status: 200, headers: { "Content-Length": String(RELEASE.size) } })],
     ["missing Content-Length", new Response(new Uint8Array([0x44]), { status: 200 })],
     ["unsafe Content-Length", new Response(new Uint8Array([0x44]), { status: 200, headers: { "Content-Length": "9007199254740992" } })],
@@ -243,7 +368,51 @@ describe("Worker routes", () => {
     expectSecurityHeaders(response);
   });
 
-  it("returns a secured 405 with the allowed methods", async () => {
+  it.each(["/api/release", "/download"])(
+    "rejects HEAD for dynamic route %s without touching assets or upstream",
+    async (pathname) => {
+      const upstreamFetch = vi.fn<typeof fetch>();
+      const assetsFetch = vi.fn<Fetcher["fetch"]>().mockResolvedValue(
+        new Response(null, { status: 200 }),
+      );
+      vi.stubGlobal("fetch", upstreamFetch);
+
+      const response = await worker.fetch(
+        new Request(`https://quota-monitor.test${pathname}`, { method: "HEAD" }),
+        { ASSETS: assetsBinding(assetsFetch) },
+      );
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get("Allow")).toBe("GET");
+      expect(releaseMocks.fetchLatestRelease).not.toHaveBeenCalled();
+      expect(upstreamFetch).not.toHaveBeenCalled();
+      expect(assetsFetch).not.toHaveBeenCalled();
+      expectSecurityHeaders(response);
+    },
+  );
+
+  it("forwards static asset HEAD requests", async () => {
+    const assetsFetch = vi.fn<Fetcher["fetch"]>().mockResolvedValue(
+      new Response(null, {
+        status: 200,
+        headers: { "Content-Type": "text/css; charset=utf-8" },
+      }),
+    );
+    const request = new Request("https://quota-monitor.test/styles.css", {
+      method: "HEAD",
+    });
+
+    const response = await worker.fetch(request, {
+      ASSETS: assetsBinding(assetsFetch),
+    });
+
+    expect(response.status).toBe(200);
+    expect(assetsFetch).toHaveBeenCalledWith(request);
+    expect(response.headers.get("Content-Type")).toBe("text/css; charset=utf-8");
+    expectSecurityHeaders(response);
+  });
+
+  it("returns a secured 405 with GET as the allowed dynamic method", async () => {
     const assetsFetch = vi.fn<Fetcher["fetch"]>();
 
     const response = await worker.fetch(
@@ -252,7 +421,7 @@ describe("Worker routes", () => {
     );
 
     expect(response.status).toBe(405);
-    expect(response.headers.get("Allow")).toBe("GET, HEAD");
+    expect(response.headers.get("Allow")).toBe("GET");
     expect(assetsFetch).not.toHaveBeenCalled();
     expectSecurityHeaders(response);
   });

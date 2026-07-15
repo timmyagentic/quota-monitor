@@ -20,6 +20,45 @@ const securityHeaders = {
   "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
 } as const;
 
+const upstreamFetchInit = {
+  redirect: "manual",
+  cf: { cacheEverything: true, cacheTtl: 86_400 },
+} as const;
+
+const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+
+function validatedAssetRedirect(location: string | null, canonicalUrl: string): string {
+  if (location === null) {
+    throw new Error("Missing DMG redirect location");
+  }
+
+  const target = new URL(location, canonicalUrl);
+  if (
+    target.protocol !== "https:" ||
+    target.hostname !== "release-assets.githubusercontent.com" ||
+    target.username !== "" ||
+    target.password !== "" ||
+    target.port !== "" ||
+    !target.pathname.startsWith("/github-production-release-asset/")
+  ) {
+    throw new Error("Invalid DMG redirect location");
+  }
+
+  return target.toString();
+}
+
+function methodNotAllowed(allow: string): Response {
+  return new Response("Method Not Allowed", {
+    status: 405,
+    headers: {
+      ...securityHeaders,
+      Allow: allow,
+      "Cache-Control": "no-store",
+      "Content-Type": "text/plain; charset=utf-8",
+    },
+  });
+}
+
 export async function handleReleaseAPI(
   load: ReleaseLoader = fetchLatestRelease,
 ): Promise<Response> {
@@ -57,14 +96,18 @@ export async function handleDownload(
 ): Promise<Response> {
   try {
     const release = await load();
-    const upstream = await fetcher(release.upstreamUrl, {
-      redirect: "follow",
-      cf: { cacheEverything: true, cacheTtl: 86_400 },
-    });
+    let upstream = await fetcher(release.upstreamUrl, upstreamFetchInit);
+    if (redirectStatuses.has(upstream.status)) {
+      const target = validatedAssetRedirect(
+        upstream.headers.get("Location"),
+        release.upstreamUrl,
+      );
+      upstream = await fetcher(target, upstreamFetchInit);
+    }
     const contentLength = upstream.headers.get("Content-Length");
 
     if (
-      !upstream.ok ||
+      upstream.status !== 200 ||
       !upstream.body ||
       contentLength === null ||
       !/^\d+$/.test(contentLength)
@@ -107,22 +150,20 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method === "GET" && url.pathname === "/api/release") {
+    if (url.pathname === "/api/release") {
+      if (request.method !== "GET") {
+        return methodNotAllowed("GET");
+      }
       return handleReleaseAPI();
     }
-    if (request.method === "GET" && url.pathname === "/download") {
+    if (url.pathname === "/download") {
+      if (request.method !== "GET") {
+        return methodNotAllowed("GET");
+      }
       return handleDownload(request);
     }
     if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("Method Not Allowed", {
-        status: 405,
-        headers: {
-          ...securityHeaders,
-          Allow: "GET, HEAD",
-          "Cache-Control": "no-store",
-          "Content-Type": "text/plain; charset=utf-8",
-        },
-      });
+      return methodNotAllowed("GET, HEAD");
     }
 
     const asset = await env.ASSETS.fetch(request);
