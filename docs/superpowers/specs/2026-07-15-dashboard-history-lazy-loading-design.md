@@ -1,7 +1,7 @@
 # Dashboard History Seven-Day Lazy Loading
 
 **Date:** 2026-07-15
-**Status:** Approved design; awaiting written-spec review
+**Status:** Approved for implementation
 
 ## Background
 
