@@ -32,6 +32,40 @@ struct HistoryPaginationScrollBridgeTests {
         #expect(didLoadAfterGeometry)
     }
 
+    @Test("phase-less gesture stays armed only within its active burst")
+    func phaseLessGestureBeforeGeometryWithinBurst() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 10)
+
+        gate.expirePhaseLessGesture(at: 10.1)
+        gate.updateFooterVisibility(true)
+        let didLoad = gate.consumeIfEligible()
+        #expect(didLoad)
+    }
+
+    @Test("phase-less intent expires before a later footer layout")
+    func phaseLessIntentExpiresBeforeFooterLayout() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 20)
+
+        gate.expirePhaseLessGesture(at: 20.251)
+        gate.updateFooterVisibility(true)
+        let didLoad = gate.consumeIfEligible()
+        #expect(!didLoad)
+    }
+
     @Test("one downward gesture generation loads once across momentum")
     func oneLoadPerGesture() {
         var gate = HistoryScrollLoadGate()
@@ -236,6 +270,97 @@ struct HistoryPaginationScrollBridgeTests {
         #expect(!didLoadAfterDisabled)
     }
 
+    @Test("availability transition quarantines already armed intent")
+    func availabilityTransitionQuarantinesIntent() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 65)
+
+        gate.updateAvailability(isEnabled: true, isLoading: true)
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.updateFooterVisibility(true)
+        let didLoadAfterLoading = gate.consumeIfEligible()
+        #expect(!didLoadAfterLoading)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 66)
+        let didLoadNewGesture = gate.consumeIfEligible()
+        #expect(didLoadNewGesture)
+    }
+
+    @Test("phased gesture begun while loading stays quarantined")
+    func loadingPhasedGestureStaysQuarantined() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateFooterVisibility(true)
+        gate.updateAvailability(isEnabled: true, isLoading: true)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 70)
+
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .changed,
+            momentumPhase: .none,
+            timestamp: 70.1)
+        let didLoadContinuation = gate.consumeIfEligible()
+        #expect(!didLoadContinuation)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 71)
+        let didLoadNewGesture = gate.consumeIfEligible()
+        #expect(didLoadNewGesture)
+    }
+
+    @Test("phase-less continuation after loading stays quarantined until idle")
+    func loadingPhaseLessGestureStaysQuarantined() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateFooterVisibility(true)
+        gate.updateAvailability(isEnabled: true, isLoading: true)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 80)
+
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 80.1)
+        let didLoadContinuation = gate.consumeIfEligible()
+        #expect(!didLoadContinuation)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 80.351)
+        let didLoadAfterIdle = gate.consumeIfEligible()
+        #expect(didLoadAfterIdle)
+    }
+
     @Test("scrollbar live scroll needs downward document movement")
     func scrollbarLiveScroll() {
         var gate = HistoryScrollLoadGate()
@@ -260,6 +385,315 @@ struct HistoryPaginationScrollBridgeTests {
         gate.registerLiveMovement(isDownward: true)
         let didLoadSecondLiveScroll = gate.consumeIfEligible()
         #expect(didLoadSecondLiveScroll)
+    }
+
+    @Test("terminal phased event remains eligible through final evaluation")
+    func terminalEventEvaluatesBeforeClosing() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 90)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 90.1)
+        gate.updateFooterVisibility(true)
+
+        let didLoadAtTerminalGeometry = gate.consumeIfEligible()
+        #expect(didLoadAtTerminalGeometry)
+        gate.finishWheelEvent(
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+    }
+
+    @Test("ended and cancelled phases close stale wheel intent")
+    func phasedTerminalEventsCloseIntent() {
+        for terminal in [HistoryScrollPhase.ended, .cancelled] {
+            var gate = HistoryScrollLoadGate()
+            gate.updateAvailability(isEnabled: true, isLoading: false)
+            gate.registerWheel(
+                isInsideScrollView: true,
+                downwardIntent: true,
+                phase: .began,
+                momentumPhase: .none,
+                timestamp: 100)
+            gate.finishWheelEvent(
+                isInsideScrollView: true,
+                phase: terminal,
+                momentumPhase: .none)
+            gate.updateFooterVisibility(true)
+
+            let didLoadAfterTerminal = gate.consumeIfEligible()
+            #expect(!didLoadAfterTerminal)
+        }
+    }
+
+    @Test("terminal outside bounds still closes an originating gesture")
+    func outsideTerminalClosesOriginatingGesture() {
+        for terminal in [HistoryScrollPhase.ended, .cancelled] {
+            var gate = HistoryScrollLoadGate()
+            gate.updateAvailability(isEnabled: true, isLoading: false)
+            gate.registerWheel(
+                isInsideScrollView: true,
+                downwardIntent: true,
+                phase: .began,
+                momentumPhase: .none,
+                timestamp: 105)
+            gate.finishWheelEvent(
+                isInsideScrollView: false,
+                phase: terminal,
+                momentumPhase: .none)
+            gate.updateFooterVisibility(true)
+
+            let didLoadAfterTerminal = gate.consumeIfEligible()
+            #expect(!didLoadAfterTerminal)
+            gate.beginLiveScroll()
+            gate.registerLiveMovement(isDownward: true)
+            let didLoadLiveScroll = gate.consumeIfEligible()
+            #expect(didLoadLiveScroll)
+        }
+    }
+
+    @Test("orphan momentum cannot create a generation and live scroll can")
+    func orphanMomentumThenLiveScroll() {
+        for terminal in [HistoryScrollPhase.ended, .cancelled] {
+            var gate = HistoryScrollLoadGate()
+            gate.updateAvailability(isEnabled: true, isLoading: false)
+            gate.updateFooterVisibility(true)
+            gate.registerWheel(
+                isInsideScrollView: true,
+                downwardIntent: true,
+                phase: .none,
+                momentumPhase: terminal,
+                timestamp: 110.1)
+            let didLoadMomentum = gate.consumeIfEligible()
+            #expect(!didLoadMomentum)
+            gate.finishWheelEvent(
+                isInsideScrollView: true,
+                phase: .none,
+                momentumPhase: terminal)
+
+            gate.beginLiveScroll()
+            gate.registerLiveMovement(isDownward: true)
+            let didLoadLiveScroll = gate.consumeIfEligible()
+            #expect(didLoadLiveScroll)
+        }
+    }
+
+    @Test("momentum resumes its pending phased generation exactly once")
+    func momentumResumesPendingGeneration() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 115)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 115.1)
+        gate.finishWheelEvent(
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+
+        gate.updateFooterVisibility(true)
+        let didLoadFromUnrelatedLayout = gate.consumeIfEligible()
+        #expect(!didLoadFromUnrelatedLayout)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 115.2)
+        let didLoadMomentum = gate.consumeIfEligible()
+        #expect(didLoadMomentum)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 115.3)
+        let didLoadFurtherMomentum = gate.consumeIfEligible()
+        #expect(!didLoadFurtherMomentum)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .ended,
+            timestamp: 115.4)
+        gate.finishWheelEvent(
+            isInsideScrollView: true,
+            phase: .none,
+            momentumPhase: .ended)
+
+        gate.beginLiveScroll()
+        gate.registerLiveMovement(isDownward: true)
+        let didLoadLiveScroll = gate.consumeIfEligible()
+        #expect(didLoadLiveScroll)
+    }
+
+    @Test("new live-scroll start supersedes a pending wheel without momentum")
+    func liveScrollStartSupersedesPendingWheel() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 116)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 116.1)
+        gate.finishWheelEvent(
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+
+        gate.beginLiveScroll()
+        gate.registerLiveMovement(isDownward: true)
+        gate.updateFooterVisibility(true)
+        let didLoadLiveScroll = gate.consumeIfEligible()
+        #expect(didLoadLiveScroll)
+    }
+
+    @Test("live movement without a new start resumes the pending wheel")
+    func liveMovementResumesPendingWheel() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 116.5)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 116.6)
+        gate.finishWheelEvent(
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+        gate.updateFooterVisibility(true)
+
+        gate.registerLiveMovement(isDownward: true)
+        let didLoadFinalGeometry = gate.consumeIfEligible()
+        #expect(didLoadFinalGeometry)
+        gate.registerLiveMovement(isDownward: true)
+        let didLoadAgain = gate.consumeIfEligible()
+        #expect(!didLoadAgain)
+    }
+
+    @Test("momentum restores originating downward intent when its delta is zero")
+    func momentumRestoresOriginatingIntent() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 117)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: false,
+            phase: .ended,
+            momentumPhase: .none,
+            timestamp: 117.1)
+        gate.finishWheelEvent(
+            isInsideScrollView: true,
+            phase: .ended,
+            momentumPhase: .none)
+        gate.updateFooterVisibility(true)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: false,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 117.2)
+        let didLoadMomentum = gate.consumeIfEligible()
+        #expect(didLoadMomentum)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: false,
+            phase: .none,
+            momentumPhase: .changed,
+            timestamp: 117.3)
+        let didLoadFurtherMomentum = gate.consumeIfEligible()
+        #expect(!didLoadFurtherMomentum)
+    }
+
+    @Test("live scroll direction follows flipped document coordinates")
+    func liveScrollDirection() {
+        let previous = CGRect(x: 0, y: 100, width: 240, height: 500)
+        let increasingY = CGRect(x: 0, y: 120, width: 240, height: 500)
+        let decreasingY = CGRect(x: 0, y: 80, width: 240, height: 500)
+
+        #expect(HistoryScrollGeometry.isDownwardDocumentMovement(
+            previousVisibleRect: previous,
+            currentVisibleRect: increasingY,
+            documentIsFlipped: true))
+        #expect(!HistoryScrollGeometry.isDownwardDocumentMovement(
+            previousVisibleRect: previous,
+            currentVisibleRect: decreasingY,
+            documentIsFlipped: true))
+        #expect(HistoryScrollGeometry.isDownwardDocumentMovement(
+            previousVisibleRect: previous,
+            currentVisibleRect: decreasingY,
+            documentIsFlipped: false))
+        #expect(!HistoryScrollGeometry.isDownwardDocumentMovement(
+            previousVisibleRect: previous,
+            currentVisibleRect: increasingY,
+            documentIsFlipped: false))
+    }
+
+    @Test("reset clears footer and gesture state but preserves availability")
+    func resetGestureState() {
+        var gate = HistoryScrollLoadGate()
+        gate.updateAvailability(isEnabled: true, isLoading: false)
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .none,
+            momentumPhase: .none,
+            timestamp: 120)
+        #expect(gate.phaseLessExpiryDeadline != nil)
+
+        gate.resetGestureState()
+        #expect(gate.phaseLessExpiryDeadline == nil)
+        gate.updateFooterVisibility(true)
+        let didLoadStaleGesture = gate.consumeIfEligible()
+        #expect(!didLoadStaleGesture)
+
+        gate.registerWheel(
+            isInsideScrollView: true,
+            downwardIntent: true,
+            phase: .began,
+            momentumPhase: .none,
+            timestamp: 121)
+        let didLoadNewGesture = gate.consumeIfEligible()
+        #expect(didLoadNewGesture)
     }
 
     @Test("footer visibility requires a nonempty intersection")
@@ -290,7 +724,7 @@ struct HistoryPaginationScrollBridgeTests {
             of: "NSScrollView.didEndLiveScrollNotification", in: source) == 1)
         #expect(Self.occurrences(of: "LiveScrollNotification", in: source) == 3)
         #expect(Self.occurrences(of: "object: candidate", in: source) == 3)
-        #expect(Self.occurrences(of: "MainActor.assumeIsolated", in: source) == 3)
+        #expect(Self.occurrences(of: "MainActor.assumeIsolated", in: source) >= 4)
 
         #expect(source.contains(
             "NSEvent.addLocalMonitorForEvents(matching: .scrollWheel)"))
@@ -304,6 +738,53 @@ struct HistoryPaginationScrollBridgeTests {
         #expect(source.contains("scrollViewBounds: scrollView.bounds"))
         #expect(source.contains("scrollView.documentVisibleRect"))
         #expect(source.contains("probe.convert(probe.bounds, to: documentView)"))
+        #expect(source.contains("documentView.isFlipped"))
+        #expect(source.contains(
+            "HistoryScrollGeometry.isDownwardDocumentMovement"))
+
+        #expect(source.contains("private var phaseLessExpiryTimer: Timer?"))
+        #expect(source.contains("Timer.scheduledTimer(withTimeInterval:"))
+        #expect(source.contains("gate.expirePhaseLessGesture(at: deadline)"))
+        #expect(source.contains("phaseLessExpiryTimer?.invalidate()"))
+        #expect(source.contains("ProcessInfo.processInfo.systemUptime"))
+
+        let detach = try Self.sourceSlice(
+            source,
+            from: "func detach()",
+            to: "private func installEventMonitorIfNeeded")
+        #expect(detach.contains("cancelPhaseLessExpiry()"))
+        #expect(detach.contains("gate.resetGestureState()"))
+
+        let rebind = try Self.sourceSlice(
+            source,
+            from: "private func rebindIfNeeded()",
+            to: "private func removeScrollObservers()")
+        let removeObservers = try Self.offset(
+            of: "removeScrollObservers()", in: rebind)
+        let clearReference = try Self.offset(of: "scrollView = nil", in: rebind)
+        let cancelExpiry = try Self.offset(
+            of: "cancelPhaseLessExpiry()", in: rebind)
+        let resetGate = try Self.offset(of: "gate.resetGestureState()", in: rebind)
+        let unwrapCandidate = try Self.offset(
+            of: "guard let candidate else { return }", in: rebind)
+        let bindCandidate = try Self.offset(of: "scrollView = candidate", in: rebind)
+        #expect(removeObservers < clearReference)
+        #expect(clearReference < cancelExpiry)
+        #expect(cancelExpiry < resetGate)
+        #expect(resetGate < unwrapCandidate)
+        #expect(unwrapCandidate < bindCandidate)
+
+        let observeWheel = try Self.sourceSlice(
+            source,
+            from: "private func observeWheel(_ event: NSEvent)",
+            to: "private func beginLiveScroll()")
+        let refreshGeometry = try Self.offset(
+            of: "refreshFooterVisibility()", in: observeWheel)
+        let evaluate = try Self.offset(of: "evaluate(at:", in: observeWheel)
+        let finishGesture = try Self.offset(
+            of: "gate.finishWheelEvent", in: observeWheel)
+        #expect(refreshGeometry < evaluate)
+        #expect(evaluate < finishGesture)
 
         #expect(!source.contains("NSView.boundsDidChangeNotification"))
         #expect(!source.contains("object: nil"))
@@ -321,5 +802,23 @@ struct HistoryPaginationScrollBridgeTests {
 
     private static func occurrences(of needle: String, in source: String) -> Int {
         source.components(separatedBy: needle).count - 1
+    }
+
+    private static func sourceSlice(
+        _ source: String,
+        from startSignature: String,
+        to endSignature: String
+    ) throws -> String {
+        let start = try #require(source.range(of: startSignature)?.lowerBound)
+        let remainder = source[start...]
+        let end = try #require(remainder.range(of: endSignature)?.lowerBound)
+        return String(remainder[..<end])
+    }
+
+    private static func offset(
+        of needle: String,
+        in source: String
+    ) throws -> String.Index {
+        try #require(source.range(of: needle)?.lowerBound)
     }
 }

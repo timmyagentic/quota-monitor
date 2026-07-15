@@ -26,23 +26,59 @@ struct HistoryScrollGeometry {
         let downward = -deltaY
         return downward > 0 && downward > abs(deltaX)
     }
+
+    static func isDownwardDocumentMovement(
+        previousVisibleRect: CGRect,
+        currentVisibleRect: CGRect,
+        documentIsFlipped: Bool
+    ) -> Bool {
+        if documentIsFlipped {
+            return currentVisibleRect.minY > previousVisibleRect.minY
+        }
+        return currentVisibleRect.minY < previousVisibleRect.minY
+    }
 }
 
 struct HistoryScrollLoadGate {
     static let phaseLessIdleInterval: TimeInterval = 0.250
 
+    private enum GestureKind {
+        case phasedWheel
+        case phaseLessWheel
+        case liveScroll
+    }
+
     private var generation = 0
     private var activeGeneration: Int?
     private var consumedGeneration: Int?
+    private var activeGestureKind: GestureKind?
+    private var activeGenerationIsConsumable = false
+    private var pendingMomentumGeneration: Int?
+    private var pendingMomentumIsConsumable = false
+    private var pendingMomentumHasDownwardIntent = false
     private var lastPhaseLessWheelAt: TimeInterval?
     private var footerVisible = false
     private var isEnabled = false
     private var isLoading = false
     private var hasDownwardIntent = false
 
+    var phaseLessExpiryDeadline: TimeInterval? {
+        guard activeGestureKind == .phaseLessWheel,
+              let lastPhaseLessWheelAt else { return nil }
+        return lastPhaseLessWheelAt + Self.phaseLessIdleInterval
+    }
+
     mutating func updateAvailability(isEnabled: Bool, isLoading: Bool) {
         self.isEnabled = isEnabled
         self.isLoading = isLoading
+        guard isEnabled, !isLoading else {
+            if activeGeneration != nil {
+                quarantineActiveGeneration()
+            }
+            pendingMomentumIsConsumable = false
+            pendingMomentumHasDownwardIntent = false
+            return
+        }
     }
 
     mutating func updateFooterVisibility(_ visible: Bool) {
@@ -56,70 +92,192 @@ struct HistoryScrollLoadGate {
         momentumPhase: HistoryScrollPhase,
         timestamp: TimeInterval
     ) {
-        guard isEnabled, !isLoading, isInsideScrollView, downwardIntent else {
-            return
-        }
+        guard isInsideScrollView else { return }
+        let isAvailable = isEnabled && !isLoading
+
         if momentumPhase != .none {
-            if activeGeneration == nil, generation > 0 {
-                activeGeneration = generation
+            if activeGeneration == nil {
+                guard resumePendingMomentumGeneration() else { return }
             }
-            hasDownwardIntent = true
+            updateIntent(
+                isAvailable: isAvailable,
+                downwardIntent: downwardIntent)
             return
         }
+
         let isPhaseLess = phase == .none && momentumPhase == .none
         if isPhaseLess {
-            if lastPhaseLessWheelAt.map({
-                timestamp - $0 > Self.phaseLessIdleInterval
-            }) ?? true {
-                startGeneration()
-            } else if activeGeneration == nil, generation > 0 {
-                activeGeneration = generation
+            let startsNewBurst = activeGestureKind != .phaseLessWheel ||
+                lastPhaseLessWheelAt.map {
+                    timestamp - $0 > Self.phaseLessIdleInterval
+                } ?? true
+            if startsNewBurst {
+                startGeneration(
+                    kind: .phaseLessWheel,
+                    isConsumable: isAvailable)
             }
             lastPhaseLessWheelAt = timestamp
-        } else if phase == .began {
-            startGeneration()
-        } else if activeGeneration == nil {
-            if generation == 0 {
-                startGeneration()
-            } else {
-                activeGeneration = generation
-            }
+            updateIntent(
+                isAvailable: isAvailable,
+                downwardIntent: downwardIntent)
+            return
         }
-        hasDownwardIntent = true
+
+        if phase == .began {
+            startGeneration(
+                kind: .phasedWheel,
+                isConsumable: isAvailable)
+        } else if activeGeneration == nil {
+            guard generation == 0,
+                  phase != .ended,
+                  phase != .cancelled else { return }
+            startGeneration(
+                kind: .phasedWheel,
+                isConsumable: isAvailable)
+        }
+        updateIntent(
+            isAvailable: isAvailable,
+            downwardIntent: downwardIntent)
+    }
+
+    mutating func finishWheelEvent(
+        isInsideScrollView _: Bool,
+        phase: HistoryScrollPhase,
+        momentumPhase: HistoryScrollPhase
+    ) {
+        if momentumPhase == .ended || momentumPhase == .cancelled ||
+           phase == .cancelled {
+            closeActiveGesture()
+        } else if phase == .ended, momentumPhase == .none {
+            suspendActiveGestureForMomentum()
+        }
+    }
+
+    mutating func expirePhaseLessGesture(at timestamp: TimeInterval) {
+        guard let deadline = phaseLessExpiryDeadline,
+              timestamp >= deadline else { return }
+        closeActiveGesture()
     }
 
     mutating func beginLiveScroll() {
-        guard isEnabled, !isLoading else { return }
+        let isAvailable = isEnabled && !isLoading
         if activeGeneration == nil {
-            startGeneration()
+            startGeneration(kind: .liveScroll, isConsumable: isAvailable)
+        } else if !isAvailable {
+            quarantineActiveGeneration()
         }
     }
 
     mutating func registerLiveMovement(isDownward: Bool) {
-        guard isEnabled, !isLoading, isDownward else { return }
+        let isAvailable = isEnabled && !isLoading
         if activeGeneration == nil {
-            startGeneration()
+            if pendingMomentumGeneration != nil {
+                guard resumePendingMomentumGeneration() else { return }
+            } else {
+                startGeneration(kind: .liveScroll, isConsumable: isAvailable)
+            }
         }
-        hasDownwardIntent = true
+        updateIntent(
+            isAvailable: isAvailable,
+            downwardIntent: isDownward)
     }
 
     mutating func endLiveScroll() {
-        activeGeneration = nil
-        hasDownwardIntent = false
+        closeActiveGesture()
     }
 
     mutating func consumeIfEligible() -> Bool {
         guard isEnabled, !isLoading, footerVisible, hasDownwardIntent,
+              activeGenerationIsConsumable,
               let activeGeneration,
               consumedGeneration != activeGeneration else { return false }
         consumedGeneration = activeGeneration
         return true
     }
 
-    private mutating func startGeneration() {
+    mutating func resetGestureState() {
+        generation = 0
+        activeGeneration = nil
+        consumedGeneration = nil
+        activeGestureKind = nil
+        activeGenerationIsConsumable = false
+        pendingMomentumGeneration = nil
+        pendingMomentumIsConsumable = false
+        pendingMomentumHasDownwardIntent = false
+        lastPhaseLessWheelAt = nil
+        footerVisible = false
+        hasDownwardIntent = false
+    }
+
+    private mutating func startGeneration(
+        kind: GestureKind,
+        isConsumable: Bool
+    ) {
         generation &+= 1
         activeGeneration = generation
+        activeGestureKind = kind
+        activeGenerationIsConsumable = isConsumable
+        pendingMomentumGeneration = nil
+        pendingMomentumIsConsumable = false
+        pendingMomentumHasDownwardIntent = false
+        lastPhaseLessWheelAt = nil
         hasDownwardIntent = false
+    }
+
+    private mutating func updateIntent(
+        isAvailable: Bool,
+        downwardIntent: Bool
+    ) {
+        guard activeGeneration != nil else { return }
+        guard isAvailable else {
+            quarantineActiveGeneration()
+            return
+        }
+        guard activeGenerationIsConsumable, downwardIntent else { return }
+        hasDownwardIntent = true
+    }
+
+    private mutating func quarantineActiveGeneration() {
+        activeGenerationIsConsumable = false
+        hasDownwardIntent = false
+    }
+
+    private mutating func closeActiveGesture() {
+        activeGeneration = nil
+        activeGestureKind = nil
+        activeGenerationIsConsumable = false
+        pendingMomentumGeneration = nil
+        pendingMomentumIsConsumable = false
+        pendingMomentumHasDownwardIntent = false
+        lastPhaseLessWheelAt = nil
+        hasDownwardIntent = false
+    }
+
+    private mutating func suspendActiveGestureForMomentum() {
+        guard activeGestureKind == .phasedWheel,
+              let activeGeneration else {
+            closeActiveGesture()
+            return
+        }
+        pendingMomentumGeneration = activeGeneration
+        pendingMomentumIsConsumable = activeGenerationIsConsumable
+        pendingMomentumHasDownwardIntent = hasDownwardIntent
+        self.activeGeneration = nil
+        activeGestureKind = nil
+        activeGenerationIsConsumable = false
+        hasDownwardIntent = false
+    }
+
+    private mutating func resumePendingMomentumGeneration() -> Bool {
+        guard let pendingMomentumGeneration else { return false }
+        activeGeneration = pendingMomentumGeneration
+        activeGestureKind = .phasedWheel
+        activeGenerationIsConsumable = pendingMomentumIsConsumable
+        hasDownwardIntent = pendingMomentumHasDownwardIntent
+        self.pendingMomentumGeneration = nil
+        pendingMomentumIsConsumable = false
+        pendingMomentumHasDownwardIntent = false
+        return true
     }
 }
 
@@ -176,6 +334,8 @@ extension HistoryPaginationScrollBridge {
         private weak var scrollView: NSScrollView?
         private var eventMonitor: Any?
         private var notificationTokens: [NSObjectProtocol] = []
+        private var phaseLessExpiryTimer: Timer?
+        private var scheduledPhaseLessExpiry: TimeInterval?
         private var gate = HistoryScrollLoadGate()
         private var lastVisibleRect = CGRect.zero
         private var onLoadMore: @MainActor () -> Void
@@ -207,7 +367,9 @@ extension HistoryPaginationScrollBridge {
             installEventMonitorIfNeeded()
             rebindIfNeeded()
             refreshFooterVisibility()
-            evaluate()
+            let timestamp = ProcessInfo.processInfo.systemUptime
+            evaluate(at: timestamp)
+            synchronizePhaseLessExpiry(referenceTimestamp: timestamp)
         }
 
         func detach() {
@@ -217,8 +379,11 @@ extension HistoryPaginationScrollBridge {
             }
             eventMonitor = nil
             removeScrollObservers()
-            probe = nil
             scrollView = nil
+            cancelPhaseLessExpiry()
+            gate.resetGestureState()
+            lastVisibleRect = .zero
+            probe = nil
         }
 
         private func installEventMonitorIfNeeded() {
@@ -241,8 +406,17 @@ extension HistoryPaginationScrollBridge {
                 }
                 ancestor = view.superview
             }
-            guard let candidate, scrollView !== candidate else { return }
+            let bindingIsUnchanged = scrollView === candidate &&
+                (candidate != nil || notificationTokens.isEmpty)
+            guard !bindingIsUnchanged else { return }
+
             removeScrollObservers()
+            scrollView = nil
+            cancelPhaseLessExpiry()
+            gate.resetGestureState()
+            lastVisibleRect = .zero
+
+            guard let candidate else { return }
             scrollView = candidate
             lastVisibleRect = candidate.documentVisibleRect
             let center = NotificationCenter.default
@@ -275,6 +449,33 @@ extension HistoryPaginationScrollBridge {
             notificationTokens.removeAll()
         }
 
+        private func synchronizePhaseLessExpiry(referenceTimestamp: TimeInterval) {
+            let deadline = gate.phaseLessExpiryDeadline
+            guard scheduledPhaseLessExpiry != deadline else { return }
+            cancelPhaseLessExpiry()
+            guard let deadline else { return }
+
+            scheduledPhaseLessExpiry = deadline
+            let delay = max(deadline - referenceTimestamp, 0)
+            phaseLessExpiryTimer = Timer.scheduledTimer(withTimeInterval: delay,
+                                                        repeats: false) {
+                [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self,
+                          self.scheduledPhaseLessExpiry == deadline else { return }
+                    self.phaseLessExpiryTimer = nil
+                    self.scheduledPhaseLessExpiry = nil
+                    self.gate.expirePhaseLessGesture(at: deadline)
+                }
+            }
+        }
+
+        private func cancelPhaseLessExpiry() {
+            phaseLessExpiryTimer?.invalidate()
+            phaseLessExpiryTimer = nil
+            scheduledPhaseLessExpiry = nil
+        }
+
         private func observeWheel(_ event: NSEvent) {
             guard let scrollView else { return }
             let point = scrollView.convert(event.locationInWindow, from: nil)
@@ -282,34 +483,59 @@ extension HistoryPaginationScrollBridge {
                 windowMatches: event.window === scrollView.window,
                 location: point,
                 scrollViewBounds: scrollView.bounds)
+            let phase = Self.phase(event.phase)
+            let momentumPhase = Self.phase(event.momentumPhase)
+            gate.expirePhaseLessGesture(at: event.timestamp)
             gate.registerWheel(
                 isInsideScrollView: inside,
                 downwardIntent: HistoryScrollGeometry.hasDownwardIntent(
                     deltaX: event.scrollingDeltaX,
                     deltaY: event.scrollingDeltaY),
-                phase: Self.phase(event.phase),
-                momentumPhase: Self.phase(event.momentumPhase),
+                phase: phase,
+                momentumPhase: momentumPhase,
                 timestamp: event.timestamp)
             refreshFooterVisibility()
-            evaluate()
+            evaluate(at: event.timestamp)
+            gate.finishWheelEvent(
+                isInsideScrollView: inside,
+                phase: phase,
+                momentumPhase: momentumPhase)
+            synchronizePhaseLessExpiry(referenceTimestamp: event.timestamp)
         }
 
         private func beginLiveScroll() {
+            let timestamp = ProcessInfo.processInfo.systemUptime
+            gate.expirePhaseLessGesture(at: timestamp)
             lastVisibleRect = scrollView?.documentVisibleRect ?? .zero
             gate.beginLiveScroll()
+            synchronizePhaseLessExpiry(referenceTimestamp: timestamp)
         }
 
         private func observeLiveScroll() {
             guard let scrollView else { return }
+            let timestamp = ProcessInfo.processInfo.systemUptime
+            gate.expirePhaseLessGesture(at: timestamp)
             let current = scrollView.documentVisibleRect
-            gate.registerLiveMovement(isDownward: current.maxY > lastVisibleRect.maxY)
+            let isDownward: Bool
+            if let documentView = scrollView.documentView {
+                isDownward = HistoryScrollGeometry.isDownwardDocumentMovement(
+                    previousVisibleRect: lastVisibleRect,
+                    currentVisibleRect: current,
+                    documentIsFlipped: documentView.isFlipped)
+            } else {
+                isDownward = false
+            }
+            gate.registerLiveMovement(isDownward: isDownward)
             lastVisibleRect = current
             refreshFooterVisibility()
-            evaluate()
+            evaluate(at: timestamp)
+            synchronizePhaseLessExpiry(referenceTimestamp: timestamp)
         }
 
         private func endLiveScroll() {
             gate.endLiveScroll()
+            synchronizePhaseLessExpiry(
+                referenceTimestamp: ProcessInfo.processInfo.systemUptime)
         }
 
         private func refreshFooterVisibility() {
@@ -324,7 +550,8 @@ extension HistoryPaginationScrollBridge {
                 visibleRect: scrollView.documentVisibleRect))
         }
 
-        private func evaluate() {
+        private func evaluate(at timestamp: TimeInterval) {
+            gate.expirePhaseLessGesture(at: timestamp)
             if gate.consumeIfEligible() {
                 onLoadMore()
             }
