@@ -3,11 +3,12 @@ import Testing
 @testable import QuotaMonitor
 
 @MainActor
-@Suite("Status item popover window")
+@Suite("Status item popover window", .serialized)
 struct StatusItemControllerTests {
 
     @Test("Observation does not retain the status item controller without a mutation")
     func observationAllowsControllerTeardownWithoutMutation() throws {
+        _ = NSApplication.shared
         let defaultsName = "StatusItemControllerTests.teardown.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: defaultsName))
         defer { defaults.removePersistentDomain(forName: defaultsName) }
@@ -35,6 +36,7 @@ struct StatusItemControllerTests {
 
     @Test("Update marker pulses for eight seconds, repeat restarts it, and mismatch does nothing")
     func updateMarkerPulseIsVersionScopedAndRestartable() async throws {
+        _ = NSApplication.shared
         let availability = PersistentUpdateAvailability()
         availability.recordDiscovery(
             internalVersion: "41",
@@ -152,8 +154,29 @@ struct StatusItemControllerTests {
         #expect(render.contains("guard !isStopped else { return }"))
     }
 
+    @Test("Controller tests bootstrap AppKit before creating status items")
+    func controllerTestsBootstrapAppKitBeforeStatusItems() throws {
+        let source = try Self.source(named: "Tests/QuotaMonitorTests/StatusItemControllerTests.swift")
+        let controllerTests = [
+            try Self.sourceSlice(
+                source,
+                from: "func observationAllowsControllerTeardownWithoutMutation()",
+                to: "let controller = StatusItemController("),
+            try Self.sourceSlice(
+                source,
+                from: "func updateMarkerPulseIsVersionScopedAndRestartable()",
+                to: "let controller = StatusItemController("),
+        ]
+
+        for testBodyBeforeController in controllerTests {
+            #expect(testBodyBeforeController.contains("_ = NSApplication.shared"))
+        }
+        #expect(source.contains("@Suite(\"Status item popover window\", .serialized)"))
+    }
+
     @Test("Popover window can appear above full-screen Spaces")
     func popoverWindowCanJoinFullScreenSpaces() {
+        _ = NSApplication.shared
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 240, height: 160),
             styleMask: [.borderless],
