@@ -114,6 +114,136 @@ class SlimmerAvailabilityTests(unittest.TestCase):
 
 @unittest.skipIf(SLIMMER is None, "production slimmer is intentionally missing during RED")
 class SlimFeedTests(unittest.TestCase):
+    def test_comment_outside_items_is_preserved_byte_for_byte(self):
+        protected_comment = (
+            "    <!-- template <item><description><![CDATA[comment payload]]>"
+            "</description></item> stays exact -->\r\n"
+        )
+        real_description = (
+            "      <description><![CDATA[real payload]]></description>\r\n"
+        )
+        payload = "".join(
+            (
+                '<?xml version="1.0" encoding="UTF-8"?>\r\n',
+                "<rss>\r\n",
+                "  <channel>\r\n",
+                protected_comment,
+                "    <item>\r\n",
+                real_description,
+                "    </item>\r\n",
+                "  </channel>\r\n",
+                "</rss>\r\n",
+            )
+        )
+        expected = payload.replace(real_description, "")
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result.count(protected_comment), 1)
+        self.assertEqual(result, expected)
+
+    def test_comment_inside_item_is_preserved_byte_for_byte(self):
+        protected_comment = (
+            "      <!-- template <description><![CDATA[comment payload]]>"
+            "</description> stays exact -->\n"
+        )
+        real_description = (
+            "      <description><![CDATA[real payload]]></description>\n"
+        )
+        payload = "".join(
+            (
+                "<rss>\n",
+                "  <channel>\n",
+                "    <item>\n",
+                protected_comment,
+                real_description,
+                "    </item>\n",
+                "  </channel>\n",
+                "</rss>\n",
+            )
+        )
+        expected = payload.replace(real_description, "")
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result.count(protected_comment), 1)
+        self.assertEqual(result, expected)
+
+    def test_processing_instruction_markup_is_preserved_byte_for_byte(self):
+        protected_instruction = (
+            '    <?audit template="<item><description><![CDATA[PI payload]]>'
+            '</description></item>"?>\n'
+        )
+        real_description = (
+            "      <description><![CDATA[real payload]]></description>\n"
+        )
+        payload = "".join(
+            (
+                "<rss>\n",
+                "  <channel>\n",
+                protected_instruction,
+                "    <item>\n",
+                real_description,
+                "    </item>\n",
+                "  </channel>\n",
+                "</rss>\n",
+            )
+        )
+        expected = payload.replace(real_description, "")
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result.count(protected_instruction), 1)
+        self.assertEqual(result, expected)
+
+    def test_channel_cdata_markup_is_preserved_byte_for_byte(self):
+        protected_cdata = (
+            "    <description><![CDATA[template <item><description>plain payload"
+            "</description></item> stays exact]]></description>\n"
+        )
+        real_description = (
+            "      <description><![CDATA[real payload]]></description>\n"
+        )
+        payload = "".join(
+            (
+                "<rss>\n",
+                "  <channel>\n",
+                protected_cdata,
+                "    <item>\n",
+                real_description,
+                "    </item>\n",
+                "  </channel>\n",
+                "</rss>\n",
+            )
+        )
+        expected = payload.replace(real_description, "")
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result.count(protected_cdata), 1)
+        self.assertEqual(result, expected)
+
+    def test_cdata_description_with_nested_comment_is_not_removed(self):
+        protected_description = (
+            "      <description><!-- retain exact -->"
+            "<![CDATA[real payload]]></description>\n"
+        )
+        payload = "".join(
+            (
+                "<rss>\n",
+                "  <channel>\n",
+                "    <item>\n",
+                protected_description,
+                "    </item>\n",
+                "  </channel>\n",
+                "</rss>\n",
+            )
+        )
+
+        result = SLIMMER.slim_feed(payload)
+
+        self.assertEqual(result, payload)
+
     def test_only_item_cdata_descriptions_are_removed_byte_for_byte(self):
         payload, channel, first, second, plain = legacy_fixture()
         expected = payload.replace(first, "").replace(second, "")
