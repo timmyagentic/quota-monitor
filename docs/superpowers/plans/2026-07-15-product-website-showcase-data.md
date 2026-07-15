@@ -24,7 +24,7 @@
 ## File Map
 
 - `website/design/showcase-scenario.json` — human-reviewable density, provider, model, title, and safety contract for the synthetic showcase.
-- `website/scripts/generate-showcase-fixtures.mjs` — deterministic date-relative Codex/Claude JSONL materializer; accepts a target QA home and optional fixed clock.
+- `website/scripts/generate-showcase-fixtures.mjs` — deterministic date-relative Codex/Claude JSONL materializer; accepts a target QA home, mandatory destructive opt-in, and optional fixed clock.
 - `website/tests/showcase-fixtures.test.ts` — validates scenario density, generator output, safe paths/titles, recent events, and current Codex quota windows.
 - `website/public/assets/dashboard-hero.webp` — real-app Forecast and 30-day Trends capture.
 - `website/public/assets/dashboard-insights.webp` — real-app Activity and Composition capture.
@@ -47,12 +47,12 @@
 - Create: `website/tests/showcase-fixtures.test.ts`
 
 **Interfaces:**
-- Consumes: `node website/scripts/generate-showcase-fixtures.mjs <qa-home> [--now=<ISO-8601>]`.
+- Consumes: `node website/scripts/generate-showcase-fixtures.mjs <qa-home> --allow-showcase-overwrite [--now=<ISO-8601>]`.
 - Produces: Codex rollouts under `<qa-home>/.codex/sessions/showcase/`, Codex metadata at `<qa-home>/.codex/session_index.jsonl`, and Claude sessions under safe synthetic project roots in `<qa-home>/.claude/projects/`.
 
 - [ ] **Step 1: Write the failing scenario/generator tests**
 
-Create tests that require `showcase-scenario.json` and `generate-showcase-fixtures.mjs`, run the generator with `--now=2026-07-15T12:00:00.000Z`, parse every JSONL line, and assert all of the following exact contracts:
+Create tests that require `showcase-scenario.json` and `generate-showcase-fixtures.mjs`, verify the generator refuses to mutate a target without `--allow-showcase-overwrite`, then run it with that opt-in and `--now=2026-07-15T12:00:00.000Z`, parse every JSONL line, and assert all of the following exact contracts:
 
 ```ts
 expect(scenario.sessionCount).toBeGreaterThanOrEqual(24);
@@ -96,7 +96,7 @@ Run:
 ```bash
 cd website
 npm test -- --run tests/showcase-fixtures.test.ts
-node scripts/generate-showcase-fixtures.mjs /tmp/quotamonitor-showcase-plan-check --now=2026-07-15T12:00:00.000Z
+node scripts/generate-showcase-fixtures.mjs /tmp/quotamonitor-showcase-plan-check --allow-showcase-overwrite --now=2026-07-15T12:00:00.000Z
 ```
 
 Expected: focused tests PASS; the target contains exactly 28 generated session files plus the Codex metadata index.
@@ -147,7 +147,7 @@ Run:
 ```bash
 rm -rf /tmp/quotamonitor-website-showcase .build/qa-artifacts/website-showcase
 mkdir -p /tmp/quotamonitor-website-showcase/home .build/qa-artifacts/website-showcase/no-ui-introspection
-node website/scripts/generate-showcase-fixtures.mjs /tmp/quotamonitor-website-showcase/home
+node website/scripts/generate-showcase-fixtures.mjs /tmp/quotamonitor-website-showcase/home --allow-showcase-overwrite
 HOME=/tmp/quotamonitor-website-showcase/home defaults write dev.tjzhou.QuotaMonitor.WebsiteShowcase settings.menuBarHeadlineWindow -string last30d
 ln -sf /usr/bin/false .build/qa-artifacts/website-showcase/no-ui-introspection/screencapture
 ln -sf /usr/bin/false .build/qa-artifacts/website-showcase/no-ui-introspection/osascript

@@ -1,9 +1,11 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
@@ -91,6 +93,29 @@ function generatedFileMap(home: string): Map<string, string> {
 }
 
 describe("showcase fixture generator", () => {
+  it("requires explicit opt-in before replacing showcase data", () => {
+    const protectedHome = mkdtempSync(join(tmpdir(), "quota-monitor-showcase-protected-"));
+    const indexPath = join(protectedHome, ".codex", "session_index.jsonl");
+    const sentinel = '{"id":"keep-me"}\n';
+
+    try {
+      mkdirSync(dirname(indexPath), { recursive: true });
+      writeFileSync(indexPath, sentinel, "utf8");
+
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          [generatorPath, protectedHome, `--now=${fixedNow}`],
+          { encoding: "utf8", stdio: "pipe" },
+        ),
+      ).toThrow(/--allow-showcase-overwrite/);
+      expect(readFileSync(indexPath, "utf8")).toBe(sentinel);
+      expect(existsSync(join(protectedHome, ".codex", "sessions", "showcase"))).toBe(false);
+    } finally {
+      rmSync(protectedHome, { recursive: true, force: true });
+    }
+  });
+
   it("generates a reproducible, dense, synthetic month of app history", () => {
     const scenario = JSON.parse(readFileSync(scenarioPath, "utf8")) as Scenario;
     const firstHome = mkdtempSync(join(tmpdir(), "quota-monitor-showcase-a-"));
@@ -100,7 +125,7 @@ describe("showcase fixture generator", () => {
       for (const home of [firstHome, secondHome]) {
         execFileSync(
           process.execPath,
-          [generatorPath, home, `--now=${fixedNow}`],
+          [generatorPath, home, "--allow-showcase-overwrite", `--now=${fixedNow}`],
           { encoding: "utf8" },
         );
       }

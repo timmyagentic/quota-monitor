@@ -11,14 +11,22 @@ const scenario = JSON.parse(await readFile(scenarioPath, "utf8"));
 const [qaHomeArgument, ...options] = process.argv.slice(2);
 if (!qaHomeArgument || qaHomeArgument.startsWith("--")) {
   throw new Error(
-    "Usage: node website/scripts/generate-showcase-fixtures.mjs <qa-home> [--now=<ISO-8601>]",
+    "Usage: node website/scripts/generate-showcase-fixtures.mjs <qa-home> --allow-showcase-overwrite [--now=<ISO-8601>]",
   );
 }
 
+const overwriteOption = "--allow-showcase-overwrite";
 const nowOption = options.find((option) => option.startsWith("--now="));
-const unknownOption = options.find((option) => !option.startsWith("--now="));
+const unknownOption = options.find(
+  (option) => option !== overwriteOption && !option.startsWith("--now="),
+);
 if (unknownOption) {
   throw new Error(`Unknown option: ${unknownOption}`);
+}
+if (!options.includes(overwriteOption)) {
+  throw new Error(
+    `Refusing to replace showcase data without explicit ${overwriteOption} opt-in.`,
+  );
 }
 
 const nowArgument = nowOption?.slice("--now=".length);
