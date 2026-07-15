@@ -126,6 +126,71 @@ struct HistoryPaginationTests {
         #expect(page.hasMore)
     }
 
+    @Test("empty initial week does not jump to older history")
+    func emptyInitialPageStaysRecent() throws {
+        let calendar = utcCalendar()
+        let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
+        let db = try makeDatabase()
+        try seed(in: db, sessionId: "old", timestamp: "2026-06-20T12:00:00Z")
+
+        let page = try db.pool.read {
+            try Aggregator.fetchHistoryPage(db: $0, now: now, calendar: calendar)
+        }
+        let expectedCursor = try #require(ISO8601.parse("2026-07-09T00:00:00Z"))
+
+        #expect(page.days.isEmpty)
+        #expect(page.hasMore)
+        #expect(page.nextCursor == expectedCursor)
+    }
+
+    @Test("empty pagination window jumps to the newest older populated week")
+    func emptyPaginationWindowJumps() throws {
+        let calendar = utcCalendar()
+        let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
+        let db = try makeDatabase()
+        try seed(in: db, sessionId: "june20", timestamp: "2026-06-20T12:00:00Z")
+        try seed(in: db, sessionId: "may", timestamp: "2026-05-01T12:00:00Z")
+        let first = try db.pool.read {
+            try Aggregator.fetchHistoryPage(db: $0, now: now, calendar: calendar)
+        }
+        let next = try db.pool.read {
+            try Aggregator.fetchHistoryPage(
+                db: $0, before: first.nextCursor, now: now, calendar: calendar)
+        }
+        let expectedCursor = try #require(ISO8601.parse("2026-06-14T00:00:00Z"))
+
+        #expect(next.days.map(\.day) == ["2026-06-20"])
+        #expect(next.nextCursor == expectedCursor)
+        #expect(next.hasMore)
+    }
+
+    @Test("pagination gap jump respects the provider filter")
+    func paginationGapJumpRespectsProviderFilter() throws {
+        let calendar = utcCalendar()
+        let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
+        let db = try makeDatabase()
+        try seed(
+            in: db, sessionId: "newer-claude", timestamp: "2026-06-30T12:00:00Z",
+            provider: "claude")
+        try seed(
+            in: db, sessionId: "older-codex", timestamp: "2026-06-20T12:00:00Z",
+            provider: "codex")
+        let first = try db.pool.read {
+            try Aggregator.fetchHistoryPage(
+                db: $0, provider: .codex, now: now, calendar: calendar)
+        }
+        let next = try db.pool.read {
+            try Aggregator.fetchHistoryPage(
+                db: $0, before: first.nextCursor, provider: .codex,
+                now: now, calendar: calendar)
+        }
+        let expectedCursor = try #require(ISO8601.parse("2026-06-14T00:00:00Z"))
+
+        #expect(next.days.map(\.day) == ["2026-06-20"])
+        #expect(next.nextCursor == expectedCursor)
+        #expect(!next.hasMore)
+    }
+
     @Test("next page uses the preceding cursor as an exclusive upper bound")
     func cursorHasNoOverlapOrGap() throws {
         let calendar = utcCalendar()

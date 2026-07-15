@@ -32,14 +32,34 @@ extension Aggregator {
     ) throws -> HistoryPage {
         precondition(pageSize > 0)
         let today = calendar.startOfDay(for: now)
-        let upper = cursor.map { calendar.startOfDay(for: $0) }
+        let requestedUpper = cursor.map { calendar.startOfDay(for: $0) }
             ?? calendar.date(byAdding: .day, value: 1, to: today)!
-        return try fetchHistoryWindow(
-            db: db,
-            upperBound: upper,
-            pageSize: pageSize,
-            provider: provider,
-            calendar: calendar)
+        let allowGapJump = cursor != nil
+        var upper = requestedUpper
+        while true {
+            let page = try fetchHistoryWindow(
+                db: db,
+                upperBound: upper,
+                pageSize: pageSize,
+                provider: provider,
+                calendar: calendar)
+            if !page.days.isEmpty || !allowGapJump || !page.hasMore {
+                return page
+            }
+            guard let timestamp = try newestOlderTimestamp(
+                      db: db, before: page.nextCursor, provider: provider),
+                  let olderDate = parseTimestamp(timestamp),
+                  let jumpedUpper = calendar.date(
+                      byAdding: .day,
+                      value: 1,
+                      to: calendar.startOfDay(for: olderDate)),
+                  jumpedUpper < upper
+            else {
+                return HistoryPage(
+                    days: [], nextCursor: page.nextCursor, hasMore: false)
+            }
+            upper = jumpedUpper
+        }
     }
 
     private static func fetchHistoryWindow(
@@ -86,15 +106,24 @@ extension Aggregator {
                 sessionCount: row["sessions"] ?? 0)
         }.sorted { $0.date > $1.date }
         let lower = ranges.last!.start
-        let older = try String.fetchOne(db, sql: """
+        let older = try newestOlderTimestamp(
+            db: db, before: lower, provider: provider)
+        return HistoryPage(days: days, nextCursor: lower, hasMore: older != nil)
+    }
+
+    private static func newestOlderTimestamp(
+        db: Database,
+        before boundary: Date,
+        provider: ProviderFilter
+    ) throws -> String? {
+        try String.fetchOne(db, sql: """
             SELECT timestamp
             FROM usage_events
             WHERE timestamp < ?
             \(provider.clause(table: "usage_events"))
             ORDER BY timestamp DESC
             LIMIT 1
-            """, arguments: [ISO8601.fractional.string(from: lower)])
-        return HistoryPage(days: days, nextCursor: lower, hasMore: older != nil)
+            """, arguments: [ISO8601.fractional.string(from: boundary)])
     }
 
     private static func historyDayRanges(
