@@ -115,6 +115,9 @@ describe("public product content", () => {
     );
 
     expect(workflow).toContain(
+      "types: [opened, synchronize, reopened, ready_for_review]",
+    );
+    expect(workflow).toContain(
       "website-test: ${{ steps.filter.outputs.website-test }}",
     );
     expect(workflow).toContain("website/**)");

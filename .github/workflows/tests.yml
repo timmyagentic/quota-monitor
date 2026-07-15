@@ -31,6 +31,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # Cancel in-flight runs for the same ref when a new push lands —
 # saves macOS minutes (which are 10x linux on the free tier).
