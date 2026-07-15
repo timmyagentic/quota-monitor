@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const websiteDirectory = join(dirname(fileURLToPath(import.meta.url)), "..");
+const repositoryDirectory = join(websiteDirectory, "..");
 const publicDirectory = join(websiteDirectory, "public");
 const designDirectory = join(websiteDirectory, "design");
 
@@ -107,6 +108,28 @@ async function loadAppModule(): Promise<SiteModule> {
 }
 
 describe("public product content", () => {
+  it("gates website changes through the required CI summary", () => {
+    const workflow = readFileSync(
+      join(repositoryDirectory, ".github", "workflows", "tests.yml"),
+      "utf8",
+    );
+
+    expect(workflow).toContain(
+      "website-test: ${{ steps.filter.outputs.website-test }}",
+    );
+    expect(workflow).toContain("website/**)");
+    expect(workflow).toContain("website_test:");
+    expect(workflow).toMatch(/uses: actions\/setup-node@v\d+(?:\.\d+){0,2}/);
+    expect(workflow).toMatch(/node-version:\s*['\"]?22['\"]?/);
+    expect(workflow).toContain("working-directory: website");
+    expect(workflow).toContain("run: npm ci");
+    expect(workflow).toContain("run: npm run check");
+    expect(workflow).toContain("WEBSITE_RESULT: ${{ needs.website_test.result }}");
+    expect(workflow).toContain(
+      '[[ "${NEEDS_WEBSITE_TEST}" == "true" && "${WEBSITE_RESULT}" != "success" ]]',
+    );
+  });
+
   it("defines the production Worker and static asset deployment contract", () => {
     const configPath = join(websiteDirectory, "wrangler.jsonc");
     expect(existsSync(configPath), "website/wrangler.jsonc").toBe(true);
@@ -612,6 +635,8 @@ describe("language resolution", () => {
   it("selects Chinese from browser languages and otherwise defaults to English", async () => {
     const { resolveLanguage } = await loadAppModule();
 
+    expect(resolveLanguage(null, ["en-US", "zh-CN"])).toBe("en");
+    expect(resolveLanguage(null, ["fr-FR", "zh-CN", "en-US"])).toBe("zh-Hans");
     expect(resolveLanguage(null, ["fr-FR", "zh-CN"])).toBe("zh-Hans");
     expect(resolveLanguage("unsupported", ["de-DE"])).toBe("en");
     expect(resolveLanguage(null, [null, 42, "ZH-hant"])).toBe("zh-Hans");

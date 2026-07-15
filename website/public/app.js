@@ -180,11 +180,13 @@ export function resolveLanguage(saved = storedLanguage(), languages = browserLan
   }
 
   const values = Array.isArray(languages) ? languages : [];
-  return values.some(
-    (value) => typeof value === "string" && value.toLowerCase().startsWith("zh"),
-  )
-    ? "zh-Hans"
-    : "en";
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const language = value.toLowerCase();
+    if (language.startsWith("en")) return "en";
+    if (language.startsWith("zh")) return "zh-Hans";
+  }
+  return "en";
 }
 
 function localizeAttributes(locale) {
