@@ -4,6 +4,8 @@ import Testing
 
 @Suite("Local QA isolation")
 struct LocalQAIsolationTests {
+    private let pendingUpdateStorageKey = "app.pendingUpdateSnapshot.v1"
+
     private func writeConfig(_ json: String) throws -> URL {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-qa-isolation-\(UUID().uuidString)", isDirectory: true)
@@ -179,5 +181,107 @@ struct LocalQAIsolationTests {
         #expect(env["HOME"] == "/tmp/qm-qa-codex-home")
         #expect(env["CODEX_HOME"] == "/tmp/qm-qa-codex-home/.codex")
         #expect(env["PATH"]?.contains("/tmp/qm-qa-codex-home/.npm-global/bin") == true)
+    }
+
+    @MainActor
+    @Test("Updater runtime restores only its supplied suite and disables external update UI in QA and App Store")
+    func updaterRuntimeRespectsDistributionAndQABoundaries() throws {
+        let productionName = "UpdaterRuntime.production.\(UUID().uuidString)"
+        let qaName = "dev.tjzhou.QuotaMonitor.QATest.UpdaterRuntime.\(UUID().uuidString)"
+        let productionDefaults = try #require(UserDefaults(suiteName: productionName))
+        let qaDefaults = try #require(UserDefaults(suiteName: qaName))
+        defer {
+            productionDefaults.removePersistentDomain(forName: productionName)
+            qaDefaults.removePersistentDomain(forName: qaName)
+        }
+        let productionSnapshot = PendingUpdateSnapshot(
+            internalVersion: "41",
+            displayVersion: "0.2.41",
+            phase: .available,
+            firstSeenAt: Date(timeIntervalSince1970: 100),
+            nextReminderAt: Date(timeIntervalSince1970: 200),
+            deliveredReminderCount: 0)
+        let qaSnapshot = PendingUpdateSnapshot(
+            internalVersion: "42",
+            displayVersion: "0.2.42-qa",
+            phase: .readyToInstall,
+            firstSeenAt: Date(timeIntervalSince1970: 300),
+            nextReminderAt: Date(timeIntervalSince1970: 400),
+            deliveredReminderCount: 1)
+        productionDefaults.set(
+            try JSONEncoder().encode(productionSnapshot),
+            forKey: pendingUpdateStorageKey)
+        let qaStoredData = try JSONEncoder().encode(qaSnapshot)
+        qaDefaults.set(qaStoredData, forKey: pendingUpdateStorageKey)
+
+        let production = UpdaterController.makeRuntimeConfiguration(
+            distribution: .developerID,
+            defaults: productionDefaults,
+            currentInternalVersion: "40",
+            localQAActive: false)
+        #expect(production.updateAvailability.snapshot == productionSnapshot)
+        #expect(production.sparkleEnabled)
+        #expect(production.reminderPresentationEnabled)
+
+        let qa = UpdaterController.makeRuntimeConfiguration(
+            distribution: .developerID,
+            defaults: qaDefaults,
+            currentInternalVersion: "40",
+            localQAActive: true)
+        #expect(qa.updateAvailability.snapshot == qaSnapshot)
+        #expect(qa.updateAvailability.snapshot != productionSnapshot)
+        #expect(!qa.sparkleEnabled)
+        #expect(!qa.reminderPresentationEnabled)
+
+        let appStore = UpdaterController.makeRuntimeConfiguration(
+            distribution: .appStore,
+            defaults: qaDefaults,
+            currentInternalVersion: "40",
+            localQAActive: false)
+        #expect(appStore.updateAvailability.snapshot == nil)
+        #expect(!appStore.sparkleEnabled)
+        #expect(!appStore.reminderPresentationEnabled)
+        appStore.updateAvailability.recordDiscovery(
+            internalVersion: "43",
+            displayVersion: "0.2.43",
+            userInitiated: false,
+            now: Date(timeIntervalSince1970: 500))
+        appStore.updateAvailability.markLater(now: Date(timeIntervalSince1970: 500))
+        #expect(qaDefaults.data(forKey: pendingUpdateStorageKey) == qaStoredData)
+    }
+
+    @MainActor
+    @Test("QA without isolated defaults fails closed without reading or writing standard defaults")
+    func updaterRuntimeFailsClosedWhenQADefaultsAreUnavailable() throws {
+        let standardName = "UpdaterRuntime.standard.\(UUID().uuidString)"
+        let standardDefaults = try #require(UserDefaults(suiteName: standardName))
+        defer { standardDefaults.removePersistentDomain(forName: standardName) }
+        let productionSnapshot = PendingUpdateSnapshot(
+            internalVersion: "41",
+            displayVersion: "0.2.41-production",
+            phase: .available,
+            firstSeenAt: Date(timeIntervalSince1970: 100),
+            nextReminderAt: Date(timeIntervalSince1970: 200),
+            deliveredReminderCount: 0)
+        let productionData = try JSONEncoder().encode(productionSnapshot)
+        standardDefaults.set(productionData, forKey: pendingUpdateStorageKey)
+
+        let qa = UpdaterController.makeDefaultRuntimeConfiguration(
+            distribution: .developerID,
+            defaults: nil,
+            standardDefaults: standardDefaults,
+            currentInternalVersion: "40",
+            localQAActive: true)
+
+        #expect(qa.updateAvailability.snapshot == nil)
+        #expect(!qa.sparkleEnabled)
+        #expect(!qa.reminderPresentationEnabled)
+        qa.updateAvailability.recordDiscovery(
+            internalVersion: "42",
+            displayVersion: "0.2.42-qa",
+            userInitiated: false,
+            now: Date(timeIntervalSince1970: 300))
+        qa.updateAvailability.markLater(now: Date(timeIntervalSince1970: 300))
+        #expect(standardDefaults.data(forKey: pendingUpdateStorageKey) == productionData)
     }
 }

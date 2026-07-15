@@ -1,7 +1,8 @@
 import Foundation
 import Testing
+@testable import QuotaMonitor
 
-@Suite("Main window layout")
+@Suite("Main window layout", .serialized)
 struct MainWindowLayoutTests {
 
     @Test("Provider filter stays in the titlebar with a stable explicit label")
@@ -29,6 +30,69 @@ struct MainWindowLayoutTests {
         #expect(badge.contains("updater.installAvailableUpdate()"))
         #expect(windowManager.contains(".environment(updater)"))
         #expect(statusItemController.contains(".environment(updater)"))
+    }
+
+    @Test("Native status item observes update version and localization redraws")
+    func nativeStatusItemObservesUpdateAndLocalization() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
+        let renderLabel = try Self.sourceSlice(
+            source,
+            from: "private func renderLabel()",
+            to: "private static let gaugeImage")
+
+        #expect(source.contains("private let localization: LocalizationStore"))
+        #expect(source.contains("self.localization = localization"))
+        #expect(renderLabel.contains("updater.updateAvailability.version"))
+        #expect(renderLabel.contains("localization.tickForceRedraw"))
+        #expect(renderLabel.contains("button.toolTip = nil"))
+        #expect(!renderLabel.contains("button.setAccessibilityLabel(nil)"))
+        #expect(renderLabel.contains("StatusItemUpdateMarker.accessibilityLabel("))
+        #expect(renderLabel.contains("button.setAccessibilityLabel(accessibilityLabel)"))
+        #expect(renderLabel.contains("L10n.statusItemUpdateTooltip(updateVersion)"))
+    }
+
+    @Test("Gauge fallback remains visible beside an available update marker")
+    func gaugeFallbackPreservesImageAndMarker() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
+        let renderLabel = try Self.sourceSlice(
+            source,
+            from: "private func renderLabel()",
+            to: "private static let gaugeImage")
+        let fallback = try Self.sourceSlice(
+            renderLabel,
+            from: "if rows.isEmpty",
+            to: "} else {")
+
+        #expect(fallback.contains("button.image = Self.gaugeImage"))
+        #expect(fallback.contains("button.imagePosition = updateVersion == nil ? .imageOnly : .imageLeading"))
+        #expect(fallback.contains("NSAttributedString(string: \"\")"))
+        #expect(renderLabel.contains("StatusItemUpdateMarker.title("))
+    }
+
+    @Test("English and Chinese status-item update copy includes the version")
+    func localizedStatusItemUpdateCopyIncludesVersion() {
+        let version = "0.2.41"
+        let english = LocalizationTestSupport.withLanguage(.english) {
+            (
+                L10n.statusItemUpdateTooltip(version),
+                L10n.statusItemUpdateAccessibilityLabel(version)
+            )
+        }
+        let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (
+                L10n.statusItemUpdateTooltip(version),
+                L10n.statusItemUpdateAccessibilityLabel(version)
+            )
+        }
+
+        #expect(english.0.contains(version))
+        #expect(english.1.contains(version))
+        #expect(english.0.localizedCaseInsensitiveContains("update"))
+        #expect(english.1.localizedCaseInsensitiveContains("update"))
+        #expect(chinese.0.contains(version))
+        #expect(chinese.1.contains(version))
+        #expect(chinese.0.contains("更新"))
+        #expect(chinese.1.contains("更新"))
     }
 
     @Test("Dashboard overview keeps the original single-stack section order")
