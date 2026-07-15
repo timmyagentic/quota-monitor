@@ -69,7 +69,11 @@ final class PersistentUpdateAvailability {
         primaryAction = nil
 
         guard persistenceEnabled else { return }
-        guard let data = defaults.data(forKey: Self.storageKey) else { return }
+        guard let storedValue = defaults.object(forKey: Self.storageKey) else { return }
+        guard let data = storedValue as? Data else {
+            defaults.removeObject(forKey: Self.storageKey)
+            return
+        }
         guard
             let restored = try? JSONDecoder().decode(PendingUpdateSnapshot.self, from: data),
             Self.isValid(restored),

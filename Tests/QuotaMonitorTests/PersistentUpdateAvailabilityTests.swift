@@ -47,6 +47,20 @@ struct PersistentUpdateAvailabilityTests {
     }
 
     @Test
+    func wrongTypedPayloadSelfClears() {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("not-data", forKey: storageKey)
+
+        let availability = PersistentUpdateAvailability(
+            defaults: defaults,
+            currentInternalVersion: "40")
+
+        #expect(availability.snapshot == nil)
+        #expect(defaults.object(forKey: storageKey) == nil)
+    }
+
+    @Test
     func currentBuildAtOrAboveStoredInternalVersionRemovesIt() {
         let (defaults, suiteName) = makeDefaults(named: #function)
         defer { defaults.removePersistentDomain(forName: suiteName) }
