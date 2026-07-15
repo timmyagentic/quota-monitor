@@ -62,33 +62,57 @@ extension AppEnvironment {
 
     // MARK: - History queries (used by History tab)
 
-    func fetchDaysList(limit: Int = 365) async throws -> [DaySummary] {
+    func fetchHistoryPage(
+        before cursor: Date? = nil,
+        pageSize: Int = 7,
+        now: Date = Date(),
+        calendar: Calendar,
+        trigger: HistoryPageLoadTrigger
+    ) async throws -> HistoryPage {
         let filter = providerFilter
         let op = DeveloperLog.startOperation(
-            "query.days.list",
+            "query.days.page",
             category: "query",
-            trigger: "ui",
+            trigger: trigger.rawValue,
             fields: [
-                "limit": .int(limit),
-                "filter": .string(filter.rawValue)
+                "page_size": .int(pageSize),
+                "filter": .string(filter.rawValue),
+                "cursor": .string(cursor.map {
+                    ISO8601.fractional.string(from: $0)
+                } ?? "")
             ])
         do {
             let (db, _) = try ensureServices()
-            let rows = try await db.pool.read { conn in
-                try Aggregator.fetchDays(db: conn, limit: limit, provider: filter)
+            let page = try await db.pool.read { conn in
+                try Aggregator.fetchHistoryPage(
+                    db: conn,
+                    before: cursor,
+                    pageSize: pageSize,
+                    provider: filter,
+                    now: now,
+                    calendar: calendar)
             }
+            let upper = calendar.date(
+                byAdding: .day, value: pageSize, to: page.nextCursor)!
             DeveloperLog.finishOperation(op, fields: [
-                "rows": .int(rows.count),
+                "rows": .int(page.days.count),
+                "has_more": .bool(page.hasMore),
+                "lower_bound": .string(
+                    ISO8601.fractional.string(from: page.nextCursor)),
+                "upper_bound": .string(ISO8601.fractional.string(from: upper)),
                 "filter": .string(filter.rawValue)
             ])
-            return rows
+            return page
         } catch {
             DeveloperLog.failOperation(op, error: error, fields: ["filter": .string(filter.rawValue)])
             throw error
         }
     }
 
-    func fetchDayDetail(day: String) async throws -> DayDetail? {
+    func fetchDayDetail(
+        day: String,
+        calendar: Calendar
+    ) async throws -> DayDetail? {
         let filter = providerFilter
         let op = DeveloperLog.startOperation(
             "query.day.detail",
@@ -101,7 +125,11 @@ extension AppEnvironment {
         do {
             let (db, _) = try ensureServices()
             let detail = try await db.pool.read { conn in
-                try Aggregator.fetchDayDetail(db: conn, day: day, provider: filter)
+                try Aggregator.fetchDayDetail(
+                    db: conn,
+                    day: day,
+                    provider: filter,
+                    calendar: calendar)
             }
             DeveloperLog.finishOperation(op, fields: [
                 "day": .string(day),
@@ -118,7 +146,11 @@ extension AppEnvironment {
         }
     }
 
-    func fetchSessionEventsOnDay(sessionId: String, day: String) async throws -> [SessionDetail.Event] {
+    func fetchSessionEventsOnDay(
+        sessionId: String,
+        day: String,
+        calendar: Calendar
+    ) async throws -> [SessionDetail.Event] {
         let op = DeveloperLog.startOperation(
             "query.session_events_on_day",
             category: "query",
@@ -130,7 +162,11 @@ extension AppEnvironment {
         do {
             let (db, _) = try ensureServices()
             let rows = try await db.pool.read { conn in
-                try Aggregator.fetchEventsForSessionOnDay(db: conn, sessionId: sessionId, day: day)
+                try Aggregator.fetchEventsForSessionOnDay(
+                    db: conn,
+                    sessionId: sessionId,
+                    day: day,
+                    calendar: calendar)
             }
             DeveloperLog.finishOperation(op, fields: [
                 "rows": .int(rows.count),

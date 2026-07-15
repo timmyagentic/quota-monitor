@@ -13,12 +13,11 @@ private struct HistoryDayRange {
 
 // Day-bucketed history queries powering the History tab.
 //
-// All day grouping is local-calendar correct across DST: `fetchDays` buckets
-// client-side via `Calendar.startOfDay(for:)`, and the per-day drilldowns filter
-// on a half-open local-day range `[startOfDay, nextDay)` computed with the
-// calendar — so the window honours the DST offset for THAT day, not today's. The
-// previous SQL `date(timestamp, ±offset)` applied today's single offset to all
-// history, mis-bucketing near-midnight events from the opposite DST half.
+// All day grouping is local-calendar correct across DST: paged list windows and
+// per-day drilldowns use half-open local-day ranges `[startOfDay, nextDay)`
+// computed with the same captured calendar. Each window therefore honours the
+// offset for that historical day rather than applying today's offset to all
+// history.
 
 extension Aggregator {
 
@@ -140,52 +139,6 @@ extension Aggregator {
                 ordinal: ordinal,
                 start: start,
                 end: end)
-        }
-    }
-
-    /// Returns days that had at least one usage_event, newest first.
-    /// Buckets by local-calendar day client-side (mirrors `fetchActivity`) so
-    /// each event uses the UTC offset in effect at its own instant.
-    static func fetchDays(
-        db: Database, limit: Int = 365, provider: ProviderFilter = .all,
-        calendar: Calendar = .current
-    ) throws -> [DaySummary] {
-        guard limit > 0 else { return [] }
-        let rows = try Row.fetchCursor(db, sql: """
-            SELECT timestamp, value_usd, total_tokens, session_id
-            FROM usage_events
-            \(provider.whereClause(table: "usage_events"))
-            ORDER BY timestamp DESC, id DESC
-            """)
-
-        var byDay: [Date: (value: Double, tokens: Int64, events: Int, sessions: Set<String>)] = [:]
-        var orderedDays: [Date] = []
-        while let row = try rows.next() {
-            let ts: String = row["timestamp"] ?? ""
-            guard let date = parseTimestamp(ts) else { continue }
-            let dayStart = calendar.startOfDay(for: date)
-            var bucket = byDay[dayStart] ?? (0, 0, 0, [])
-            if bucket.events == 0 {
-                guard orderedDays.count < limit else { break }
-                orderedDays.append(dayStart)
-            }
-            bucket.value += row["value_usd"] ?? 0
-            bucket.tokens += row["total_tokens"] ?? 0
-            bucket.events += 1
-            if let sid: String = row["session_id"] { bucket.sessions.insert(sid) }
-            byDay[dayStart] = bucket
-        }
-
-        let dayFormatter = Self.dayKeyFormatter(calendar)
-        return orderedDays.map { dayStart in
-            let bucket = byDay[dayStart] ?? (0, 0, 0, [])
-            return DaySummary(
-                day: dayFormatter.string(from: dayStart),
-                date: dayStart,
-                valueUSD: bucket.value,
-                tokens: bucket.tokens,
-                eventCount: bucket.events,
-                sessionCount: bucket.sessions.count)
         }
     }
 
