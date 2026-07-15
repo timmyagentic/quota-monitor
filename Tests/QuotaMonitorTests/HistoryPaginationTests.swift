@@ -7,6 +7,7 @@ import Testing
 struct HistoryPaginationTests {
     private struct SQLTrace {
         let statements: [String]
+        let aggregateSQL: String
         let aggregatePlan: [String]
         let olderPlan: [String]
     }
@@ -83,7 +84,7 @@ struct HistoryPaginationTests {
             db.trace(options: [])
 
             let aggregateSQL = try #require(statements.first {
-                $0.contains("UNION ALL")
+                $0.contains("GROUP BY ordinal")
             })
             let olderSQL = try #require(statements.first {
                 $0.contains("ORDER BY timestamp DESC") && $0.contains("LIMIT 1")
@@ -96,6 +97,7 @@ struct HistoryPaginationTests {
             ).map { $0["detail"] as String }
             return SQLTrace(
                 statements: statements,
+                aggregateSQL: aggregateSQL,
                 aggregatePlan: aggregatePlan,
                 olderPlan: olderPlan)
         }
@@ -246,6 +248,57 @@ struct HistoryPaginationTests {
         #expect(detail.summary == summary)
     }
 
+    @Test("one page assigns all seven date buckets and aggregates each independently")
+    func aggregateAcrossAllSevenBuckets() throws {
+        let calendar = utcCalendar()
+        let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
+        let db = try makeDatabase()
+        try seed(
+            in: db, sessionId: "shared", timestamp: "2026-07-15T08:00:00Z",
+            tokens: 10, valueUSD: 1)
+        try seed(
+            in: db, sessionId: "second", timestamp: "2026-07-15T09:00:00Z",
+            tokens: 20, valueUSD: 2)
+        try seed(
+            in: db, sessionId: "shared", timestamp: "2026-07-14T08:00:00Z",
+            tokens: 30, valueUSD: 3)
+        try seed(
+            in: db, sessionId: "day-13", timestamp: "2026-07-13T08:00:00Z",
+            tokens: 40, valueUSD: 4)
+        try seed(
+            in: db, sessionId: "day-12", timestamp: "2026-07-12T08:00:00Z",
+            tokens: 50, valueUSD: 5)
+        try seed(
+            in: db, sessionId: "day-11", timestamp: "2026-07-11T08:00:00Z",
+            tokens: 60, valueUSD: 6)
+        try seed(
+            in: db, sessionId: "day-10", timestamp: "2026-07-10T08:00:00Z",
+            tokens: 70, valueUSD: 7)
+        try seed(
+            in: db, sessionId: "lower", timestamp: "2026-07-09T00:00:00Z",
+            tokens: 80, valueUSD: 8)
+        try seed(
+            in: db, sessionId: "below-lower", timestamp: "2026-07-08T23:59:59Z",
+            tokens: 900, valueUSD: 90)
+        try seed(
+            in: db, sessionId: "at-upper", timestamp: "2026-07-16T00:00:00Z",
+            tokens: 1_000, valueUSD: 100)
+
+        let page = try db.pool.read {
+            try Aggregator.fetchHistoryPage(db: $0, now: now, calendar: calendar)
+        }
+
+        #expect(page.days.map(\.day) == [
+            "2026-07-15", "2026-07-14", "2026-07-13", "2026-07-12",
+            "2026-07-11", "2026-07-10", "2026-07-09"
+        ])
+        #expect(page.days.map(\.valueUSD) == [3, 3, 4, 5, 6, 7, 8])
+        #expect(page.days.map(\.tokens) == [30, 30, 40, 50, 60, 70, 80])
+        #expect(page.days.map(\.eventCount) == [2, 1, 1, 1, 1, 1, 1])
+        #expect(page.days.map(\.sessionCount) == [2, 1, 1, 1, 1, 1, 1])
+        #expect(page.hasMore)
+    }
+
     @Test("provider filter applies to pages and older lookup")
     func providerFilter() throws {
         let calendar = utcCalendar()
@@ -308,6 +361,33 @@ struct HistoryPaginationTests {
         #expect(page.nextCursor == expectedCursor)
     }
 
+    @Test("spring-forward page assigns dates on both sides of the transition")
+    func springForwardMultipleBuckets() throws {
+        let calendar = newYorkCalendar()
+        let now = try #require(ISO8601.parse("2025-03-09T16:00:00Z"))
+        let db = try makeDatabase()
+        try seed(
+            in: db, sessionId: "march-7", timestamp: "2025-03-07T17:00:00Z",
+            tokens: 7)
+        try seed(
+            in: db, sessionId: "march-8", timestamp: "2025-03-08T17:00:00Z",
+            tokens: 8)
+        try seed(
+            in: db, sessionId: "before-skip", timestamp: "2025-03-09T06:30:00Z",
+            tokens: 9)
+        try seed(
+            in: db, sessionId: "after-skip", timestamp: "2025-03-09T07:30:00Z",
+            tokens: 10)
+
+        let page = try db.pool.read {
+            try Aggregator.fetchHistoryPage(db: $0, now: now, calendar: calendar)
+        }
+
+        #expect(page.days.map(\.day) == ["2025-03-09", "2025-03-08", "2025-03-07"])
+        #expect(page.days.map(\.tokens) == [19, 8, 7])
+        #expect(page.days.map(\.eventCount) == [2, 1, 1])
+    }
+
     @Test("fall-back page ends at the next local midnight")
     func fallBackRange() throws {
         let calendar = newYorkCalendar()
@@ -331,7 +411,7 @@ struct HistoryPaginationTests {
         #expect(page.nextCursor == expectedCursor)
     }
 
-    @Test("all-provider aggregate uses seven indexed range searches")
+    @Test("all-provider aggregate uses one indexed range search")
     func allProviderAggregateQueryPlan() throws {
         let calendar = utcCalendar()
         let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
@@ -341,9 +421,10 @@ struct HistoryPaginationTests {
         let trace = try traceHistorySQL(
             in: db, provider: .all, now: now, calendar: calendar)
 
+        #expect(!trace.aggregateSQL.contains("UNION ALL"))
         #expect(trace.aggregatePlan.filter {
             $0.contains("SEARCH usage_events")
-        }.count == 7)
+        }.count == 1)
         #expect(trace.aggregatePlan.allSatisfy {
             !$0.contains("SCAN usage_events")
         })
@@ -365,9 +446,10 @@ struct HistoryPaginationTests {
         let trace = try traceHistorySQL(
             in: db, provider: .codex, now: now, calendar: calendar)
 
+        #expect(!trace.aggregateSQL.contains("UNION ALL"))
         #expect(trace.aggregatePlan.filter {
             $0.contains("SEARCH usage_events")
-        }.count == 7)
+        }.count == 1)
         #expect(trace.aggregatePlan.allSatisfy {
             !$0.contains("SCAN usage_events")
         })

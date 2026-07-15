@@ -70,8 +70,14 @@ extension Aggregator {
     ) throws -> HistoryPage {
         let ranges = historyDayRanges(
             endingAt: upperBound, pageSize: pageSize, calendar: calendar)
-        let branch = """
-            SELECT ? AS day_key, ? AS ordinal,
+        let bucketCases = Array(
+            repeating: "WHEN timestamp >= ? AND timestamp < ? THEN ?",
+            count: ranges.count
+        ).joined(separator: "\n")
+        let sql = """
+            SELECT CASE
+                   \(bucketCases)
+                   END AS ordinal,
                    SUM(value_usd) AS value_usd,
                    SUM(total_tokens) AS tokens,
                    COUNT(*) AS events,
@@ -79,16 +85,17 @@ extension Aggregator {
             FROM usage_events
             WHERE timestamp >= ? AND timestamp < ?
             \(provider.clause(table: "usage_events"))
+            GROUP BY ordinal
             """
-        let sql = Array(repeating: branch, count: ranges.count)
-            .joined(separator: "\nUNION ALL\n")
         var arguments: [(any DatabaseValueConvertible)?] = []
         for range in ranges {
-            arguments.append(range.dayKey)
-            arguments.append(range.ordinal)
             arguments.append(range.lowerISO)
             arguments.append(range.upperISO)
+            arguments.append(range.ordinal)
         }
+        let lower = ranges.last!.start
+        arguments.append(ISO8601.fractional.string(from: lower))
+        arguments.append(ranges.first!.upperISO)
         let rows = try Row.fetchAll(
             db, sql: sql, arguments: StatementArguments(arguments))
         let byOrdinal = Dictionary(uniqueKeysWithValues: ranges.map { ($0.ordinal, $0) })
@@ -104,7 +111,6 @@ extension Aggregator {
                 eventCount: events,
                 sessionCount: row["sessions"] ?? 0)
         }.sorted { $0.date > $1.date }
-        let lower = ranges.last!.start
         let older = try newestOlderTimestamp(
             db: db, before: lower, provider: provider)
         return HistoryPage(days: days, nextCursor: lower, hasMore: older != nil)
