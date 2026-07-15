@@ -64,16 +64,30 @@ The primary button shows the current version, for example `下载 QuotaMonitor 0
 
 The first-viewport product visual uses synthetic data and current UI anatomy. It must not reuse the stale, sparse `0.2.31` Dashboard screenshot or any private real-data QA capture.
 
+### Showcase Data Density Amendment
+
+Product screenshots must use a reproducible, isolated showcase profile rather than the four-session smoke fixture or edited approximations of the interface. The profile is synthetic and contains no copied session titles, paths, account identifiers, credentials, or usage values from the installed app.
+
+- The Dashboard headline and Trends chart use the 30-day window.
+- At least 24 sessions span at least 18 active days in the last 30 days.
+- Both Codex and Claude Code contribute visible usage, with at least five model or service-tier series in total.
+- The newest Codex and Claude sessions are recent enough to populate both Forecast cards; the Codex sample includes current 5-hour and 7-day windows.
+- The selected Sessions row contains at least six events so model, token, time, and API-equivalent value columns are visibly exercised.
+- The website uses three distinct current-app captures: the Dashboard overview for Forecast and Trends, a scrolled Dashboard state for Activity and Composition, and the Sessions drill-down. The social card reuses the verified Dashboard overview instead of inventing another product UI.
+- All capture source data and the resulting images are visually inspected for private information before publication.
+
 ### Feature Story
 
 Use four focused feature blocks:
 
 1. **Live quota clarity** — active quota windows, remaining/used percentage, reset timing, and provider status.
 2. **Trends and forecast** — 7-day through yearly trends, burn-rate projection, activity, and composition.
-3. **Session drill-down** — search, sort, model and token details, and API-equivalent cost estimates.
+3. **Session drill-down** — search, sort, model and token details, event timing, and API-equivalent cost estimates.
 4. **Local history** — local Codex and Claude Code history is indexed into the app's local SQLite database.
 
 Product claims must use “API-equivalent cost estimate,” not “bill” or “actual spend.” The privacy copy must not claim the application is fully offline: local history remains on the Mac, while live quota refreshes contact the corresponding provider services.
+
+Website copy and alt text must describe only fields present in the current Sessions UI. In particular, they must not claim a duration field; the current detail surface shows Value, Tokens, Events, Started, and event rows for Time, Model, Tokens, and Cost.
 
 ### Installation
 
