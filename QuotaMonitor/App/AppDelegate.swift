@@ -38,6 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.enforceClipFallback()
         }
         self.statusItemController = controller
+        updater.startUpdateReminders { [weak controller] version in
+            controller?.pulseUpdateMarker(version: version)
+        }
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
@@ -124,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `show` already does activate-then-order-front.
         WindowManager.shared.show(needsOnboarding ? "onboarding" : "dashboard")
         return false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        updater?.stopUpdateReminders()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

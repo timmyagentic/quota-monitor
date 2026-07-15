@@ -20,12 +20,23 @@ import Observation
 /// `NSHostingController`.
 @MainActor
 final class StatusItemController: NSObject, NSPopoverDelegate {
+    typealias PulseSleep = @Sendable (_ duration: Duration) async throws -> Void
+
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let env: AppEnvironment
     private let localization: LocalizationStore
     private let settings: SettingsStore
     private let updater: UpdaterController
+    private let pulseSleep: PulseSleep
+    private var pulseTask: Task<Void, Never>?
+    private var pulseGeneration: UInt = 0
+    private var emphasizedUpdateVersion: String?
+
+    var updateMarkerIsEmphasized: Bool {
+        guard let emphasizedUpdateVersion else { return false }
+        return updater.updateAvailability.version == emphasizedUpdateVersion
+    }
 
     /// Invoked when the display configuration changes (external monitor,
     /// resolution, notch) so the owner can re-run the clip check.
@@ -34,11 +45,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     init(env: AppEnvironment,
          localization: LocalizationStore,
          settings: SettingsStore,
-         updater: UpdaterController) {
+         updater: UpdaterController,
+         pulseSleep: @escaping PulseSleep = { duration in
+             try await Task<Never, Never>.sleep(for: duration)
+         }) {
         self.env = env
         self.localization = localization
         self.settings = settings
         self.updater = updater
+        self.pulseSleep = pulseSleep
         self.statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength)
         self.popover = NSPopover()
@@ -72,7 +87,38 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         renderAndObserve()
     }
 
-    deinit { NotificationCenter.default.removeObserver(self) }
+    isolated deinit {
+        pulseTask?.cancel()
+        NSStatusBar.system.removeStatusItem(statusItem)
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    func pulseUpdateMarker(version: String) {
+        guard updater.updateAvailability.version == version else { return }
+        pulseGeneration &+= 1
+        let generation = pulseGeneration
+        pulseTask?.cancel()
+        emphasizedUpdateVersion = version
+        renderLabel()
+
+        let pulseSleep = self.pulseSleep
+        pulseTask = Task { @MainActor [weak self, pulseSleep] in
+            do {
+                try await pulseSleep(.seconds(8))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.endUpdateMarkerPulse(generation: generation)
+        }
+    }
+
+    private func endUpdateMarkerPulse(generation: UInt) {
+        guard generation == pulseGeneration else { return }
+        pulseTask = nil
+        emphasizedUpdateVersion = nil
+        renderLabel()
+    }
 
     // MARK: - label rendering
 
@@ -82,7 +128,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func renderAndObserve() {
         withObservationTracking {
             renderLabel()
-        } onChange: {
+        } onChange: { [weak self] in
             Task { @MainActor [weak self] in self?.renderAndObserve() }
         }
     }
@@ -92,6 +138,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         _ = localization.tickForceRedraw
         let updateVersion = StatusItemUpdateMarker.normalizedVersion(
             updater.updateAvailability.version)
+        if let emphasizedUpdateVersion, emphasizedUpdateVersion != updateVersion {
+            pulseGeneration &+= 1
+            pulseTask?.cancel()
+            pulseTask = nil
+            self.emphasizedUpdateVersion = nil
+        }
         let rows = MenuBarLabelModel.rows(
             iconProviders: settings.menuBarIconProviders,
             enabledProviders: settings.enabledProviders,
@@ -121,7 +173,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         button.attributedTitle = StatusItemUpdateMarker.title(
             base: baseTitle,
-            version: updateVersion)
+            version: updateVersion,
+            emphasized: emphasizedUpdateVersion == updateVersion)
         let accessibilityLabel = StatusItemUpdateMarker.accessibilityLabel(
             base: baseTitle,
             fallback: Branding.appDisplayName,
@@ -277,12 +330,22 @@ enum StatusItemUpdateMarker {
         return version
     }
 
-    static func title(base: NSAttributedString, version: String?) -> NSAttributedString {
+    static func title(
+        base: NSAttributedString,
+        version: String?,
+        emphasized: Bool = false
+    ) -> NSAttributedString {
         guard normalizedVersion(version) != nil else { return base }
         let decorated = NSMutableAttributedString(attributedString: base)
+        let attributes: [NSAttributedString.Key: Any] = emphasized
+            ? [
+                .foregroundColor: NSColor.selectedMenuItemTextColor,
+                .backgroundColor: NSColor.systemOrange,
+            ]
+            : [.foregroundColor: NSColor.systemOrange]
         decorated.append(NSAttributedString(
             string: " ↓",
-            attributes: [.foregroundColor: NSColor.systemOrange]))
+            attributes: attributes))
         return decorated
     }
 

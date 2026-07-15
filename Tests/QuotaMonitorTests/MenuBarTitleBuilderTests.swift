@@ -153,6 +153,32 @@ struct MenuBarTitleBuilderTests {
         }
     }
 
+    @Test("Emphasis changes only marker styling and keeps the exact title width")
+    func updateMarkerEmphasisKeepsFixedStringWidth() {
+        let base = NSAttributedString(
+            string: "5h 42% · 7d 68%",
+            attributes: [.foregroundColor: NSColor.labelColor])
+
+        let normal = StatusItemUpdateMarker.title(
+            base: base,
+            version: "0.2.41",
+            emphasized: false)
+        let emphasized = StatusItemUpdateMarker.title(
+            base: base,
+            version: "0.2.41",
+            emphasized: true)
+
+        #expect(normal.string == emphasized.string)
+        #expect((normal.string as NSString).length == (emphasized.string as NSString).length)
+        for index in 0..<base.length {
+            #expect(NSDictionary(dictionary: normal.attributes(at: index, effectiveRange: nil))
+                .isEqual(to: emphasized.attributes(at: index, effectiveRange: nil)))
+        }
+        let markerIndex = base.length
+        #expect(normal.attribute(.backgroundColor, at: markerIndex, effectiveRange: nil) == nil)
+        #expect(emphasized.attribute(.backgroundColor, at: markerIndex, effectiveRange: nil) != nil)
+    }
+
     @Test("Accessibility label keeps quota copy and restores it after an update clears")
     func accessibilityLabelRestoresQuotaCopyAfterUpdateClears() {
         let base = NSAttributedString(string: "5h 42% · 7d 68%")
