@@ -484,10 +484,20 @@ enum Aggregator {
     /// Used by the rate-limit query family.
     static func parseTimestamp(_ s: String) -> Date? {
         if s.isEmpty { return nil }
+        // Dashboard reports parse the same raw usage rows several times. The
+        // value-type strategy is dramatically cheaper in that hot loop than
+        // routing every canonical timestamp through NSISO8601DateFormatter.
+        if let d = try? Self.iso8601ParseStrategy.parse(s) { return d }
+        // Retain the Foundation formatters as compatibility fallbacks for any
+        // historical ISO shape the stricter strategy does not recognize.
         if let d = ISO8601.fractional.date(from: s) { return d }
         if let d = ISO8601.plain.date(from: s) { return d }
         return Self.sqliteFormatter.date(from: s)
     }
+
+    private static let iso8601ParseStrategy = Date.ISO8601FormatStyle(
+        includingFractionalSeconds: true
+    ).parseStrategy
 
     private static let sqliteFormatter: DateFormatter = {
         let f = DateFormatter()
