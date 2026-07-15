@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.40] — 2026-07-15
+
 #### Summary
 
 - Codex quota cards and the menu-bar label now follow the quota windows that are actually active, so the temporary weekly-only policy no longer appears as a false 5-hour limit or a stale weekly value.
