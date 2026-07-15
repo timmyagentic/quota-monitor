@@ -146,7 +146,25 @@ describe("public product content", () => {
     expect(config.assets.directory).toBe("./public");
     expect(config.assets.binding).toBe("ASSETS");
     expect(config.assets.not_found_handling).toBe("404-page");
-    expect(config.assets.run_worker_first).toEqual(["/download", "/api/release"]);
+    expect(config.assets.run_worker_first).toEqual([
+      "/download",
+      "/api/release",
+      "/api/v1/daily-active",
+    ]);
+    expect(config.d1_databases).toEqual([
+      {
+        binding: "VERSION_STATS_DB",
+        database_name: "quota-monitor-version-stats",
+        migrations_dir: "migrations",
+      },
+    ]);
+    expect(config.ratelimits).toEqual([
+      {
+        name: "DAILY_ACTIVE_RATE_LIMITER",
+        namespace_id: "2026071601",
+        simple: { limit: 120, period: 60 },
+      },
+    ]);
     expect(config.routes).toContainEqual({
       pattern: "quota-monitor.timmyagentic.com",
       custom_domain: true,

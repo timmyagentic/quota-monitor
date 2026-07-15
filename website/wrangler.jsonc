@@ -9,8 +9,25 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/download", "/api/release"]
+    "run_worker_first": ["/download", "/api/release", "/api/v1/daily-active"]
   },
+  "d1_databases": [
+    {
+      "binding": "VERSION_STATS_DB",
+      "database_name": "quota-monitor-version-stats",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "DAILY_ACTIVE_RATE_LIMITER",
+      "namespace_id": "2026071601",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ],
   "routes": [
     {
       "pattern": "quota-monitor.timmyagentic.com",

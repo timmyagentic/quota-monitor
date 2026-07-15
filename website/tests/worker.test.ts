@@ -59,6 +59,37 @@ function assetsBinding(fetcher: Fetcher["fetch"] = vi.fn<Fetcher["fetch"]>()): F
   };
 }
 
+function workerEnv(
+  assets: Fetcher = assetsBinding(),
+  rateLimiter: RateLimit = {
+    async limit(): Promise<RateLimitOutcome> {
+      return { success: true };
+    },
+  },
+): Env {
+  return {
+    ASSETS: assets,
+    DAILY_ACTIVE_RATE_LIMITER: rateLimiter,
+    VERSION_STATS_DB: {
+      prepare() {
+        throw new Error("The version statistics database is unused in this test");
+      },
+      async batch<T = unknown>(): Promise<D1Result<T>[]> {
+        return [];
+      },
+      async exec(): Promise<D1ExecResult> {
+        return { count: 0, duration: 0 };
+      },
+      withSession() {
+        throw new Error("The version statistics database is unused in this test");
+      },
+      async dump(): Promise<ArrayBuffer> {
+        return new ArrayBuffer(0);
+      },
+    },
+  };
+}
+
 const successfulUpstream = (): Response =>
   new Response(new Uint8Array([0x44, 0x4d, 0x47]), {
     status: 200,
@@ -468,7 +499,7 @@ describe("Worker routes", () => {
   it("serves public metadata from /api/release without exposing the upstream URL", async () => {
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/api/release"),
-      { ASSETS: assetsBinding() },
+      workerEnv(),
     );
     const body = await response.text();
 
@@ -490,7 +521,7 @@ describe("Worker routes", () => {
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/download"),
-      { ASSETS: assetsBinding() },
+      workerEnv(),
     );
 
     expect(response.status).toBe(200);
@@ -510,7 +541,7 @@ describe("Worker routes", () => {
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/"),
-      { ASSETS: assetsBinding(assetsFetch) },
+      workerEnv(assetsBinding(assetsFetch)),
     );
 
     expect(response.status).toBe(200);
@@ -530,7 +561,7 @@ describe("Worker routes", () => {
 
       const response = await worker.fetch(
         new Request(`https://quota-monitor.test${pathname}`, { method: "HEAD" }),
-        { ASSETS: assetsBinding(assetsFetch) },
+        workerEnv(assetsBinding(assetsFetch)),
       );
 
       expect(response.status).toBe(405);
@@ -553,9 +584,7 @@ describe("Worker routes", () => {
       method: "HEAD",
     });
 
-    const response = await worker.fetch(request, {
-      ASSETS: assetsBinding(assetsFetch),
-    });
+    const response = await worker.fetch(request, workerEnv(assetsBinding(assetsFetch)));
 
     expect(response.status).toBe(200);
     expect(assetsFetch).toHaveBeenCalledWith(request);
@@ -568,11 +597,28 @@ describe("Worker routes", () => {
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/api/release", { method: "POST" }),
-      { ASSETS: assetsBinding(assetsFetch) },
+      workerEnv(assetsBinding(assetsFetch)),
     );
 
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("GET");
+    expect(assetsFetch).not.toHaveBeenCalled();
+    expectSecurityHeaders(response);
+  });
+
+  it("routes the daily-active endpoint through its POST-only handler", async () => {
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+    const limit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: true });
+
+    const response = await worker.fetch(
+      new Request("https://quota-monitor.test/api/v1/daily-active"),
+      workerEnv(assetsBinding(assetsFetch), { limit }),
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("POST");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(limit).not.toHaveBeenCalled();
     expect(assetsFetch).not.toHaveBeenCalled();
     expectSecurityHeaders(response);
   });

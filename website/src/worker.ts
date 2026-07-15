@@ -1,4 +1,5 @@
 import { renderDownloadError } from "./error-page";
+import { handleDailyActive } from "./daily-active";
 import { fetchLatestRelease, type ReleaseInfo } from "./release";
 
 type ReleaseLoader = () => Promise<ReleaseInfo>;
@@ -178,6 +179,17 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/api/v1/daily-active") {
+      const response = await handleDailyActive(
+        request,
+        env.VERSION_STATS_DB,
+        env.DAILY_ACTIVE_RATE_LIMITER,
+      );
+      for (const [name, value] of Object.entries(securityHeaders)) {
+        response.headers.set(name, value);
+      }
+      return response;
+    }
     if (url.pathname === "/api/release") {
       if (request.method !== "GET") {
         return methodNotAllowed("GET");
