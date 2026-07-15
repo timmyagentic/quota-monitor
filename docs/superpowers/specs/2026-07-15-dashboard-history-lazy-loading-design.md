@@ -1,7 +1,7 @@
 # Dashboard History Seven-Day Lazy Loading
 
 **Date:** 2026-07-15
-**Status:** Approved for implementation
+**Status:** Implemented and verified
 
 ## Background
 
@@ -60,12 +60,14 @@ rollup tables and persistent caches:
   `(timestamp, id, value_usd, total_tokens, session_id)` and
   `(provider, timestamp, id, value_usd, total_tokens, session_id)`. The `id`
   position preserves the existing billing query's `ORDER BY timestamp, id`
-  without a temporary sort, while the remaining columns cover History page
-  aggregates and the older-event lookup.
+  without a temporary sort. The remaining columns cover History page
+  aggregates, while the leading range keys keep the older-event lookup
+  covering.
 - Analytics timestamp parsing uses `Date.ISO8601FormatStyle.ParseStrategy` on
-  the hot path, with the existing SQLite timestamp fallback retained. This
-  removes formatter contention from unrelated Dashboard refresh work that can
-  otherwise delay History publication on the main actor.
+  the hot path, with the existing Foundation ISO-8601 and SQLite timestamp
+  fallbacks retained. This removes formatter contention from unrelated
+  Dashboard refresh work that can otherwise delay History publication on the
+  main actor.
 - `query.days.page.database.*` records the database-reader boundary used for the
   100 ms page-query gate. The existing `query.days.page` operation remains the
   end-to-end data-ready measurement and intentionally includes actor scheduling;
@@ -267,7 +269,10 @@ and does not require another scroll gesture.
 ## Logging and diagnostics
 
 Replace the list operation's all-history semantics with
-`query.days.page`. Each operation records:
+`query.days.page`. The top-level operation records end-to-end data-ready
+latency, including any actor-resume delay. Its
+`query.days.page.database.start/finish` child records only the database-reader
+boundary and supplies the page-query acceptance value. Each operation records:
 
 - provider filter;
 - page size;
@@ -275,7 +280,7 @@ Replace the list operation's all-history semantics with
 - UTC lower and upper query bounds;
 - number of visible day rows;
 - whether more data exists;
-- elapsed duration through the existing operation logger.
+- elapsed duration at its documented facade or database boundary.
 
 Logs contain only bounds and counts, never event payloads, session titles, or
 local database paths. The day-detail operation remains independently timed so a
@@ -361,6 +366,12 @@ If the live source changes, report the final event/day counts and page cardinali
 alongside the timings rather than comparing against stale values. The acceptance
 thresholds remain 100 ms for the database page and 500 ms to visible initial
 content.
+
+Final Release shadow verification used 69,040 events across 102 active dates.
+Eight fresh All-provider remounts measured 4-5 ms at the database-reader
+boundary and 88-111 ms at the facade/data-ready boundary; first content was
+visible in 200 ms. Two independent gestures produced 7 -> 14 -> 21 loaded days
+without momentum cascade, and the source fingerprint remained unchanged.
 
 ## Expected files and delivery
 

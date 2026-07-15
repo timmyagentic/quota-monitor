@@ -54,7 +54,7 @@ publication:
 - `Tests/QuotaMonitorTests/HistoryPaginationTests.swift` — calendar-page aggregation, gaps, providers, and SQLite query-plan coverage.
 - `Tests/QuotaMonitorTests/HistoryPaginationStateTests.swift` — single-flight, cursor, deduplication, retry, and cancellation semantics.
 - `Tests/QuotaMonitorTests/HistoryPaginationScrollBridgeTests.swift` — input generation, geometry, momentum, and bridge source-contract coverage.
-- `Tests/QuotaMonitorTests/HistoryViewWiringTests.swift` — view/query-facade wiring and the prohibition on footer-only auto-loading.
+- `Tests/QuotaMonitorTests/HistoryViewWiringTests.swift` — view/query-facade wiring, dual database/facade timing, and the prohibition on footer-only auto-loading.
 - `docs/superpowers/plans/2026-07-15-dashboard-history-lazy-loading.md` — this execution plan.
 
 **Modified:**
@@ -62,11 +62,14 @@ publication:
 - `QuotaMonitor/Core/Analytics/Aggregator.swift` — `HistoryPage`, typed page trigger, and fast stored-timestamp parsing.
 - `QuotaMonitor/Core/Analytics/AggregatorHistory.swift` — bounded page aggregation, older-event lookup, and gap jump; final removal of `fetchDays`.
 - `QuotaMonitor/Core/Storage/Migrations.swift` — v16 covering History indexes that retain billing-order compatibility.
-- `QuotaMonitor/App/QueryFacade.swift` — logged async page API plus calendar propagation into detail/event queries.
+- `QuotaMonitor/App/QueryFacade.swift` — logged async page API with separate reader/facade timings plus calendar propagation into detail/event queries.
 - `QuotaMonitor/Features/History/HistoryView.swift` — page-driven sidebar, cancellable tasks, footer states, captured calendar, and detail/event propagation.
 - `QuotaMonitor/Core/Localization/L10n.swift` — recent-empty, loading-older, load-failure, and Retry copy.
 - `Tests/QuotaMonitorTests/AggregatorDSTTests.swift` — remove the obsolete `fetchDays` raw-scan expectations while retaining detail/event DST coverage.
+- `Tests/QuotaMonitorTests/AggregatorTests.swift` — stored-timestamp compatibility and hot-loop performance coverage.
+- `Tests/QuotaMonitorTests/BillingBlocksTests.swift` — query-plan coverage for billing order under the v16 indexes.
 - `Tests/QuotaMonitorTests/BrandingLocalizationTests.swift` — exact bilingual History strings.
+- `Tests/QuotaMonitorTests/MigrationsTests.swift` — fresh-schema and v15-to-v16 index migration coverage.
 - `docs/superpowers/specs/2026-07-15-dashboard-history-lazy-loading-design.md` — mark the user-approved spec ready for implementation.
 - `CHANGELOG.md` and `CHANGELOG.zh-Hans.md` — user-visible Unreleased notes.
 
@@ -406,7 +409,7 @@ let details = try db.pool.read { conn in
 #expect(!details.contains { $0.contains("TEMP B-TREE FOR ORDER BY") })
 ```
 
-Repeat with `.codex` and assert the plan mentions `index_usage_events_on_provider_timestamp`. Allow the bounded `USE TEMP B-TREE FOR count(DISTINCT)` detail. Trace the older lookup and assert it is a covering-index search. Assert no executed History statement contains the former raw projection `SELECT timestamp, value_usd, total_tokens, session_id`.
+Assert the all-provider plan mentions `idx_usage_events_history_cover`. Repeat with `.codex` and assert the plan mentions `idx_usage_events_provider_history_cover`. Allow the bounded `USE TEMP B-TREE FOR count(DISTINCT)` detail. Trace the older lookup and assert it is a covering-index search. Assert no executed History statement contains the former raw projection `SELECT timestamp, value_usd, total_tokens, session_id`.
 
 - [ ] **Step 6: Confirm GREEN and commit Task 1**
 
@@ -1622,7 +1625,7 @@ Open `$ARTIFACT_DIR/computer-use-qa.md` and use its exact app target for the nex
 
 - [ ] **Step 3: Measure initial and next-page behavior on the exact QA app**
 
-With Computer Use, activate the exact QA app, start a timestamped observation, and click History. Record click-to-visible duration and confirm only one facade `query.days.page.start/finish` pair plus its `query.days.page.database.start/finish` pair with trigger `initial`. Wait without scrolling and confirm no second pair. Scroll downward once inside the sidebar and confirm exactly one new pair of each layer with trigger `scroll`, older rows append, and selection/detail stay unchanged. Let momentum finish and confirm no third pair; use a new downward gesture and confirm the third page then loads.
+With Computer Use, activate the exact QA app, start a timestamped observation, and click History. Record click-to-visible duration and confirm only one facade `query.days.page.start/finish` pair plus its `query.days.page.database.start/finish` pair with trigger `initial`. Repeat eight fresh All-provider remounts; every database duration must be strictly below 100 ms, and report the facade min/median/p95/max separately. Wait without scrolling and confirm no second pair. Scroll downward once inside the sidebar and confirm exactly one new pair of each layer with trigger `scroll`, older rows append, and selection/detail stay unchanged. Let momentum finish and confirm no third pair; use a new downward gesture and confirm the third page then loads.
 
 Repeat a first-page check for All, Codex, and Claude using the toolbar filter; each remount must issue exactly one initial operation. Open a day, expand a session, and verify detail/session-event rendering still works. Then stop the log stream:
 
@@ -1735,7 +1738,8 @@ Create `/tmp/quota-monitor-history-pr.md` with `apply_patch`. Use these exact se
 
 ## Performance
 - Current event, active-day, and initial-page counts from the Task 7 SQLite report
-- Initial and next page `duration_ms` values from `history-page-unified.log`
+- Initial and next-page `query.days.page.database.finish` values from `history-page-unified.log` as the `<100 ms` database gate
+- Corresponding `query.days.page.finish` facade/data-ready values reported separately for transparency
 - History click-to-visible duration from the Task 7 Computer Use observation
 - One gesture loaded at most one page; a new gesture was required for the next page
 
