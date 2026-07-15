@@ -223,6 +223,7 @@ struct HistoryView: View {
             loadingDetail = false
             detailRequestID = nil
         } catch {
+            guard !Task.isCancelled else { return }
             guard detailRequestID == requestID else { return }
             detail = nil
             detailErrorMessage = String(describing: error)

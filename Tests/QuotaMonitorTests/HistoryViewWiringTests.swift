@@ -111,6 +111,36 @@ struct HistoryViewWiringTests {
         #expect(source.contains("detailRequestID = nil"))
     }
 
+    @Test("Cancelled ordinary detail failures cannot publish state")
+    func cancelledOrdinaryDetailFailureCannotPublishState() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Features/History/HistoryView.swift")
+        let loadDetail = try Self.sourceSlice(
+            source,
+            from: "private func loadDetail(",
+            to: "// MARK: - Sidebar row")
+        let catchStart = try #require(loadDetail.range(
+            of: "} catch {")?.lowerBound)
+        let ordinaryCatch = Self.normalized(String(loadDetail[catchStart...]))
+
+        let cancellation = try #require(ordinaryCatch.range(
+            of: "guard !Task.isCancelled else { return }"))
+        let requestIdentity = try #require(ordinaryCatch.range(
+            of: "guard detailRequestID == requestID else { return }"))
+        #expect(cancellation.lowerBound < requestIdentity.lowerBound)
+
+        let stateWrites = [
+            "detail = nil",
+            "detailErrorMessage = String(describing: error)",
+            "loadingDetail = false",
+            "detailRequestID = nil"
+        ]
+        for stateWrite in stateWrites {
+            let mutation = try #require(ordinaryCatch.range(of: stateWrite))
+            #expect(requestIdentity.lowerBound < mutation.lowerBound)
+        }
+    }
+
     @Test("History query facade exposes only logged page reads")
     func queryFacadeExposesOnlyLoggedPageReads() throws {
         let source = Self.normalized(try Self.source(
