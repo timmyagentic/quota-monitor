@@ -716,7 +716,7 @@ struct DailyActiveReporterTests {
             store: fixture.store,
             transport: transport,
             sleeper: sleeper)
-        weak let weakReporter = reporter
+        weak var weakReporter = reporter
 
         await reporter?.start()
         _ = await waitForRequests(1, transport: transport)
@@ -746,7 +746,7 @@ struct DailyActiveReporterTests {
             store: fixture.store,
             transport: transport,
             sleeper: sleeper)
-        weak let weakReporter = reporter
+        weak var weakReporter = reporter
 
         await reporter?.start()
         _ = await waitForRequests(1, transport: transport)
@@ -835,7 +835,7 @@ struct DailyActiveReporterTests {
         var transport: DailyActiveURLSessionTransport? = autoreleasepool {
             DailyActiveURLSessionTransport()
         }
-        weak let weakTransport = transport
+        weak var weakTransport = transport
 
         let response = try await transport?.send(URLRequest(url: server.sourceURL))
         #expect(response?.statusCode == 307)

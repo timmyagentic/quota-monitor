@@ -258,7 +258,7 @@ struct AnonymousVersionReportingCoordinatorTests {
                 presentDisclosure: { await presenter.present() },
                 notificationCenter: center,
                 scheduleNextTick: { operation in scheduler.schedule(operation) })
-        weak let weakCoordinator = coordinator
+        weak var weakCoordinator = coordinator
 
         coordinator?.launch()
         scheduler.runAll()
