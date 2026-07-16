@@ -22,6 +22,20 @@ enum Branding {
     /// the CFBundleName plist key.
     static let appCodeName = "QuotaMonitor"
 
+    /// Stable allowlisted value for anonymous version statistics. Unknown
+    /// build variants fail closed instead of inventing a server dimension.
+    static var telemetrySlug: String? {
+        telemetrySlug(forCodeName: appCodeName)
+    }
+
+    static func telemetrySlug(forCodeName codeName: String) -> String? {
+        switch codeName {
+        case "QuotaMonitor": "quota-monitor"
+        case "CodexMonitor": "codex-monitor"
+        default: nil
+        }
+    }
+
     /// Version string for User-Agent and similar protocol contexts.
     /// Reads from the bundle at runtime; falls back to "unknown".
     static var versionString: String {
