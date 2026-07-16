@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Website HTTP requests now reach the Worker before static asset delivery, so insecure links consistently redirect to HTTPS.
+
+### Fixed
+
+- **Worker-owned HTTP redirects cover static pages.** Every website route now runs through the Worker before static asset delivery, so insecure GET and HEAD requests receive the same exact HTTPS 301 contract as API and maintainer routes.
+
 ## [0.2.41] — 2026-07-16
 
 #### Summary
