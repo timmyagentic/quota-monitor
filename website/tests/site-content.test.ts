@@ -450,6 +450,27 @@ describe("public product content", () => {
     expect(translations["zh-Hans"].privacyPolicyIntro).toBe(
       "只有在你明确选择加入后，Quota Monitor 才会发送匿名每日活跃安装检查。统计结果估算的是活跃安装量，绝不是用户数。",
     );
+    expect(translations.en.privacyStatisticsBody).toBe(
+      "The optional check-in JSON payload contains only six documented fields, and neither it nor the D1 raw or aggregate datasets contain a stable installation or device ID. The service is not designed to link installations across UTC days; Cloudflare network processing is disclosed separately in the full policy.",
+    );
+    expect(translations["zh-Hans"].privacyStatisticsBody).toBe(
+      "可选检查 JSON payload 只包含公开说明的六个字段；它和 D1 原始及聚合数据集都不包含稳定安装 ID 或设备 ID。服务的设计目的不是跨 UTC 日关联安装；Cloudflare 的网络处理在完整政策中单独披露。",
+    );
+    expect(translations.en.privacyPolicyTokenBody).toBe(
+      "The random token rotates every UTC day. A failed request reuses it only within the same UTC day. If the app version changes that day, a later check-in can reclassify the same record. The check-in JSON payload and D1 raw or aggregate datasets contain no stable installation or device ID, and the service is not designed to link installations across UTC days. This statement does not cover Cloudflare's separate network-boundary processing, which is disclosed below.",
+    );
+    expect(translations["zh-Hans"].privacyPolicyTokenBody).toBe(
+      "随机令牌在每个 UTC 日轮换。失败请求只会在同一个 UTC 日内复用它。如果当天应用版本发生变化，后续检查可以对同一条记录重新分类。检查 JSON payload 与 D1 原始或聚合数据集都不包含稳定安装 ID 或设备 ID，服务的设计目的不是跨 UTC 日关联安装。该说明不涵盖 Cloudflare 单独的网络边界处理，相关内容见下文披露。",
+    );
+    expect(translations.en.privacyPolicyOptOutBody).toBe(
+      "Turning reporting off immediately stops new requests, attempts to cancel any in-flight request, deletes the local token and success state for that day, and suppresses same-UTC-day re-enablement until the next UTC day. A request that has already reached the service may still be accepted. Any resulting or previously received anonymous row cannot be individually found or deleted because no stable ID or deletion handle exists; it follows the same live raw-row and D1 Time Travel retention above.",
+    );
+    expect(translations["zh-Hans"].privacyPolicyOptOutBody).toBe(
+      "关闭报告会立即停止发起新请求，尝试取消任何在途请求，删除本机当天的令牌和成功状态，并抑制同一 UTC 日内重新启用，直到下一个 UTC 日。已经到达服务端的请求仍可能被接收。由此产生或此前已接收的匿名行无法单独定位或删除，因为不存在稳定 ID 或删除句柄；它们遵循上述相同的实时原始行和 D1 Time Travel 保留规则。",
+    );
+    expect(readPublic("index.html")).toContain(translations.en.privacyStatisticsBody);
+    expect(html).toContain(translations.en.privacyPolicyTokenBody);
+    expect(html).toContain(translations.en.privacyPolicyOptOutBody);
 
     for (const policy of policies) {
       const wire = policy.privacyPolicyWireBody;
@@ -490,7 +511,9 @@ describe("public product content", () => {
     expect(englishPolicy).toMatch(/Quota Monitor and CodexMonitor-branded builds[\s\S]*brand field[\s\S]*quota-monitor[\s\S]*codex-monitor/i);
     expect(englishPolicy).toMatch(/version changes that day[\s\S]*reclassify/i);
     expect(englishPolicy).toMatch(/one deduplicated active-installation record per token per UTC day/i);
-    expect(englishPolicy).toMatch(/no stable installation ID, device ID, or cross-day link/i);
+    expect(englishPolicy).toMatch(/check-in JSON payload and D1 raw or aggregate datasets contain no stable installation or device ID/i);
+    expect(englishPolicy).toMatch(/not designed to link installations across UTC days/i);
+    expect(englishPolicy).toMatch(/does not cover Cloudflare's separate network-boundary processing/i);
     expect(englishPolicy).toMatch(/date-domain-separated SHA-256 hash/i);
     expect(englishPolicy).toMatch(/original token is never written to D1 or the app's custom logs/i);
     expect(englishPolicy).toMatch(/source IP[\s\S]*best-effort Workers RateLimit binding/i);
@@ -499,8 +522,10 @@ describe("public product content", () => {
     expect(englishPolicy).toMatch(/not an exact one-hour promise/i);
     expect(englishPolicy).toMatch(/7 days on the Free plan or 30 days on a Paid plan/i);
     expect(englishPolicy).toMatch(/retained for 400 days[\s\S]*private maintainer dashboard/i);
+    expect(englishPolicy).toMatch(/attempts to cancel any in-flight request/i);
+    expect(englishPolicy).toMatch(/already reached the service may still be accepted/i);
     expect(englishPolicy).toMatch(/suppresses same-UTC-day re-enablement until the next UTC day/i);
-    expect(englishPolicy).toMatch(/cannot be individually found or deleted[\s\S]*no stable ID or deletion handle/i);
+    expect(englishPolicy).toMatch(/resulting or previously received anonymous row[\s\S]*same live raw-row and D1 Time Travel retention/i);
     expect(englishPolicy).toMatch(/name or account details[\s\S]*email[\s\S]*persistent identifier/i);
     expect(englishPolicy).toMatch(/system or hardware information[\s\S]*session titles/i);
     expect(englishPolicy).toMatch(/prompts, messages, or history[\s\S]*quota or usage values/i);
@@ -516,7 +541,9 @@ describe("public product content", () => {
     expect(chinesePolicy).toMatch(/Quota Monitor 和 CodexMonitor 品牌构建[\s\S]*brand 字段[\s\S]*quota-monitor[\s\S]*codex-monitor/);
     expect(chinesePolicy).toMatch(/当天应用版本发生变化[\s\S]*重新分类/);
     expect(chinesePolicy).toMatch(/每个令牌在每个 UTC 日最多保留一条去重后的活跃安装记录/);
-    expect(chinesePolicy).toMatch(/没有稳定安装 ID、设备 ID 或跨日关联/);
+    expect(chinesePolicy).toMatch(/检查 JSON payload 与 D1 原始或聚合数据集都不包含稳定安装 ID 或设备 ID/);
+    expect(chinesePolicy).toMatch(/设计目的不是跨 UTC 日关联安装/);
+    expect(chinesePolicy).toMatch(/不涵盖 Cloudflare 单独的网络边界处理/);
     expect(chinesePolicy).toMatch(/日期域隔离的 SHA-256 哈希/);
     expect(chinesePolicy).toMatch(/原始令牌绝不会写入 D1 或应用自定义日志/);
     expect(chinesePolicy).toMatch(/源 IP[\s\S]*尽力而为的 Workers RateLimit binding/);
@@ -525,8 +552,10 @@ describe("public product content", () => {
     expect(chinesePolicy).toMatch(/并非精确的一小时承诺/);
     expect(chinesePolicy).toMatch(/Free 计划 7 天或 Paid 计划 30 天/);
     expect(chinesePolicy).toMatch(/保留 400 天[\s\S]*私有维护者仪表盘/);
+    expect(chinesePolicy).toMatch(/尝试取消任何在途请求/);
+    expect(chinesePolicy).toMatch(/已经到达服务端的请求仍可能被接收/);
     expect(chinesePolicy).toMatch(/同一 UTC 日内重新启用[\s\S]*下一个 UTC 日/);
-    expect(chinesePolicy).toMatch(/无法单独定位或删除[\s\S]*稳定 ID 或删除句柄/);
+    expect(chinesePolicy).toMatch(/由此产生或此前已接收的匿名行[\s\S]*相同的实时原始行和 D1 Time Travel 保留规则/);
     expect(chinesePolicy).toMatch(/会话和历史数据[\s\S]*本地 SQLite 数据库/);
     expect(chinesePolicy).toMatch(/Codex 或 Claude Code 实时额度刷新[\s\S]*对应的服务提供方/);
     expect(chinesePolicy).toMatch(/独立于匿名版本统计[\s\S]*服务提供方的隐私条款/);
