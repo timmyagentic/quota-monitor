@@ -75,7 +75,6 @@ final class UpdateWindowController: NSObject, NSWindowDelegate {
     /// reply here.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         state.handleWindowClose()
-        return true
     }
 
     /// Drop our reference once the window actually closes (whether the user

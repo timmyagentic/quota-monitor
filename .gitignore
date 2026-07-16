@@ -29,6 +29,10 @@ __pycache__/
 website/node_modules/
 website/.wrangler/
 website/startup-profile.*
+.env
+.env.*
+.dev.vars
+.dev.vars.*
 
 # App-local
 *.dmg

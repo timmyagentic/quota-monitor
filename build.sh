@@ -29,6 +29,8 @@ esac
 APP_NAME="QuotaMonitor"
 APP_BUNDLE=".build/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
+PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
+APP_PRIVACY_MANIFEST="${CONTENTS}/Resources/PrivacyInfo.xcprivacy"
 ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
 if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
     ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
@@ -63,6 +65,15 @@ rm -rf "${APP_BUNDLE}"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 cp "${BIN_PATH}" "${CONTENTS}/MacOS/${APP_NAME}"
 cp Resources/Info.plist "${CONTENTS}/Info.plist"
+
+echo "==> Verifying and embedding PrivacyInfo.xcprivacy"
+python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"
+cp "${PRIVACY_MANIFEST_SOURCE}" "${APP_PRIVACY_MANIFEST}"
+python3 tools/verify-privacy-manifest.py "${APP_PRIVACY_MANIFEST}"
+if ! cmp -s "${PRIVACY_MANIFEST_SOURCE}" "${APP_PRIVACY_MANIFEST}"; then
+    echo "error: bundled privacy manifest differs from source" >&2
+    exit 1
+fi
 
 # Inject version from Resources/VERSION (single source of truth) into the
 # *copied* Info.plist. The source Info.plist now ships placeholder 0.0.0/0

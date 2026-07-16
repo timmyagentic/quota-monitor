@@ -157,17 +157,25 @@ final class UpdateWindowState {
     /// disabled) until the app restarts.
     ///
     /// Closures are cleared afterwards so a subsequent programmatic `close()`
-    /// can't fire a second, conflicting reply.
-    func handleWindowClose() {
+    /// can't fire a second, conflicting reply. Extraction and installation are
+    /// non-cancellable Sparkle phases, so reject a title-bar close instead of
+    /// invoking the download cancellation callback after its valid lifetime.
+    func handleWindowClose() -> Bool {
         switch phase {
-        case .checking, .downloading, .extracting:
+        case .checking, .downloading:
             fireCancel()
+            return true
         case .updateAvailable, .readyToInstall:
             fireDismiss()
+            return true
         case .error, .upToDate:
             fireAcknowledge()
-        case .idle, .installing, .done:
+            return true
+        case .extracting, .installing:
+            return false
+        case .idle, .done:
             clearActionHandlers()   // no reply is owed to Sparkle in these phases
+            return true
         }
     }
 

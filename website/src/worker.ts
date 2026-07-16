@@ -1,5 +1,10 @@
 import { renderDownloadError } from "./error-page";
+import { handleDailyActive } from "./daily-active";
 import { fetchLatestRelease, type ReleaseInfo } from "./release";
+import {
+  aggregateClosedDays,
+  handleVersionDistribution,
+} from "./version-distribution";
 
 type ReleaseLoader = () => Promise<ReleaseInfo>;
 
@@ -15,6 +20,14 @@ const securityHeaders = {
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
 } as const;
+
+const dashboardSecurityHeaders = {
+  ...securityHeaders,
+  "Content-Security-Policy": securityHeaders["Content-Security-Policy"].replace(
+    "form-action 'none'",
+    "form-action 'self'",
+  ),
+};
 
 const upstreamFetchInit = {
   redirect: "manual",
@@ -69,6 +82,21 @@ function methodNotAllowed(allow: string): Response {
       "Content-Type": "text/plain; charset=utf-8",
     },
   });
+}
+
+function optionalStringBinding(env: Env, name: string): string | undefined {
+  const value: unknown = Reflect.get(env, name);
+  return typeof value === "string" ? value : undefined;
+}
+
+function withSecurityHeaders(
+  response: Response,
+  headers: Readonly<Record<string, string>> = securityHeaders,
+): Response {
+  for (const [name, value] of Object.entries(headers)) {
+    response.headers.set(name, value);
+  }
+  return response;
 }
 
 export async function handleReleaseAPI(
@@ -178,6 +206,38 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (
+      url.protocol === "http:" &&
+      (request.method === "GET" || request.method === "HEAD")
+    ) {
+      url.protocol = "https:";
+      return withSecurityHeaders(new Response(null, {
+        status: 301,
+        headers: {
+          "Cache-Control": "no-store",
+          Location: url.toString(),
+        },
+      }));
+    }
+
+    if (url.pathname === "/api/v1/daily-active") {
+      const response = await handleDailyActive(
+        request,
+        env.VERSION_STATS_DB,
+        env.DAILY_ACTIVE_COLO_RATE_LIMITER,
+        env.DAILY_ACTIVE_RATE_LIMITER,
+      );
+      return withSecurityHeaders(response);
+    }
+    if (url.pathname === "/maintainer/versions") {
+      const response = await handleVersionDistribution(
+        request,
+        env.VERSION_STATS_DB,
+        optionalStringBinding(env, "VERSION_STATS_ADMIN_TOKEN"),
+        env.ADMIN_VERSION_STATS_RATE_LIMITER,
+      );
+      return withSecurityHeaders(response, dashboardSecurityHeaders);
+    }
     if (url.pathname === "/api/release") {
       if (request.method !== "GET") {
         return methodNotAllowed("GET");
@@ -196,9 +256,27 @@ export default {
 
     const asset = await env.ASSETS.fetch(request);
     const response = new Response(asset.body, asset);
-    for (const [name, value] of Object.entries(securityHeaders)) {
-      response.headers.set(name, value);
+    return withSecurityHeaders(response);
+  },
+
+  async scheduled(controller, env, _ctx): Promise<void> {
+    const day = new Date(controller.scheduledTime).toISOString().slice(0, 10);
+    try {
+      const changes = await aggregateClosedDays(
+        env.VERSION_STATS_DB,
+        controller.scheduledTime,
+      );
+      console.info({
+        event: "version_distribution_aggregation_succeeded",
+        day,
+        ...changes,
+      });
+    } catch {
+      console.error({
+        event: "version_distribution_aggregation_failed",
+        day,
+      });
+      throw new Error("Scheduled aggregation failed");
     }
-    return response;
   },
 } satisfies ExportedHandler<Env>;

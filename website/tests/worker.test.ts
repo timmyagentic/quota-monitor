@@ -1,3 +1,4 @@
+import { timingSafeEqual, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderDownloadError } from "../src/error-page";
 import { ReleaseLookupError, type ReleaseInfo } from "../src/release";
@@ -44,9 +45,15 @@ const SECURITY_HEADERS = {
   "Permissions-Policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
 } as const;
 
-function expectSecurityHeaders(response: Response): void {
+function expectSecurityHeaders(
+  response: Response,
+  formAction: "none" | "self" = "none",
+): void {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-    expect(response.headers.get(name), name).toBe(value);
+    const expected = name === "Content-Security-Policy" && formAction === "self"
+      ? value.replace("form-action 'none'", "form-action 'self'")
+      : value;
+    expect(response.headers.get(name), name).toBe(expected);
   }
 }
 
@@ -57,6 +64,144 @@ function assetsBinding(fetcher: Fetcher["fetch"] = vi.fn<Fetcher["fetch"]>()): F
       throw new Error("Socket connections are not available in this test binding");
     },
   };
+}
+
+const TEST_D1_META: D1Meta & Record<string, unknown> = {
+  duration: 0,
+  size_after: 0,
+  rows_read: 0,
+  rows_written: 0,
+  last_row_id: 0,
+  changed_db: false,
+  changes: 0,
+};
+
+function testD1Result<T>(results: T[], changes = 0): D1Result<T> {
+  return {
+    success: true,
+    meta: { ...TEST_D1_META, changed_db: changes > 0, changes },
+    results,
+  };
+}
+
+class WorkerTestStatement implements D1PreparedStatement {
+  readonly bindings: unknown[] = [];
+
+  constructor(
+    readonly query: string,
+    private readonly rows: Record<string, unknown>[],
+  ) {}
+
+  bind(...values: unknown[]): D1PreparedStatement {
+    this.bindings.splice(0, this.bindings.length, ...values);
+    return this;
+  }
+
+  async first<T = unknown>(colName?: string): Promise<T | null> {
+    const row = this.rows[0];
+    if (row === undefined) return null;
+    return (colName === undefined ? row : row[colName]) as T ?? null;
+  }
+
+  async run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    return testD1Result(this.rows as T[]);
+  }
+
+  async all<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    return testD1Result(this.rows as T[]);
+  }
+
+  async raw<T = unknown[]>(options: { columnNames: true }): Promise<[string[], ...T[]]>;
+  async raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>;
+  async raw<T = unknown[]>(
+    options?: { columnNames?: boolean },
+  ): Promise<T[] | [string[], ...T[]]> {
+    const rows = this.rows as T[];
+    return options?.columnNames === true ? [[], ...rows] : rows;
+  }
+}
+
+class WorkerTestDatabase implements D1Database {
+  readonly statements: WorkerTestStatement[] = [];
+  readonly batchCalls: D1PreparedStatement[][] = [];
+  batchChanges = [0, 0, 0];
+  batchFailure: Error | null = null;
+
+  constructor(
+    private readonly rows: (query: string) => Record<string, unknown>[] = () => [],
+    private readonly rejectPrepare = false,
+  ) {}
+
+  prepare(query: string): D1PreparedStatement {
+    if (this.rejectPrepare) {
+      throw new Error("The version statistics database is unused in this test");
+    }
+    const statement = new WorkerTestStatement(query, this.rows(query));
+    this.statements.push(statement);
+    return statement;
+  }
+
+  async batch<T = unknown>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]> {
+    this.batchCalls.push(statements);
+    if (this.batchFailure !== null) throw this.batchFailure;
+    return statements.map((_, index) =>
+      testD1Result<T>([], this.batchChanges[index] ?? 0)
+    );
+  }
+
+  async exec(): Promise<D1ExecResult> {
+    return { count: 0, duration: 0 };
+  }
+
+  withSession(): D1DatabaseSession {
+    throw new Error("D1 sessions are unused in Worker tests");
+  }
+
+  async dump(): Promise<ArrayBuffer> {
+    return new ArrayBuffer(0);
+  }
+}
+
+function allowLimiter(): RateLimit {
+  return {
+    async limit(): Promise<RateLimitOutcome> {
+      return { success: true };
+    },
+  };
+}
+
+function workerEnv(
+  assets: Fetcher = assetsBinding(),
+  rateLimiter: RateLimit = allowLimiter(),
+  coloRateLimiter: RateLimit = allowLimiter(),
+  adminRateLimiter: RateLimit = allowLimiter(),
+  database: D1Database = new WorkerTestDatabase(() => [], true),
+  adminSecret?: string,
+): Env {
+  const env = {
+    ASSETS: assets,
+    DAILY_ACTIVE_RATE_LIMITER: rateLimiter,
+    DAILY_ACTIVE_COLO_RATE_LIMITER: coloRateLimiter,
+    ADMIN_VERSION_STATS_RATE_LIMITER: adminRateLimiter,
+    VERSION_STATS_DB: database,
+    VERSION_STATS_ADMIN_TOKEN: adminSecret ?? "",
+  };
+  return env;
+}
+
+function stubWorkerCrypto(): void {
+  vi.stubGlobal("crypto", {
+    subtle: {
+      digest: webcrypto.subtle.digest.bind(webcrypto.subtle),
+      timingSafeEqual(left: ArrayBuffer, right: ArrayBuffer): boolean {
+        return timingSafeEqual(new Uint8Array(left), new Uint8Array(right));
+      },
+    },
+  });
+}
+
+function adminAuthorization(secret: string): string {
+  return `Basic ${btoa(`admin:${secret}`)}`;
 }
 
 const successfulUpstream = (): Response =>
@@ -463,12 +608,70 @@ describe("Worker routes", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["GET", "http://quota-monitor.test/", "https://quota-monitor.test/"],
+    [
+      "GET",
+      "http://quota-monitor.test/privacy?lang=zh-Hans&source=settings",
+      "https://quota-monitor.test/privacy?lang=zh-Hans&source=settings",
+    ],
+    [
+      "HEAD",
+      "http://quota-monitor.test/api/release?fresh=1",
+      "https://quota-monitor.test/api/release?fresh=1",
+    ],
+  ])(
+    "redirects HTTP %s %s to the same HTTPS host, path, and query",
+    async (method, source, destination) => {
+      const assetsFetch = vi.fn<Fetcher["fetch"]>();
+
+      const response = await worker.fetch(
+        new Request(source, { method }),
+        workerEnv(assetsBinding(assetsFetch)),
+      );
+
+      expect(response.status).toBe(301);
+      expect(response.headers.get("Location")).toBe(destination);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(await response.text()).toBe("");
+      expectSecurityHeaders(response);
+      expect(assetsFetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not redirect an insecure daily-active POST body", async () => {
+    const database = new WorkerTestDatabase();
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+
+    const response = await worker.fetch(
+      new Request("http://quota-monitor.test/api/v1/daily-active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      workerEnv(
+        assetsBinding(assetsFetch),
+        allowLimiter(),
+        allowLimiter(),
+        allowLimiter(),
+        database,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(database.statements).toEqual([]);
+    expect(assetsFetch).not.toHaveBeenCalled();
   });
 
   it("serves public metadata from /api/release without exposing the upstream URL", async () => {
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/api/release"),
-      { ASSETS: assetsBinding() },
+      workerEnv(),
     );
     const body = await response.text();
 
@@ -490,7 +693,7 @@ describe("Worker routes", () => {
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/download"),
-      { ASSETS: assetsBinding() },
+      workerEnv(),
     );
 
     expect(response.status).toBe(200);
@@ -510,7 +713,7 @@ describe("Worker routes", () => {
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/"),
-      { ASSETS: assetsBinding(assetsFetch) },
+      workerEnv(assetsBinding(assetsFetch)),
     );
 
     expect(response.status).toBe(200);
@@ -530,7 +733,7 @@ describe("Worker routes", () => {
 
       const response = await worker.fetch(
         new Request(`https://quota-monitor.test${pathname}`, { method: "HEAD" }),
-        { ASSETS: assetsBinding(assetsFetch) },
+        workerEnv(assetsBinding(assetsFetch)),
       );
 
       expect(response.status).toBe(405);
@@ -553,9 +756,7 @@ describe("Worker routes", () => {
       method: "HEAD",
     });
 
-    const response = await worker.fetch(request, {
-      ASSETS: assetsBinding(assetsFetch),
-    });
+    const response = await worker.fetch(request, workerEnv(assetsBinding(assetsFetch)));
 
     expect(response.status).toBe(200);
     expect(assetsFetch).toHaveBeenCalledWith(request);
@@ -568,12 +769,233 @@ describe("Worker routes", () => {
 
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/api/release", { method: "POST" }),
-      { ASSETS: assetsBinding(assetsFetch) },
+      workerEnv(assetsBinding(assetsFetch)),
     );
 
     expect(response.status).toBe(405);
     expect(response.headers.get("Allow")).toBe("GET");
     expect(assetsFetch).not.toHaveBeenCalled();
     expectSecurityHeaders(response);
+  });
+
+  it("routes the daily-active endpoint through its POST-only handler", async () => {
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+    const limit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: true });
+
+    const response = await worker.fetch(
+      new Request("https://quota-monitor.test/api/v1/daily-active"),
+      workerEnv(assetsBinding(assetsFetch), { limit }),
+    );
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("Allow")).toBe("POST");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(limit).not.toHaveBeenCalled();
+    expect(assetsFetch).not.toHaveBeenCalled();
+    expectSecurityHeaders(response);
+  });
+
+  it("routes ingest through the per-colo best-effort circuit breaker before its per-IP limiter", async () => {
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+    const ipLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: true });
+    const coloLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: false });
+
+    const response = await worker.fetch(
+      new Request("https://quota-monitor.test/api/v1/daily-active", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "CF-Connecting-IP": "203.0.113.50",
+        },
+        body: "{malformed",
+      }),
+      workerEnv(
+        assetsBinding(assetsFetch),
+        { limit: ipLimit },
+        { limit: coloLimit },
+      ),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(coloLimit).toHaveBeenCalledWith({ key: "daily-active-colo" });
+    expect(ipLimit).not.toHaveBeenCalled();
+    expect(assetsFetch).not.toHaveBeenCalled();
+    expectSecurityHeaders(response);
+  });
+
+  it("challenges unauthenticated dashboard requests before querying D1", async () => {
+    stubWorkerCrypto();
+    const database = new WorkerTestDatabase();
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+    const adminLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: true });
+
+    const response = await worker.fetch(
+      new Request("https://quota-monitor.test/maintainer/versions", {
+        headers: {
+          Authorization: adminAuthorization("wrong"),
+          "CF-Connecting-IP": "203.0.113.51",
+        },
+      }),
+      workerEnv(
+        assetsBinding(assetsFetch),
+        allowLimiter(),
+        allowLimiter(),
+        { limit: adminLimit },
+        database,
+        "dashboard-secret",
+      ),
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("WWW-Authenticate")).toContain("Basic");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Vary")).toBe("Authorization");
+    expect(response.headers.get("Content-Security-Policy")).toContain(
+      "form-action 'self'",
+    );
+    expect(response.headers.get("Content-Security-Policy")).not.toContain(
+      "form-action 'none'",
+    );
+    expect(adminLimit).toHaveBeenCalledWith({ key: "203.0.113.51" });
+    expect(database.statements).toEqual([]);
+    expect(assetsFetch).not.toHaveBeenCalled();
+    expectSecurityHeaders(response, "self");
+  });
+
+  it("fails the dashboard closed when its secret binding is absent", async () => {
+    const database = new WorkerTestDatabase();
+    const adminLimit = vi.fn<RateLimit["limit"]>().mockResolvedValue({ success: true });
+
+    const response = await worker.fetch(
+      new Request("https://quota-monitor.test/maintainer/versions"),
+      workerEnv(
+        assetsBinding(),
+        allowLimiter(),
+        allowLimiter(),
+        { limit: adminLimit },
+        database,
+      ),
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.text()).toBe("Service unavailable");
+    expect(adminLimit).not.toHaveBeenCalled();
+    expect(database.statements).toEqual([]);
+    expectSecurityHeaders(response, "self");
+  });
+
+  it("serves the authenticated dashboard from grouped and aggregate D1 rows", async () => {
+    stubWorkerCrypto();
+    const database = new WorkerTestDatabase((query) =>
+      query.includes("daily_active_observations")
+        ? [{ day: "2026-07-16", version: "0.2.43", brand: "quota-monitor", channel: "developer-id", active_count: 4 }]
+        : [{ day: "2026-07-15", version: "0.2.42", brand: "quota-monitor", channel: "developer-id", active_count: 3 }],
+    );
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+
+    const response = await worker.fetch(
+      new Request("https://quota-monitor.test/maintainer/versions?range=30", {
+        headers: { Authorization: adminAuthorization("dashboard-secret") },
+      }),
+      workerEnv(
+        assetsBinding(assetsFetch),
+        allowLimiter(),
+        allowLimiter(),
+        allowLimiter(),
+        database,
+        "dashboard-secret",
+      ),
+    );
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(response.headers.get("Cache-Control")).toBe("private, no-store");
+    expect(response.headers.get("Vary")).toBe("Authorization");
+    expect(database.statements).toHaveLength(2);
+    expect(html).toContain("Anonymous version distribution");
+    expect(html).not.toContain("dashboard-secret");
+    expect(assetsFetch).not.toHaveBeenCalled();
+    expectSecurityHeaders(response, "self");
+  });
+
+  it("awaits scheduled closed-day aggregation in one three-statement batch", async () => {
+    const database = new WorkerTestDatabase();
+    database.batchChanges = [12, 9, 2];
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const scheduledTime = Date.parse("2026-07-16T07:15:00.000Z");
+    const controller: ScheduledController = {
+      scheduledTime,
+      cron: "15 * * * *",
+      noRetry: vi.fn(),
+    };
+
+    await worker.scheduled(
+      controller,
+      workerEnv(
+        assetsBinding(),
+        allowLimiter(),
+        allowLimiter(),
+        allowLimiter(),
+        database,
+      ),
+      undefined!,
+    );
+
+    expect(database.batchCalls).toHaveLength(1);
+    expect(database.batchCalls[0]).toHaveLength(3);
+    expect(database.statements.map((statement) => statement.bindings)).toEqual([
+      ["2026-07-16"],
+      ["2026-07-16"],
+      ["2025-06-11"],
+    ]);
+    expect(info).toHaveBeenCalledExactlyOnceWith({
+      event: "version_distribution_aggregation_succeeded",
+      day: "2026-07-16",
+      aggregateChanges: 12,
+      rawDeleteChanges: 9,
+      retentionDeleteChanges: 2,
+    });
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("logs only a fixed event and UTC day when scheduled aggregation fails", async () => {
+    const database = new WorkerTestDatabase();
+    database.batchFailure = new Error(
+      "Authorization https://private.test token_hash=secret body=private 203.0.113.70",
+    );
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const controller: ScheduledController = {
+      scheduledTime: Date.parse("2026-07-16T23:15:00.000Z"),
+      cron: "15 * * * *",
+      noRetry: vi.fn(),
+    };
+
+    await expect(
+      worker.scheduled(
+        controller,
+        workerEnv(
+          assetsBinding(),
+          allowLimiter(),
+          allowLimiter(),
+          allowLimiter(),
+          database,
+        ),
+        undefined!,
+      ),
+    ).rejects.toThrow("Scheduled aggregation failed");
+
+    expect(info).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledExactlyOnceWith({
+      event: "version_distribution_aggregation_failed",
+      day: "2026-07-16",
+    });
+    expect(JSON.stringify(error.mock.calls)).not.toMatch(
+      /Authorization|https?:|token|hash|body|203\.0\.113\.70|private/i,
+    );
   });
 });

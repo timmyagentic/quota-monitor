@@ -80,7 +80,7 @@ final class UpdaterController {
             standardDefaults: .standard,
             currentInternalVersion: Bundle.main.object(
                 forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
-            localQAActive: LocalQAEnvironment.isActive())
+            localQARequested: LocalQAEnvironment.isQARequested())
         self.updateAvailability = runtime.updateAvailability
         self.reminderPresentationEnabled = runtime.reminderPresentationEnabled
 
@@ -147,7 +147,7 @@ final class UpdaterController {
         distribution: DistributionChannel,
         defaults: UserDefaults,
         currentInternalVersion: String,
-        localQAActive: Bool
+        localQARequested: Bool
     ) -> RuntimeConfiguration {
         let isAppStore = distribution == .appStore
         return RuntimeConfiguration(
@@ -155,8 +155,8 @@ final class UpdaterController {
                 defaults: defaults,
                 currentInternalVersion: currentInternalVersion,
                 persistenceEnabled: !isAppStore),
-            sparkleEnabled: !isAppStore && !localQAActive,
-            reminderPresentationEnabled: !isAppStore && !localQAActive)
+            sparkleEnabled: !isAppStore && !localQARequested,
+            reminderPresentationEnabled: !isAppStore && !localQARequested)
     }
 
     static func makeDefaultRuntimeConfiguration(
@@ -164,9 +164,9 @@ final class UpdaterController {
         defaults: UserDefaults?,
         standardDefaults: UserDefaults,
         currentInternalVersion: String,
-        localQAActive: Bool
+        localQARequested: Bool
     ) -> RuntimeConfiguration {
-        guard !localQAActive || defaults != nil else {
+        guard !localQARequested || defaults != nil else {
             return RuntimeConfiguration(
                 updateAvailability: PersistentUpdateAvailability(
                     defaults: standardDefaults,
@@ -179,7 +179,7 @@ final class UpdaterController {
             distribution: distribution,
             defaults: defaults ?? standardDefaults,
             currentInternalVersion: currentInternalVersion,
-            localQAActive: localQAActive)
+            localQARequested: localQARequested)
     }
 
     func startUpdateReminders(

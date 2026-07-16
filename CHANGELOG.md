@@ -30,20 +30,24 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.41] — 2026-07-16
+
 #### Summary
 
 - Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
 - Update reminders now survive relaunches, remain visible in the menu bar, and return gently instead of disappearing after Later.
 - Update releases are now checked end to end so a published download cannot quietly disappear from the in-app updater.
+- You can now choose to share anonymous version statistics, helping show which app versions remain active without sending account or usage data.
 
 ### Added
 
-- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile, and its download button serves the latest notarized DMG directly from the site without retaining routine visitor request logs or reusing a stale browser-cached installer.
+- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile; its download button serves the latest notarized DMG directly from the site, adds no application-level visitor analytics or custom request logging, and never reuses a stale browser-cached installer.
+- **Opt-in anonymous version statistics.** With explicit permission, Developer ID builds send only the UTC day, app version, brand, distribution channel, schema version, and a rotating daily token so maintainers can see anonymous active-install version distribution; Settings can turn it off at any time, and the bilingual privacy policy explains retention and network-boundary handling.
 
 ### Changed
 
 - **Brand-aware update-feed migration.** Existing custom and CodexMonitor feeds now stay untouched while only known incorrect QuotaMonitor feeds are repaired.
-- **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, and fail when a feed exceeds 100 KB.
+- **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, verify the newest DMG's URL, size, signature-metadata format, and byte-range availability, and fail when a feed exceeds 100 KB.
 - **Gentle reminder cadence.** Choosing Later schedules the first reminder for exactly 24 hours later, followed by another reminder every 3 days until the update is resolved.
 - **Quiet menu-bar reminders.** A due reminder emphasizes the native menu-bar status item for eight seconds without stealing focus, opening a window, or requesting notification permission.
 - **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.

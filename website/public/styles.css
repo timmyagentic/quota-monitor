@@ -421,6 +421,10 @@ p {
     gap: clamp(36px, 6vw, 84px);
 }
 
+.privacy-summary-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
 .privacy-heading h2 {
     margin-bottom: 14px;
 }
@@ -444,6 +448,121 @@ p {
 
 .privacy-detail p {
     font-size: 15px;
+}
+
+.text-link {
+    display: inline-flex;
+    margin-top: 18px;
+    color: var(--blue);
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 4px;
+}
+
+.text-link:hover {
+    color: var(--blue-hover);
+}
+
+.privacy-policy-page {
+    padding: clamp(68px, 8vw, 108px) 0;
+    background: var(--surface-soft);
+}
+
+.privacy-policy-layout {
+    max-width: 880px;
+}
+
+.privacy-policy-hero {
+    margin-bottom: 44px;
+}
+
+.privacy-policy-eyebrow {
+    margin-bottom: 12px;
+    color: var(--blue);
+    font-size: 13px;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    line-height: 1.4;
+    text-transform: uppercase;
+}
+
+.privacy-policy-hero h1 {
+    max-width: 18ch;
+    margin-bottom: 22px;
+    font-size: clamp(2.55rem, 6vw, 4.35rem);
+    font-weight: 780;
+    letter-spacing: -0.05em;
+    line-height: 1.02;
+}
+
+.privacy-policy-intro {
+    max-width: 46rem;
+    margin-bottom: 0;
+    color: var(--muted);
+    font-size: 19px;
+    line-height: 1.7;
+}
+
+.privacy-policy-scope {
+    max-width: 46rem;
+    margin: 18px 0 0;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.7;
+}
+
+.privacy-policy-section {
+    padding: clamp(26px, 4vw, 38px);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--surface);
+}
+
+.privacy-policy-section + .privacy-policy-section {
+    margin-top: 18px;
+}
+
+.privacy-policy-section h2 {
+    margin-bottom: 18px;
+    font-size: clamp(1.35rem, 3vw, 1.7rem);
+    font-weight: 740;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+}
+
+.privacy-policy-section p {
+    margin-bottom: 16px;
+    color: var(--muted);
+    line-height: 1.75;
+}
+
+.privacy-policy-section p:last-child {
+    margin-bottom: 0;
+}
+
+.privacy-policy-list {
+    margin: 0;
+    padding-left: 1.35rem;
+    list-style: disc;
+}
+
+.privacy-policy-list li {
+    padding-left: 0.35rem;
+    color: var(--blue);
+}
+
+.privacy-policy-list li + li {
+    margin-top: 14px;
+}
+
+.privacy-policy-list p {
+    color: var(--muted);
+}
+
+.privacy-policy-home {
+    margin-top: 32px;
 }
 
 .installation-section {
@@ -779,6 +898,27 @@ body[data-page="download-error"] .not-found {
         gap: 38px;
     }
 
+    .privacy-policy-page {
+        padding: 52px 0;
+    }
+
+    .privacy-policy-hero {
+        margin-bottom: 34px;
+    }
+
+    .privacy-policy-intro {
+        font-size: 17px;
+    }
+
+    .privacy-policy-section {
+        padding: 24px 20px;
+        border-radius: 15px;
+    }
+
+    .privacy-policy-home {
+        width: 100%;
+    }
+
     .privacy-detail {
         padding-top: 16px;
     }
@@ -896,6 +1036,10 @@ body[data-page="download-error"] .not-found {
     .final-cta-layout,
     .installation-steps li,
     .privacy-detail {
+        border-color: CanvasText;
+    }
+
+    .privacy-policy-section {
         border-color: CanvasText;
     }
 

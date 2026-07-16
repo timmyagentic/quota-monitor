@@ -9,8 +9,58 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
-    "run_worker_first": ["/download", "/api/release"]
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": [
+      "/download",
+      "/api/release",
+      "/api/v1/daily-active",
+      "/maintainer/versions"
+    ]
   },
+  "d1_databases": [
+    {
+      "binding": "VERSION_STATS_DB",
+      "database_name": "quota-monitor-version-stats",
+      "database_id": "d4001c95-442b-4ad0-80ee-0c06747637d9",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "DAILY_ACTIVE_RATE_LIMITER",
+      "namespace_id": "2026071601",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      // Per-colo best-effort circuit breaker; this is not a global Durable Object.
+      "name": "DAILY_ACTIVE_COLO_RATE_LIMITER",
+      "namespace_id": "2026071602",
+      "simple": {
+        "limit": 5000,
+        "period": 60
+      }
+    },
+    {
+      "name": "ADMIN_VERSION_STATS_RATE_LIMITER",
+      "namespace_id": "2026071603",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    }
+  ],
+  "triggers": {
+    "crons": ["15 * * * *"]
+  },
+  "secrets": {
+    "required": ["VERSION_STATS_ADMIN_TOKEN"]
+  },
+  "logpush": false,
+  "tail_consumers": [],
+  "streaming_tail_consumers": [],
   "routes": [
     {
       "pattern": "quota-monitor.timmyagentic.com",
@@ -18,11 +68,17 @@
     }
   ],
   "observability": {
-    "enabled": false,
+    "enabled": true,
     "logs": {
-      "enabled": false,
+      "enabled": true,
       "invocation_logs": false,
-      "persist": false
+      "persist": true,
+      "destinations": []
+    },
+    "traces": {
+      "enabled": false,
+      "persist": false,
+      "destinations": []
     }
   }
 }

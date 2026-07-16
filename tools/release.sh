@@ -116,6 +116,7 @@ echo "==> CONFIG=release QM_DISTRIBUTION=developer-id ./build.sh"
 CONFIG=release QM_DISTRIBUTION=developer-id ./build.sh
 
 APP_BUNDLE=".build/QuotaMonitor.app"
+PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
 if [[ ! -d "${APP_BUNDLE}" ]]; then
     echo "error: ${APP_BUNDLE} missing after build" >&2
     exit 1
@@ -183,6 +184,15 @@ hdiutil attach -nobrowse -readonly -mountpoint "${MOUNT_POINT}" "${DMG_PATH}" >/
 INSIDE_APP="${MOUNT_POINT}/QuotaMonitor.app"
 if [[ ! -d "${INSIDE_APP}" ]]; then
     echo "error: ${INSIDE_APP} missing inside DMG" >&2
+    exit 1
+fi
+
+INSIDE_PRIVACY_MANIFEST="${INSIDE_APP}/Contents/Resources/PrivacyInfo.xcprivacy"
+echo "==> Verifying privacy manifest inside DMG"
+python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"
+python3 tools/verify-privacy-manifest.py "${INSIDE_PRIVACY_MANIFEST}"
+if ! cmp -s "${PRIVACY_MANIFEST_SOURCE}" "${INSIDE_PRIVACY_MANIFEST}"; then
+    echo "error: DMG privacy manifest differs from source" >&2
     exit 1
 fi
 

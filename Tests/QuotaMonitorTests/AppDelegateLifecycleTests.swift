@@ -50,6 +50,25 @@ struct AppDelegateLifecycleTests {
         #expect(statusItem < release)
     }
 
+    @Test("App delegate wires one token store through reporter, suppression, and termination")
+    func anonymousReportingUsesOneStoreAndStopsAtTermination() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
+        let launch = String(try Self.sourceSlice(
+            source,
+            from: "func applicationDidFinishLaunching",
+            to: "private func closeStrayWindows"))
+        let termination = String(try Self.sourceSlice(
+            source,
+            from: "func applicationWillTerminate",
+            to: "func applicationShouldTerminateAfterLastWindowClosed"))
+
+        #expect(launch.contains("let dailyActiveTokenStore = DailyActiveTokenStore("))
+        #expect(launch.contains("DailyActiveReporter(\n            store: dailyActiveTokenStore"))
+        #expect(launch.contains("dailyActiveTokenStore.suppressUntilNextUTCDay"))
+        #expect(launch.contains("anonymousVersionReportingCoordinator?.launch()"))
+        #expect(termination.contains("anonymousVersionReportingCoordinator?.terminate()"))
+    }
+
     private static func offset(of needle: String, in source: String) throws -> String.Index {
         guard let range = source.range(of: needle) else {
             throw CocoaError(.formatting)
