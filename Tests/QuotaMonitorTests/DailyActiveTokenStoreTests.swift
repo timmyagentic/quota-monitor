@@ -205,6 +205,11 @@ struct DailyActiveTokenStoreTests {
             channel: "direct|stable") == false)
         #expect(await store.hasSucceeded(
             day: original.day,
+            version: "0.2|41",
+            brand: "Quota|Monitor",
+            channel: "direct|stable") == false)
+        #expect(await store.hasSucceeded(
+            day: original.day,
             version: "0.2",
             brand: "40|Quota|Monitor",
             channel: "direct|stable") == false)
