@@ -14,8 +14,8 @@ struct AppDelegateLifecycleTests {
             NSApplication.shared) == false)
     }
 
-    @Test("Persisted update state renders before overdue reminder presentation starts")
-    func reminderStartsOnlyAfterStatusControllerIsStored() throws {
+    @Test("Update state is passed to popover content without native reminder wiring")
+    func updateStateStaysOutOfNativeStatusItemLifecycle() throws {
         let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
         let launch = String(try Self.sourceSlice(
             source,
@@ -25,29 +25,12 @@ struct AppDelegateLifecycleTests {
         let updater = try Self.offset(of: "updater = UpdaterController(", in: launch)
         let controller = try Self.offset(of: "let controller = StatusItemController(", in: launch)
         let stored = try Self.offset(of: "self.statusItemController = controller", in: launch)
-        let reminders = try Self.offset(of: "updater.startUpdateReminders", in: launch)
         #expect(updater < controller)
         #expect(controller < stored)
-        #expect(stored < reminders)
-
-        let reminderWiring = String(launch[reminders...])
-        #expect(reminderWiring.contains("[weak controller]"))
-        #expect(reminderWiring.contains("controller?.pulseUpdateMarker(version: version)"))
-    }
-
-    @Test("Application termination stops reminder scheduling")
-    func terminationStopsUpdateReminders() throws {
-        let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
-        let termination = String(try Self.sourceSlice(
-            source,
-            from: "func applicationWillTerminate",
-            to: "func applicationShouldTerminateAfterLastWindowClosed"))
-
-        let reminders = try Self.offset(of: "updater?.stopUpdateReminders()", in: termination)
-        let statusItem = try Self.offset(of: "statusItemController?.stop()", in: termination)
-        let release = try Self.offset(of: "statusItemController = nil", in: termination)
-        #expect(reminders < statusItem)
-        #expect(statusItem < release)
+        #expect(launch.contains("updater: updater"))
+        #expect(!source.contains("startUpdateReminders"))
+        #expect(!source.contains("stopUpdateReminders"))
+        #expect(!source.contains("pulseUpdateMarker"))
     }
 
     @Test("App delegate wires one token store through reporter, suppression, and termination")

@@ -1,5 +1,11 @@
 # Update Reminder Reliability Implementation Plan
 
+> **Status:** Superseded before release. The accepted follow-up keeps pending
+> update state across relaunches but removes the native status-item marker and
+> 24-hour/3-day reminder scheduler. Users see a blue `Update` button only after
+> opening the menu popover, Dashboard, or Advanced settings. The remaining
+> document is retained as historical design context.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Keep a discovered Sparkle update visible across relaunches, expose it on the native status item, remind once after 24 hours and then every 3 days without stealing focus, and make Later/Skip/install semantics match Sparkle.

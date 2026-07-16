@@ -41,9 +41,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.enforceClipFallback()
         }
         self.statusItemController = controller
-        updater.startUpdateReminders { [weak controller] version in
-            controller?.pulseUpdateMarker(version: version)
-        }
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
@@ -184,7 +181,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         anonymousVersionReportingCoordinator?.terminate()
-        updater?.stopUpdateReminders()
         statusItemController?.stop()
         statusItemController = nil
     }

@@ -48,7 +48,7 @@ struct MainWindowView: View {
 
             if updater.updateAvailability.isVisible {
                 ToolbarItem(placement: .primaryAction) {
-                    PersistentUpdateBadge(style: .toolbar)
+                    PersistentUpdateBadge()
                 }
             }
 

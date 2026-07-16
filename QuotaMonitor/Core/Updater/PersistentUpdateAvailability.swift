@@ -11,8 +11,53 @@ struct PendingUpdateSnapshot: Codable, Equatable, Sendable {
     let displayVersion: String
     var phase: Phase
     let firstSeenAt: Date
-    var nextReminderAt: Date?
-    var deliveredReminderCount: Int
+    var isDeferred: Bool
+
+    init(
+        internalVersion: String,
+        displayVersion: String,
+        phase: Phase,
+        firstSeenAt: Date,
+        isDeferred: Bool
+    ) {
+        self.internalVersion = internalVersion
+        self.displayVersion = displayVersion
+        self.phase = phase
+        self.firstSeenAt = firstSeenAt
+        self.isDeferred = isDeferred
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case internalVersion
+        case displayVersion
+        case phase
+        case firstSeenAt
+        case isDeferred
+        // Read-only migration key from the unreleased reminder scheduler.
+        case nextReminderAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        internalVersion = try container.decode(String.self, forKey: .internalVersion)
+        displayVersion = try container.decode(String.self, forKey: .displayVersion)
+        phase = try container.decode(Phase.self, forKey: .phase)
+        firstSeenAt = try container.decode(Date.self, forKey: .firstSeenAt)
+        if let deferred = try container.decodeIfPresent(Bool.self, forKey: .isDeferred) {
+            isDeferred = deferred
+        } else {
+            isDeferred = try container.decodeIfPresent(Date.self, forKey: .nextReminderAt) != nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(internalVersion, forKey: .internalVersion)
+        try container.encode(displayVersion, forKey: .displayVersion)
+        try container.encode(phase, forKey: .phase)
+        try container.encode(firstSeenAt, forKey: .firstSeenAt)
+        try container.encode(isDeferred, forKey: .isDeferred)
+    }
 }
 
 /// Observable update state that survives window dismissal and, when explicitly
@@ -89,6 +134,9 @@ final class PersistentUpdateAvailability {
         // Sparkle's installer callback cannot be persisted. Rediscovery must
         // rehydrate it before Install & Relaunch becomes available again.
         primaryAction = .install
+        // Re-encode once so snapshots from the unreleased reminder scheduler
+        // migrate to the smaller deferred-state schema immediately.
+        persistSnapshot()
     }
 
     @discardableResult
@@ -105,7 +153,7 @@ final class PersistentUpdateAvailability {
         let visibleVersion = displayVersion.isEmpty ? internalVersion : displayVersion
         let dismissSilently = !userInitiated
             && snapshot?.internalVersion == internalVersion
-            && snapshot?.nextReminderAt != nil
+            && snapshot?.isDeferred == true
 
         if let existing = snapshot, existing.internalVersion == internalVersion {
             snapshot = PendingUpdateSnapshot(
@@ -113,16 +161,14 @@ final class PersistentUpdateAvailability {
                 displayVersion: visibleVersion,
                 phase: existing.phase,
                 firstSeenAt: existing.firstSeenAt,
-                nextReminderAt: existing.nextReminderAt,
-                deliveredReminderCount: existing.deliveredReminderCount)
+                isDeferred: existing.isDeferred)
         } else {
             snapshot = PendingUpdateSnapshot(
                 internalVersion: internalVersion,
                 displayVersion: visibleVersion,
                 phase: .available,
                 firstSeenAt: now,
-                nextReminderAt: nil,
-                deliveredReminderCount: 0)
+                isDeferred: false)
         }
         primaryAction = .install
         persistSnapshot()
@@ -149,8 +195,7 @@ final class PersistentUpdateAvailability {
                 displayVersion: visibleVersion,
                 phase: .readyToInstall,
                 firstSeenAt: existing.firstSeenAt,
-                nextReminderAt: existing.nextReminderAt,
-                deliveredReminderCount: existing.deliveredReminderCount)
+                isDeferred: existing.isDeferred)
             persistSnapshot()
         } else if let version, !version.isEmpty {
             snapshot = PendingUpdateSnapshot(
@@ -158,8 +203,7 @@ final class PersistentUpdateAvailability {
                 displayVersion: version,
                 phase: .readyToInstall,
                 firstSeenAt: Date(),
-                nextReminderAt: nil,
-                deliveredReminderCount: 0)
+                isDeferred: false)
             persistSnapshot()
         }
         primaryAction = .installAndRelaunch
@@ -169,28 +213,11 @@ final class PersistentUpdateAvailability {
         // Legacy dismissals preserve the badge without scheduling a reminder.
     }
 
-    func markLater(now: Date = Date()) {
+    func markLater() {
         guard var snapshot else { return }
-        snapshot.nextReminderAt = UpdateReminderPolicy.nextDate(
-            after: now,
-            deliveredCount: snapshot.deliveredReminderCount)
+        snapshot.isDeferred = true
         self.snapshot = snapshot
         persistSnapshot()
-    }
-
-    func consumeDueReminder(now: Date = Date()) -> String? {
-        guard var snapshot, UpdateReminderPolicy.isDue(snapshot, at: now) else {
-            return nil
-        }
-
-        snapshot.deliveredReminderCount += 1
-        snapshot.nextReminderAt = UpdateReminderPolicy.nextDate(
-            after: now,
-            deliveredCount: snapshot.deliveredReminderCount)
-        let displayVersion = snapshot.displayVersion
-        self.snapshot = snapshot
-        persistSnapshot()
-        return displayVersion
     }
 
     func markSkipped() {
@@ -216,6 +243,5 @@ final class PersistentUpdateAvailability {
     private static func isValid(_ snapshot: PendingUpdateSnapshot) -> Bool {
         !snapshot.internalVersion.isEmpty
             && !snapshot.displayVersion.isEmpty
-            && snapshot.deliveredReminderCount >= 0
     }
 }

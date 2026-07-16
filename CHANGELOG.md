@@ -33,6 +33,11 @@ window copy.
 #### Summary
 
 - Website HTTP requests now reach the Worker before static asset delivery, so insecure links consistently redirect to HTTPS.
+- Available updates now appear as a blue `Update` button after you open Quota Monitor, without changing the macOS menu-bar title or repeatedly prompting after Later.
+
+### Changed
+
+- **Calmer persistent update entry.** Choosing Later keeps the same version quiet during automatic checks while its blue `Update` button remains available across relaunches in the menu popover, Dashboard toolbar, and Advanced settings.
 
 ### Fixed
 
@@ -43,7 +48,7 @@ window copy.
 #### Summary
 
 - Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
-- Update reminders now survive relaunches, remain visible in the menu bar, and return gently instead of disappearing after Later.
+- Available updates now survive relaunches as a blue `Update` button inside Quota Monitor, without adding a marker to the macOS menu-bar title or repeatedly prompting after Later.
 - Update releases are now checked end to end so a published download cannot quietly disappear from the in-app updater.
 - You can now choose to share anonymous version statistics, helping show which app versions remain active without sending account or usage data.
 
@@ -56,15 +61,14 @@ window copy.
 
 - **Brand-aware update-feed migration.** Existing custom and CodexMonitor feeds now stay untouched while only known incorrect QuotaMonitor feeds are repaired.
 - **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, verify the newest DMG's URL, size, signature-metadata format, and byte-range availability, and fail when a feed exceeds 100 KB.
-- **Gentle reminder cadence.** Choosing Later schedules the first reminder for exactly 24 hours later, followed by another reminder every 3 days until the update is resolved.
-- **Quiet menu-bar reminders.** A due reminder emphasizes the native menu-bar status item for eight seconds without stealing focus, opening a window, or requesting notification permission.
+- **Calm update follow-up.** Choosing Later keeps the same version quiet during automatic checks while a blue `Update` button remains visible in the menu popover, Dashboard toolbar, and Advanced settings until the update is resolved; the native menu-bar title stays unchanged.
 - **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
 
 ### Fixed
 
 - **Update publication cannot silently skip the Appcast.** A release now hard-fails when publishing credentials are missing, checks the completed notarized DMG against its sidecar checksum, Sparkle-signs it before uploading the same unchanged file, and fails if its bytes change or Appcast publication cannot proceed.
 - **Legacy CodexMonitor feed size.** The oversized installed-client feed was surgically reduced without changing versions, download URLs, lengths, signatures, or the legacy URL existing clients use.
-- **Pending updates no longer disappear.** The pending version and menu-bar marker survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
+- **Pending updates no longer disappear.** The pending version and blue in-app `Update` entry survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
 
 ## [0.2.40] — 2026-07-15
 
