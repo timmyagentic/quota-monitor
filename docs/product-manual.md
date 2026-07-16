@@ -128,7 +128,7 @@ General 适合普通用户日常调整：
 - `Show in menu bar`：选择哪些已追踪工具出现在菜单栏读数中。
 - `Can't find the menu-bar icon?`：打开找回菜单栏图标的帮助。
 - `Tracked tools`：开启或关闭 Codex、Claude Code 的追踪。关闭某个工具后，对应后台轮询和页面卡片会停止显示。至少要保留一个工具。
-- `Share anonymous version statistics`：仅在你明确开启后，每天发送一次匿名的应用版本、品牌和分发渠道等六个字段，帮助维护者估算仍在活跃使用的安装版本。它不会发送账号、用量历史、路径、设备 ID 或稳定标识；关闭后会停止后续请求并清理当天的本地上报状态。
+- `Share anonymous version statistics`：仅在你明确开启后，每个 UTC 日最多形成一条按当天去重的活跃安装记录；网络失败时可能重试发送同样的应用版本、品牌和分发渠道等六个字段。它帮助维护者估算仍在活跃使用的安装版本，不会发送账号、用量历史、路径、设备 ID 或稳定标识；关闭后会停止后续请求并清理当天的本地上报状态。
 
 ![匿名版本统计隐私设置](assets/product-manual/87c757d/settings-privacy-local-qa.png)
 

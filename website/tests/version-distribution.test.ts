@@ -477,7 +477,7 @@ describe("private maintainer dashboard", () => {
     expect(html).toContain("Count and share by version");
     expect(html).toContain("Anomaly signal");
     expect(html).toContain("more than twice the average of the prior 2 recorded days");
-    expect(html).toContain("Best-effort public unauthenticated sample");
+    expect(html).toContain("Authenticated maintainer view");
     expect(html).toContain("estimated active installations");
     expect(html).toContain("date-scoped deduplication");
     expect(html).toContain("not people, total installs, or exact measurements");

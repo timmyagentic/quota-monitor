@@ -422,7 +422,7 @@ export function renderVersionDistributionHTML(
     <div class="container">
       <header class="section-heading">
         <h1>Anonymous version distribution</h1>
-        <p>Best-effort public unauthenticated sample. Counts are estimated active installations through date-scoped deduplication; they are not people, total installs, or exact measurements.</p>
+        <p>Authenticated maintainer view. Counts are estimated active installations through date-scoped deduplication; they are not people, total installs, or exact measurements.</p>
       </header>
 
       <section class="privacy-layout" aria-label="Latest version check-in summary">
