@@ -1,6 +1,6 @@
 import Foundation
 
-struct DailyActivePayload: Codable, Equatable, Sendable {
+struct DailyActivePayload: Encodable, Equatable, Sendable {
     let schema: Int
     let day: String
     let token: String

@@ -86,7 +86,7 @@ struct DailyActiveReporterTests {
         #expect(request.value(forHTTPHeaderField: "User-Agent")
             == "quota-monitor/0.2.41 daily-active/1")
         let body = try #require(request.httpBody)
-        let payload = try JSONDecoder().decode(DailyActivePayload.self, from: body)
+        let payload = try JSONDecoder().decode(DecodedDailyActivePayload.self, from: body)
         #expect(payload.day == "2026-07-16")
         #expect(payload.version == "0.2.41")
         #expect(payload.brand == "quota-monitor")
@@ -329,6 +329,44 @@ struct DailyActiveReporterTests {
         await sleeper.resumeAll()
     }
 
+    @Test("A 409 immediately rereads every context dimension with the same-day token", arguments: [
+        DailyActiveReportingContext(
+            version: "0.2.42", brand: "quota-monitor", channel: "developer-id"),
+        DailyActiveReportingContext(
+            version: "0.2.41", brand: "codex-monitor", channel: "developer-id"),
+        DailyActiveReportingContext(
+            version: "0.2.41", brand: "quota-monitor", channel: "app-store"),
+    ])
+    func conflictRereadsContext(changedContext: DailyActiveReportingContext) async throws {
+        let fixture = StoreFixture(testName: "\(#function).\(changedContext)")
+        defer { fixture.cleanUp() }
+        let context = TestValue<DailyActiveReportingContext?>(validContext)
+        let transport = ScriptedDailyActiveTransport(
+            [.response(409), .response(204)],
+            onSend: { requestIndex, _ in
+                if requestIndex == 0 { context.value = changedContext }
+            })
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = makeReporter(
+            store: fixture.store,
+            transport: transport,
+            sleeper: sleeper,
+            context: context)
+
+        await reporter.start()
+        let requests = await waitForRequests(2, transport: transport)
+        let first = try requestPayload(try #require(requests.first))
+        let second = try requestPayload(try #require(requests.dropFirst().first))
+
+        #expect(first.day == second.day)
+        #expect(first.token == second.token)
+        #expect(second.version == changedContext.version)
+        #expect(second.brand == changedContext.brand)
+        #expect(second.channel == changedContext.channel)
+        await reporter.stop()
+        await sleeper.resumeAll()
+    }
+
     @Test("A second 409 stops until the next lifecycle trigger")
     func conflictRetriesOnlyOnce() async {
         let fixture = StoreFixture(testName: #function)
@@ -484,9 +522,217 @@ struct DailyActiveReporterTests {
         await sleeper.resumeAll()
     }
 
+    @Test("Stop after a suspended eligibility check cannot cross the transport boundary")
+    func stopDuringSuspendedEligibilityPreventsTransport() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let eligibility = CancellationIgnoringValueGate<DailyActiveReportingEligibility>(
+            values: [.enabled])
+        let context = CountingTestValue<DailyActiveReportingContext?>(validContext)
+        let transport = ScriptedDailyActiveTransport([.response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = DailyActiveReporter(
+            store: fixture.store,
+            transport: transport,
+            now: { Self.firstDay },
+            sleep: { duration in try await sleeper.sleep(duration) },
+            initialJitter: { .zero },
+            eligibility: { await eligibility.next() },
+            context: { context.read() })
+
+        await reporter.start()
+        await waitUntil { await eligibility.isWaiting }
+        #expect(context.readCount == 1)
+        await reporter.stop()
+        await eligibility.resume(with: .enabled)
+        for _ in 0 ..< 20 { await Task.yield() }
+
+        #expect(context.readCount == 1)
+        #expect(await transport.requestCount() == 0)
+        await sleeper.resumeAll()
+    }
+
+    @Test("Stop after the initial eligibility check cannot read context")
+    func stopDuringInitialEligibilityPreventsContextRead() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let eligibility = CancellationIgnoringValueGate<DailyActiveReportingEligibility>(
+            values: [])
+        let context = CountingTestValue<DailyActiveReportingContext?>(validContext)
+        let transport = ScriptedDailyActiveTransport([.response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = DailyActiveReporter(
+            store: fixture.store,
+            transport: transport,
+            now: { Self.firstDay },
+            sleep: { duration in try await sleeper.sleep(duration) },
+            initialJitter: { .zero },
+            eligibility: { await eligibility.next() },
+            context: { context.read() })
+
+        await reporter.start()
+        await waitUntil { await eligibility.isWaiting }
+        await reporter.stop()
+        await eligibility.resume(with: .enabled)
+        try? await Task.sleep(for: .milliseconds(10))
+
+        #expect(context.readCount == 0)
+        #expect(await transport.requestCount() == 0)
+        await sleeper.resumeAll()
+    }
+
+    @Test("Stop after the initial context check cannot create a token")
+    func stopDuringInitialContextPreventsTokenCreation() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let context = CancellationIgnoringValueGate<DailyActiveReportingContext?>(
+            values: [])
+        let transport = ScriptedDailyActiveTransport([.response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = DailyActiveReporter(
+            store: fixture.store,
+            transport: transport,
+            now: { Self.firstDay },
+            sleep: { duration in try await sleeper.sleep(duration) },
+            initialJitter: { .zero },
+            eligibility: { .enabled },
+            context: { await context.next() })
+
+        await reporter.start()
+        await waitUntil { await context.isWaiting }
+        await reporter.stop()
+        await context.resume(with: validContext)
+        try? await Task.sleep(for: .milliseconds(10))
+
+        #expect(fixture.hasStoredToken == false)
+        #expect(await transport.requestCount() == 0)
+        await sleeper.resumeAll()
+    }
+
+    @Test("Stop after a suspended context check cannot cross the transport boundary")
+    func stopDuringSuspendedContextPreventsTransport() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let context = CancellationIgnoringValueGate<DailyActiveReportingContext?>(
+            values: [validContext])
+        let transport = ScriptedDailyActiveTransport([.response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = DailyActiveReporter(
+            store: fixture.store,
+            transport: transport,
+            now: { Self.firstDay },
+            sleep: { duration in try await sleeper.sleep(duration) },
+            initialJitter: { .zero },
+            eligibility: { .enabled },
+            context: { await context.next() })
+
+        await reporter.start()
+        await waitUntil { await context.isWaiting }
+        await reporter.stop()
+        await context.resume(with: validContext)
+        for _ in 0 ..< 20 { await Task.yield() }
+
+        #expect(await transport.requestCount() == 0)
+        await sleeper.resumeAll()
+    }
+
+    @Test("A stopped generation cannot persist success after its final context gate resumes")
+    func stopDuringFinalContextGatePreventsSuccess() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let context = CancellationIgnoringValueGate<DailyActiveReportingContext?>(
+            values: [validContext, validContext])
+        let transport = ScriptedDailyActiveTransport([.response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = DailyActiveReporter(
+            store: fixture.store,
+            transport: transport,
+            now: { Self.firstDay },
+            sleep: { duration in try await sleeper.sleep(duration) },
+            initialJitter: { .zero },
+            eligibility: { .enabled },
+            context: { await context.next() })
+
+        await reporter.start()
+        _ = await waitForRequests(1, transport: transport)
+        await waitUntil { await context.isWaiting }
+        await reporter.stop()
+        await context.resume(with: validContext)
+        for _ in 0 ..< 20 { await Task.yield() }
+
+        #expect(await fixture.store.hasSucceeded(
+            day: "2026-07-16",
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id") == false)
+        await sleeper.resumeAll()
+    }
+
+    @Test("The periodic runner does not retain a started reporter")
+    func periodicRunnerReleasesReporter() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let transport = ScriptedDailyActiveTransport([.response(204), .response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        var reporter: DailyActiveReporter? = makeReporter(
+            store: fixture.store,
+            transport: transport,
+            sleeper: sleeper)
+        weak let weakReporter = reporter
+
+        await reporter?.start()
+        _ = await waitForRequests(1, transport: transport)
+        _ = await waitForSleeps(1, sleeper: sleeper)
+        autoreleasepool { reporter = nil }
+        for _ in 0 ..< 1_000 where weakReporter != nil {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+
+        #expect(weakReporter == nil)
+        await sleeper.resume(request: 0)
+        for _ in 0 ..< 20 { await Task.yield() }
+        #expect(await transport.requestCount() == 1)
+        if let leakedReporter = weakReporter {
+            await leakedReporter.stop()
+        }
+        await sleeper.resumeAll()
+    }
+
+    @Test("The retry runner does not retain a started reporter during backoff")
+    func retryRunnerReleasesReporter() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let transport = ScriptedDailyActiveTransport([.response(503), .response(204)])
+        let sleeper = ControlledDailyActiveSleeper()
+        var reporter: DailyActiveReporter? = makeReporter(
+            store: fixture.store,
+            transport: transport,
+            sleeper: sleeper)
+        weak let weakReporter = reporter
+
+        await reporter?.start()
+        _ = await waitForRequests(1, transport: transport)
+        let sleeps = await waitForSleeps(1, sleeper: sleeper)
+        #expect(sleeps == [.seconds(30)])
+        autoreleasepool { reporter = nil }
+        for _ in 0 ..< 1_000 where weakReporter != nil {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+
+        #expect(weakReporter == nil)
+        await sleeper.resume(request: 0)
+        try? await Task.sleep(for: .milliseconds(10))
+        #expect(await transport.requestCount() == 1)
+        if let leakedReporter = weakReporter {
+            await leakedReporter.stop()
+        }
+        await sleeper.resumeAll()
+    }
+
     @Test("The production session is ephemeral and has no ambient state")
     func productionSessionConfiguration() {
         let configuration = DailyActiveURLSessionTransport.makeEphemeralConfiguration()
+        let delegate = DailyActiveURLSessionDelegate()
 
         #expect(configuration.httpCookieStorage == nil)
         #expect(configuration.httpShouldSetCookies == false)
@@ -494,6 +740,73 @@ struct DailyActiveReporterTests {
         #expect(configuration.urlCache == nil)
         #expect(configuration.urlCredentialStorage == nil)
         #expect(configuration.requestCachePolicy == .reloadIgnoringLocalCacheData)
+        #expect(delegate.responds(to: NSSelectorFromString(
+            "URLSession:dataTask:didReceiveResponse:completionHandler:")))
+    }
+
+    @Test("Production transport completes at headers without buffering a held body", arguments: [
+        HeldResponseCase(mode: .declaredLarge, expectedStatus: 200),
+        HeldResponseCase(mode: .chunked, expectedStatus: 503),
+    ])
+    func productionTransportDoesNotBufferBody(testCase: HeldResponseCase) async throws {
+        let server = try LoopbackHeldResponseServer(mode: testCase.mode)
+        defer { server.stop() }
+        let configuration = DailyActiveURLSessionTransport.makeEphemeralConfiguration()
+        configuration.timeoutIntervalForRequest = 0.6
+        configuration.timeoutIntervalForResource = 0.6
+        let transport = DailyActiveURLSessionTransport(configuration: configuration)
+        let request = URLRequest(url: server.sourceURL)
+
+        let response = try await transport.send(request)
+        try await Task.sleep(for: .milliseconds(50))
+
+        #expect(response.statusCode == testCase.expectedStatus)
+        #expect(server.requestCount == 1)
+    }
+
+    @Test("Cancelling a production transport request resumes its pending send once")
+    func cancellingProductionTransportRequest() async throws {
+        let server = try LoopbackHeldResponseServer(mode: .noResponse)
+        defer { server.stop() }
+        let configuration = DailyActiveURLSessionTransport.makeEphemeralConfiguration()
+        configuration.timeoutIntervalForRequest = 5
+        configuration.timeoutIntervalForResource = 5
+        let transport = DailyActiveURLSessionTransport(configuration: configuration)
+        let request = URLRequest(url: server.sourceURL)
+        let send = Task { try await transport.send(request) }
+
+        await waitUntil { server.requestCount == 1 }
+        send.cancel()
+
+        do {
+            _ = try await send.value
+            Issue.record("A cancelled transport request unexpectedly succeeded")
+        } catch let error as URLError {
+            #expect(error.code == .cancelled)
+        } catch {
+            Issue.record("Unexpected cancellation error: \(error)")
+        }
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(server.requestCount == 1)
+    }
+
+    @Test("A completed transport releases despite its session delegate")
+    func productionTransportHasNoDelegateRetainCycle() async throws {
+        let server = try LoopbackRedirectServer(status: 307, kind: .sameHostOtherPath)
+        defer { server.stop() }
+        var transport: DailyActiveURLSessionTransport? = autoreleasepool {
+            DailyActiveURLSessionTransport()
+        }
+        weak let weakTransport = transport
+
+        let response = try await transport?.send(URLRequest(url: server.sourceURL))
+        #expect(response?.statusCode == 307)
+        autoreleasepool { transport = nil }
+        for _ in 0 ..< 1_000 where weakTransport != nil {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+
+        #expect(weakTransport == nil)
     }
 
     @Test("All 307 and 308 redirects are rejected without replaying the POST body", arguments: [
@@ -507,6 +820,7 @@ struct DailyActiveReporterTests {
     func redirectsAreNeverFollowed(testCase: RedirectCase) async throws {
         let configuration = DailyActiveURLSessionTransport.makeEphemeralConfiguration()
         let transport = DailyActiveURLSessionTransport(configuration: configuration)
+        let redirectDelegate = DailyActiveURLSessionDelegate()
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
         var original = URLRequest(url: DailyActiveReporter.endpoint)
@@ -522,7 +836,7 @@ struct DailyActiveReporterTests {
         redirected.url = URL(string: testCase.target)!
         let recorder = RedirectDecisionRecorder()
 
-        transport.urlSession(
+        redirectDelegate.urlSession(
             session,
             task: task,
             willPerformHTTPRedirection: response,
@@ -578,9 +892,9 @@ struct DailyActiveReporterTests {
             context: { context.value })
     }
 
-    private func requestPayload(_ request: URLRequest) throws -> DailyActivePayload {
+    private func requestPayload(_ request: URLRequest) throws -> DecodedDailyActivePayload {
         try JSONDecoder().decode(
-            DailyActivePayload.self,
+            DecodedDailyActivePayload.self,
             from: try #require(request.httpBody))
     }
 
@@ -648,6 +962,15 @@ struct DailyActiveReporterTests {
     }
 }
 
+private struct DecodedDailyActivePayload: Decodable, Sendable {
+    let schema: Int
+    let day: String
+    let token: String
+    let version: String
+    let brand: String
+    let channel: String
+}
+
 struct RedirectCase: Sendable, CustomTestStringConvertible {
     let status: Int
     let kind: RedirectTargetKind
@@ -670,6 +993,19 @@ enum RedirectTargetKind: Sendable {
     case sameHostOtherPath
 }
 
+struct HeldResponseCase: Sendable, CustomTestStringConvertible {
+    let mode: HeldResponseMode
+    let expectedStatus: Int
+
+    var testDescription: String { "\(mode)" }
+}
+
+enum HeldResponseMode: Sendable {
+    case declaredLarge
+    case chunked
+    case noResponse
+}
+
 private final class TestValue<Value: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: Value
@@ -681,6 +1017,57 @@ private final class TestValue<Value: Sendable>: @unchecked Sendable {
     var value: Value {
         get { lock.withLock { storage } }
         set { lock.withLock { storage = newValue } }
+    }
+}
+
+private final class CountingTestValue<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private let storedValue: Value
+    private var reads = 0
+
+    init(_ value: Value) {
+        storedValue = value
+    }
+
+    func read() -> Value {
+        lock.withLock {
+            reads += 1
+            return storedValue
+        }
+    }
+
+    var readCount: Int {
+        lock.withLock { reads }
+    }
+}
+
+private actor CancellationIgnoringValueGate<Value: Sendable> {
+    private var values: [Value]
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    init(values: [Value]) {
+        self.values = values
+    }
+
+    var isWaiting: Bool { continuation != nil }
+
+    func next() async -> Value {
+        if !values.isEmpty {
+            return values.removeFirst()
+        }
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                self.continuation = continuation
+            }
+        } onCancel: {
+            // Deliberately ignore cancellation so generation checks must reject
+            // the eventual value after stop/restart.
+        }
+    }
+
+    func resume(with value: Value) {
+        continuation?.resume(returning: value)
+        continuation = nil
     }
 }
 
@@ -701,6 +1088,10 @@ private final class StoreFixture: @unchecked Sendable {
 
     func cleanUp() {
         defaults.removePersistentDomain(forName: suiteName)
+    }
+
+    var hasStoredToken: Bool {
+        defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) != nil
     }
 }
 
@@ -941,6 +1332,118 @@ private final class LoopbackRedirectServer: @unchecked Sendable {
         let path = requestLine.split(separator: " ").dropFirst().first.map(String.init) ?? ""
         let body = sections.count > 1 ? Data(sections[1].utf8) : Data()
         return ReceivedRequest(path: path, body: body)
+    }
+}
+
+private final class LoopbackHeldResponseServer: @unchecked Sendable {
+    private enum ServerError: Error {
+        case failedToStart
+    }
+
+    private let mode: HeldResponseMode
+    private let listener: NWListener
+    private let queue = DispatchQueue(label: "DailyActiveReporterTests.held-body-server")
+    private let lock = NSLock()
+    private var requests = 0
+    private var heldConnections: [NWConnection] = []
+
+    init(mode: HeldResponseMode) throws {
+        self.mode = mode
+        let tcp = NWProtocolTCP.Options()
+        tcp.noDelay = true
+        listener = try NWListener(
+            using: NWParameters(tls: nil, tcp: tcp),
+            on: .any)
+
+        let ready = DispatchSemaphore(value: 0)
+        let state = ListenerStartState()
+        listener.stateUpdateHandler = { update in
+            switch update {
+            case .ready:
+                state.succeed()
+                ready.signal()
+            case .failed:
+                state.fail()
+                ready.signal()
+            default:
+                break
+            }
+        }
+        listener.newConnectionHandler = { [weak self] connection in
+            self?.handle(connection)
+        }
+        listener.start(queue: queue)
+
+        guard
+            ready.wait(timeout: .now() + 2) == .success,
+            state.didSucceed,
+            listener.port != nil
+        else {
+            listener.cancel()
+            throw ServerError.failedToStart
+        }
+    }
+
+    var sourceURL: URL {
+        URL(string: "http://127.0.0.1:\(listener.port!.rawValue)/held-body")!
+    }
+
+    var requestCount: Int {
+        lock.withLock { requests }
+    }
+
+    func stop() {
+        listener.cancel()
+        let connections = lock.withLock {
+            let values = heldConnections
+            heldConnections.removeAll()
+            return values
+        }
+        for connection in connections { connection.cancel() }
+    }
+
+    private func handle(_ connection: NWConnection) {
+        lock.withLock {
+            requests += 1
+            heldConnections.append(connection)
+        }
+        connection.start(queue: queue)
+        connection.receive(
+            minimumIncompleteLength: 1,
+            maximumLength: 64 * 1_024
+        ) { [weak self] _, _, _, error in
+            guard let self, error == nil else {
+                connection.cancel()
+                return
+            }
+            let headers: String
+            let bodyPrefix: String
+            switch self.mode {
+            case .declaredLarge:
+                headers = "HTTP/1.1 200 OK\r\n"
+                    + "Content-Length: 100000000\r\n"
+                    + "Connection: keep-alive\r\n\r\n"
+                bodyPrefix = String(repeating: "x", count: 64 * 1_024)
+            case .chunked:
+                headers = "HTTP/1.1 503 Service Unavailable\r\n"
+                    + "Transfer-Encoding: chunked\r\n"
+                    + "Connection: keep-alive\r\n\r\n"
+                bodyPrefix = "10000\r\n"
+                    + String(repeating: "x", count: 64 * 1_024)
+                    + "\r\n"
+            case .noResponse:
+                return
+            }
+            connection.send(
+                content: Data(headers.utf8),
+                completion: .contentProcessed { _ in
+                    connection.send(
+                        content: Data(bodyPrefix.utf8),
+                        completion: .contentProcessed { _ in
+                            // Intentionally leave the body unfinished.
+                        })
+                })
+        }
     }
 }
 

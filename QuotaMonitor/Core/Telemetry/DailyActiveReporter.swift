@@ -23,20 +23,21 @@ protocol DailyActiveTransport: Sendable {
     func send(_ request: URLRequest) async throws -> DailyActiveTransportResponse
 }
 
-final class DailyActiveURLSessionTransport: NSObject, DailyActiveTransport,
-    URLSessionTaskDelegate, @unchecked Sendable
-{
-    private var session: URLSession!
+final class DailyActiveURLSessionTransport: DailyActiveTransport, @unchecked Sendable {
+    private let sessionDelegate: DailyActiveURLSessionDelegate
+    private let session: URLSession
 
     init(configuration: URLSessionConfiguration = makeEphemeralConfiguration()) {
-        super.init()
+        let sessionDelegate = DailyActiveURLSessionDelegate()
+        self.sessionDelegate = sessionDelegate
         session = URLSession(
             configuration: configuration,
-            delegate: self,
+            delegate: sessionDelegate,
             delegateQueue: nil)
     }
 
     deinit {
+        sessionDelegate.cancelAll()
         session.invalidateAndCancel()
     }
 
@@ -54,13 +55,46 @@ final class DailyActiveURLSessionTransport: NSObject, DailyActiveTransport,
     }
 
     func send(_ request: URLRequest) async throws -> DailyActiveTransportResponse {
-        let (_, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
+        try await sessionDelegate.send(request, using: session)
+    }
+}
+
+final class DailyActiveURLSessionDelegate: NSObject, URLSessionDataDelegate,
+    @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var requests: [Int: DailyActiveURLSessionRequestState] = [:]
+
+    func send(
+        _ request: URLRequest,
+        using session: URLSession
+    ) async throws -> DailyActiveTransportResponse {
+        let state = DailyActiveURLSessionRequestState()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                state.install(continuation: continuation)
+                let task = session.dataTask(with: request)
+                state.install(task: task)
+                register(state, for: task.taskIdentifier)
+                if state.isFinished {
+                    remove(taskIdentifier: task.taskIdentifier)
+                    task.cancel()
+                } else {
+                    task.resume()
+                }
+            }
+        } onCancel: {
+            state.cancel()
         }
-        return DailyActiveTransportResponse(
-            statusCode: response.statusCode,
-            retryAfter: response.value(forHTTPHeaderField: "Retry-After"))
+    }
+
+    func cancelAll() {
+        let states = lock.withLock {
+            let values = Array(requests.values)
+            requests.removeAll()
+            return values
+        }
+        for state in states { state.cancel() }
     }
 
     func urlSession(
@@ -72,6 +106,117 @@ final class DailyActiveURLSessionTransport: NSObject, DailyActiveTransport,
     ) {
         completionHandler(nil)
     }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let state = remove(taskIdentifier: dataTask.taskIdentifier) else {
+            completionHandler(.cancel)
+            return
+        }
+        guard let response = response as? HTTPURLResponse else {
+            completionHandler(.cancel)
+            state.finish(.failure(URLError(.badServerResponse)))
+            return
+        }
+
+        let result = DailyActiveTransportResponse(
+            statusCode: response.statusCode,
+            retryAfter: response.value(forHTTPHeaderField: "Retry-After"))
+        // The wire contract has no response body. Cancel at the header boundary
+        // so a malicious or broken endpoint cannot make the app buffer bytes.
+        completionHandler(.cancel)
+        state.finish(.success(result))
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive data: Data
+    ) {
+        // Response disposition is `.cancel`; discard any bytes already in
+        // flight without retaining or accumulating them.
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: (any Error)?
+    ) {
+        guard let state = remove(taskIdentifier: task.taskIdentifier) else { return }
+        state.finish(.failure(error ?? URLError(.badServerResponse)))
+    }
+
+    private func register(_ state: DailyActiveURLSessionRequestState, for taskIdentifier: Int) {
+        lock.withLock { requests[taskIdentifier] = state }
+    }
+
+    @discardableResult
+    private func remove(taskIdentifier: Int) -> DailyActiveURLSessionRequestState? {
+        lock.withLock { requests.removeValue(forKey: taskIdentifier) }
+    }
+}
+
+private final class DailyActiveURLSessionRequestState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<DailyActiveTransportResponse, any Error>?
+    private var task: URLSessionDataTask?
+    private var result: Result<DailyActiveTransportResponse, any Error>?
+
+    var isFinished: Bool {
+        lock.withLock { result != nil }
+    }
+
+    func install(
+        continuation: CheckedContinuation<DailyActiveTransportResponse, any Error>
+    ) {
+        let completed = lock.withLock { () -> Result<DailyActiveTransportResponse, any Error>? in
+            if let result { return result }
+            self.continuation = continuation
+            return nil
+        }
+        if let completed { continuation.resume(with: completed) }
+    }
+
+    func install(task: URLSessionDataTask) {
+        let shouldCancel = lock.withLock {
+            self.task = task
+            return result != nil
+        }
+        if shouldCancel { task.cancel() }
+    }
+
+    func cancel() {
+        let task = lock.withLock { self.task }
+        task?.cancel()
+        finish(.failure(URLError(.cancelled)))
+    }
+
+    func finish(_ newResult: Result<DailyActiveTransportResponse, any Error>) {
+        let continuation: CheckedContinuation<DailyActiveTransportResponse, any Error>? =
+            lock.withLock {
+                guard result == nil else { return nil }
+                result = newResult
+                let value = self.continuation
+                self.continuation = nil
+                task = nil
+                return value
+            }
+        continuation?.resume(with: newResult)
+    }
+}
+
+private struct TriggerAttemptState: Sendable {
+    var retryCount = 0
+    var didRetryConflict = false
+}
+
+private enum TriggerAttemptStep: Sendable {
+    case finished
+    case retry(TriggerAttemptState, after: Duration?)
 }
 
 actor DailyActiveReporter {
@@ -127,16 +272,61 @@ actor DailyActiveReporter {
         self.context = context
     }
 
+    deinit {
+        lifecycleTask?.cancel()
+    }
+
     func start() {
         guard !isStarted else { return }
         isStarted = true
         generation &+= 1
         let currentGeneration = generation
         let delay = initialJitter()
-        lifecycleTask = Task { [weak self] in
-            await self?.runLifecycle(
-                generation: currentGeneration,
-                initialDelay: delay)
+        let sleep = self.sleep
+        let runTrigger: @Sendable () async -> Void = { [weak self, sleep] in
+            var state = TriggerAttemptState()
+            while !Task<Never, Never>.isCancelled {
+                guard let step = await self?.performAttempt(
+                    generation: currentGeneration,
+                    state: state)
+                else {
+                    return
+                }
+                switch step {
+                case .finished:
+                    return
+                case let .retry(nextState, delay):
+                    state = nextState
+                    guard let delay else { continue }
+                    do {
+                        try await sleep(delay)
+                    } catch {
+                        return
+                    }
+                    guard !Task<Never, Never>.isCancelled else { return }
+                }
+            }
+        }
+        lifecycleTask = Task { [sleep, runTrigger] in
+            if delay > .zero {
+                do {
+                    try await sleep(delay)
+                } catch {
+                    return
+                }
+                guard !Task<Never, Never>.isCancelled else { return }
+            }
+
+            await runTrigger()
+            while !Task<Never, Never>.isCancelled {
+                do {
+                    try await sleep(Self.periodicInterval)
+                } catch {
+                    return
+                }
+                guard !Task<Never, Never>.isCancelled else { return }
+                await runTrigger()
+            }
         }
     }
 
@@ -148,137 +338,118 @@ actor DailyActiveReporter {
         lifecycleTask = nil
     }
 
-    private func runLifecycle(generation: UInt, initialDelay: Duration) async {
-        if initialDelay > .zero {
-            guard await wait(initialDelay, generation: generation) else { return }
+    private func performAttempt(
+        generation: UInt,
+        state: TriggerAttemptState
+    ) async -> TriggerAttemptStep {
+        guard isCurrent(generation) else { return .finished }
+        let currentEligibility = await eligibility()
+        guard isCurrent(generation), currentEligibility.permitsReporting else {
+            return .finished
         }
+        guard
+            let payload = await currentPayload(generation: generation),
+            isCurrent(generation)
+        else {
+            return .finished
+        }
+        let hasSucceeded = await store.hasSucceeded(
+            day: payload.day,
+            version: payload.version,
+            brand: payload.brand,
+            channel: payload.channel)
+        guard isCurrent(generation), !hasSucceeded else { return .finished }
 
-        guard isCurrent(generation) else { return }
-        await attemptCurrentTrigger(generation: generation)
+        // Consent/QA and packaging context can change while token state is
+        // being read. Recheck immediately at the actual transport boundary.
+        guard await maySend(payload, generation: generation), isCurrent(generation) else {
+            return .finished
+        }
+        guard let request = Self.request(for: payload) else { return .finished }
 
-        while isCurrent(generation) {
-            guard await wait(Self.periodicInterval, generation: generation) else {
-                return
+        let response: DailyActiveTransportResponse
+        do {
+            response = try await transport.send(request)
+        } catch {
+            guard isCurrent(generation), state.retryCount < Self.maximumRetryCount else {
+                return .finished
             }
-            await attemptCurrentTrigger(generation: generation)
+            var nextState = state
+            let delay = Self.retryDelays[nextState.retryCount]
+            nextState.retryCount += 1
+            return .retry(nextState, after: delay)
         }
-    }
 
-    private func attemptCurrentTrigger(generation: UInt) async {
-        var retryCount = 0
-        var didRetryConflict = false
-
-        while isCurrent(generation) {
-            guard await eligibility().permitsReporting else { return }
-            guard let payload = await currentPayload() else { return }
-            guard !(await store.hasSucceeded(
+        guard isCurrent(generation) else { return .finished }
+        switch response.statusCode {
+        case 204:
+            // A late response from a stopped generation or revoked consent
+            // must never become persisted success state.
+            guard await maySend(payload, generation: generation), isCurrent(generation) else {
+                return .finished
+            }
+            await store.markSucceeded(
                 day: payload.day,
                 version: payload.version,
                 brand: payload.brand,
-                channel: payload.channel))
-            else {
-                return
-            }
+                channel: payload.channel)
+            return .finished
 
-            // Consent/QA and packaging context can change while token state is
-            // being read. Recheck immediately at the actual transport boundary.
-            guard await maySend(payload, generation: generation) else { return }
-            guard let request = Self.request(for: payload) else { return }
+        case 409 where !state.didRetryConflict:
+            var nextState = state
+            nextState.didRetryConflict = true
+            // The next step rebuilds now/day/token and dynamically rereads both
+            // eligibility and reporting context before one immediate retry.
+            return .retry(nextState, after: nil)
 
-            let response: DailyActiveTransportResponse
-            do {
-                response = try await transport.send(request)
-            } catch {
-                guard isCurrent(generation), retryCount < Self.maximumRetryCount else {
-                    return
-                }
-                let delay = Self.retryDelays[retryCount]
-                retryCount += 1
-                guard await wait(delay, generation: generation) else { return }
-                continue
-            }
+        case 429:
+            guard state.retryCount < Self.maximumRetryCount else { return .finished }
+            var nextState = state
+            let delay = retryDelay(
+                retryAfter: response.retryAfter,
+                fallbackIndex: nextState.retryCount)
+            nextState.retryCount += 1
+            return .retry(nextState, after: delay)
 
-            guard isCurrent(generation) else { return }
-            switch response.statusCode {
-            case 204:
-                // A late response from a stopped generation or revoked consent
-                // must never become persisted success state.
-                guard await maySend(payload, generation: generation) else { return }
-                await store.markSucceeded(
-                    day: payload.day,
-                    version: payload.version,
-                    brand: payload.brand,
-                    channel: payload.channel)
-                return
+        case 500 ... 599:
+            guard state.retryCount < Self.maximumRetryCount else { return .finished }
+            var nextState = state
+            let delay = Self.retryDelays[nextState.retryCount]
+            nextState.retryCount += 1
+            return .retry(nextState, after: delay)
 
-            case 409 where !didRetryConflict:
-                didRetryConflict = true
-                // Looping rebuilds now/day/token and dynamically rereads both
-                // eligibility and reporting context before one immediate retry.
-                continue
-
-            case 429:
-                guard retryCount < Self.maximumRetryCount else { return }
-                let delay = retryDelay(
-                    retryAfter: response.retryAfter,
-                    fallbackIndex: retryCount)
-                retryCount += 1
-                guard await wait(delay, generation: generation) else { return }
-                continue
-
-            case 500 ... 599:
-                guard retryCount < Self.maximumRetryCount else { return }
-                let delay = Self.retryDelays[retryCount]
-                retryCount += 1
-                guard await wait(delay, generation: generation) else { return }
-                continue
-
-            default:
-                // Any other 4xx, a second 409, and every non-204 2xx/3xx
-                // stop this trigger. The next lifecycle trigger may try again.
-                return
-            }
+        default:
+            // Any other 4xx, a second 409, and every non-204 2xx/3xx
+            // stop this trigger. The next lifecycle trigger may try again.
+            return .finished
         }
     }
 
-    private func currentPayload() async -> DailyActivePayload? {
+    private func currentPayload(generation: UInt) async -> DailyActivePayload? {
+        guard isCurrent(generation) else { return nil }
         let date = now()
-        guard
-            let context = await context(),
-            let record = await store.record(for: date)
-        else {
-            return nil
-        }
+        let reportingContext = await context()
+        guard isCurrent(generation), let reportingContext else { return nil }
+        let record = await store.record(for: date)
+        guard isCurrent(generation), let record else { return nil }
         return DailyActivePayload(
             day: DailyActivePayload.utcDay(for: date),
             token: record.token,
-            version: context.version,
-            brand: context.brand,
-            channel: context.channel)
+            version: reportingContext.version,
+            brand: reportingContext.brand,
+            channel: reportingContext.channel)
     }
 
     private func maySend(_ payload: DailyActivePayload, generation: UInt) async -> Bool {
-        guard
-            isCurrent(generation),
-            await eligibility().permitsReporting,
-            let currentContext = await context()
-        else {
-            return false
-        }
+        guard isCurrent(generation) else { return false }
+        let currentEligibility = await eligibility()
+        guard isCurrent(generation), currentEligibility.permitsReporting else { return false }
+        let currentContext = await context()
+        guard isCurrent(generation), let currentContext else { return false }
         return currentContext == DailyActiveReportingContext(
             version: payload.version,
             brand: payload.brand,
             channel: payload.channel)
-    }
-
-    private func wait(_ duration: Duration, generation: UInt) async -> Bool {
-        let sleep = self.sleep
-        do {
-            try await sleep(duration)
-        } catch {
-            return false
-        }
-        return isCurrent(generation) && !Task<Never, Never>.isCancelled
     }
 
     private func isCurrent(_ candidate: UInt) -> Bool {
