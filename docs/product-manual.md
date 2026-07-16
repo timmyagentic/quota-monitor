@@ -1,6 +1,6 @@
 # Quota Monitor 产品说明
 
-本说明面向普通用户，基于当前版本 `0.2.31`、commit `508accc` 的真实 App 运行结果整理。后续功能更新时，请在本文末尾追加更新记录，并按页面更新对应说明和截图。
+本说明面向普通用户，第一版基于 `0.2.31`、commit `508accc` 的真实 App 运行结果整理，并按本文末尾的更新记录持续补充。当前内容已覆盖 `0.2.41` 的更新提醒和匿名版本统计设置。
 
 截图基线位于 `docs/assets/product-manual/508accc/`。
 
@@ -128,6 +128,11 @@ General 适合普通用户日常调整：
 - `Show in menu bar`：选择哪些已追踪工具出现在菜单栏读数中。
 - `Can't find the menu-bar icon?`：打开找回菜单栏图标的帮助。
 - `Tracked tools`：开启或关闭 Codex、Claude Code 的追踪。关闭某个工具后，对应后台轮询和页面卡片会停止显示。至少要保留一个工具。
+- `Share anonymous version statistics`：仅在你明确开启后，每天发送一次匿名的应用版本、品牌和分发渠道等六个字段，帮助维护者估算仍在活跃使用的安装版本。它不会发送账号、用量历史、路径、设备 ID 或稳定标识；关闭后会停止后续请求并清理当天的本地上报状态。
+
+![匿名版本统计隐私设置](assets/product-manual/87c757d/settings-privacy-local-qa.png)
+
+截图使用隔离 Local QA 预览，因此开关被禁用并明确标注不会发送数据。正式 Developer ID 版本中可以自行开启或关闭；点击 `Privacy details` 可查看完整的中英双语隐私说明。
 
 ![Settings Advanced](assets/product-manual/508accc/settings-advanced.png)
 
@@ -164,6 +169,8 @@ Advanced 适合需要排查或维护数据的用户：
 
 如果有新版本可用，Quota Monitor 会显示更新窗口。窗口会展示新版本号、当前版本号和发布说明。
 
+![更新窗口](assets/product-manual/87c757d/update-available-preview.png)
+
 常见按钮：
 
 - `Skip`：跳过这个版本。
@@ -172,6 +179,8 @@ Advanced 适合需要排查或维护数据的用户：
 - `Install & Relaunch`：更新准备好后安装并重启 App。
 - `Cancel`：下载中取消。
 - `Done`：关闭错误或完成提示。
+
+选择 `Later` 或直接关闭“发现更新”窗口后，更新不会从应用里消失：菜单栏、菜单栏弹窗、Dashboard 工具栏和 Advanced 设置会继续显示该版本的更新入口。第一次到期提醒安排在 24 小时后，之后每 3 天一次；到期时只会把菜单栏更新标记强调 8 秒，不会抢走焦点或反复弹窗。点击更新入口或 `Check Now` 可以随时重新打开更新窗口。选择 `Skip This Version` 只会跳过当前版本；以后发现新版本时仍会重新提示。
 
 ## 持续更新规则
 
@@ -184,6 +193,19 @@ Advanced 适合需要排查或维护数据的用户：
 5. 不把实现细节写进用户说明；实现、命令和 QA 证据只放在维护记录里。
 
 ## 更新记录
+
+### 2026-07-16 · 0.2.41 · 87c757d
+
+更新提醒现在会跨重启保留，并通过常驻菜单栏标记和温和的 24 小时／3 天节奏继续可见；General 设置新增可选的匿名版本统计和完整隐私说明。
+
+维护记录：
+
+- 使用 `./qa/prepare-computer-use-fixture-smoke.sh` 启动隔离 QA App；QA artifact 为 `.build/qa-artifacts/20260716T034245Z-computer-use-fixture-smoke`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`。
+- `./qa/check-artifacts.sh .build/qa-artifacts/20260716T034245Z-computer-use-fixture-smoke` 通过；夹具数据库包含 Codex 与 Claude 数据，边界清单明确禁止 live external sources。
+- 使用 Computer Use 验证 General 隐私区、Advanced 更新控件、更新窗口、Dashboard 和菜单栏相关窗口；Local QA 下匿名版本开关、自动更新检查与 `Check Now` 均正确禁用。
+- QA 进程没有网络 socket，Developer Mode 日志中没有匿名上报或禁用的外部数据源事件。
+- 文档截图位于 `docs/assets/product-manual/87c757d/`；更新预览使用本地 HTML，不访问更新源或下载安装包。
+- 完成文档后运行 `./qa/run-static.sh` 作为最终静态与测试门禁。
 
 ### 2026-06-09 · 0.2.31 · 508accc
 

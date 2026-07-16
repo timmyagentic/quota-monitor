@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.41] — 2026-07-16
+
 #### Summary
 
 - Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
@@ -45,7 +47,7 @@ window copy.
 ### Changed
 
 - **Brand-aware update-feed migration.** Existing custom and CodexMonitor feeds now stay untouched while only known incorrect QuotaMonitor feeds are repaired.
-- **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, and fail when a feed exceeds 100 KB.
+- **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, verify the newest DMG's URL, size, signature-metadata format, and byte-range availability, and fail when a feed exceeds 100 KB.
 - **Gentle reminder cadence.** Choosing Later schedules the first reminder for exactly 24 hours later, followed by another reminder every 3 days until the update is resolved.
 - **Quiet menu-bar reminders.** A due reminder emphasizes the native menu-bar status item for eight seconds without stealing focus, opening a window, or requesting notification permission.
 - **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
