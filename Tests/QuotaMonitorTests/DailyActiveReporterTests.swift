@@ -75,7 +75,8 @@ struct DailyActiveReporterTests {
                 day: "2026-07-16",
                 version: "0.2.41",
                 brand: "quota-monitor",
-                channel: "developer-id")
+                channel: "developer-id",
+                operationDate: Self.firstDay)
         }
 
         #expect(request.url == DailyActiveReporter.endpoint)
@@ -139,7 +140,8 @@ struct DailyActiveReporterTests {
                 day: "2026-07-16",
                 version: "0.2.41",
                 brand: "quota-monitor",
-                channel: "developer-id")
+                channel: "developer-id",
+                operationDate: Self.firstDay)
         }
         await firstReporter.stop()
         await firstSleeper.resumeAll()
@@ -203,7 +205,8 @@ struct DailyActiveReporterTests {
             day: "2026-07-16",
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id") == false)
+            channel: "developer-id",
+            operationDate: Self.firstDay) == false)
 
         await sleeper.resume(request: 0)
         _ = await waitForRequests(2, transport: transport)
@@ -212,7 +215,8 @@ struct DailyActiveReporterTests {
                 day: "2026-07-16",
                 version: "0.2.41",
                 brand: "quota-monitor",
-                channel: "developer-id")
+                channel: "developer-id",
+                operationDate: Self.firstDay)
         }
         await reporter.stop()
         await sleeper.resumeAll()
@@ -483,7 +487,8 @@ struct DailyActiveReporterTests {
             day: "2026-07-16",
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id") == false)
+            channel: "developer-id",
+            operationDate: Self.firstDay) == false)
 
         await transport.resumeBlocked(request: 1, with: .init(statusCode: 204))
         await waitUntil {
@@ -491,7 +496,8 @@ struct DailyActiveReporterTests {
                 day: "2026-07-16",
                 version: "0.2.41",
                 brand: "quota-monitor",
-                channel: "developer-id")
+                channel: "developer-id",
+                operationDate: Self.firstDay)
         }
         await reporter.stop()
         await sleeper.resumeAll()
@@ -520,7 +526,35 @@ struct DailyActiveReporterTests {
             day: "2026-07-16",
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id") == false)
+            channel: "developer-id",
+            operationDate: Self.firstDay) == false)
+        await reporter.stop()
+        await sleeper.resumeAll()
+    }
+
+    @Test("Success persistence uses the injected operation clock, not the payload day")
+    func successPersistenceUsesInjectedOperationClock() async {
+        let fixture = StoreFixture(testName: #function)
+        defer { fixture.cleanUp() }
+        let clock = TestValue(Self.firstDay)
+        let transport = ScriptedDailyActiveTransport([.blocked])
+        let sleeper = ControlledDailyActiveSleeper()
+        let reporter = makeReporter(
+            store: fixture.store,
+            transport: transport,
+            sleeper: sleeper,
+            clock: clock)
+
+        await reporter.start()
+        _ = await waitForRequests(1, transport: transport)
+        fixture.setSuppressionMarker("corrupt")
+        clock.value = Self.secondDay
+        await transport.resumeBlocked(request: 0, with: .init(statusCode: 204))
+        _ = await waitForSleeps(1, sleeper: sleeper)
+
+        #expect(fixture.suppressionMarker == "2026-07-17")
+        #expect(fixture.hasStoredToken == false)
+        #expect(fixture.hasStoredSuccess == false)
         await reporter.stop()
         await sleeper.resumeAll()
     }
@@ -667,7 +701,8 @@ struct DailyActiveReporterTests {
             day: "2026-07-16",
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id") == false)
+            channel: "developer-id",
+            operationDate: Self.firstDay) == false)
         await sleeper.resumeAll()
     }
 
@@ -1095,6 +1130,18 @@ private final class StoreFixture: @unchecked Sendable {
 
     var hasStoredToken: Bool {
         defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) != nil
+    }
+
+    var hasStoredSuccess: Bool {
+        defaults.object(forKey: DailyActiveTokenStore.successStorageKey) != nil
+    }
+
+    var suppressionMarker: String? {
+        defaults.string(forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+    }
+
+    func setSuppressionMarker(_ marker: Any) {
+        defaults.set(marker, forKey: DailyActiveTokenStore.suppressedDayStorageKey)
     }
 }
 

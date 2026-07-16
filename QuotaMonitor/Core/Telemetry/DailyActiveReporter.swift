@@ -357,7 +357,8 @@ actor DailyActiveReporter {
             day: payload.day,
             version: payload.version,
             brand: payload.brand,
-            channel: payload.channel)
+            channel: payload.channel,
+            operationDate: now())
         guard isCurrent(generation), !hasSucceeded else { return .finished }
 
         // Consent/QA and packaging context can change while token state is
@@ -393,7 +394,8 @@ actor DailyActiveReporter {
                 token: payload.token,
                 version: payload.version,
                 brand: payload.brand,
-                channel: payload.channel)
+                channel: payload.channel,
+                operationDate: now())
             return .finished
 
         case 409 where !state.didRetryConflict:

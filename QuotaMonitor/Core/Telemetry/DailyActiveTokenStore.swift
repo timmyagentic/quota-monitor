@@ -54,7 +54,7 @@ actor DailyActiveTokenStore {
 
     func record(for date: Date = Date()) -> DailyActiveTokenRecord? {
         let day = dayIdentifier(for: date)
-        guard !isSuppressed(day: day) else { return nil }
+        guard !isSuppressed(on: date) else { return nil }
         if let stored = restoredTokenRecord(), stored.day == day {
             return stored
         }
@@ -77,10 +77,11 @@ actor DailyActiveTokenStore {
         token: String,
         version: String,
         brand: String,
-        channel: String
+        channel: String,
+        operationDate: Date
     ) {
         let expectedToken = DailyActiveTokenRecord(day: day, token: token)
-        guard isValid(expectedToken), !isSuppressed(day: day) else { return }
+        guard isValid(expectedToken), !isSuppressed(on: operationDate) else { return }
         guard restoredTokenRecord() == expectedToken else { return }
         let record = DailyActiveSuccessRecord(
             day: day,
@@ -97,7 +98,8 @@ actor DailyActiveTokenStore {
         day: String,
         version: String,
         brand: String,
-        channel: String
+        channel: String,
+        operationDate: Date
     ) -> Bool {
         let expected = DailyActiveSuccessRecord(
             day: day,
@@ -105,7 +107,7 @@ actor DailyActiveTokenStore {
             brand: brand,
             channel: channel)
         guard isValid(expected) else { return false }
-        guard !isSuppressed(day: day) else { return false }
+        guard !isSuppressed(on: operationDate) else { return false }
         guard let storedValue = defaults.value.object(forKey: Self.successStorageKey) else {
             return false
         }
@@ -135,22 +137,24 @@ actor DailyActiveTokenStore {
         clearLiveRecords()
     }
 
-    private func isSuppressed(day: String) -> Bool {
-        guard isValidDay(day) else { return true }
+    private func isSuppressed(on operationDate: Date) -> Bool {
+        let operationDay = dayIdentifier(for: operationDate)
+        guard isValidDay(operationDay) else { return true }
         guard let storedValue = defaults.value.object(
             forKey: Self.suppressedDayStorageKey) else {
             return false
         }
+
+        // A persisted marker means suppression began before live-state
+        // erasure may have completed. Clear residual state before interpreting
+        // the marker, including when the marker has expired across UTC days.
+        clearLiveRecords()
         guard let suppressedDay = storedValue as? String,
               isValidDay(suppressedDay) else {
-            defaults.value.set(day, forKey: Self.suppressedDayStorageKey)
-            clearLiveRecords()
+            defaults.value.set(operationDay, forKey: Self.suppressedDayStorageKey)
             return true
         }
-        guard day > suppressedDay else {
-            clearLiveRecords()
-            return true
-        }
+        guard operationDay > suppressedDay else { return true }
         defaults.value.removeObject(forKey: Self.suppressedDayStorageKey)
         return false
     }

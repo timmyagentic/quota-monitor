@@ -261,8 +261,8 @@ enum L10n {
           zh: "分享匿名版本统计")
     }
     static var anonymousVersionReportingHelp: String {
-        t(en: "With your explicit permission, the app sends its app version, brand, distribution channel, and a fresh random daily token. The service can form at most one deduplicated anonymous active-installation record per UTC day. It does not include your account, usage history, paths, device ID, or any stable ID.",
-          zh: "仅在你明确同意后，应用才会发送应用版本、品牌、分发渠道和每日新生成的随机 token。服务端每个 UTC 日最多形成一条去重后的匿名活跃安装记录。不包含账号、使用记录、路径、设备 ID 或任何稳定 ID。")
+        t(en: "With your explicit permission, the app sends exactly six fields: protocol/schema version, UTC date, app version, brand, distribution channel, and a fresh random daily token. The service can form at most one deduplicated anonymous active-installation record per UTC day. Failed delivery attempts may retry with the same day's token. It does not include your account, usage history, paths, device ID, or any stable ID.",
+          zh: "仅在你明确同意后，应用才会发送六个字段：协议/模式版本、UTC 日期、应用版本、品牌、分发渠道和每日新生成的随机 token。服务端每个 UTC 日最多形成一条去重后的匿名活跃安装记录；发送失败时可使用同一天的 token 重试。不包含账号、使用记录、路径、设备 ID 或任何稳定 ID。")
     }
     static var anonymousVersionReportingDisableHelp: String {
         t(en: "You can turn this off at any time in Settings. Turning it off stops future requests and immediately deletes today's token and success state from this Mac. Turning it back on during the same UTC day resumes on the next UTC day. A record already received by the service has no stable identifier or deletion handle, so it cannot be looked up and deleted individually; it remains subject to the published retention policy.",

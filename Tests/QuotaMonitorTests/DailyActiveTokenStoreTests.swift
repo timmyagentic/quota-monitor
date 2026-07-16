@@ -17,7 +17,8 @@ struct DailyActiveTokenStoreTests {
             token: record.token,
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id")
+            channel: "developer-id",
+            operationDate: date)
 
         await store.suppressUntilNextUTCDay(from: date)
 
@@ -91,16 +92,78 @@ struct DailyActiveTokenStoreTests {
             token: stale.token,
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id")
+            channel: "developer-id",
+            operationDate: date)
 
         #expect(await restored.record(for: date) == nil)
         #expect(await restored.hasSucceeded(
             day: stale.day,
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id") == false)
+            channel: "developer-id",
+            operationDate: date) == false)
         #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
         #expect(restoredSource.callCount == 0)
+    }
+
+    @Test("Late yesterday success uses today's corrupt-marker suppression boundary")
+    func lateYesterdaySuccessUsesOperationDayForSuppression() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let yesterday = try utcDate(year: 2026, month: 7, day: 16, hour: 23, minute: 59)
+        let today = try utcDate(year: 2026, month: 7, day: 17)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+        let stale = try #require(await store.record(for: yesterday))
+        defaults.set("corrupt", forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+
+        await store.markSucceeded(
+            day: stale.day,
+            token: stale.token,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id",
+            operationDate: today)
+
+        #expect(defaults.string(forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+            == "2026-07-17")
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(await store.record(for: today) == nil)
+        #expect(source.callCount == 1)
+    }
+
+    @Test("Late yesterday success lookup uses today's wrong-type suppression boundary")
+    func lateYesterdayLookupUsesOperationDayForSuppression() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let yesterday = try utcDate(year: 2026, month: 7, day: 16, hour: 23, minute: 59)
+        let today = try utcDate(year: 2026, month: 7, day: 17)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+        let stale = try #require(await store.record(for: yesterday))
+        await store.markSucceeded(
+            day: stale.day,
+            token: stale.token,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id",
+            operationDate: yesterday)
+        defaults.set(Data("2026-07-16".utf8),
+                     forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+
+        #expect(await store.hasSucceeded(
+            day: stale.day,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id",
+            operationDate: today) == false)
+        #expect(defaults.string(forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+            == "2026-07-17")
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(await store.record(for: today) == nil)
+        #expect(source.callCount == 1)
     }
 
     @Test("A marker-first crash leaves residual live records unusable")
@@ -116,7 +179,8 @@ struct DailyActiveTokenStoreTests {
             token: record.token,
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id")
+            channel: "developer-id",
+            operationDate: date)
         // Simulate a process exit immediately after the marker-first write and
         // before suppressUntilNextUTCDay can remove either live record.
         defaults.set("2026-07-16", forKey: DailyActiveTokenStore.suppressedDayStorageKey)
@@ -129,10 +193,42 @@ struct DailyActiveTokenStoreTests {
             day: record.day,
             version: "0.2.41",
             brand: "quota-monitor",
-            channel: "developer-id") == false)
+            channel: "developer-id",
+            operationDate: date) == false)
         #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
         #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
         #expect(restoredSource.callCount == 0)
+    }
+
+    @Test("An expired marker clears crash residuals before next-day token generation")
+    func expiredMarkerClearsResidualsBeforeResuming() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let yesterday = try utcDate(year: 2026, month: 7, day: 16)
+        let today = try utcDate(year: 2026, month: 7, day: 17)
+        let source = RandomSourceProbe(values: [
+            Array(0 ... 15),
+            Array(16 ... 31),
+        ])
+        let first = makeStore(defaults: defaults, source: source)
+        let stale = try #require(await first.record(for: yesterday))
+        await first.markSucceeded(
+            day: stale.day,
+            token: stale.token,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id",
+            operationDate: yesterday)
+        defaults.set("2026-07-16", forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+
+        let restored = makeStore(defaults: defaults, source: source)
+        let current = try #require(await restored.record(for: today))
+
+        #expect(current.day == "2026-07-17")
+        #expect(current.token == "EBESExQVFhcYGRobHB0eHw")
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.suppressedDayStorageKey) == nil)
+        #expect(source.callCount == 2)
     }
 
     @Test("A future marker continues suppressing through forward and rolled-back clocks")
@@ -242,7 +338,8 @@ struct DailyActiveTokenStoreTests {
             token: first.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: beforeMidnight)
         let second = try #require(await store.record(for: atMidnight))
 
         #expect(first.day == "2026-07-16")
@@ -255,24 +352,28 @@ struct DailyActiveTokenStoreTests {
             day: first.day,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct"))
+            channel: "direct",
+            operationDate: atMidnight))
         #expect(await store.hasSucceeded(
             day: second.day,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct") == false)
+            channel: "direct",
+            operationDate: atMidnight) == false)
 
         await store.markSucceeded(
             day: second.day,
             token: second.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: atMidnight)
         #expect(await store.hasSucceeded(
             day: first.day,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct") == false)
+            channel: "direct",
+            operationDate: atMidnight) == false)
     }
 
     @Test("Random-source failure returns nil without persistence")
@@ -372,38 +473,45 @@ struct DailyActiveTokenStoreTests {
             token: original.token,
             version: "0.2|40",
             brand: "Quota|Monitor",
-            channel: "direct|stable")
+            channel: "direct|stable",
+            operationDate: date)
 
         #expect(await store.hasSucceeded(
             day: original.day,
             version: "0.2|40",
             brand: "Quota|Monitor",
-            channel: "direct|stable"))
+            channel: "direct|stable",
+            operationDate: date))
         #expect(await store.hasSucceeded(
             day: "2026-07-17",
             version: "0.2|40",
             brand: "Quota|Monitor",
-            channel: "direct|stable") == false)
+            channel: "direct|stable",
+            operationDate: date) == false)
         #expect(await store.hasSucceeded(
             day: original.day,
             version: "0.2|41",
             brand: "Quota|Monitor",
-            channel: "direct|stable") == false)
+            channel: "direct|stable",
+            operationDate: date) == false)
         #expect(await store.hasSucceeded(
             day: original.day,
             version: "0.2",
             brand: "40|Quota|Monitor",
-            channel: "direct|stable") == false)
+            channel: "direct|stable",
+            operationDate: date) == false)
         #expect(await store.hasSucceeded(
             day: original.day,
             version: "0.2|40",
             brand: "CodexMonitor",
-            channel: "direct|stable") == false)
+            channel: "direct|stable",
+            operationDate: date) == false)
         #expect(await store.hasSucceeded(
             day: original.day,
             version: "0.2|40",
             brand: "Quota|Monitor",
-            channel: "app-store") == false)
+            channel: "app-store",
+            operationDate: date) == false)
         #expect(await store.record(for: date) == original)
         #expect(source.callCount == 1)
     }
@@ -428,7 +536,8 @@ struct DailyActiveTokenStoreTests {
                 day: original.day,
                 version: "0.2.40",
                 brand: "QuotaMonitor",
-                channel: "direct") == false)
+                channel: "direct",
+                operationDate: date) == false)
             #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
             #expect(await store.record(for: date) == original)
             #expect(source.callCount == 1)
@@ -448,7 +557,8 @@ struct DailyActiveTokenStoreTests {
             token: original.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: date)
 
         let restoredSource = RandomSourceProbe(values: [])
         let restoredStore = makeStore(defaults: defaults, source: restoredSource)
@@ -459,7 +569,8 @@ struct DailyActiveTokenStoreTests {
             day: original.day,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct"))
+            channel: "direct",
+            operationDate: date))
     }
 
     @Test("Clear removes both records and the next request starts fresh")
@@ -475,7 +586,8 @@ struct DailyActiveTokenStoreTests {
             token: original.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: date)
 
         await store.clear()
 
@@ -490,7 +602,8 @@ struct DailyActiveTokenStoreTests {
             day: original.day,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct") == false)
+            channel: "direct",
+            operationDate: date) == false)
     }
 
     @Test("Clearing before a stale success write cannot resurrect success")
@@ -508,7 +621,8 @@ struct DailyActiveTokenStoreTests {
             token: stale.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: date)
 
         #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
         #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
@@ -527,7 +641,8 @@ struct DailyActiveTokenStoreTests {
             token: record.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: date)
 
         await store.clear()
 
@@ -553,14 +668,16 @@ struct DailyActiveTokenStoreTests {
             token: replacement.token,
             version: "0.2.41",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: date)
 
         await store.markSucceeded(
             day: stale.day,
             token: stale.token,
             version: "0.2.40",
             brand: "CodexMonitor",
-            channel: "app-store")
+            channel: "app-store",
+            operationDate: date)
 
         let tokenData = try #require(
             defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) as? Data)
@@ -570,12 +687,14 @@ struct DailyActiveTokenStoreTests {
             day: replacement.day,
             version: "0.2.41",
             brand: "QuotaMonitor",
-            channel: "direct"))
+            channel: "direct",
+            operationDate: date))
         #expect(await store.hasSucceeded(
             day: stale.day,
             version: "0.2.40",
             brand: "CodexMonitor",
-            channel: "app-store") == false)
+            channel: "app-store",
+            operationDate: date) == false)
     }
 
     @Test("An invalid persisted token blocks success and self-heals")
@@ -596,7 +715,8 @@ struct DailyActiveTokenStoreTests {
             token: "AAECAwQFBgcICQoLDA0ODw",
             version: "0.2.40",
             brand: "QuotaMonitor",
-            channel: "direct")
+            channel: "direct",
+            operationDate: try utcDate(year: 2026, month: 7, day: 16))
 
         #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
         #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)

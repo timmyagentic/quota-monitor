@@ -85,15 +85,19 @@ struct BrandingLocalizationTests {
         }
 
         for term in [
-            "app version", "brand", "distribution", "fresh random daily token",
-            "UTC day", "deduplicated", "account", "usage history", "path",
-            "device ID", "stable ID", "received by the service", "Settings",
+            "protocol/schema version", "UTC date", "app version", "brand",
+            "distribution channel", "fresh random daily token", "UTC day",
+            "deduplicated", "failed delivery attempts", "same day's token",
+            "account", "usage history", "path", "device ID", "stable ID",
+            "received by the service", "Settings",
         ] {
             #expect(english.localizedCaseInsensitiveContains(term))
         }
         for term in [
-            "应用版本", "品牌", "分发渠道", "每日新生成的随机 token", "UTC 日",
-            "去重", "账号", "使用记录", "路径", "设备 ID", "稳定 ID", "服务端已接收", "设置",
+            "协议/模式版本", "UTC 日期", "应用版本", "品牌", "分发渠道",
+            "每日新生成的随机 token", "UTC 日", "去重", "发送失败",
+            "同一天的 token", "账号", "使用记录", "路径", "设备 ID", "稳定 ID",
+            "服务端已接收", "设置",
         ] {
             #expect(chinese.localizedCaseInsensitiveContains(term))
         }

@@ -130,7 +130,7 @@ struct AnonymousVersionReportingCoordinatorTests {
         settings.setAnonymousVersionReportingConsent(.disabled)
         settings.setAnonymousVersionReportingConsent(.enabled)
         await coordinator.waitForIdle()
-        #expect(await sleeper.waitForFirstCall())
+        await sleeper.waitForFirstCall()
 
         #expect(await transport.requestCount == 0)
         #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
@@ -532,18 +532,21 @@ private actor CountingDailyActiveTransport: DailyActiveTransport {
 
 private actor ReporterPeriodicSleepProbe {
     private var callCount = 0
+    private var firstCallWaiters: [CheckedContinuation<Void, Never>] = []
 
     func sleep(_ duration: Duration) async throws {
         callCount += 1
+        let waiters = firstCallWaiters
+        firstCallWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
         try await Task<Never, Never>.sleep(for: .seconds(60))
     }
 
-    func waitForFirstCall() async -> Bool {
-        for _ in 0 ..< 1_000 {
-            if callCount > 0 { return true }
-            await Task.yield()
+    func waitForFirstCall() async {
+        guard callCount == 0 else { return }
+        await withCheckedContinuation { continuation in
+            firstCallWaiters.append(continuation)
         }
-        return false
     }
 }
 
