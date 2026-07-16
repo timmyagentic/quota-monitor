@@ -17,8 +17,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
     private var dailyActiveReporter: DailyActiveReporter?
-    private var anonymousVersionReportingCoordinator:
-        AnonymousVersionReportingCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
@@ -81,52 +79,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dailyActiveTokenStore = DailyActiveTokenStore(
             defaults: DailyActiveUserDefaults(
                 LocalQAEnvironment.userDefaults() ?? .standard))
-        let stateResolver: @MainActor @Sendable ()
-            -> AnonymousVersionReportingState = { [settings, loc] in
-                let context = AnonymousVersionReportingRuntime.resolveContext(
-                    version: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
-                        as? String ?? "unknown",
-                    appCodeName: Branding.appCodeName,
-                    infoDictionary: Bundle.main.infoDictionary,
-                    environment: ProcessInfo.processInfo.environment)
-                return AnonymousVersionReportingState(
-                    consent: settings.anonymousVersionReportingConsent,
-                    hasCompletedOnboarding:
-                        !loc.needsOnboarding && !settings.needsProviderOnboarding,
-                    isQARequested: LocalQAEnvironment.isQARequested(),
-                    context: context)
-            }
+        let reportingContext = AnonymousVersionReportingRuntime.resolveContext(
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
+                as? String ?? "unknown",
+            appCodeName: Branding.appCodeName,
+            infoDictionary: Bundle.main.infoDictionary,
+            environment: ProcessInfo.processInfo.environment)
         let reporter = DailyActiveReporter(
             store: dailyActiveTokenStore,
             eligibility: {
-                let state = await stateResolver()
-                if state.isQARequested { return .localQA }
-                guard state.hasCompletedOnboarding, state.context != nil else {
-                    return .disabled
-                }
-                switch state.consent {
-                case .undecided: return .undecided
-                case .enabled: return .enabled
-                case .disabled: return .disabled
-                }
+                if LocalQAEnvironment.isQARequested() { return .localQA }
+                return reportingContext == nil ? .disabled : .enabled
             },
             context: {
-                await stateResolver().context
+                reportingContext
             })
         dailyActiveReporter = reporter
-        let coordinator = AnonymousVersionReportingCoordinator(
-            settings: settings,
-            currentState: stateResolver,
-            startReporter: { await reporter.start() },
-            stopReporter: { await reporter.stop() },
-            suppressUntilNextUTCDay: { date in
-                await dailyActiveTokenStore.suppressUntilNextUTCDay(from: date)
-            },
-            presentDisclosure: {
-                await AnonymousVersionReportingDisclosure.present()
-            })
-        anonymousVersionReportingCoordinator = coordinator
-        anonymousVersionReportingCoordinator?.launch()
+        Task { await reporter.start() }
 
         if let qa = LocalQAConfiguration() {
             let qaController = LocalQAController(
@@ -180,7 +149,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        anonymousVersionReportingCoordinator?.terminate()
         statusItemController?.stop()
         statusItemController = nil
     }
@@ -192,7 +160,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func onboardingCompleted() {
         NotificationCenter.default.removeObserver(
             self, name: .quotaMonitorOnboardingCompleted, object: nil)
-        anonymousVersionReportingCoordinator?.onboardingCompleted()
         scheduleDiscoverabilityCheck()
     }
 

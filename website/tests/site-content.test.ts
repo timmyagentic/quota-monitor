@@ -419,6 +419,10 @@ describe("public product content", () => {
     expect(html).toContain('href="/styles.css"');
     expect(html).toContain('type="module" src="/app.js"');
     expect(html).toContain('class="privacy-policy-list"');
+    expect(html).toContain(
+      `content="How Quota Monitor's anonymous daily active installation check-in works, what it excludes, and how long aggregate counts are retained."`,
+    );
+    expect(html).not.toContain("optional anonymous daily active installation check-in");
     expect(html).not.toMatch(/<style\b|\sstyle\s*=|\son[a-z]+\s*=|javascript:/i);
     expect(html).not.toMatch(/github/i);
     expect(ruleBody(css, ".privacy-policy-layout")).toMatch(/max-width:\s*880px\s*;/);
@@ -429,7 +433,7 @@ describe("public product content", () => {
     expect(ruleBody(mobileCss, ".privacy-policy-page")).toMatch(/padding:\s*52px\s+0\s*;/);
   });
 
-  it("states the exact anonymous check-in, retention, edge, and opt-out contract in both languages", async () => {
+  it("states the exact automatic anonymous check-in, retention, and edge contract in both languages", async () => {
     const html = readPublic("privacy.html");
     const { translations } = await loadAppModule();
     const policies = [translations.en, translations["zh-Hans"]];
@@ -440,16 +444,16 @@ describe("public product content", () => {
     expect(html).toContain('data-i18n="privacyPolicyOptOutBody"');
 
     expect(translations.en.privacyPolicyIntro).toBe(
-      "Quota Monitor sends an anonymous daily active installation check-in only after you explicitly opt in. These counts estimate active installations, never users.",
+      "Eligible Quota Monitor builds automatically send one anonymous daily active installation check-in. These counts estimate active installations, never users.",
     );
     expect(translations["zh-Hans"].privacyPolicyIntro).toBe(
-      "只有在你明确选择加入后，Quota Monitor 才会发送匿名每日活跃安装检查。统计结果估算的是活跃安装量，绝不是用户数。",
+      "符合条件的 Quota Monitor 构建会自动发送每日一次的匿名活跃安装检查。统计结果估算的是活跃安装量，绝不是用户数。",
     );
     expect(translations.en.privacyStatisticsBody).toBe(
-      "The optional check-in JSON payload contains only six documented fields, and neither it nor the D1 raw or aggregate datasets contain a stable installation or device ID. The service is not designed to link installations across UTC days; Cloudflare network processing is disclosed separately in the full policy.",
+      "The check-in JSON payload contains only six documented fields, and neither it nor the D1 raw or aggregate datasets contain a stable installation or device ID. The service is not designed to link installations across UTC days; Cloudflare network processing is disclosed separately in the full policy.",
     );
     expect(translations["zh-Hans"].privacyStatisticsBody).toBe(
-      "可选检查 JSON payload 只包含公开说明的六个字段；它和 D1 原始及聚合数据集都不包含稳定安装 ID 或设备 ID。服务的设计目的不是跨 UTC 日关联安装；Cloudflare 的网络处理在完整政策中单独披露。",
+      "检查 JSON payload 只包含公开说明的六个字段；它和 D1 原始及聚合数据集都不包含稳定安装 ID 或设备 ID。服务的设计目的不是跨 UTC 日关联安装；Cloudflare 的网络处理在完整政策中单独披露。",
     );
     expect(translations.en.privacyPolicyTokenBody).toBe(
       "The random token rotates every UTC day. A failed request reuses it only within the same UTC day. If the app version changes that day, a later check-in can reclassify the same record. The check-in JSON payload and D1 raw or aggregate datasets contain no stable installation or device ID, and the service is not designed to link installations across UTC days. This statement does not cover Cloudflare's separate network-boundary processing, which is disclosed below.",
@@ -458,10 +462,10 @@ describe("public product content", () => {
       "随机令牌在每个 UTC 日轮换。失败请求只会在同一个 UTC 日内复用它。如果当天应用版本发生变化，后续检查可以对同一条记录重新分类。检查 JSON payload 与 D1 原始或聚合数据集都不包含稳定安装 ID 或设备 ID，服务的设计目的不是跨 UTC 日关联安装。该说明不涵盖 Cloudflare 单独的网络边界处理，相关内容见下文披露。",
     );
     expect(translations.en.privacyPolicyOptOutBody).toBe(
-      "Turning reporting off immediately stops new requests, attempts to cancel any in-flight request, deletes the local token and success state for that day, and suppresses same-UTC-day re-enablement until the next UTC day. A request that has already reached the service may still be accepted. Any resulting or previously received anonymous row cannot be individually found or deleted because no stable ID or deletion handle exists; it follows the same live raw-row and D1 Time Travel retention above.",
+      "Reporting starts automatically in eligible production builds and runs at most once per UTC day for each version context. Local QA and builds without an approved reporting context do not send check-ins. Anonymous rows cannot be individually found or deleted because no stable ID or deletion handle exists; they follow the live raw-row and D1 Time Travel retention above.",
     );
     expect(translations["zh-Hans"].privacyPolicyOptOutBody).toBe(
-      "关闭报告会立即停止发起新请求，尝试取消任何在途请求，删除本机当天的令牌和成功状态，并抑制同一 UTC 日内重新启用，直到下一个 UTC 日。已经到达服务端的请求仍可能被接收。由此产生或此前已接收的匿名行无法单独定位或删除，因为不存在稳定 ID 或删除句柄；它们遵循上述相同的实时原始行和 D1 Time Travel 保留规则。",
+      "报告会在符合条件的正式构建中自动启动，并且每个版本上下文在每个 UTC 日最多发送一次。本地 QA 以及没有获准报告上下文的构建不会发送检查。匿名行无法单独定位或删除，因为不存在稳定 ID 或删除句柄；它们遵循上述实时原始行和 D1 Time Travel 保留规则。",
     );
     expect(readPublic("index.html")).toContain(translations.en.privacyStatisticsBody);
     expect(html).toContain(translations.en.privacyPolicyTokenBody);
@@ -517,10 +521,9 @@ describe("public product content", () => {
     expect(englishPolicy).toMatch(/not an exact one-hour promise/i);
     expect(englishPolicy).toMatch(/7 days on the Free plan or 30 days on a Paid plan/i);
     expect(englishPolicy).toMatch(/retained for 400 days[\s\S]*private maintainer dashboard/i);
-    expect(englishPolicy).toMatch(/attempts to cancel any in-flight request/i);
-    expect(englishPolicy).toMatch(/already reached the service may still be accepted/i);
-    expect(englishPolicy).toMatch(/suppresses same-UTC-day re-enablement until the next UTC day/i);
-    expect(englishPolicy).toMatch(/resulting or previously received anonymous row[\s\S]*same live raw-row and D1 Time Travel retention/i);
+    expect(englishPolicy).toMatch(/starts automatically in eligible production builds/i);
+    expect(englishPolicy).toMatch(/Local QA[\s\S]*do not send check-ins/i);
+    expect(englishPolicy).toMatch(/anonymous rows[\s\S]*live raw-row and D1 Time Travel retention/i);
     expect(englishPolicy).toMatch(/name or account details[\s\S]*email[\s\S]*persistent identifier/i);
     expect(englishPolicy).toMatch(/system or hardware information[\s\S]*session titles/i);
     expect(englishPolicy).toMatch(/prompts, messages, or history[\s\S]*quota or usage values/i);
@@ -547,10 +550,9 @@ describe("public product content", () => {
     expect(chinesePolicy).toMatch(/并非精确的一小时承诺/);
     expect(chinesePolicy).toMatch(/Free 计划 7 天或 Paid 计划 30 天/);
     expect(chinesePolicy).toMatch(/保留 400 天[\s\S]*私有维护者仪表盘/);
-    expect(chinesePolicy).toMatch(/尝试取消任何在途请求/);
-    expect(chinesePolicy).toMatch(/已经到达服务端的请求仍可能被接收/);
-    expect(chinesePolicy).toMatch(/同一 UTC 日内重新启用[\s\S]*下一个 UTC 日/);
-    expect(chinesePolicy).toMatch(/由此产生或此前已接收的匿名行[\s\S]*相同的实时原始行和 D1 Time Travel 保留规则/);
+    expect(chinesePolicy).toMatch(/符合条件的正式构建中自动启动/);
+    expect(chinesePolicy).toMatch(/本地 QA[\s\S]*不会发送检查/);
+    expect(chinesePolicy).toMatch(/匿名行无法单独定位或删除[\s\S]*实时原始行和 D1 Time Travel 保留规则/);
     expect(chinesePolicy).toMatch(/会话和历史数据[\s\S]*本地 SQLite 数据库/);
     expect(chinesePolicy).toMatch(/Codex 或 Claude Code 实时额度刷新[\s\S]*对应的服务提供方/);
     expect(chinesePolicy).toMatch(/独立于匿名版本统计[\s\S]*服务提供方的隐私条款/);

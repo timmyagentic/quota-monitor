@@ -33,23 +33,20 @@ struct AppDelegateLifecycleTests {
         #expect(!source.contains("pulseUpdateMarker"))
     }
 
-    @Test("App delegate wires one token store through reporter, suppression, and termination")
-    func anonymousReportingUsesOneStoreAndStopsAtTermination() throws {
+    @Test("App delegate starts anonymous reporting without consent coordination")
+    func anonymousReportingStartsAutomatically() throws {
         let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
         let launch = String(try Self.sourceSlice(
             source,
             from: "func applicationDidFinishLaunching",
             to: "private func closeStrayWindows"))
-        let termination = String(try Self.sourceSlice(
-            source,
-            from: "func applicationWillTerminate",
-            to: "func applicationShouldTerminateAfterLastWindowClosed"))
 
         #expect(launch.contains("let dailyActiveTokenStore = DailyActiveTokenStore("))
         #expect(launch.contains("DailyActiveReporter(\n            store: dailyActiveTokenStore"))
-        #expect(launch.contains("dailyActiveTokenStore.suppressUntilNextUTCDay"))
-        #expect(launch.contains("anonymousVersionReportingCoordinator?.launch()"))
-        #expect(termination.contains("anonymousVersionReportingCoordinator?.terminate()"))
+        #expect(launch.contains("Task { await reporter.start() }"))
+        #expect(launch.contains("LocalQAEnvironment.isQARequested()"))
+        #expect(!source.contains("AnonymousVersionReportingCoordinator"))
+        #expect(!source.contains("AnonymousVersionReportingDisclosure"))
     }
 
     private static func offset(of needle: String, in source: String) throws -> String.Index {

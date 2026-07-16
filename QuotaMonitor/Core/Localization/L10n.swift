@@ -253,44 +253,6 @@ enum L10n {
           zh: "关闭后 \(Branding.appCodeName) 完全只占菜单栏，但 Cmd+Tab 将切换不到 Dashboard 与设置窗口。")
     }
 
-    // MARK: - settings · privacy
-
-    static var sectionPrivacy: String { t(en: "Privacy", zh: "隐私") }
-    static var anonymousVersionReportingLabel: String {
-        t(en: "Share anonymous version statistics",
-          zh: "分享匿名版本统计")
-    }
-    static var anonymousVersionReportingHelp: String {
-        t(en: "With your explicit permission, the app sends exactly six fields: protocol/schema version, UTC date, app version, brand, distribution channel, and a fresh random daily token. The service can form at most one deduplicated anonymous active-installation record per UTC day. Failed delivery attempts may retry with the same day's token. It does not include your account, usage history, paths, device ID, or any stable ID.",
-          zh: "仅在你明确同意后，应用才会发送六个字段：协议/模式版本、UTC 日期、应用版本、品牌、分发渠道和每日新生成的随机 token。服务端每个 UTC 日最多形成一条去重后的匿名活跃安装记录；发送失败时可使用同一天的 token 重试。不包含账号、使用记录、路径、设备 ID 或任何稳定 ID。")
-    }
-    static var anonymousVersionReportingDisableHelp: String {
-        t(en: "You can turn this off at any time in Settings. Turning it off stops future requests and immediately deletes today's token and success state from this Mac. Turning it back on during the same UTC day resumes on the next UTC day. A record already received by the service has no stable identifier or deletion handle, so it cannot be looked up and deleted individually; it remains subject to the published retention policy.",
-          zh: "你可以随时在设置中关闭。关闭后会停止后续请求，并立即删除这台 Mac 上的当日 token 与成功状态；在同一 UTC 日重新开启，要到下一个 UTC 日才恢复。服务端已接收的匿名当日记录没有稳定标识或删除句柄，无法逐条回查删除，仍按已公布的保留策略处理。")
-    }
-    static var anonymousVersionReportingQAHelp: String {
-        t(en: "Local QA is active. This section is preview-only; no anonymous daily check-in is sent.",
-          zh: "本地 QA 已启用。此区域仅供预览，不会发送匿名每日 check-in。")
-    }
-    static var anonymousVersionReportingPrivacyLink: String {
-        t(en: "Privacy details", zh: "隐私详情")
-    }
-    static let anonymousVersionReportingPrivacyURL = URL(
-        string: "https://quota-monitor.timmyagentic.com/privacy")!
-
-    static var anonymousVersionReportingDisclosureTitle: String {
-        t(en: "Share anonymous version statistics?",
-          zh: "是否分享匿名版本统计？")
-    }
-    static var anonymousVersionReportingDisclosureMessage: String {
-        "\(anonymousVersionReportingHelp)\n\n\(anonymousVersionReportingDisableHelp)"
-    }
-    static var anonymousVersionReportingAllowButton: String {
-        t(en: "Allow", zh: "允许")
-    }
-    static var anonymousVersionReportingNotNowButton: String {
-        t(en: "Not now", zh: "暂不允许")
-    }
     static func headlineWindowLabel(_ window: HeadlineWindow) -> String {
         switch window {
         case .last7d:  return t(en: "Last 7 days",  zh: "近 7 天")

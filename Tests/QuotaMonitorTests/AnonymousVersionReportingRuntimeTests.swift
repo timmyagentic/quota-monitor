@@ -85,28 +85,4 @@ struct AnonymousVersionReportingRuntimeTests {
             environment: [:]) == nil)
     }
 
-    @Test("Settings visibility allows production and active QA but hides malformed QA")
-    func settingsVisibilityHonorsRuntimeAndQAState() {
-        let context = DailyActiveReportingContext(
-            version: "0.2.41",
-            brand: "quota-monitor",
-            channel: "developer-id")
-
-        #expect(AnonymousVersionReportingRuntime.shouldShowSettings(
-            context: context,
-            isQARequested: false,
-            isQAActive: false))
-        #expect(AnonymousVersionReportingRuntime.shouldShowSettings(
-            context: context,
-            isQARequested: true,
-            isQAActive: true))
-        #expect(AnonymousVersionReportingRuntime.shouldShowSettings(
-            context: context,
-            isQARequested: true,
-            isQAActive: false) == false)
-        #expect(AnonymousVersionReportingRuntime.shouldShowSettings(
-            context: nil,
-            isQARequested: false,
-            isQAActive: false) == false)
-    }
 }
