@@ -474,6 +474,28 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("--token-env GITHUB_TOKEN", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
 
+    def test_scheduled_feed_monitor_documents_asset_integrity_and_safe_probe(self):
+        release_doc = self.read_text("docs/release.md")
+        section_start = release_doc.index("### Scheduled release/feed health monitor")
+        section_end = release_doc.index("## One-time setup: Sparkle Ed25519 signing")
+        section = " ".join(release_doc[section_start:section_end].split())
+
+        for required_text in (
+            "64-byte Ed25519",
+            "`Range: bytes=0-0`",
+            "`206 Partial Content`",
+            "`Content-Range`",
+            "`release-assets.githubusercontent.com`",
+            "legacy URL may first make one exact `301` transition",
+            "that same `302` transition",
+            "never sends `Authorization`, `Cookie`, or `Proxy-Authorization`",
+        ):
+            with self.subTest(required_text=required_text):
+                self.assertIn(required_text, section)
+        self.assertIn("asset filename and byte size", section)
+        self.assertIn("404", section)
+        self.assertIn("200", section)
+
     def test_developer_id_helpers_are_present_and_do_not_hide_notary_status(self):
         common = self.read_text("tools/developer-id-common.sh")
         app_notary = self.read_text("tools/notarize.sh")

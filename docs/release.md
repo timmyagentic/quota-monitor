@@ -400,10 +400,33 @@ the canonical `timmyagentic/codex-monitor` repository, while existing installed
 clients continue polling the legacy raw feed URL. Do not migrate that client
 URL merely to make the two owner names look alike.
 
-Each matrix row compares the latest GitHub Release tag with the first direct
-Appcast item and rejects a feed larger than **100,000 bytes (100 KB)**. The
-matrix uses `fail-fast: false`, so one brand's failure does not hide the other
-brand's result. Start an on-demand read-only check with:
+Each matrix row treats the latest GitHub Release and the first direct Appcast
+item as one publication contract. It rejects a feed larger than **100,000
+bytes (100 KB)** and requires the first item to have an HTTPS enclosure, a
+positive length, and a non-empty base64 signature that decodes to a 64-byte
+Ed25519 value. The normalized release tag must match the Appcast version, and
+the enclosure URL must exactly identify that repository, original release tag,
+and release asset filename and byte size. A missing asset or any URL/size
+mismatch fails the row.
+
+The checker then sends an anonymous `GET` with `Range: bytes=0-0` to the exact
+enclosure URL. QuotaMonitor's canonical URL may make one exact `302` transition
+to GitHub's HTTPS `release-assets.githubusercontent.com` CDN. CodexMonitor's
+legacy URL may first make one exact `301` transition to the matching canonical
+`timmyagentic/codex-monitor` asset and then that same `302` transition to the
+CDN. Only those controlled transitions are allowed; an extra redirect, a
+changed source or canonical URL, or any other scheme or host is rejected. The
+asset request never sends `Authorization`, `Cookie`, or
+`Proxy-Authorization`, including across the allowed redirects. The final
+response must be `206 Partial Content`, contain a `Content-Range` total equal
+to the enclosure length, and yield exactly one byte. A 404, a `200` full-body
+response, or malformed range metadata fails without downloading the DMG.
+All three network request flows ignore environment proxy settings; the API and
+feed requests also reject redirects, so the monitor cannot silently switch
+either trusted source.
+
+The matrix uses `fail-fast: false`, so one brand's failure does not hide the
+other brand's result. Start an on-demand read-only check with:
 
 ```sh
 gh workflow run update-feed-health.yml
@@ -419,12 +442,12 @@ python3 tools/check-update-feed-health.py \
   --max-bytes 100000
 ```
 
-Check whether the failure is an oversized or malformed feed, a mismatch
-between the latest release tag and the first direct Appcast item, or a network
-failure. For QuotaMonitor, confirm the generated Appcast PR was merged; for
-CodexMonitor, inspect the canonical repository and the intentionally retained
-legacy raw URL as one publication path. The monitor never repairs or writes a
-feed automatically.
+Check whether the failure is an oversized or malformed feed, invalid enclosure
+or signature metadata, missing or mismatched Release asset, rejected redirect,
+range-probe failure, or release/Appcast version mismatch. For QuotaMonitor,
+confirm the generated Appcast PR was merged; for CodexMonitor, inspect the
+canonical repository and the intentionally retained legacy raw URL as one
+publication path. The monitor never repairs or writes a feed automatically.
 
 `tools/slim-legacy-appcast.py` is a separate, deliberate maintenance tool for
 removing only item-level CDATA release-note descriptions. It validates XML
