@@ -12,7 +12,7 @@
 #   ./tools/release-sparkle.sh                       (uses dist/<BRAND_CODE>-<VERSION>.dmg)
 #   ./tools/release-sparkle.sh path/to/some.dmg      (sign an arbitrary file)
 #   QM_SPARKLE_ACCOUNT=myname ./tools/release-sparkle.sh
-#   RELEASE_REPO=systemoutprintlnnnn/codex-monitor ./tools/release-sparkle.sh
+#   RELEASE_REPO=timmyagentic/codex-monitor ./tools/release-sparkle.sh
 #       (point the enclosure download URL at a different brand's repo)
 #
 # The <title> and default DMG name follow appCodeName in Branding.swift,
@@ -82,15 +82,14 @@ fi
 DMG_FILE="$(basename "${DMG_PATH}")"
 # Which repo's Releases the enclosure URL points at. Defaults to this
 # repo (Quota Monitor); the CodexMonitor release job overrides it to
-# systemoutprintlnnnn/codex-monitor so the signed appcast points users
+# timmyagentic/codex-monitor so the signed appcast points users
 # at the DMG actually published under that brand.
 RELEASE_REPO="${RELEASE_REPO:-timmyagentic/quota-monitor}"
 DOWNLOAD_URL="https://github.com/${RELEASE_REPO}/releases/download/v${VERSION}/${DMG_FILE}"
 # Base URL hosting the per-version release-notes HTML the appcast LINKS to
-# (via sparkle:releaseNotesLink). Deliberately pinned to the primary Quota
-# Monitor repo and NOT derived from RELEASE_REPO: the CodexMonitor feed push
-# (release.yml) ships only appcast.xml, not ReleaseNotes/, so both brands'
-# feeds must resolve their notes against this single, always-populated host.
+# (via sparkle:releaseNotesLink). It defaults to the primary Quota Monitor
+# repo; the CodexMonitor release job overrides it to the canonical CodexMonitor
+# repo and commits the generated notes there alongside that brand's feed.
 NOTES_BASE_URL="${NOTES_BASE_URL:-https://raw.githubusercontent.com/timmyagentic/quota-monitor/main}"
 # RSS pubDate must be RFC-822 (English month + weekday) regardless of
 # the maintainer's system locale. `LC_ALL=C` pins the C locale just

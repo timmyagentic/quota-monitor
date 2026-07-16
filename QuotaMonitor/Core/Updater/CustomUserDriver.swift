@@ -98,11 +98,20 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         state: SPUUserUpdateState,
         reply: @escaping (SPUUserUpdateChoice) -> Void
     ) {
+        let presentation = updateAvailability.recordDiscovery(
+            internalVersion: appcastItem.versionString,
+            displayVersion: appcastItem.displayVersionString,
+            userInitiated: state.userInitiated)
+        if presentation == .dismissSilently {
+            installReplyIsActive = false
+            reply(.dismiss)
+            return
+        }
+
         let s = self.state
         s.reset()
 
         let displayVersion = appcastItem.displayVersionString
-        updateAvailability.markAvailable(version: displayVersion)
         installReplyIsActive = true
 
         s.newVersion = displayVersion
@@ -134,12 +143,12 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         }
         s.onSkip    = { [weak self, updateAvailability] in
             self?.installReplyIsActive = false
-            updateAvailability.clear()
+            updateAvailability.markSkipped()
             reply(.skip)
         }
         s.onDismiss = { [weak self, updateAvailability] in
             self?.installReplyIsActive = false
-            updateAvailability.markDismissed()
+            updateAvailability.markLater()
             reply(.dismiss)
         }
 
@@ -239,13 +248,8 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         }
         state.onDismiss = { [weak self, updateAvailability] in
             self?.installReplyIsActive = false
-            updateAvailability.markDismissed()
+            updateAvailability.markLater()
             reply(.dismiss)
-        }
-        state.onSkip    = { [weak self, updateAvailability] in
-            self?.installReplyIsActive = false
-            updateAvailability.clear()
-            reply(.skip)
         }
     }
 

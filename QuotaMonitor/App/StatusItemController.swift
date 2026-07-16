@@ -20,11 +20,24 @@ import Observation
 /// `NSHostingController`.
 @MainActor
 final class StatusItemController: NSObject, NSPopoverDelegate {
+    typealias PulseSleep = @Sendable (_ duration: Duration) async throws -> Void
+
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let env: AppEnvironment
+    private let localization: LocalizationStore
     private let settings: SettingsStore
     private let updater: UpdaterController
+    private let pulseSleep: PulseSleep
+    private var pulseTask: Task<Void, Never>?
+    private var pulseGeneration: UInt = 0
+    private var emphasizedUpdateVersion: String?
+    private var isStopped = false
+
+    var updateMarkerIsEmphasized: Bool {
+        guard let emphasizedUpdateVersion else { return false }
+        return updater.updateAvailability.version == emphasizedUpdateVersion
+    }
 
     /// Invoked when the display configuration changes (external monitor,
     /// resolution, notch) so the owner can re-run the clip check.
@@ -33,10 +46,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     init(env: AppEnvironment,
          localization: LocalizationStore,
          settings: SettingsStore,
-         updater: UpdaterController) {
+         updater: UpdaterController,
+         pulseSleep: @escaping PulseSleep = { duration in
+             try await Task<Never, Never>.sleep(for: duration)
+         }) {
         self.env = env
+        self.localization = localization
         self.settings = settings
         self.updater = updater
+        self.pulseSleep = pulseSleep
         self.statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength)
         self.popover = NSPopover()
@@ -70,7 +88,50 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         renderAndObserve()
     }
 
-    deinit { NotificationCenter.default.removeObserver(self) }
+    /// Explicit AppKit teardown keeps this type compatible with Swift 6.1,
+    /// where actor-isolated deinitializers still require an experimental flag.
+    /// The app delegate calls this on the main actor before releasing its owner.
+    func stop() {
+        guard !isStopped else { return }
+        isStopped = true
+        pulseGeneration &+= 1
+        pulseTask?.cancel()
+        pulseTask = nil
+        emphasizedUpdateVersion = nil
+        onScreenChange = nil
+        NotificationCenter.default.removeObserver(self)
+        statusItem.button?.target = nil
+        statusItem.button?.action = nil
+        NSStatusBar.system.removeStatusItem(statusItem)
+    }
+
+    func pulseUpdateMarker(version: String) {
+        guard !isStopped else { return }
+        guard updater.updateAvailability.version == version else { return }
+        pulseGeneration &+= 1
+        let generation = pulseGeneration
+        pulseTask?.cancel()
+        emphasizedUpdateVersion = version
+        renderLabel()
+
+        let pulseSleep = self.pulseSleep
+        pulseTask = Task { @MainActor [weak self, pulseSleep] in
+            do {
+                try await pulseSleep(.seconds(8))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.endUpdateMarkerPulse(generation: generation)
+        }
+    }
+
+    private func endUpdateMarkerPulse(generation: UInt) {
+        guard generation == pulseGeneration else { return }
+        pulseTask = nil
+        emphasizedUpdateVersion = nil
+        renderLabel()
+    }
 
     // MARK: - label rendering
 
@@ -78,15 +139,26 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// the `@Observable` properties inside the tracking closure, so any
     /// change to them fires `onChange`, where we re-render and re-arm.
     private func renderAndObserve() {
+        guard !isStopped else { return }
         withObservationTracking {
             renderLabel()
-        } onChange: {
+        } onChange: { [weak self] in
             Task { @MainActor [weak self] in self?.renderAndObserve() }
         }
     }
 
     private func renderLabel() {
+        guard !isStopped else { return }
         guard let button = statusItem.button else { return }
+        _ = localization.tickForceRedraw
+        let updateVersion = StatusItemUpdateMarker.normalizedVersion(
+            updater.updateAvailability.version)
+        if let emphasizedUpdateVersion, emphasizedUpdateVersion != updateVersion {
+            pulseGeneration &+= 1
+            pulseTask?.cancel()
+            pulseTask = nil
+            self.emphasizedUpdateVersion = nil
+        }
         let rows = MenuBarLabelModel.rows(
             iconProviders: settings.menuBarIconProviders,
             enabledProviders: settings.enabledProviders,
@@ -95,17 +167,36 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             codexQuota: env.dashboardSnapshot?.codexQuota,
             displayMode: settings.quotaDisplayMode)
         let style = settings.menuBarLabelStyle
+        let baseTitle: NSAttributedString
+
+        // Reset version-specific tooltip copy on every pass. Accessibility is
+        // assigned explicitly below because AppKit does not restore an inferred
+        // title after an explicit accessibility label is cleared with nil.
+        button.toolTip = nil
 
         if rows.isEmpty {
             // Same gauge fallback the app shipped with — as a template image
             // so it auto-adapts to the menu bar's light/dark appearance.
-            button.attributedTitle = NSAttributedString(string: "")
+            baseTitle = NSAttributedString(string: "")
             button.image = Self.gaugeImage
-            button.imagePosition = .imageOnly
+            button.imagePosition = updateVersion == nil ? .imageOnly : .imageLeading
         } else {
             button.image = nil
             button.imagePosition = .noImage
-            button.attributedTitle = MenuBarTitleBuilder.make(rows: rows, style: style)
+            baseTitle = MenuBarTitleBuilder.make(rows: rows, style: style)
+        }
+
+        button.attributedTitle = StatusItemUpdateMarker.title(
+            base: baseTitle,
+            version: updateVersion,
+            emphasized: emphasizedUpdateVersion == updateVersion)
+        let accessibilityLabel = StatusItemUpdateMarker.accessibilityLabel(
+            base: baseTitle,
+            fallback: Branding.appDisplayName,
+            version: updateVersion)
+        button.setAccessibilityLabel(accessibilityLabel)
+        if let updateVersion {
+            button.toolTip = L10n.statusItemUpdateTooltip(updateVersion)
         }
     }
 
@@ -246,6 +337,43 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 }
 
 // MARK: - native title builder
+
+/// Adds the compact update affordance without rewriting the quota title.
+enum StatusItemUpdateMarker {
+    static func normalizedVersion(_ version: String?) -> String? {
+        guard let version, !version.isEmpty else { return nil }
+        return version
+    }
+
+    static func title(
+        base: NSAttributedString,
+        version: String?,
+        emphasized: Bool = false
+    ) -> NSAttributedString {
+        guard normalizedVersion(version) != nil else { return base }
+        let decorated = NSMutableAttributedString(attributedString: base)
+        let attributes: [NSAttributedString.Key: Any] = emphasized
+            ? [
+                .foregroundColor: NSColor.selectedMenuItemTextColor,
+                .backgroundColor: NSColor.systemOrange,
+            ]
+            : [.foregroundColor: NSColor.systemOrange]
+        decorated.append(NSAttributedString(
+            string: " ↓",
+            attributes: attributes))
+        return decorated
+    }
+
+    static func accessibilityLabel(
+        base: NSAttributedString,
+        fallback: String,
+        version: String?
+    ) -> String {
+        let baseLabel = base.string.isEmpty ? fallback : base.string
+        guard let version = normalizedVersion(version) else { return baseLabel }
+        return "\(baseLabel). \(L10n.statusItemUpdateAccessibilityLabel(version))"
+    }
+}
 
 /// Builds the `NSAttributedString` for the menu-bar label in the chosen
 /// style. Kept separate from the controller so the typography is easy to

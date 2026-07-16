@@ -36,11 +36,16 @@ local DMG and pasting that signature into `appcast.xml` therefore produces a
 signature that does not match what users download → Sparkle rejects every
 update as *"improperly signed."* (This is exactly what broke 0.2.26/0.2.27.)
 
-So **Sparkle signing still happens in CI, over the published DMG**, after the
-DMG has been Developer ID signed, notarized, stapled, and uploaded. CI opens the
-appcast PR for you. You no longer paste an appcast entry by hand on the happy
-path. `tools/release-sparkle.sh` still exists as a manual fallback (see the
-bottom of this doc).
+So **Sparkle signing happens in CI over the final notarized DMG before it is
+uploaded**. The complete order is: shared required-secret gate → build,
+Developer ID signing, notarization, and stapling → `.sha256` sidecar parity →
+Sparkle signing plus a read-only post-sign hash check → upload of those same
+DMG and sidecar paths → Appcast PR for QuotaMonitor or direct Appcast push to
+the canonical `timmyagentic/codex-monitor` repository → daily release/Appcast
+parity monitoring. Existing CodexMonitor clients continue to use their legacy
+raw feed URL; only publication ownership is canonical. You no longer paste an
+Appcast entry by hand on the happy path. `tools/release-sparkle.sh` still exists
+as a manual fallback (see the bottom of this doc).
 
 ## Per-release checklist
 
@@ -121,14 +126,22 @@ bottom of this doc).
    git push origin vX.Y.Z
    ```
    The tag push triggers `.github/workflows/release.yml`, which:
-   1. imports the Developer ID certificate from GitHub secrets;
-   2. rebuilds from the tagged commit, signs/notarizes/staples the `.app`,
-      builds a DMG, signs/notarizes/staples that DMG, and publishes the GitHub
-      Release (DMG + `.sha256` + release notes sliced from `CHANGELOG.md`);
-   3. **signs that exact published DMG** with `SPARKLE_PRIVATE_KEY` and builds
-      the appcast `<item>` (bilingual notes + correct signature and `length`);
-   4. opens an **`appcast/vX.Y.Z` PR** that splices the entry into
-      `appcast.xml`.
+   1. validates every required publishing secret in the shared gate before
+      either brand can build or publish;
+   2. imports the Developer ID certificate, rebuilds from the tagged commit,
+      signs/notarizes/staples the `.app`, then builds, signs, notarizes, and
+      staples the final DMG and writes its `.sha256` sidecar;
+   3. checks the DMG against that sidecar, validates the Sparkle key, signs the
+      final DMG into an Appcast `<item>`, and hashes the DMG again to prove the
+      signing operation did not change its bytes;
+   4. uploads those same DMG and sidecar paths to the brand's canonical GitHub
+      Release repository with notes sliced from `CHANGELOG.md`;
+   5. opens an **`appcast/vX.Y.Z` PR** for QuotaMonitor, or pushes the signed
+      entry directly to canonical `timmyagentic/codex-monitor` while retaining
+      the installed-client legacy raw feed URL.
+
+   After publication, the daily read-only health workflow checks both brands'
+   latest Release/Appcast version parity and enforces the 100 KB feed ceiling.
 
    **Don't run `gh release create` locally** — it would race the workflow's
    own release-create step.
@@ -145,10 +158,12 @@ notarization satisfy Gatekeeper for new downloads and the installed app. Users
 should not need the first-launch right-click bypass on current Developer ID
 releases.
 
-> **If CI couldn't sign** (no `appcast/vX.Y.Z` PR appeared), the workflow
-> logs a `SPARKLE_PRIVATE_KEY not set` warning — configure the secret (see
-> one-time setup below) and re-run the job, or fall back to the manual path
-> at the bottom of this doc.
+> **If CI cannot publish the Appcast**, the release job fails; signing or feed
+> publication is never a warning-only success. A missing required secret,
+> including `SPARKLE_PRIVATE_KEY`, fails the shared gate before either brand
+> builds or publishes. Fix the failed prerequisite before retrying. If the
+> exact release assets already exist and only feed publication remains, use
+> the recovery guidance below or the manual path against the downloaded DMG.
 
 ---
 
@@ -182,7 +197,9 @@ Application identity in the keychain; the scripts auto-detect the first one.
 
 ### GitHub Actions secrets
 
-The tag workflow requires these repository secrets:
+The tag workflow requires every non-optional repository secret below;
+`DEVELOPER_ID_APPLICATION` remains optional when the imported certificate has
+only one matching identity:
 
 | Secret | Purpose |
 |---|---|
@@ -193,6 +210,7 @@ The tag workflow requires these repository secrets:
 | `APPLE_TEAM_ID` | Developer Team ID. |
 | `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password for `notarytool`. |
 | `SPARKLE_PRIVATE_KEY` | Existing Sparkle Ed25519 private key. Do not rotate for the Developer ID migration. |
+| `CODEX_MONITOR_PAT` | Token with `contents: write` access to canonical `timmyagentic/codex-monitor`, used to publish its Release and Appcast entry. |
 
 To create the certificate secret from an exported `.p12`:
 
@@ -203,11 +221,120 @@ gh secret set DEVELOPER_ID_APPLICATION
 gh secret set APPLE_ID
 gh secret set APPLE_TEAM_ID
 gh secret set APPLE_APP_SPECIFIC_PASSWORD
+gh secret set CODEX_MONITOR_PAT
 ```
 
-The release workflow hard-fails if Developer ID secrets are missing. That is
-intentional: after the migration, a public tag should not silently publish an
-ad-hoc DMG.
+The shared gate hard-fails if any required publishing secret is missing before
+either brand builds or publishes. That is intentional: a public tag should not
+silently publish an ad-hoc DMG or a Release with no matching Appcast entry.
+
+### GitHub Actions pull-request permission
+
+The QuotaMonitor release job pushes `appcast/vX.Y.Z` and then opens the
+Appcast pull request. The repository must allow Actions to create and approve
+pull requests: **Settings → Actions → General → Workflow permissions → Allow
+GitHub Actions to create and approve pull requests**.
+
+The workflow's own `pull-requests: write` declaration is necessary but not
+sufficient. It grants that workflow's token the requested scope, while the
+repository-level switch separately decides whether an Actions token may create
+or approve a pull request. Both must allow the operation.
+
+Audit the live repository setting with this read-only command:
+
+```sh
+gh api repos/timmyagentic/quota-monitor/actions/permissions/workflow
+```
+
+The result must keep the least-privilege default and enable PR creation:
+
+```json
+{"default_workflow_permissions":"read","can_approve_pull_request_reviews":true}
+```
+
+If repair is needed, preserve the read-only default while enabling only the PR
+switch:
+
+```sh
+gh api --method PUT \
+  repos/timmyagentic/quota-monitor/actions/permissions/workflow \
+  -f default_workflow_permissions=read \
+  -F can_approve_pull_request_reviews=true
+```
+
+Do not broaden `default_workflow_permissions` to `write`. The release workflow
+declares its narrow write permissions explicitly; unrelated workflows should
+continue to receive read-only tokens by default.
+
+If the GitHub Release already exists and the workflow pushed
+`appcast/vX.Y.Z` but failed while creating the PR, recover from that exact
+branch. Inspect it before opening the PR:
+
+```sh
+VERSION=X.Y.Z
+BRANCH="appcast/v${VERSION}"
+git fetch origin "${BRANCH}"
+git diff --stat origin/main.."origin/${BRANCH}"
+git diff origin/main.."origin/${BRANCH}" -- \
+  appcast.xml "ReleaseNotes/${VERSION}.en.html" \
+  "ReleaseNotes/${VERSION}.zh-Hans.html"
+gh pr create --repo timmyagentic/quota-monitor \
+  --base main --head "${BRANCH}" \
+  --title "appcast: v${VERSION}" \
+  --body "Recover the Appcast PR from the branch generated by release.yml."
+```
+
+Never rebuild or re-sign the already-published DMG merely to recover PR
+creation. Its existing Appcast entry was signed against those exact published
+bytes; the missing operation is only opening the PR from the branch that the
+workflow already prepared.
+
+### Scheduled release/feed health monitor
+
+`.github/workflows/update-feed-health.yml` runs once a day and can also be
+started manually with `workflow_dispatch`. It is strictly read-only
+(`contents: read`) and checks these two release/feed pairs independently:
+
+| Brand | Latest-release repository | Installed-client feed |
+|---|---|---|
+| QuotaMonitor | `timmyagentic/quota-monitor` | `https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml` |
+| CodexMonitor | `timmyagentic/codex-monitor` | `https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main/appcast.xml` |
+
+The CodexMonitor split is intentional. GitHub release metadata and assets use
+the canonical `timmyagentic/codex-monitor` repository, while existing installed
+clients continue polling the legacy raw feed URL. Do not migrate that client
+URL merely to make the two owner names look alike.
+
+Each matrix row compares the latest GitHub Release tag with the first direct
+Appcast item and rejects a feed larger than **100,000 bytes (100 KB)**. The
+matrix uses `fail-fast: false`, so one brand's failure does not hide the other
+brand's result. Start an on-demand read-only check with:
+
+```sh
+gh workflow run update-feed-health.yml
+```
+
+When a row fails, inspect its Actions log and reproduce the same check locally
+before changing anything:
+
+```sh
+python3 tools/check-update-feed-health.py \
+  --repo OWNER/REPO \
+  --feed-url HTTPS_INSTALLED_CLIENT_FEED \
+  --max-bytes 100000
+```
+
+Check whether the failure is an oversized or malformed feed, a mismatch
+between the latest release tag and the first direct Appcast item, or a network
+failure. For QuotaMonitor, confirm the generated Appcast PR was merged; for
+CodexMonitor, inspect the canonical repository and the intentionally retained
+legacy raw URL as one publication path. The monitor never repairs or writes a
+feed automatically.
+
+`tools/slim-legacy-appcast.py` is a separate, deliberate maintenance tool for
+removing only item-level CDATA release-note descriptions. It validates XML
+before and after the surgical edit and requires `--in-place` for an atomic
+same-path replacement; it is not invoked by the scheduled monitor.
 
 ## One-time setup: Sparkle Ed25519 signing
 
@@ -270,10 +397,10 @@ production database credentials.
 
 ### 3b. Store the private key as a GitHub Actions secret (enables CI signing)
 
-`release.yml` signs the published DMG using a repo secret named
-`SPARKLE_PRIVATE_KEY`. Its value is exactly what `generate_keys -x`
-exports (the runner has no Keychain, so `sign_update --ed-key-file`
-reads it from a temp file). Set it once:
+`release.yml` signs the final notarized DMG before uploading that same path,
+using a repo secret named `SPARKLE_PRIVATE_KEY`. Its value is exactly what
+`generate_keys -x` exports (the runner has no Keychain, so
+`sign_update --ed-key-file` reads it from a temp file). Set it once:
 
 ```sh
 # Export the key to a temp file, push it to the repo secret, delete it.
@@ -283,11 +410,11 @@ gh secret set SPARKLE_PRIVATE_KEY < /tmp/qm-sparkle.key
 rm -f /tmp/qm-sparkle.key
 ```
 
-If the secret is missing, `release.yml` still builds and publishes the
-release — it just skips signing and logs a warning instead of opening
-the appcast PR. The same private key signs both locally (Keychain) and
-in CI (secret); they must correspond to the `SUPublicEDKey` in
-`Resources/Info.plist`.
+If this or any other required publishing secret is missing, the shared gate
+fails before either brand builds or publishes a release. The workflow never
+uploads an unsigned release or silently skips Appcast publication. The same
+private key signs both locally (Keychain) and in CI (secret); they must
+correspond to the `SUPublicEDKey` in `Resources/Info.plist`.
 
 **Confirm the secret is the right key** (you can't read a secret's value
 back, so verify its *derived* public key instead). Run the on-demand
@@ -330,10 +457,11 @@ the same name.
 
 ## Manual appcast fallback
 
-If CI signing is unavailable (secret not set, runner down), reproduce
-what CI does by hand — the one rule that matters is **sign the DMG that
-is actually published, never a fresh local rebuild** (their bytes
-differ, so a local-DMG signature won't validate against the download):
+If CI cannot finish Appcast publication after the exact DMG has already been
+uploaded (for example, the runner fails after release creation), reproduce the
+remaining work by hand. The one rule that matters is **sign the DMG that is
+actually published, never a fresh local rebuild** (their bytes differ, so a
+local-DMG signature won't validate against the download):
 
 ```sh
 gh release download vX.Y.Z -p '*.dmg' -D /tmp/qm

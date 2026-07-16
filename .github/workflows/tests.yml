@@ -31,6 +31,7 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # Cancel in-flight runs for the same ref when a new push lands —
 # saves macOS minutes (which are 10x linux on the free tier).
@@ -44,6 +45,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       swift-test: ${{ steps.filter.outputs.swift-test }}
+      website-test: ${{ steps.filter.outputs.website-test }}
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -60,6 +62,7 @@ jobs:
             HEAD="${{ github.event.pull_request.head.sha }}"
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+            echo "website-test=true" >> "${GITHUB_OUTPUT}"
             exit 0
           else
             BASE="${{ github.event.before }}"
@@ -68,6 +71,7 @@ jobs:
 
           if [[ -z "${BASE}" || "${BASE}" =~ ^0+$ ]]; then
             echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+            echo "website-test=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -75,6 +79,8 @@ jobs:
           printf 'Changed files:\n'
           printf '  %s\n' "${changed[@]}"
 
+          needs_swift_test=false
+          needs_website_test=false
           for path in "${changed[@]}"; do
             case "${path}" in
               .github/workflows/tests.yml|\
@@ -84,13 +90,19 @@ jobs:
               Resources/*|Resources/**|\
               qa/*|qa/**|\
               tools/*|tools/**)
-                echo "swift-test=true" >> "${GITHUB_OUTPUT}"
-                exit 0
+                needs_swift_test=true
+                ;;
+            esac
+            case "${path}" in
+              .github/workflows/tests.yml|\
+              website/**)
+                needs_website_test=true
                 ;;
             esac
           done
 
-          echo "swift-test=false" >> "${GITHUB_OUTPUT}"
+          echo "swift-test=${needs_swift_test}" >> "${GITHUB_OUTPUT}"
+          echo "website-test=${needs_website_test}" >> "${GITHUB_OUTPUT}"
 
   pr_changelog:
     name: PR changelog
@@ -109,6 +121,37 @@ jobs:
 
       - name: Validate PR changelog
         run: python3 tools/validate-pr-changelog.py --base "${{ github.event.pull_request.base.sha }}" --head HEAD
+
+  website_test:
+    name: Website checks
+    needs: [changes, pr_changelog]
+    if: >-
+      ${{
+        always() &&
+        needs.changes.result == 'success' &&
+        needs.changes.outputs.website-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install website dependencies
+        run: npm ci
+
+      - name: Check website
+        run: npm run check
 
   macos_swift_test:
     name: macOS Swift tests
@@ -152,7 +195,7 @@ jobs:
 
   swift-test:
     name: swift-test
-    needs: [changes, pr_changelog, macos_swift_test]
+    needs: [changes, pr_changelog, website_test, macos_swift_test]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -163,6 +206,8 @@ jobs:
           CHANGES_RESULT: ${{ needs.changes.result }}
           NEEDS_SWIFT_TEST: ${{ needs.changes.outputs.swift-test }}
           PR_CHANGELOG_RESULT: ${{ needs.pr_changelog.result }}
+          NEEDS_WEBSITE_TEST: ${{ needs.changes.outputs.website-test }}
+          WEBSITE_RESULT: ${{ needs.website_test.result }}
           MACOS_SWIFT_RESULT: ${{ needs.macos_swift_test.result }}
           IS_DRAFT: ${{ github.event.pull_request.draft || 'false' }}
         run: |
@@ -171,6 +216,8 @@ jobs:
           echo "changes result: ${CHANGES_RESULT}"
           echo "needs macOS Swift tests: ${NEEDS_SWIFT_TEST}"
           echo "PR changelog result: ${PR_CHANGELOG_RESULT}"
+          echo "needs website tests: ${NEEDS_WEBSITE_TEST}"
+          echo "website result: ${WEBSITE_RESULT}"
           echo "macOS Swift result: ${MACOS_SWIFT_RESULT}"
 
           if [[ "${CHANGES_RESULT}" != "success" ]]; then
@@ -179,7 +226,7 @@ jobs:
           fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
-            echo "Draft PR; macOS Swift tests intentionally skipped"
+            echo "Draft PR; gated tests intentionally skipped"
             exit 0
           fi
 
@@ -188,14 +235,24 @@ jobs:
             exit 1
           fi
 
-          if [[ "${NEEDS_SWIFT_TEST}" != "true" ]]; then
-            echo "No app/test/tooling changes; macOS Swift tests intentionally skipped"
-            exit 0
-          fi
-
-          if [[ "${MACOS_SWIFT_RESULT}" != "success" ]]; then
+          if [[ "${NEEDS_SWIFT_TEST}" == "true" && "${MACOS_SWIFT_RESULT}" != "success" ]]; then
             echo "::error::macOS Swift tests did not pass"
             exit 1
           fi
 
-          echo "macOS Swift tests passed"
+          if [[ "${NEEDS_WEBSITE_TEST}" == "true" && "${WEBSITE_RESULT}" != "success" ]]; then
+            echo "::error::Website tests did not pass"
+            exit 1
+          fi
+
+          if [[ "${NEEDS_SWIFT_TEST}" == "true" ]]; then
+            echo "macOS Swift tests passed"
+          else
+            echo "No app/test/tooling changes; macOS Swift tests intentionally skipped"
+          fi
+
+          if [[ "${NEEDS_WEBSITE_TEST}" == "true" ]]; then
+            echo "Website tests passed"
+          else
+            echo "No website changes; website tests intentionally skipped"
+          fi

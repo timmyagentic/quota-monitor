@@ -1,0 +1,35 @@
+name: update feed health
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - release_repo: timmyagentic/quota-monitor
+            feed_url: https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml
+          - release_repo: timmyagentic/codex-monitor
+            feed_url: https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main/appcast.xml
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Compare latest release with installed-client feed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/check-update-feed-health.py \
+            --repo "${{ matrix.release_repo }}" \
+            --feed-url "${{ matrix.feed_url }}" \
+            --max-bytes 100000 \
+            --token-env GITHUB_TOKEN \
+            --timeout 20

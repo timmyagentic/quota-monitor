@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import QuotaMonitor
 
@@ -9,6 +10,20 @@ import Testing
 @MainActor
 @Suite("Update window reply handlers")
 struct UpdateWindowReplyHandlerTests {
+
+    @Test("Available and ready phases expose the correct update actions")
+    func phaseSpecificActions() {
+        let state = UpdateWindowState()
+
+        state.phase = .updateAvailable
+        #expect(state.availableActions == [.skip, .later, .install])
+
+        state.phase = .readyToInstall
+        #expect(state.availableActions == [.later, .install])
+
+        state.phase = .downloading
+        #expect(state.availableActions.isEmpty)
+    }
 
     @Test("Firing install consumes the other handlers so a later window close can't double-reply")
     func firingInstallPreventsDoubleReplyOnClose() {
@@ -40,5 +55,56 @@ struct UpdateWindowReplyHandlerTests {
         state.handleWindowClose()
 
         #expect(dismissCount == 1)
+    }
+
+    @Test("Every update choice consumes all sibling reply handlers", arguments: [
+        UpdateWindowState.UpdateAction.install,
+        .skip,
+        .later,
+    ])
+    func everyChoiceConsumesSiblingHandlers(choice: UpdateWindowState.UpdateAction) {
+        let state = UpdateWindowState()
+        var installCount = 0
+        var skipCount = 0
+        var laterCount = 0
+        state.onInstall = { installCount += 1 }
+        state.onSkip = { skipCount += 1 }
+        state.onDismiss = { laterCount += 1 }
+
+        switch choice {
+        case .install:
+            state.fireInstall()
+        case .skip:
+            state.fireSkip()
+        case .later:
+            state.fireDismiss()
+        }
+        state.fireInstall()
+        state.fireSkip()
+        state.fireDismiss()
+
+        #expect(installCount == (choice == .install ? 1 : 0))
+        #expect(skipCount == (choice == .skip ? 1 : 0))
+        #expect(laterCount == (choice == .later ? 1 : 0))
+    }
+
+    @Test("The update view renders Skip only when the action model exposes it")
+    func viewUsesPhaseSpecificSkipAvailability() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/UpdateWindowView.swift")
+
+        #expect(source.contains("if state.availableActions.contains(.skip)"))
+    }
+
+    private static func source(named relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while url.path != "/" {
+            let candidate = url.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            url.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }

@@ -28,6 +28,12 @@ import Combine
 @MainActor
 @Observable
 final class UpdaterController {
+    struct RuntimeConfiguration {
+        let updateAvailability: PersistentUpdateAvailability
+        let sparkleEnabled: Bool
+        let reminderPresentationEnabled: Bool
+    }
+
     /// `true` when Sparkle is idle and a new check can start. Mirrors
     /// `SPUUpdater.canCheckForUpdates`. Bound to the "Check Now"
     /// button's `disabled` state so the user can't fire a second check
@@ -50,32 +56,46 @@ final class UpdaterController {
     let updateAvailability: PersistentUpdateAvailability
 
     @ObservationIgnored
+    private let reminderPresentationEnabled: Bool
+
+    @ObservationIgnored
     private let updater: SPUUpdater?
 
     @ObservationIgnored
     private let userDriver: CustomUserDriver?
 
     @ObservationIgnored
+    private var reminderCoordinator: UpdateReminderCoordinator?
+
+    @ObservationIgnored
     private var cancellables: Set<AnyCancellable> = []
 
     init(
-        updateAvailability: PersistentUpdateAvailability = PersistentUpdateAvailability(),
+        runtimeConfiguration: RuntimeConfiguration? = nil,
         onUpdateWindowClosed: @escaping @MainActor () -> Void = {}
     ) {
-        self.updateAvailability = updateAvailability
+        let runtime = runtimeConfiguration ?? Self.makeDefaultRuntimeConfiguration(
+            distribution: .current,
+            defaults: LocalQAEnvironment.userDefaults(),
+            standardDefaults: .standard,
+            currentInternalVersion: Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
+            localQAActive: LocalQAEnvironment.isActive())
+        self.updateAvailability = runtime.updateAvailability
+        self.reminderPresentationEnabled = runtime.reminderPresentationEnabled
 
-        if DistributionChannel.current == .appStore {
+        guard runtime.sparkleEnabled else {
             self.updater = nil
             self.userDriver = nil
             canCheckForUpdates = false
             lastUpdateCheckDate = nil
             automaticallyChecksForUpdates = false
-            Log.ui.info("Sparkle disabled for App Store build")
+            Log.ui.info("Sparkle disabled for this runtime")
             return
         }
 
         let driver = CustomUserDriver(
-            updateAvailability: updateAvailability,
+            updateAvailability: runtime.updateAvailability,
             onUpdateWindowClosed: onUpdateWindowClosed)
         self.userDriver = driver
 
@@ -121,6 +141,71 @@ final class UpdaterController {
         } catch {
             Log.ui.error("Failed to start Sparkle updater: \(error)")
         }
+    }
+
+    static func makeRuntimeConfiguration(
+        distribution: DistributionChannel,
+        defaults: UserDefaults,
+        currentInternalVersion: String,
+        localQAActive: Bool
+    ) -> RuntimeConfiguration {
+        let isAppStore = distribution == .appStore
+        return RuntimeConfiguration(
+            updateAvailability: PersistentUpdateAvailability(
+                defaults: defaults,
+                currentInternalVersion: currentInternalVersion,
+                persistenceEnabled: !isAppStore),
+            sparkleEnabled: !isAppStore && !localQAActive,
+            reminderPresentationEnabled: !isAppStore && !localQAActive)
+    }
+
+    static func makeDefaultRuntimeConfiguration(
+        distribution: DistributionChannel,
+        defaults: UserDefaults?,
+        standardDefaults: UserDefaults,
+        currentInternalVersion: String,
+        localQAActive: Bool
+    ) -> RuntimeConfiguration {
+        guard !localQAActive || defaults != nil else {
+            return RuntimeConfiguration(
+                updateAvailability: PersistentUpdateAvailability(
+                    defaults: standardDefaults,
+                    currentInternalVersion: currentInternalVersion,
+                    persistenceEnabled: false),
+                sparkleEnabled: false,
+                reminderPresentationEnabled: false)
+        }
+        return makeRuntimeConfiguration(
+            distribution: distribution,
+            defaults: defaults ?? standardDefaults,
+            currentInternalVersion: currentInternalVersion,
+            localQAActive: localQAActive)
+    }
+
+    func startUpdateReminders(
+        now: @escaping @MainActor () -> Date = Date.init,
+        sleep: @escaping UpdateReminderCoordinator.Sleep = { duration in
+            try await Task<Never, Never>.sleep(for: duration)
+        },
+        present: @escaping UpdateReminderCoordinator.Present
+    ) {
+        guard reminderPresentationEnabled else { return }
+        if let reminderCoordinator {
+            reminderCoordinator.start()
+            return
+        }
+        let coordinator = UpdateReminderCoordinator(
+            availability: updateAvailability,
+            now: now,
+            sleep: sleep,
+            present: present)
+        reminderCoordinator = coordinator
+        coordinator.start()
+    }
+
+    func stopUpdateReminders() {
+        reminderCoordinator?.stop()
+        reminderCoordinator = nil
     }
 
     /// Whether the custom update window is currently on screen. Lets

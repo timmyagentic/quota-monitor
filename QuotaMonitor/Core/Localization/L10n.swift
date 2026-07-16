@@ -736,6 +736,14 @@ enum L10n {
         }
         return t(en: "Install the available update", zh: "安装可用更新")
     }
+    static func statusItemUpdateTooltip(_ version: String) -> String {
+        t(en: "Install the \(Branding.appCodeName) \(version) update",
+          zh: "安装 \(Branding.appCodeName) \(version) 更新")
+    }
+    static func statusItemUpdateAccessibilityLabel(_ version: String) -> String {
+        t(en: "Update available for \(Branding.appCodeName) \(version)",
+          zh: "\(Branding.appCodeName) \(version) 有可用更新")
+    }
 
     // MARK: - update window (custom Sparkle UI)
 

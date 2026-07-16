@@ -1,5 +1,52 @@
 import Foundation
 
+enum SparkleFeedMigration {
+    private static let quotaMonitorCodeName = "QuotaMonitor"
+    private static let codexMonitorCodeName = "CodexMonitor"
+    private static let appStoreChannel = "app-store"
+    private static let currentQuotaMonitorFeed =
+        "https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml"
+    private static let legacyQuotaMonitorFeed =
+        "https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml"
+    private static let codexMonitorFeed =
+        "https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main/appcast.xml"
+    private static let knownQuotaMonitorFeeds: Set<String> = [
+        currentQuotaMonitorFeed,
+        legacyQuotaMonitorFeed,
+    ]
+
+    static func resolvedURL(
+        existing: String?,
+        bundled: String?,
+        appCodeName: String,
+        distributionChannel: String?
+    ) -> String? {
+        guard distributionChannel != appStoreChannel else { return nil }
+
+        switch appCodeName {
+        case quotaMonitorCodeName:
+            guard let bundled, knownQuotaMonitorFeeds.contains(bundled) else { return nil }
+            if existing == nil, bundled == legacyQuotaMonitorFeed {
+                return currentQuotaMonitorFeed
+            }
+            if let existing, knownQuotaMonitorFeeds.contains(existing) {
+                return currentQuotaMonitorFeed
+            }
+            return nil
+
+        case codexMonitorCodeName:
+            guard bundled == codexMonitorFeed else { return nil }
+            if existing == codexMonitorFeed || existing.map(knownQuotaMonitorFeeds.contains) == true {
+                return codexMonitorFeed
+            }
+            return nil
+
+        default:
+            return nil
+        }
+    }
+}
+
 /// One-shot copy of UserDefaults from the legacy `dev.tjzhou.CodexMonitor`
 /// bundle id into the new `dev.tjzhou.QuotaMonitor` domain that the post-
 /// rename binary writes to.
@@ -30,9 +77,7 @@ import Foundation
 enum UserDefaultsMigration {
     private static let legacyBundleID = "dev.tjzhou.CodexMonitor"
     private static let guardKey = "migration.fromCodexMonitor.done"
-    private static let updaterFeedMigrationDoneKey = "migration.sparkleFeedURL.done"
-    private static let expectedSUFeedURL = "https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml"
-    private static let legacySUFeedURL = "https://raw.githubusercontent.com/systemoutprintlnnnn/quota-monitor/main/appcast.xml"
+    private static let updaterFeedMigrationDoneKey = "app.updaterFeedMigrationV2Done"
 
     static func runIfNeeded() {
         if LocalQAEnvironment.isActive() { return }
@@ -93,38 +138,42 @@ enum UserDefaultsMigration {
     }
 
     private static func migrateSparkleFeedURL(defaults: UserDefaults) {
+        migrateSparkleFeedURL(
+            defaults: defaults,
+            bundledFeed: Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+            appCodeName: Branding.appCodeName,
+            distributionChannel: DistributionChannel.current.rawValue)
+    }
+
+    static func migrateSparkleFeedURL(
+        defaults: UserDefaults,
+        bundledFeed: String?,
+        appCodeName: String,
+        distributionChannel: String?
+    ) {
         if defaults.bool(forKey: updaterFeedMigrationDoneKey) { return }
-        if Bundle.main.object(forInfoDictionaryKey: "QMDistributionChannel") as? String == "app-store" {
-            defaults.set(true, forKey: updaterFeedMigrationDoneKey)
-            return
-        }
+        defer { defaults.set(true, forKey: updaterFeedMigrationDoneKey) }
 
         let existing = defaults.string(forKey: "SUFeedURL")
-        let infoPlistFeed = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String
-        let shouldMigrate =
-            existing == nil && infoPlistFeed == legacySUFeedURL ||
-            existing == legacySUFeedURL ||
-            (existing?.contains("systemoutprintlnnnn") == true)
+        guard let resolved = SparkleFeedMigration.resolvedURL(
+            existing: existing,
+            bundled: bundledFeed,
+            appCodeName: appCodeName,
+            distributionChannel: distributionChannel),
+              resolved != existing else { return }
 
-        if shouldMigrate {
-            let from = existing ?? (infoPlistFeed ?? "unknown")
-            defaults.set(expectedSUFeedURL, forKey: "SUFeedURL")
-            defaults.synchronize()
-            DeveloperLog.eventRecord(
-                "settings.sparkle_feed_url_migration",
-                category: "settings",
-                result: "success",
-                fields: [
-                    "from": .string(from),
-                    "to": .string(expectedSUFeedURL),
-                    "distribution_channel": .string(
-                        (Bundle.main.object(
-                            forInfoDictionaryKey: "QMDistributionChannel"
-                        ) as? String) ?? "unknown"),
-                    "info_plist_feed": .string(infoPlistFeed ?? "unknown")
-                ])
-        }
-
-        defaults.set(true, forKey: updaterFeedMigrationDoneKey)
+        let from = existing ?? (bundledFeed ?? "unknown")
+        defaults.set(resolved, forKey: "SUFeedURL")
+        defaults.synchronize()
+        DeveloperLog.eventRecord(
+            "settings.sparkle_feed_url_migration",
+            category: "settings",
+            result: "success",
+            fields: [
+                "from": .string(from),
+                "to": .string(resolved),
+                "distribution_channel": .string(distributionChannel ?? "unknown"),
+                "info_plist_feed": .string(bundledFeed ?? "unknown")
+            ])
     }
 }
