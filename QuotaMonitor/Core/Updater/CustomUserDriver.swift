@@ -230,6 +230,10 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     }
 
     func showDownloadDidStartExtractingUpdate() {
+        // Sparkle documents the download cancellation callback as valid only
+        // until extraction begins. Drop it before entering the non-cancellable
+        // phase so no later UI path can invoke an expired callback.
+        state.onCancel = nil
         state.phase = .extracting
         state.extractionProgress = 0
     }
