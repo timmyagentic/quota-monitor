@@ -546,10 +546,9 @@ describe("public product content", () => {
     expect(chinesePolicy).toMatch(/并非精确的一小时承诺/);
     expect(chinesePolicy).toMatch(/Free 计划 7 天或 Paid 计划 30 天/);
     expect(chinesePolicy).toMatch(/保留 400 天[\s\S]*私有维护者仪表盘/);
-    expect(chinesePolicy).toMatch(/尝试取消任何在途请求/);
-    expect(chinesePolicy).toMatch(/已经到达服务端的请求仍可能被接收/);
-    expect(chinesePolicy).toMatch(/同一 UTC 日内重新启用[\s\S]*下一个 UTC 日/);
-    expect(chinesePolicy).toMatch(/由此产生或此前已接收的匿名行[\s\S]*相同的实时原始行和 D1 Time Travel 保留规则/);
+    expect(chinesePolicy).toMatch(/符合条件的正式构建中自动启动/);
+    expect(chinesePolicy).toMatch(/本地 QA[\s\S]*不会发送检查/);
+    expect(chinesePolicy).toMatch(/匿名行无法单独定位或删除[\s\S]*实时原始行和 D1 Time Travel 保留规则/);
     expect(chinesePolicy).toMatch(/会话和历史数据[\s\S]*本地 SQLite 数据库/);
     expect(chinesePolicy).toMatch(/Codex 或 Claude Code 实时额度刷新[\s\S]*对应的服务提供方/);
     expect(chinesePolicy).toMatch(/独立于匿名版本统计[\s\S]*服务提供方的隐私条款/);
