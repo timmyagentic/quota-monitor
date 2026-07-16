@@ -4,6 +4,184 @@ import Testing
 
 @Suite("Daily active token store")
 struct DailyActiveTokenStoreTests {
+    @Test("Suppression writes the UTC day first and clears token and success")
+    func suppressionClearsRecordsAndPersistsDay() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16, hour: 23, minute: 59)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+        let record = try #require(await store.record(for: date))
+        await store.markSucceeded(
+            day: record.day,
+            token: record.token,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id")
+
+        await store.suppressUntilNextUTCDay(from: date)
+
+        #expect(defaults.string(forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+            == "2026-07-16")
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+    }
+
+    @Test("Same-day re-enable stays suppressed and next UTC day resumes")
+    func sameDayReenableWaitsUntilNextUTCDay() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let beforeMidnight = try utcDate(
+            year: 2026, month: 7, day: 16, hour: 23, minute: 59)
+        let afterMidnight = try utcDate(
+            year: 2026, month: 7, day: 17, hour: 0, minute: 0)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+
+        await store.suppressUntilNextUTCDay(from: beforeMidnight)
+
+        #expect(await store.record(for: beforeMidnight) == nil)
+        #expect(source.callCount == 0)
+        #expect(await store.record(for: afterMidnight)?.day == "2026-07-17")
+        #expect(source.callCount == 1)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.suppressedDayStorageKey) == nil)
+    }
+
+    @Test("Invalid, wrong-type, future, and rolled-back markers fail closed")
+    func malformedAndFutureSuppressionFailsClosed() async throws {
+        let markers: [Any] = [
+            "not-a-day",
+            Data("2026-07-16".utf8),
+            "2026-07-18",
+        ]
+
+        for (index, marker) in markers.enumerated() {
+            let (defaults, suiteName) = makeDefaults(named: "\(#function).\(index)")
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let date = try utcDate(year: 2026, month: 7, day: 16)
+            defaults.set(marker, forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+            defaults.set(Data("residual".utf8), forKey: DailyActiveTokenStore.tokenStorageKey)
+            defaults.set(Data("residual".utf8), forKey: DailyActiveTokenStore.successStorageKey)
+            let source = RandomSourceProbe(values: [Array(0 ... 15)])
+            let store = makeStore(defaults: defaults, source: source)
+
+            #expect(await store.record(for: date) == nil)
+            #expect(defaults.string(forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+                == (marker as? String == "2026-07-18" ? "2026-07-18" : "2026-07-16"))
+            #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+            #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+            #expect(source.callCount == 0)
+        }
+    }
+
+    @Test("A fresh actor restores suppression and late success cannot revive it")
+    func suppressionSurvivesRelaunchAndBlocksLateSuccess() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let first = makeStore(defaults: defaults, source: source)
+        let stale = try #require(await first.record(for: date))
+        await first.suppressUntilNextUTCDay(from: date)
+
+        let restoredSource = RandomSourceProbe(values: [Array(16 ... 31)])
+        let restored = makeStore(defaults: defaults, source: restoredSource)
+        await restored.markSucceeded(
+            day: stale.day,
+            token: stale.token,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id")
+
+        #expect(await restored.record(for: date) == nil)
+        #expect(await restored.hasSucceeded(
+            day: stale.day,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id") == false)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(restoredSource.callCount == 0)
+    }
+
+    @Test("A marker-first crash leaves residual live records unusable")
+    func markerFirstCrashFailsClosedOnFreshActor() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16)
+        let originalSource = RandomSourceProbe(values: [Array(0 ... 15)])
+        let originalStore = makeStore(defaults: defaults, source: originalSource)
+        let record = try #require(await originalStore.record(for: date))
+        await originalStore.markSucceeded(
+            day: record.day,
+            token: record.token,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id")
+        // Simulate a process exit immediately after the marker-first write and
+        // before suppressUntilNextUTCDay can remove either live record.
+        defaults.set("2026-07-16", forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+
+        let restoredSource = RandomSourceProbe(values: [Array(16 ... 31)])
+        let restored = makeStore(defaults: defaults, source: restoredSource)
+
+        #expect(await restored.record(for: date) == nil)
+        #expect(await restored.hasSucceeded(
+            day: record.day,
+            version: "0.2.41",
+            brand: "quota-monitor",
+            channel: "developer-id") == false)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(restoredSource.callCount == 0)
+    }
+
+    @Test("A future marker continues suppressing through forward and rolled-back clocks")
+    func futureMarkerSurvivesClockMovement() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set("2026-07-18", forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+
+        #expect(await store.record(for: try utcDate(
+            year: 2026, month: 7, day: 17)) == nil)
+        #expect(await store.record(for: try utcDate(
+            year: 2026, month: 7, day: 15)) == nil)
+        #expect(defaults.string(forKey: DailyActiveTokenStore.suppressedDayStorageKey)
+            == "2026-07-18")
+        #expect(source.callCount == 0)
+    }
+
+    @Test("Suppression implementation persists its marker before clearing live records")
+    func suppressionWriteOrderIsPinned() throws {
+        let source = try Self.source(named:
+            "QuotaMonitor/Core/Telemetry/DailyActiveTokenStore.swift")
+        let method = try #require(source.range(
+            of: "func suppressUntilNextUTCDay"))
+        let body = source[method.lowerBound...]
+        let markerWrite = try #require(body.range(
+            of: "defaults.value.set(day, forKey: Self.suppressedDayStorageKey)"))
+        let liveClear = try #require(body.range(of: "clearLiveRecords()"))
+
+        #expect(markerWrite.lowerBound < liveClear.lowerBound)
+    }
+
+    @Test("Clear removes suppression as well as token and success")
+    func clearRemovesEveryTelemetryRecord() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+        await store.suppressUntilNextUTCDay(from: date)
+
+        await store.clear()
+
+        #expect(defaults.object(forKey: DailyActiveTokenStore.suppressedDayStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(await store.record(for: date) != nil)
+    }
     @Test("Concurrent same-day requests share one canonical token and one random draw")
     func concurrentSameDayRequestsShareOneToken() async throws {
         let (defaults, suiteName) = makeDefaults(named: #function)
@@ -463,6 +641,18 @@ struct DailyActiveTokenStoreTests {
         calendar.locale = Locale(identifier: "en_US_POSIX")
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         return calendar
+    }
+
+    private static func source(named relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while url.path != "/" {
+            let candidate = url.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            url.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }
 

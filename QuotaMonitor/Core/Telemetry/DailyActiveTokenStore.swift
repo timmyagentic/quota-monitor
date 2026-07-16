@@ -29,6 +29,7 @@ actor DailyActiveTokenStore {
 
     static let tokenStorageKey = "telemetry.dailyActiveToken.v1"
     static let successStorageKey = "telemetry.dailyActiveSuccess.v1"
+    static let suppressedDayStorageKey = "telemetry.dailyActiveSuppressedDay.v1"
 
     private static let utcCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
@@ -53,6 +54,7 @@ actor DailyActiveTokenStore {
 
     func record(for date: Date = Date()) -> DailyActiveTokenRecord? {
         let day = dayIdentifier(for: date)
+        guard !isSuppressed(day: day) else { return nil }
         if let stored = restoredTokenRecord(), stored.day == day {
             return stored
         }
@@ -78,6 +80,7 @@ actor DailyActiveTokenStore {
         channel: String
     ) {
         let expectedToken = DailyActiveTokenRecord(day: day, token: token)
+        guard isValid(expectedToken), !isSuppressed(day: day) else { return }
         guard restoredTokenRecord() == expectedToken else { return }
         let record = DailyActiveSuccessRecord(
             day: day,
@@ -102,6 +105,7 @@ actor DailyActiveTokenStore {
             brand: brand,
             channel: channel)
         guard isValid(expected) else { return false }
+        guard !isSuppressed(day: day) else { return false }
         guard let storedValue = defaults.value.object(forKey: Self.successStorageKey) else {
             return false
         }
@@ -117,6 +121,41 @@ actor DailyActiveTokenStore {
     }
 
     func clear() {
+        defaults.value.removeObject(forKey: Self.suppressedDayStorageKey)
+        defaults.value.removeObject(forKey: Self.tokenStorageKey)
+        defaults.value.removeObject(forKey: Self.successStorageKey)
+    }
+
+    func suppressUntilNextUTCDay(from date: Date = Date()) {
+        let day = dayIdentifier(for: date)
+        // Persist the suppression boundary before erasing the live state. If
+        // the process exits between these writes, the next actor clears any
+        // residual token/success before it can be reused.
+        defaults.value.set(day, forKey: Self.suppressedDayStorageKey)
+        clearLiveRecords()
+    }
+
+    private func isSuppressed(day: String) -> Bool {
+        guard isValidDay(day) else { return true }
+        guard let storedValue = defaults.value.object(
+            forKey: Self.suppressedDayStorageKey) else {
+            return false
+        }
+        guard let suppressedDay = storedValue as? String,
+              isValidDay(suppressedDay) else {
+            defaults.value.set(day, forKey: Self.suppressedDayStorageKey)
+            clearLiveRecords()
+            return true
+        }
+        guard day > suppressedDay else {
+            clearLiveRecords()
+            return true
+        }
+        defaults.value.removeObject(forKey: Self.suppressedDayStorageKey)
+        return false
+    }
+
+    private func clearLiveRecords() {
         defaults.value.removeObject(forKey: Self.tokenStorageKey)
         defaults.value.removeObject(forKey: Self.successStorageKey)
     }

@@ -18,6 +18,20 @@ extension Notification.Name {
     /// discoverability check after a fresh user finishes the wizard.
     static let quotaMonitorOnboardingCompleted =
         Notification.Name("dev.tjzhou.QuotaMonitor.onboardingCompleted")
+    static let quotaMonitorAnonymousVersionReportingConsentChanged =
+        Notification.Name(
+            "dev.tjzhou.QuotaMonitor.anonymousVersionReportingConsentChanged")
+}
+
+enum AnonymousVersionReportingConsent: String, Sendable {
+    case undecided
+    case enabled
+    case disabled
+}
+
+struct AnonymousVersionReportingConsentChange: Equatable, Sendable {
+    let consent: AnonymousVersionReportingConsent
+    let changedAt: Date
 }
 
 @Observable
@@ -27,6 +41,13 @@ final class SettingsStore {
         defaults: LocalQAEnvironment.userDefaults() ?? .standard)
 
     private let defaults: UserDefaults
+    private let notificationCenter: NotificationCenter
+    private let now: @MainActor () -> Date
+
+    nonisolated static let anonymousVersionReportingConsentStorageKey =
+        "settings.anonymousVersionReportingConsent.v1"
+
+    private(set) var anonymousVersionReportingConsent: AnonymousVersionReportingConsent
 
     var pollIntervalSeconds: Int {
         didSet { defaults.set(pollIntervalSeconds, forKey: Keys.pollInterval) }
@@ -322,9 +343,16 @@ final class SettingsStore {
 
     init(defaults: UserDefaults = .standard,
          appVersion: String? = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-         hasExistingAppData: () -> Bool = SettingsStore.defaultExistingAppDataExists) {
+         hasExistingAppData: () -> Bool = SettingsStore.defaultExistingAppDataExists,
+         notificationCenter: NotificationCenter = .default,
+         now: @escaping @MainActor () -> Date = Date.init) {
         self.defaults = defaults
+        self.notificationCenter = notificationCenter
+        self.now = now
         self.appVersion = appVersion
+        self.anonymousVersionReportingConsent = defaults.string(
+            forKey: Self.anonymousVersionReportingConsentStorageKey)
+            .flatMap(AnonymousVersionReportingConsent.init(rawValue:)) ?? .undecided
         let storedInterval = defaults.integer(forKey: Keys.pollInterval)
         let storedProviders = defaults.array(forKey: Keys.enabledProviders) as? [String]
         self.pollIntervalSeconds = storedInterval > 0 ? storedInterval : 300
@@ -488,6 +516,22 @@ final class SettingsStore {
             defaults.removeObject(forKey: Keys.providerOnboardingStarted)
         }
         defaults.set(resolvedDone, forKey: Keys.providerOnboardingDone)
+    }
+
+    func setAnonymousVersionReportingConsent(
+        _ consent: AnonymousVersionReportingConsent
+    ) {
+        guard consent != anonymousVersionReportingConsent else { return }
+        let changedAt = now()
+        defaults.set(
+            consent.rawValue,
+            forKey: Self.anonymousVersionReportingConsentStorageKey)
+        anonymousVersionReportingConsent = consent
+        notificationCenter.post(
+            name: .quotaMonitorAnonymousVersionReportingConsentChanged,
+            object: AnonymousVersionReportingConsentChange(
+                consent: consent,
+                changedAt: changedAt))
     }
 
     /// True iff `lastOnboarded` is missing or strictly less than

@@ -22,6 +22,56 @@ struct LocalQAIsolationTests {
         return ["QuotaMonitor", "--quotamonitor-qa-config-base64", encoded]
     }
 
+    @Test("Any QA marker is requested regardless of its value or validity")
+    func qaRequestDetectionFailsClosed() {
+        #expect(LocalQAEnvironment.isQARequested(
+            environment: ["QUOTAMONITOR_QA_MODE": "0"],
+            arguments: ["QuotaMonitor"]))
+        #expect(LocalQAEnvironment.isQARequested(
+            environment: ["QUOTAMONITOR_QA_BROKEN": "anything"],
+            arguments: ["QuotaMonitor"]))
+        #expect(LocalQAEnvironment.isQARequested(
+            environment: [:],
+            arguments: ["QuotaMonitor", "--quotamonitor-qa-config"]))
+        #expect(LocalQAEnvironment.isQARequested(
+            environment: [:],
+            arguments: ["QuotaMonitor", "--quotamonitor-qa-malformed=value"]))
+        #expect(LocalQAEnvironment.isQARequested(
+            environment: ["CODEX_HOME": "/tmp/codex"],
+            arguments: ["QuotaMonitor"]) == false)
+    }
+
+    @Test("Malformed and explicitly false QA requests isolate defaults and external data")
+    func malformedQARequestsFailClosed() throws {
+        let cases: [([String: String], [String])] = [
+            (["QUOTAMONITOR_QA_MODE": "false"], ["QuotaMonitor"]),
+            ([:], ["QuotaMonitor", "--quotamonitor-qa-config"]),
+            ([:], ["QuotaMonitor", "--quotamonitor-qa-config-base64=not-base64"]),
+        ]
+
+        for (index, testCase) in cases.enumerated() {
+            let key = "malformed-qa.\(index).\(UUID().uuidString)"
+            let defaults = try #require(LocalQAEnvironment.userDefaults(
+                environment: testCase.0,
+                arguments: testCase.1))
+            let invalid = try #require(UserDefaults(
+                suiteName: LocalQAEnvironment.invalidQADefaultsSuite))
+            defer {
+                defaults.removeObject(forKey: key)
+                invalid.removeObject(forKey: key)
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+
+            defaults.set("isolated", forKey: key)
+
+            #expect(UserDefaults.standard.string(forKey: key) == nil)
+            #expect(invalid.string(forKey: key) == "isolated")
+            #expect(LocalQAEnvironment.allowsExternalDataSources(
+                environment: testCase.0,
+                arguments: testCase.1) == false)
+        }
+    }
+
     @Test("QA home redirects application support into the harness profile")
     func qaHomeRedirectsApplicationSupport() throws {
         let dir = LocalQAEnvironment.applicationSupportDirectory(environment: [
@@ -35,6 +85,7 @@ struct LocalQAIsolationTests {
     func qaDefaultsSuiteUsesSeparateDomain() throws {
         let suiteName = "dev.tjzhou.QuotaMonitor.QATest.\(UUID().uuidString)"
         let defaults = try #require(LocalQAEnvironment.userDefaults(environment: [
+            "QUOTAMONITOR_QA_MODE": "1",
             "QUOTAMONITOR_QA_DEFAULTS_SUITE": suiteName
         ]))
         defer { defaults.removePersistentDomain(forName: suiteName) }

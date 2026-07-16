@@ -51,6 +51,17 @@ enum LocalQAEnvironment {
         activeConfiguration(environment: environment, arguments: arguments) != nil
     }
 
+    static func isQARequested(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
+        environment.keys.contains { key in
+            key == "QUOTAMONITOR_QA" || key.hasPrefix("QUOTAMONITOR_QA_")
+        } || arguments.contains { argument in
+            argument == "--quotamonitor-qa" || argument.hasPrefix("--quotamonitor-qa")
+        }
+    }
+
     static func homeDirectory(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
@@ -93,8 +104,11 @@ enum LocalQAEnvironment {
         let configuration = activeConfiguration(
             environment: environment,
             arguments: arguments)
+        let requested = isQARequested(environment: environment, arguments: arguments)
+        if requested && configuration == nil {
+            return UserDefaults(suiteName: invalidQADefaultsSuite)
+        }
         let suite = configuration?.defaultsSuite
-            ?? qaDefaultsSuite(environment[defaultsSuiteKey])
         if configuration != nil && suite == nil {
             return UserDefaults(suiteName: invalidQADefaultsSuite)
         }
@@ -157,7 +171,7 @@ enum LocalQAEnvironment {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> Bool {
-        !isActive(environment: environment, arguments: arguments)
+        !isQARequested(environment: environment, arguments: arguments)
     }
 
     private static func activeConfiguration(

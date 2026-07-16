@@ -65,4 +65,53 @@ struct BrandingLocalizationTests {
         #expect(en.2 == "No active cards")
     }
 
+    @Test("Anonymous version reporting copy is precise in both languages")
+    func anonymousVersionReportingCopyIsPrecise() {
+        let english = LocalizationTestSupport.withLanguage(.english) {
+            [
+                L10n.anonymousVersionReportingHelp,
+                L10n.anonymousVersionReportingDisableHelp,
+                L10n.anonymousVersionReportingDisclosureMessage,
+                L10n.anonymousVersionReportingQAHelp,
+            ].joined(separator: " ")
+        }
+        let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            [
+                L10n.anonymousVersionReportingHelp,
+                L10n.anonymousVersionReportingDisableHelp,
+                L10n.anonymousVersionReportingDisclosureMessage,
+                L10n.anonymousVersionReportingQAHelp,
+            ].joined(separator: " ")
+        }
+
+        for term in [
+            "app version", "brand", "distribution", "fresh random daily token",
+            "UTC day", "deduplicated", "account", "usage history", "path",
+            "device ID", "stable ID", "received by the service", "Settings",
+        ] {
+            #expect(english.localizedCaseInsensitiveContains(term))
+        }
+        for term in [
+            "应用版本", "品牌", "分发渠道", "每日新生成的随机 token", "UTC 日",
+            "去重", "账号", "使用记录", "路径", "设备 ID", "稳定 ID", "服务端已接收", "设置",
+        ] {
+            #expect(chinese.localizedCaseInsensitiveContains(term))
+        }
+        #expect(L10n.anonymousVersionReportingPrivacyURL.absoluteString
+            == "https://quota-monitor.timmyagentic.com/privacy")
+    }
+
+    @Test("General settings exposes the consent setter and privacy link")
+    func generalSettingsWiresAnonymousVersionConsent() throws {
+        let source = try String(
+            contentsOf: Self.repoRoot().appendingPathComponent(
+                "QuotaMonitor/Features/Settings/GeneralSettingsTab.swift"),
+            encoding: .utf8)
+
+        #expect(source.contains("Section(L10n.sectionPrivacy)"))
+        #expect(source.contains("settings.setAnonymousVersionReportingConsent"))
+        #expect(source.contains("L10n.anonymousVersionReportingPrivacyURL"))
+        #expect(source.contains("LocalQAEnvironment.isActive"))
+    }
+
 }

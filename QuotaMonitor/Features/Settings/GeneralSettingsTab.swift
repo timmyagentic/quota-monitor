@@ -197,9 +197,54 @@ struct GeneralSettingsTab: View {
                 }
             }
 
+            if shouldShowAnonymousVersionReportingSettings {
+                Section(L10n.sectionPrivacy) {
+                    Toggle(
+                        L10n.anonymousVersionReportingLabel,
+                        isOn: Binding(
+                            get: {
+                                settings.anonymousVersionReportingConsent == .enabled
+                            },
+                            set: { enabled in
+                                settings.setAnonymousVersionReportingConsent(
+                                    enabled ? .enabled : .disabled)
+                            }))
+                        .disabled(LocalQAEnvironment.isActive())
+                    Text(L10n.anonymousVersionReportingHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(L10n.anonymousVersionReportingDisableHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if LocalQAEnvironment.isActive() {
+                        Text(L10n.anonymousVersionReportingQAHelp)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Link(
+                        L10n.anonymousVersionReportingPrivacyLink,
+                        destination: L10n.anonymousVersionReportingPrivacyURL)
+                }
+            }
+
         }
         .formStyle(.grouped)
         .padding(20)
+    }
+
+    private var shouldShowAnonymousVersionReportingSettings: Bool {
+        let context = AnonymousVersionReportingRuntime.resolveContext(
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
+                as? String ?? "unknown",
+            appCodeName: Branding.appCodeName,
+            infoDictionary: Bundle.main.infoDictionary,
+            environment: ProcessInfo.processInfo.environment)
+        return AnonymousVersionReportingRuntime.shouldShowSettings(
+            context: context,
+            isQARequested: LocalQAEnvironment.isQARequested(),
+            isQAActive: LocalQAEnvironment.isActive())
     }
 
     @ViewBuilder
