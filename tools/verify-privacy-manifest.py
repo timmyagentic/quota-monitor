@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Fail closed unless a privacy manifest matches QuotaMonitor's declaration."""
 
+import os
 import pathlib
 import plistlib
+import stat
 import sys
 
 
@@ -19,6 +21,36 @@ COLLECTED_TYPE_KEYS = {
     "NSPrivacyCollectedDataTypeTracking",
     "NSPrivacyCollectedDataTypePurposes",
 }
+
+
+class UnsafeManifestInput(Exception):
+    pass
+
+
+def load_regular_manifest(path: pathlib.Path):
+    no_follow = getattr(os, "O_NOFOLLOW", None)
+    non_block = getattr(os, "O_NONBLOCK", None)
+    if (
+        type(no_follow) is not int
+        or no_follow == 0
+        or type(non_block) is not int
+        or non_block == 0
+    ):
+        raise UnsafeManifestInput
+
+    descriptor = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | no_follow | non_block)
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise UnsafeManifestInput
+
+        manifest_file = os.fdopen(descriptor, "rb")
+        descriptor = None
+        with manifest_file:
+            return plistlib.load(manifest_file)
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _is_bool(value, expected: bool) -> bool:
@@ -73,12 +105,13 @@ def main(arguments: list[str]) -> int:
 
     path = pathlib.Path(arguments[0]) if arguments else DEFAULT_MANIFEST
     try:
-        with path.open("rb") as manifest_file:
-            manifest = plistlib.load(manifest_file)
-    except FileNotFoundError:
-        print("error: privacy manifest is missing", file=sys.stderr)
-        return 1
-    except (OSError, plistlib.InvalidFileException, ValueError):
+        manifest = load_regular_manifest(path)
+    except (
+        OSError,
+        UnsafeManifestInput,
+        plistlib.InvalidFileException,
+        ValueError,
+    ):
         print("error: privacy manifest is unreadable or malformed", file=sys.stderr)
         return 1
 

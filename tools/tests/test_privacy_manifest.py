@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import copy
+import os
 import pathlib
 import plistlib
 import subprocess
@@ -44,6 +45,7 @@ class PrivacyManifestTests(unittest.TestCase):
             check=False,
             capture_output=True,
             text=True,
+            timeout=2,
         )
 
     def write_plist(self, directory: pathlib.Path, value) -> pathlib.Path:
@@ -164,6 +166,47 @@ class PrivacyManifestTests(unittest.TestCase):
             result = self.run_verifier(missing)
 
         self.assertNotEqual(result.returncode, 0)
+
+    def test_verifier_rejects_symlink_even_when_target_is_valid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = pathlib.Path(temp_dir)
+            target = self.write_plist(directory, EXPECTED_MANIFEST)
+            symlink = directory / "linked.xcprivacy"
+            symlink.symlink_to(target)
+            result = self.run_verifier(symlink)
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn(target.name, result.stderr)
+
+    def test_verifier_rejects_broken_symlink_without_leaking_target(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = pathlib.Path(temp_dir)
+            missing_target = directory / "sensitive-target-name.xcprivacy"
+            symlink = directory / "broken.xcprivacy"
+            symlink.symlink_to(missing_target)
+            result = self.run_verifier(symlink)
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn(missing_target.name, result.stderr)
+
+    def test_verifier_rejects_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            directory = pathlib.Path(temp_dir) / "manifest-directory"
+            directory.mkdir()
+            result = self.run_verifier(directory)
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn(directory.name, result.stderr)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "FIFO requires POSIX")
+    def test_verifier_rejects_fifo_without_blocking(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fifo = pathlib.Path(temp_dir) / "manifest.fifo"
+            os.mkfifo(fifo)
+            result = self.run_verifier(fifo)
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn(fifo.name, result.stderr)
 
     def test_build_copies_and_verifies_manifest_before_signing(self):
         build = self.read_text("build.sh")
