@@ -269,7 +269,7 @@ struct LocalQAIsolationTests {
             distribution: .developerID,
             defaults: productionDefaults,
             currentInternalVersion: "40",
-            localQAActive: false)
+            localQARequested: false)
         #expect(production.updateAvailability.snapshot == productionSnapshot)
         #expect(production.sparkleEnabled)
         #expect(production.reminderPresentationEnabled)
@@ -278,7 +278,7 @@ struct LocalQAIsolationTests {
             distribution: .developerID,
             defaults: qaDefaults,
             currentInternalVersion: "40",
-            localQAActive: true)
+            localQARequested: true)
         #expect(qa.updateAvailability.snapshot == qaSnapshot)
         #expect(qa.updateAvailability.snapshot != productionSnapshot)
         #expect(!qa.sparkleEnabled)
@@ -288,7 +288,7 @@ struct LocalQAIsolationTests {
             distribution: .appStore,
             defaults: qaDefaults,
             currentInternalVersion: "40",
-            localQAActive: false)
+            localQARequested: false)
         #expect(appStore.updateAvailability.snapshot == nil)
         #expect(!appStore.sparkleEnabled)
         #expect(!appStore.reminderPresentationEnabled)
@@ -299,6 +299,47 @@ struct LocalQAIsolationTests {
             now: Date(timeIntervalSince1970: 500))
         appStore.updateAvailability.markLater(now: Date(timeIntervalSince1970: 500))
         #expect(qaDefaults.data(forKey: pendingUpdateStorageKey) == qaStoredData)
+    }
+
+    @MainActor
+    @Test("Any requested QA marker disables the updater default runtime")
+    func updaterDefaultRuntimeFailsClosedForEveryQARequest() throws {
+        let standardName = "UpdaterRuntime.requestedQA.\(UUID().uuidString)"
+        let standardDefaults = try #require(UserDefaults(suiteName: standardName))
+        defer { standardDefaults.removePersistentDomain(forName: standardName) }
+        let cases: [([String: String], [String])] = [
+            (["QUOTAMONITOR_QA_MODE": "false"], ["QuotaMonitor"]),
+            ([:], ["QuotaMonitor", "--quotamonitor-qa-config-base64=not-base64"]),
+        ]
+
+        for (environment, arguments) in cases {
+            let requested = LocalQAEnvironment.isQARequested(
+                environment: environment,
+                arguments: arguments)
+            #expect(requested)
+            #expect(LocalQAEnvironment.isActive(
+                environment: environment,
+                arguments: arguments) == false)
+
+            let runtime = UpdaterController.makeDefaultRuntimeConfiguration(
+                distribution: .developerID,
+                defaults: LocalQAEnvironment.userDefaults(
+                    environment: environment,
+                    arguments: arguments),
+                standardDefaults: standardDefaults,
+                currentInternalVersion: "40",
+                localQARequested: requested)
+
+            #expect(!runtime.sparkleEnabled)
+            #expect(!runtime.reminderPresentationEnabled)
+        }
+
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/UpdaterController.swift")
+        #expect(source.contains(
+            "localQARequested: LocalQAEnvironment.isQARequested())"))
+        #expect(!source.contains(
+            "localQARequested: LocalQAEnvironment.isActive())"))
     }
 
     @MainActor
@@ -322,7 +363,7 @@ struct LocalQAIsolationTests {
             defaults: nil,
             standardDefaults: standardDefaults,
             currentInternalVersion: "40",
-            localQAActive: true)
+            localQARequested: true)
 
         #expect(qa.updateAvailability.snapshot == nil)
         #expect(!qa.sparkleEnabled)
@@ -334,5 +375,17 @@ struct LocalQAIsolationTests {
             now: Date(timeIntervalSince1970: 300))
         qa.updateAvailability.markLater(now: Date(timeIntervalSince1970: 300))
         #expect(standardDefaults.data(forKey: pendingUpdateStorageKey) == productionData)
+    }
+
+    private static func source(named relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while url.path != "/" {
+            let candidate = url.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            url.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }
