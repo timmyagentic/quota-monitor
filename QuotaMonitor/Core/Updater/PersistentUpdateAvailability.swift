@@ -119,6 +119,10 @@ final class PersistentUpdateAvailability {
             defaults.removeObject(forKey: Self.storageKey)
             return
         }
+        let storedFields = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let needsDeferredStateMigration = storedFields.map {
+            !$0.keys.contains("isDeferred")
+        } ?? false
         guard
             let restored = try? JSONDecoder().decode(PendingUpdateSnapshot.self, from: data),
             Self.isValid(restored),
@@ -135,8 +139,11 @@ final class PersistentUpdateAvailability {
         // rehydrate it before Install & Relaunch becomes available again.
         primaryAction = .install
         // Re-encode once so snapshots from the unreleased reminder scheduler
-        // migrate to the smaller deferred-state schema immediately.
-        persistSnapshot()
+        // migrate to the smaller deferred-state schema immediately. Current
+        // snapshots remain byte-for-byte untouched during a read-only restore.
+        if needsDeferredStateMigration {
+            persistSnapshot()
+        }
     }
 
     @discardableResult
