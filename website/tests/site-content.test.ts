@@ -157,6 +157,7 @@ describe("public product content", () => {
       {
         binding: "VERSION_STATS_DB",
         database_name: "quota-monitor-version-stats",
+        database_id: "d4001c95-442b-4ad0-80ee-0c06747637d9",
         migrations_dir: "migrations",
       },
     ]);
