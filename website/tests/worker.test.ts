@@ -184,10 +184,9 @@ function workerEnv(
     DAILY_ACTIVE_COLO_RATE_LIMITER: coloRateLimiter,
     ADMIN_VERSION_STATS_RATE_LIMITER: adminRateLimiter,
     VERSION_STATS_DB: database,
+    VERSION_STATS_ADMIN_TOKEN: adminSecret ?? "",
   };
-  return adminSecret === undefined
-    ? env
-    : Object.assign(env, { VERSION_STATS_ADMIN_TOKEN: adminSecret });
+  return env;
 }
 
 function stubWorkerCrypto(): void {

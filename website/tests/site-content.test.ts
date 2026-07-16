@@ -99,7 +99,7 @@ type SiteModule = {
   translations: Record<"en" | "zh-Hans", Record<string, string>>;
   resolveLanguage: (saved?: unknown, languages?: unknown) => "en" | "zh-Hans";
   applyLanguage: (language: unknown) => "en" | "zh-Hans";
-  hydrateRelease: () => Promise<unknown>;
+  hydrateRelease: (fetcher?: typeof fetch) => Promise<unknown>;
 };
 
 async function loadAppModule(): Promise<SiteModule> {
@@ -146,6 +146,7 @@ describe("public product content", () => {
     expect(config.assets.directory).toBe("./public");
     expect(config.assets.binding).toBe("ASSETS");
     expect(config.assets.not_found_handling).toBe("404-page");
+    expect(config.assets.html_handling).toBe("auto-trailing-slash");
     expect(config.assets.run_worker_first).toEqual([
       "/download",
       "/api/release",
@@ -182,12 +183,24 @@ describe("public product content", () => {
       pattern: "quota-monitor.timmyagentic.com",
       custom_domain: true,
     });
+    expect(config.secrets).toEqual({
+      required: ["VERSION_STATS_ADMIN_TOKEN"],
+    });
+    expect(config.logpush).toBe(false);
+    expect(config.tail_consumers).toEqual([]);
+    expect(config.streaming_tail_consumers).toEqual([]);
     expect(config.observability).toEqual({
       enabled: true,
       logs: {
         enabled: true,
         invocation_logs: false,
         persist: true,
+        destinations: [],
+      },
+      traces: {
+        enabled: false,
+        persist: false,
+        destinations: [],
       },
     });
   });
@@ -215,6 +228,19 @@ describe("public product content", () => {
     expect(existsSync(join(websiteDirectory, "vitest.integration.config.ts"))).toBe(true);
     expect(existsSync(join(websiteDirectory, "tests", "d1.integration.test.ts"))).toBe(true);
     expect(existsSync(join(websiteDirectory, "tests", "d1-integration-setup.ts"))).toBe(true);
+    const generatedBindings = readFileSync(
+      join(websiteDirectory, "worker-configuration.d.ts"),
+      "utf8",
+    );
+    expect(generatedBindings).toMatch(/VERSION_STATS_ADMIN_TOKEN:\s*string;/);
+  });
+
+  it("ignores local Worker secret files from every repository directory", () => {
+    const ignore = readFileSync(join(repositoryDirectory, ".gitignore"), "utf8");
+
+    for (const pattern of [".env", ".env.*", ".dev.vars", ".dev.vars.*"]) {
+      expect(ignore.split("\n"), pattern).toContain(pattern);
+    }
   });
 
   it("awaits the scheduled aggregation without destructuring its execution context", () => {
@@ -236,6 +262,9 @@ describe("public product content", () => {
     expect(html).toContain('<main id="main-content">');
     expect(html).toContain('id="features"');
     expect(html).toContain('id="privacy"');
+    expect(html).toContain('<a href="/privacy" data-i18n="privacyNav">');
+    expect(html).toContain('href="/privacy" data-i18n="privacyPolicyLink"');
+    expect(html).toContain('data-i18n="privacyProviderSummary"');
     expect(html).toContain('id="installation"');
     expect(html.match(/href="\/download"/g)).toHaveLength(2);
     expect(html).toContain("Know your quota. Keep your flow.");
@@ -272,7 +301,7 @@ describe("public product content", () => {
   });
 
   it("keeps every visitor-facing link and full URL on the product domain", () => {
-    const files = ["index.html", "404.html", "_headers", "app.js", "robots.txt"].map(readPublic);
+    const files = ["index.html", "privacy.html", "404.html", "_headers", "app.js", "robots.txt"].map(readPublic);
     const combined = files.join("\n");
 
     expect(combined).not.toMatch(/github/i);
@@ -285,7 +314,7 @@ describe("public product content", () => {
       ).toBe(true);
     }
 
-    for (const html of files.slice(0, 2)) {
+    for (const html of files.slice(0, 3)) {
       for (const href of [...html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map(
         (match) => match[1] ?? "",
       )) {
@@ -298,7 +327,7 @@ describe("public product content", () => {
   });
 
   it("has complete English and Simplified Chinese localization coverage", async () => {
-    const html = `${readPublic("index.html")}\n${readPublic("404.html")}`;
+    const html = `${readPublic("index.html")}\n${readPublic("privacy.html")}\n${readPublic("404.html")}`;
     const { translations } = await loadAppModule();
     const englishKeys = Object.keys(translations.en).sort();
     const chineseKeys = Object.keys(translations["zh-Hans"]).sort();
@@ -337,7 +366,7 @@ describe("public product content", () => {
   });
 
   it("uses only external executable scripts and styles", () => {
-    const html = `${readPublic("index.html")}\n${readPublic("404.html")}`;
+    const html = `${readPublic("index.html")}\n${readPublic("privacy.html")}\n${readPublic("404.html")}`;
 
     expect(html).not.toMatch(/<style\b/i);
     expect(html).not.toMatch(/\sstyle\s*=/i);
@@ -380,6 +409,128 @@ describe("public product content", () => {
     expect(html).toContain('id="software-application"');
     expect(html).toContain('"softwareVersion": "0.2.40"');
     expect(html).toContain('"downloadUrl": "https://quota-monitor.timmyagentic.com/download"');
+  });
+
+  it("publishes a canonical, external-asset-only privacy page", () => {
+    const html = readPublic("privacy.html");
+    const css = readPublic("styles.css");
+
+    expect(html).toContain('<body data-page="privacy">');
+    expect(html).toContain('<main id="main-content" class="privacy-policy-page">');
+    expect(html).toContain(
+      '<link rel="canonical" href="https://quota-monitor.timmyagentic.com/privacy">',
+    );
+    expect(html).toContain('href="/styles.css"');
+    expect(html).toContain('type="module" src="/app.js"');
+    expect(html).toContain('class="privacy-policy-list"');
+    expect(html).not.toMatch(/<style\b|\sstyle\s*=|\son[a-z]+\s*=|javascript:/i);
+    expect(html).not.toMatch(/github/i);
+    expect(ruleBody(css, ".privacy-policy-layout")).toMatch(/max-width:\s*880px\s*;/);
+    expect(ruleBody(css, ".privacy-policy-section")).toMatch(/border:\s*1px\s+solid\s+var\(--line\)\s*;/);
+    expect(ruleBody(css, ".privacy-policy-list")).toMatch(/list-style:\s*disc\s*;/);
+    expect(ruleBody(css, ".text-link")).toMatch(/text-decoration:\s*underline\s*;/);
+    const mobileCss = css.slice(css.search(/@media\s*\(max-width:\s*(?:759|760)px\)\s*\{/));
+    expect(ruleBody(mobileCss, ".privacy-policy-page")).toMatch(/padding:\s*52px\s+0\s*;/);
+  });
+
+  it("states the exact anonymous check-in, retention, edge, and opt-out contract in both languages", async () => {
+    const html = readPublic("privacy.html");
+    const { translations } = await loadAppModule();
+    const policies = [translations.en, translations["zh-Hans"]];
+
+    expect(html).toContain('data-i18n="privacyPolicyWireBody"');
+    expect(html).toContain('data-i18n="privacyPolicyScopeBody"');
+    expect(html).toContain('data-i18n="privacyPolicyRetentionBody"');
+    expect(html).toContain('data-i18n="privacyPolicyOptOutBody"');
+
+    expect(translations.en.privacyPolicyIntro).toBe(
+      "Quota Monitor sends an anonymous daily active installation check-in only after you explicitly opt in. These counts estimate active installations, never users.",
+    );
+    expect(translations["zh-Hans"].privacyPolicyIntro).toBe(
+      "只有在你明确选择加入后，Quota Monitor 才会发送匿名每日活跃安装检查。统计结果估算的是活跃安装量，绝不是用户数。",
+    );
+
+    for (const policy of policies) {
+      const wire = policy.privacyPolicyWireBody;
+      const scope = policy.privacyPolicyScopeBody;
+      const identity = policy.privacyPolicyTokenBody;
+      const processing = policy.privacyPolicyProcessingBody;
+      const edge = policy.privacyPolicyCloudflareBody;
+      const retention = policy.privacyPolicyRetentionBody;
+      const optOut = policy.privacyPolicyOptOutBody;
+      const excluded = policy.privacyPolicyExcludedBody;
+      const provider = policy.privacyPolicyProviderBody;
+      const website = policy.privacyPolicyWebsiteBody;
+
+      for (const value of [scope, wire, identity, processing, edge, retention, optOut, excluded, provider, website]) {
+        if (typeof value !== "string") {
+          throw new Error("missing localized privacy policy value");
+        }
+        expect(value.trim()).not.toBe("");
+      }
+    }
+
+    const englishPolicy = Object.entries(translations.en)
+      .filter(([key]) => key.startsWith("privacyPolicy"))
+      .map(([, value]) => value)
+      .join("\n");
+    const chinesePolicy = Object.entries(translations["zh-Hans"])
+      .filter(([key]) => key.startsWith("privacyPolicy"))
+      .map(([, value]) => value)
+      .join("\n");
+
+    expect(translations.en.privacyPolicyWireBody).toContain(
+      "exactly six fields: schema (the number 1), UTC day (YYYY-MM-DD), a fresh random daily token, app version, brand, and distribution channel",
+    );
+    expect(translations["zh-Hans"].privacyPolicyWireBody).toContain(
+      "恰好六个字段：schema（数字 1）、UTC 日期（YYYY-MM-DD）、当天新生成的随机令牌、应用版本、品牌和分发渠道",
+    );
+    expect(englishPolicy).toMatch(/failed request reuses it only within the same UTC day/i);
+    expect(englishPolicy).toMatch(/Quota Monitor and CodexMonitor-branded builds[\s\S]*brand field[\s\S]*quota-monitor[\s\S]*codex-monitor/i);
+    expect(englishPolicy).toMatch(/version changes that day[\s\S]*reclassify/i);
+    expect(englishPolicy).toMatch(/one deduplicated active-installation record per token per UTC day/i);
+    expect(englishPolicy).toMatch(/no stable installation ID, device ID, or cross-day link/i);
+    expect(englishPolicy).toMatch(/date-domain-separated SHA-256 hash/i);
+    expect(englishPolicy).toMatch(/original token is never written to D1 or the app's custom logs/i);
+    expect(englishPolicy).toMatch(/source IP[\s\S]*best-effort Workers RateLimit binding/i);
+    expect(englishPolicy).toMatch(/CDN, WAF, and network-error logging[\s\S]*not[\s\S]*log-free/i);
+    expect(englishPolicy).toMatch(/next successful closed-day aggregation/i);
+    expect(englishPolicy).toMatch(/not an exact one-hour promise/i);
+    expect(englishPolicy).toMatch(/7 days on the Free plan or 30 days on a Paid plan/i);
+    expect(englishPolicy).toMatch(/retained for 400 days[\s\S]*private maintainer dashboard/i);
+    expect(englishPolicy).toMatch(/suppresses same-UTC-day re-enablement until the next UTC day/i);
+    expect(englishPolicy).toMatch(/cannot be individually found or deleted[\s\S]*no stable ID or deletion handle/i);
+    expect(englishPolicy).toMatch(/name or account details[\s\S]*email[\s\S]*persistent identifier/i);
+    expect(englishPolicy).toMatch(/system or hardware information[\s\S]*session titles/i);
+    expect(englishPolicy).toMatch(/prompts, messages, or history[\s\S]*quota or usage values/i);
+    expect(englishPolicy).toMatch(/token counts or cost estimates[\s\S]*file paths[\s\S]*credentials/i);
+    expect(englishPolicy).toMatch(/API or authentication tokens/i);
+    expect(englishPolicy).toMatch(/session and history data stays[\s\S]*local SQLite database/i);
+    expect(englishPolicy).toMatch(/live Codex or Claude Code quota refresh[\s\S]*corresponding provider services/i);
+    expect(englishPolicy).toMatch(/separate from anonymous version statistics[\s\S]*provider's privacy terms/i);
+    expect(englishPolicy).toMatch(/language choice in localStorage/i);
+    expect(englishPolicy).toMatch(/no cookies, client analytics, or third-party UI runtime/i);
+
+    expect(chinesePolicy).toMatch(/失败请求只会在同一个 UTC 日内复用它/);
+    expect(chinesePolicy).toMatch(/Quota Monitor 和 CodexMonitor 品牌构建[\s\S]*brand 字段[\s\S]*quota-monitor[\s\S]*codex-monitor/);
+    expect(chinesePolicy).toMatch(/当天应用版本发生变化[\s\S]*重新分类/);
+    expect(chinesePolicy).toMatch(/每个令牌在每个 UTC 日最多保留一条去重后的活跃安装记录/);
+    expect(chinesePolicy).toMatch(/没有稳定安装 ID、设备 ID 或跨日关联/);
+    expect(chinesePolicy).toMatch(/日期域隔离的 SHA-256 哈希/);
+    expect(chinesePolicy).toMatch(/原始令牌绝不会写入 D1 或应用自定义日志/);
+    expect(chinesePolicy).toMatch(/源 IP[\s\S]*尽力而为的 Workers RateLimit binding/);
+    expect(chinesePolicy).toMatch(/CDN、WAF 和网络错误日志[\s\S]*完全无日志/);
+    expect(chinesePolicy).toMatch(/下一次成功完成的已结束日期聚合后/);
+    expect(chinesePolicy).toMatch(/并非精确的一小时承诺/);
+    expect(chinesePolicy).toMatch(/Free 计划 7 天或 Paid 计划 30 天/);
+    expect(chinesePolicy).toMatch(/保留 400 天[\s\S]*私有维护者仪表盘/);
+    expect(chinesePolicy).toMatch(/同一 UTC 日内重新启用[\s\S]*下一个 UTC 日/);
+    expect(chinesePolicy).toMatch(/无法单独定位或删除[\s\S]*稳定 ID 或删除句柄/);
+    expect(chinesePolicy).toMatch(/会话和历史数据[\s\S]*本地 SQLite 数据库/);
+    expect(chinesePolicy).toMatch(/Codex 或 Claude Code 实时额度刷新[\s\S]*对应的服务提供方/);
+    expect(chinesePolicy).toMatch(/独立于匿名版本统计[\s\S]*服务提供方的隐私条款/);
+    expect(chinesePolicy).toMatch(/localStorage/);
+    expect(chinesePolicy).toMatch(/不使用 Cookie、客户端分析或第三方 UI runtime/);
   });
 
   it("ships complete, correctly sized raster design and production assets", () => {
@@ -718,6 +869,20 @@ describe("language resolution", () => {
     await expect(hydrateRelease()).resolves.not.toThrow();
   });
 
+  it("never requests release metadata on a page without release nodes", async () => {
+    const { hydrateRelease } = await loadAppModule();
+    const fetcher = vi.fn<typeof fetch>();
+    const documentStub = {
+      body: { dataset: { page: "privacy" } },
+      getElementById: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    };
+    vi.stubGlobal("document", documentStub);
+
+    await expect(hydrateRelease(fetcher)).resolves.toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       "stored Chinese over an English browser",
@@ -735,6 +900,14 @@ describe("language resolution", () => {
       "Download temporarily unavailable",
       "Download unavailable — QuotaMonitor",
     ],
+    [
+      "stored Chinese on the privacy page",
+      "zh-Hans",
+      ["en-US"],
+      "zh-Hans",
+      "匿名版本统计隐私政策",
+      "隐私政策 — Quota Monitor",
+    ],
   ])("localizes a download error using %s", async (
     _label,
     saved,
@@ -744,13 +917,16 @@ describe("language resolution", () => {
     expectedTitle,
   ) => {
     const { applyLanguage, resolveLanguage } = await loadAppModule();
+    const page = expectedTitle === "隐私政策 — Quota Monitor" ? "privacy" : "download-error";
     const heading = {
-      dataset: { i18n: "downloadErrorTitle" },
+      dataset: {
+        i18n: page === "privacy" ? "privacyPolicyTitle" : "downloadErrorTitle",
+      },
       textContent: "initial server copy",
     };
     const documentElement = { lang: "en" };
     const documentStub = {
-      body: { dataset: { page: "download-error" } },
+      body: { dataset: { page } },
       documentElement,
       title: "initial server title",
       querySelectorAll(selector: string) {

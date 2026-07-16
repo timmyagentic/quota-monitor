@@ -9,6 +9,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "404-page",
+    "html_handling": "auto-trailing-slash",
     "run_worker_first": [
       "/download",
       "/api/release",
@@ -53,6 +54,12 @@
   "triggers": {
     "crons": ["15 * * * *"]
   },
+  "secrets": {
+    "required": ["VERSION_STATS_ADMIN_TOKEN"]
+  },
+  "logpush": false,
+  "tail_consumers": [],
+  "streaming_tail_consumers": [],
   "routes": [
     {
       "pattern": "quota-monitor.timmyagentic.com",
@@ -64,7 +71,13 @@
     "logs": {
       "enabled": true,
       "invocation_logs": false,
-      "persist": true
+      "persist": true,
+      "destinations": []
+    },
+    "traces": {
+      "enabled": false,
+      "persist": false,
+      "destinations": []
     }
   }
 }
