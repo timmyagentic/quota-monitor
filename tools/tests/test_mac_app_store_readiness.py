@@ -69,11 +69,11 @@ class MacAppStoreReadinessTests(unittest.TestCase):
         self.assertRegex(updater, r"persistenceEnabled:\s*!isAppStore")
         self.assertRegex(
             updater,
-            r"sparkleEnabled:\s*!isAppStore\s*&&\s*!localQAActive",
+            r"sparkleEnabled:\s*!isAppStore\s*&&\s*!localQARequested",
         )
         self.assertRegex(
             updater,
-            r"reminderPresentationEnabled:\s*!isAppStore\s*&&\s*!localQAActive",
+            r"reminderPresentationEnabled:\s*!isAppStore\s*&&\s*!localQARequested",
         )
         self.assertIn("if DistributionChannel.current != .appStore", settings)
 
