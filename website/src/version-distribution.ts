@@ -568,7 +568,7 @@ export async function handleVersionDistribution(
   }
   if (!authenticated) {
     return privateText("Authentication required", 401, {
-      "WWW-Authenticate": 'Basic realm="QuotaMonitor version distribution", charset="UTF-8"',
+      "WWW-Authenticate": 'Basic realm="Quota Monitor version statistics"',
     });
   }
 

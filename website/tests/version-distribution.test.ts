@@ -388,7 +388,7 @@ describe("private maintainer dashboard", () => {
 
     expect(response.status).toBe(401);
     expect(response.headers.get("WWW-Authenticate")).toBe(
-      'Basic realm="QuotaMonitor version distribution", charset="UTF-8"',
+      'Basic realm="Quota Monitor version statistics"',
     );
     expect(response.headers.get("Cache-Control")).toBe("private, no-store");
     expect(response.headers.get("Vary")).toBe("Authorization");

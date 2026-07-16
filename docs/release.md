@@ -37,15 +37,85 @@ signature that does not match what users download → Sparkle rejects every
 update as *"improperly signed."* (This is exactly what broke 0.2.26/0.2.27.)
 
 So **Sparkle signing happens in CI over the final notarized DMG before it is
-uploaded**. The complete order is: shared required-secret gate → build,
-Developer ID signing, notarization, and stapling → `.sha256` sidecar parity →
-Sparkle signing plus a read-only post-sign hash check → upload of those same
-DMG and sidecar paths → Appcast PR for QuotaMonitor or direct Appcast push to
-the canonical `timmyagentic/codex-monitor` repository → daily release/Appcast
+uploaded**. The complete order is: shared required-secret gate → tooling tests
+→ fixed production version-statistics probe → Swift tests → build, Developer
+ID signing, notarization, and stapling → `.sha256` sidecar parity → Sparkle
+signing plus a read-only post-sign hash check → upload of those same DMG and
+sidecar paths → Appcast PR for QuotaMonitor or direct Appcast push to the
+canonical `timmyagentic/codex-monitor` repository → daily release/Appcast
 parity monitoring. Existing CodexMonitor clients continue to use their legacy
 raw feed URL; only publication ownership is canonical. You no longer paste an
 Appcast entry by hand on the happy path. `tools/release-sparkle.sh` still exists
 as a manual fallback (see the bottom of this doc).
+
+## Production version-statistics release precondition
+
+The opt-in app reporter is allowed to ship only after the matching Worker and
+D1 migration are live at `quota-monitor.timmyagentic.com`. Before creating a
+release tag, confirm all of these production prerequisites:
+
+- `quota-monitor-site` is deployed from the intended `main` commit and its
+  `VERSION_STATS_DB` binding targets `quota-monitor-version-stats`.
+- `0001_daily_active.sql` is applied remotely, the three rate-limit bindings
+  are present, the aggregation cron is active, and the dashboard credential
+  binding is configured.
+- The Worker itself redirects insecure GET/HEAD requests with an exact 301 to
+  the same HTTPS host, path, and query. This is a versioned project contract;
+  do not depend on the shared `timmyagentic.com` zone's **Always Use HTTPS**
+  setting, because changing that zone-wide switch affects unrelated subdomains.
+- The public release endpoint, unauthenticated private dashboard boundary, and
+  daily-active rejection contract all pass the credential-free probe below.
+
+Run the same fixed-origin check used by the tag workflow:
+
+```sh
+python3 tools/check-version-statistics-service.py
+```
+
+Success is exactly one compact JSON line:
+
+```json
+{"checks":4,"status":"ok"}
+```
+
+The probe accepts only positive `--timeout` and `--attempts` values. It does not
+read environment variables or accept a host, credential, token, arbitrary
+header, or origin override. In strict order it verifies the Worker-owned HTTP
+301, the exact `/api/release` schema, a credential-free 401/private/no-store
+dashboard challenge, then posts the fixed `0.0.0` marker for the previous UTC
+day and requires 409/no-store with an empty body. That deliberately invalid day
+must not create a D1 row.
+
+If the last check ever returns an accidental **204**, the probe still exits 1,
+but the faulty service may have accepted its synthetic marker. Repair the
+Worker first, then inspect and remove only that exact marker from production:
+
+```sh
+SYNTHETIC_DAY="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc).date()-d.timedelta(days=1)).isoformat())')"
+cd website
+npx wrangler d1 execute quota-monitor-version-stats --remote \
+  --command "SELECT day, version, brand, channel, COUNT(*) AS rows FROM daily_active_observations WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id' GROUP BY day, version, brand, channel;"
+npx wrangler d1 execute quota-monitor-version-stats --remote \
+  --command "SELECT day, version, brand, channel, active_count FROM daily_version_counts WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
+npx wrangler d1 execute quota-monitor-version-stats --remote \
+  --command "DELETE FROM daily_active_observations WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
+npx wrangler d1 execute quota-monitor-version-stats --remote \
+  --command "DELETE FROM daily_version_counts WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
+cd ..
+```
+
+Read both SELECT results before deleting. The hourly aggregation cron may
+already have moved the synthetic marker into `daily_version_counts` and removed
+its raw observation, so inspect and clean both exact locations. No real release
+uses version `0.0.0`; nevertheless, never broaden this cleanup to a day or
+table-wide delete. D1 Time Travel can retain deleted database state according
+to the account plan even after the live rows are gone.
+
+When the shared gate fails, no brand build or publication job has started. Do
+not bypass the probe. Restore or deploy the production service, run the local
+probe, then rerun the failed tag workflow. A deliberate server-contract change
+must land together with an updated app reporter, probe, documentation, and
+tests through a normal PR before a new release tag is created.
 
 ## Per-release checklist
 
@@ -128,15 +198,17 @@ as a manual fallback (see the bottom of this doc).
    The tag push triggers `.github/workflows/release.yml`, which:
    1. validates every required publishing secret in the shared gate before
       either brand can build or publish;
-   2. imports the Developer ID certificate, rebuilds from the tagged commit,
+   2. runs tooling tests, probes the fixed production version-statistics
+      contract without credentials, then runs Swift tests;
+   3. imports the Developer ID certificate, rebuilds from the tagged commit,
       signs/notarizes/staples the `.app`, then builds, signs, notarizes, and
       staples the final DMG and writes its `.sha256` sidecar;
-   3. checks the DMG against that sidecar, validates the Sparkle key, signs the
+   4. checks the DMG against that sidecar, validates the Sparkle key, signs the
       final DMG into an Appcast `<item>`, and hashes the DMG again to prove the
       signing operation did not change its bytes;
-   4. uploads those same DMG and sidecar paths to the brand's canonical GitHub
+   5. uploads those same DMG and sidecar paths to the brand's canonical GitHub
       Release repository with notes sliced from `CHANGELOG.md`;
-   5. opens an **`appcast/vX.Y.Z` PR** for QuotaMonitor, or pushes the signed
+   6. opens an **`appcast/vX.Y.Z` PR** for QuotaMonitor, or pushes the signed
       entry directly to canonical `timmyagentic/codex-monitor` while retaining
       the installed-client legacy raw feed URL.
 

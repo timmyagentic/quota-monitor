@@ -206,6 +206,20 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (
+      url.protocol === "http:" &&
+      (request.method === "GET" || request.method === "HEAD")
+    ) {
+      url.protocol = "https:";
+      return withSecurityHeaders(new Response(null, {
+        status: 301,
+        headers: {
+          "Cache-Control": "no-store",
+          Location: url.toString(),
+        },
+      }));
+    }
+
     if (url.pathname === "/api/v1/daily-active") {
       const response = await handleDailyActive(
         request,

@@ -179,6 +179,50 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("    needs: test", quota_job)
         self.assertIn("    needs: test", codex_job)
 
+    def test_shared_gate_probes_the_fixed_live_statistics_service_before_swift(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        pull_request_workflow = self.read_text(".github/workflows/tests.yml")
+        shared_job = self.workflow_job(
+            workflow,
+            "test",
+            "release-quota-monitor",
+        )
+        quota_job = self.workflow_job(
+            workflow,
+            "release-quota-monitor",
+            "release-codex-monitor",
+        )
+        codex_job = self.workflow_job(workflow, "release-codex-monitor")
+
+        tooling_index = shared_job.index("      - name: Run tooling tests")
+        probe_index = shared_job.index(
+            "      - name: Verify production version statistics service"
+        )
+        swift_index = shared_job.index("      - name: Run tests")
+        self.assertLess(tooling_index, probe_index)
+        self.assertLess(probe_index, swift_index)
+
+        probe_step = self.workflow_step(
+            shared_job,
+            "Verify production version statistics service",
+            "Run tests",
+        )
+        self.assertEqual(
+            probe_step.strip(),
+            "- name: Verify production version statistics service\n"
+            "        run: python3 tools/check-version-statistics-service.py",
+        )
+        self.assertNotIn("env:", probe_step)
+        self.assertNotIn("secrets.", probe_step)
+        self.assertNotIn("${{", probe_step)
+        self.assertEqual(
+            workflow.count("python3 tools/check-version-statistics-service.py"),
+            1,
+        )
+        self.assertNotIn("check-version-statistics-service.py", pull_request_workflow)
+        self.assertIn("    needs: test", quota_job)
+        self.assertIn("    needs: test", codex_job)
+
     def test_release_workflow_scopes_write_permissions_to_quota_job(self):
         workflow = self.read_text(".github/workflows/release.yml")
         shared_job = self.workflow_job(

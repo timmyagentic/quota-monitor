@@ -611,6 +611,63 @@ describe("Worker routes", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    ["GET", "http://quota-monitor.test/", "https://quota-monitor.test/"],
+    [
+      "GET",
+      "http://quota-monitor.test/privacy?lang=zh-Hans&source=settings",
+      "https://quota-monitor.test/privacy?lang=zh-Hans&source=settings",
+    ],
+    [
+      "HEAD",
+      "http://quota-monitor.test/api/release?fresh=1",
+      "https://quota-monitor.test/api/release?fresh=1",
+    ],
+  ])(
+    "redirects HTTP %s %s to the same HTTPS host, path, and query",
+    async (method, source, destination) => {
+      const assetsFetch = vi.fn<Fetcher["fetch"]>();
+
+      const response = await worker.fetch(
+        new Request(source, { method }),
+        workerEnv(assetsBinding(assetsFetch)),
+      );
+
+      expect(response.status).toBe(301);
+      expect(response.headers.get("Location")).toBe(destination);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+      expect(await response.text()).toBe("");
+      expectSecurityHeaders(response);
+      expect(assetsFetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not redirect an insecure daily-active POST body", async () => {
+    const database = new WorkerTestDatabase();
+    const assetsFetch = vi.fn<Fetcher["fetch"]>();
+
+    const response = await worker.fetch(
+      new Request("http://quota-monitor.test/api/v1/daily-active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
+      workerEnv(
+        assetsBinding(assetsFetch),
+        allowLimiter(),
+        allowLimiter(),
+        allowLimiter(),
+        database,
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(database.statements).toEqual([]);
+    expect(assetsFetch).not.toHaveBeenCalled();
+  });
+
   it("serves public metadata from /api/release without exposing the upstream URL", async () => {
     const response = await worker.fetch(
       new Request("https://quota-monitor.test/api/release"),
