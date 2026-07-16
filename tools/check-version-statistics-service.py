@@ -3,6 +3,7 @@
 
 import argparse
 import datetime as dt
+import http.client
 import json
 import math
 import re
@@ -197,7 +198,12 @@ def _fetch(request, timeout, attempts, opener, sleep):
             response = _consume(raw_response)
         except ProbeError:
             raise
-        except (urllib.error.URLError, TimeoutError, OSError):
+        except (
+            urllib.error.URLError,
+            http.client.HTTPException,
+            TimeoutError,
+            OSError,
+        ):
             if attempt + 1 < attempts:
                 sleep(0.5 if attempt == 0 else 1.0)
                 continue

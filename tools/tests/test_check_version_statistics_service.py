@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime as dt
+import http.client
 import importlib.util
 import io
 import json
@@ -36,6 +37,8 @@ class FakeResponse:
         self.offset = 0
         self.read_sizes = []
         self.bytes_returned = 0
+        self.close_calls = 0
+        self.closed = False
 
     def __enter__(self):
         return self
@@ -61,6 +64,10 @@ class FakeResponse:
         self.offset += len(chunk)
         self.bytes_returned += len(chunk)
         return chunk
+
+    def close(self):
+        self.close_calls += 1
+        self.closed = True
 
 
 class RecordingOpener:
@@ -306,6 +313,33 @@ class RedirectAndResponseContractTests(unittest.TestCase):
             handler.redirect_request(None, None, 301, "Moved", {}, "https://evil.test")
         )
 
+    def test_http_error_is_consumed_as_a_response_without_retry(self):
+        url = CHECKER.PLAIN_HTTP_ORIGIN + "/"
+        file_pointer = io.BytesIO(b"redirect response")
+        error = urllib.error.HTTPError(
+            url,
+            301,
+            "Moved Permanently",
+            {"Location": CHECKER.PRODUCTION_ORIGIN + "/"},
+            file_pointer,
+        )
+        opener = RecordingOpener(error)
+        sleeps = []
+
+        response = CHECKER._fetch(
+            CHECKER._request(url, "text/html"),
+            timeout=2,
+            attempts=3,
+            opener=opener,
+            sleep=sleeps.append,
+        )
+
+        self.assertEqual(response.status, 301)
+        self.assertEqual(response.body, b"redirect response")
+        self.assertEqual(len(opener.calls), 1)
+        self.assertEqual(sleeps, [])
+        self.assertTrue(file_pointer.closed)
+
     def test_http_root_requires_exact_301_and_https_location(self):
         cases = (
             root_response(status=200),
@@ -516,6 +550,25 @@ class BoundedReadTests(unittest.TestCase):
         with self.assertRaises(CHECKER.ProbeError):
             CHECKER.read_bounded(BadResponse())
 
+    def test_every_consumed_response_is_closed_once(self):
+        responses = (
+            root_response(),
+            release_response(),
+            dashboard_response(),
+            daily_response(),
+        )
+        opener = RecordingOpener(*responses)
+
+        CHECKER.run_probe(
+            now=dt.datetime(2026, 7, 16, tzinfo=dt.timezone.utc),
+            attempts=1,
+            opener=opener,
+        )
+
+        for response in responses:
+            self.assertTrue(response.closed)
+            self.assertEqual(response.close_calls, 1)
+
 
 class RetryTests(unittest.TestCase):
     def run_with(self, *responses, attempts=3):
@@ -550,6 +603,25 @@ class RetryTests(unittest.TestCase):
             with self.subTest(error=type(error).__name__):
                 result, opener, sleeps = self.run_with(
                     error,
+                    root_response(),
+                    release_response(),
+                    dashboard_response(),
+                    daily_response(),
+                )
+                self.assertEqual(result["status"], "ok")
+                self.assertEqual(len(opener.calls), 5)
+                self.assertEqual(sleeps, [0.5])
+
+    def test_http_protocol_failures_are_retryable_network_errors(self):
+        failures = (
+            http.client.IncompleteRead(b"partial", 10),
+            http.client.BadStatusLine("invalid status line"),
+            http.client.LineTooLong("header line"),
+        )
+        for failure in failures:
+            with self.subTest(error=type(failure).__name__):
+                result, opener, sleeps = self.run_with(
+                    failure,
                     root_response(),
                     release_response(),
                     dashboard_response(),

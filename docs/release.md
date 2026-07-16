@@ -88,28 +88,51 @@ must not create a D1 row.
 
 If the last check ever returns an accidental **204**, the probe still exits 1,
 but the faulty service may have accepted its synthetic marker. Repair the
-Worker first, then inspect and remove only that exact marker from production:
+Worker first. Set `SYNTHETIC_DAY` to the exact UTC day sent by the failed probe:
+the previous UTC calendar day at the time that workflow step started. Read that
+start time from the failed workflow log; do not recompute “yesterday” when you
+later perform cleanup. Replace the placeholder, then inspect both possible
+locations without deleting anything:
 
 ```sh
-SYNTHETIC_DAY="$(python3 -c 'import datetime as d; print((d.datetime.now(d.timezone.utc).date()-d.timedelta(days=1)).isoformat())')"
-cd website
-npx wrangler d1 execute quota-monitor-version-stats --remote \
-  --command "SELECT day, version, brand, channel, COUNT(*) AS rows FROM daily_active_observations WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id' GROUP BY day, version, brand, channel;"
-npx wrangler d1 execute quota-monitor-version-stats --remote \
-  --command "SELECT day, version, brand, channel, active_count FROM daily_version_counts WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
-npx wrangler d1 execute quota-monitor-version-stats --remote \
-  --command "DELETE FROM daily_active_observations WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
-npx wrangler d1 execute quota-monitor-version-stats --remote \
-  --command "DELETE FROM daily_version_counts WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
-cd ..
+SYNTHETIC_DAY="YYYY-MM-DD"
+(
+  case "${SYNTHETIC_DAY}" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) printf 'Set SYNTHETIC_DAY to the failed probe day.\n' >&2; exit 1 ;;
+  esac
+  cd website
+  npx wrangler d1 execute quota-monitor-version-stats --remote \
+    --command "SELECT day, version, brand, channel, COUNT(*) AS rows FROM daily_active_observations WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id' GROUP BY day, version, brand, channel;"
+  npx wrangler d1 execute quota-monitor-version-stats --remote \
+    --command "SELECT day, version, brand, channel, active_count FROM daily_version_counts WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
+)
 ```
 
-Read both SELECT results before deleting. The hourly aggregation cron may
-already have moved the synthetic marker into `daily_version_counts` and removed
-its raw observation, so inspect and clean both exact locations. No real release
-uses version `0.0.0`; nevertheless, never broaden this cleanup to a day or
-table-wide delete. D1 Time Travel can retain deleted database state according
-to the account plan even after the live rows are gone.
+Only after confirming those SELECT results contain the synthetic marker, run
+the two narrowly scoped deletes in the same terminal so `SYNTHETIC_DAY` retains
+the inspected value:
+
+```sh
+(
+  case "${SYNTHETIC_DAY:-}" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) printf 'Inspect and set SYNTHETIC_DAY before deleting.\n' >&2; exit 1 ;;
+  esac
+  cd website
+  npx wrangler d1 execute quota-monitor-version-stats --remote \
+    --command "DELETE FROM daily_active_observations WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
+  npx wrangler d1 execute quota-monitor-version-stats --remote \
+    --command "DELETE FROM daily_version_counts WHERE day='${SYNTHETIC_DAY}' AND version='0.0.0' AND brand='quota-monitor' AND channel='developer-id';"
+)
+```
+
+The hourly aggregation cron may already have moved the synthetic marker into
+`daily_version_counts` and removed its raw observation, so inspect and clean
+both exact locations. No real release uses version `0.0.0`; nevertheless, never
+broaden this cleanup to a day or table-wide delete. D1 Time Travel can retain
+deleted database state according to the account plan even after the live rows
+are gone.
 
 When the shared gate fails, no brand build or publication job has started. Do
 not bypass the probe. Restore or deploy the production service, run the local

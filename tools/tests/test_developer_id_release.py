@@ -223,6 +223,30 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("    needs: test", quota_job)
         self.assertIn("    needs: test", codex_job)
 
+    def test_statistics_probe_cleanup_uses_the_failed_run_day_before_deleting(self):
+        release_doc = self.read_text("docs/release.md")
+        section = release_doc[
+            release_doc.index("## Production version-statistics release precondition"):
+            release_doc.index("## Per-release checklist")
+        ]
+
+        self.assertNotIn("datetime.now", section)
+        self.assertIn('SYNTHETIC_DAY="YYYY-MM-DD"', section)
+        self.assertIn("exact UTC day sent by the failed probe", section)
+        self.assertEqual(section.count('(\n  case "${SYNTHETIC_DAY'), 2)
+
+        first_select = section.index('  --command "SELECT day, version, brand, channel')
+        second_select = section.index(
+            '  --command "SELECT day, version, brand, channel, active_count'
+        )
+        confirmation = section.index("Only after confirming those SELECT results")
+        first_delete = section.index('  --command "DELETE FROM daily_active_observations')
+        second_delete = section.index('  --command "DELETE FROM daily_version_counts')
+        self.assertLess(first_select, second_select)
+        self.assertLess(second_select, confirmation)
+        self.assertLess(confirmation, first_delete)
+        self.assertLess(first_delete, second_delete)
+
     def test_release_workflow_scopes_write_permissions_to_quota_job(self):
         workflow = self.read_text(".github/workflows/release.yml")
         shared_job = self.workflow_job(
