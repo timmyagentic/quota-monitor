@@ -72,10 +72,13 @@ actor DailyActiveTokenStore {
 
     func markSucceeded(
         day: String,
+        token: String,
         version: String,
         brand: String,
         channel: String
     ) {
+        let expectedToken = DailyActiveTokenRecord(day: day, token: token)
+        guard restoredTokenRecord() == expectedToken else { return }
         let record = DailyActiveSuccessRecord(
             day: day,
             version: version,

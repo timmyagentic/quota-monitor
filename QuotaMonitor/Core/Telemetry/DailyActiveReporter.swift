@@ -390,6 +390,7 @@ actor DailyActiveReporter {
             }
             await store.markSucceeded(
                 day: payload.day,
+                token: payload.token,
                 version: payload.version,
                 brand: payload.brand,
                 channel: payload.channel)
@@ -460,7 +461,7 @@ actor DailyActiveReporter {
         guard let retryAfter else { return Self.retryDelays[fallbackIndex] }
         let value = retryAfter.trimmingCharacters(in: .whitespacesAndNewlines)
         if let seconds = Int(value), seconds >= 0 {
-            return .seconds(min(max(seconds, 1), 15 * 60))
+            return min(.seconds(max(seconds, 1)), Self.maximumRetryAfter)
         }
 
         let formatter = DateFormatter()
@@ -472,7 +473,7 @@ actor DailyActiveReporter {
             return Self.retryDelays[fallbackIndex]
         }
         let seconds = Int(retryDate.timeIntervalSince(now()).rounded(.up))
-        return .seconds(min(max(seconds, 1), 15 * 60))
+        return min(.seconds(max(seconds, 1)), Self.maximumRetryAfter)
     }
 
     private static func request(for payload: DailyActivePayload) -> URLRequest? {

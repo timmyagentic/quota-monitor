@@ -276,12 +276,15 @@ struct DailyActiveReporterTests {
         await sleeper.resumeAll()
     }
 
-    @Test("Retry-After is honored but clamped to fifteen minutes")
-    func retryAfterIsBounded() async {
-        let fixture = StoreFixture(testName: #function)
+    @Test("Retry-After is honored but clamped to the shared maximum", arguments: [
+        "999999",
+        "Fri, 17 Jul 2026 00:00:00 GMT",
+    ])
+    func retryAfterIsBounded(retryAfter: String) async {
+        let fixture = StoreFixture(testName: "\(#function).\(retryAfter)")
         defer { fixture.cleanUp() }
         let transport = ScriptedDailyActiveTransport([
-            .response(429, retryAfter: "999999"),
+            .response(429, retryAfter: retryAfter),
             .response(204),
         ])
         let sleeper = ControlledDailyActiveSleeper()
@@ -290,7 +293,7 @@ struct DailyActiveReporterTests {
         await reporter.start()
         _ = await waitForRequests(1, transport: transport)
         let sleeps = await waitForSleeps(1, sleeper: sleeper)
-        #expect(sleeps == [.seconds(900)])
+        #expect(sleeps == [DailyActiveReporter.maximumRetryAfter])
         await sleeper.resume(request: 0)
         _ = await waitForRequests(2, transport: transport)
 

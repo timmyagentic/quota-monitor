@@ -61,6 +61,7 @@ struct DailyActiveTokenStoreTests {
         let first = try #require(await store.record(for: beforeMidnight))
         await store.markSucceeded(
             day: first.day,
+            token: first.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
             channel: "direct")
@@ -85,6 +86,7 @@ struct DailyActiveTokenStoreTests {
 
         await store.markSucceeded(
             day: second.day,
+            token: second.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
             channel: "direct")
@@ -189,6 +191,7 @@ struct DailyActiveTokenStoreTests {
 
         await store.markSucceeded(
             day: original.day,
+            token: original.token,
             version: "0.2|40",
             brand: "Quota|Monitor",
             channel: "direct|stable")
@@ -264,6 +267,7 @@ struct DailyActiveTokenStoreTests {
         let original = try #require(await firstStore.record(for: date))
         await firstStore.markSucceeded(
             day: original.day,
+            token: original.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
             channel: "direct")
@@ -290,6 +294,7 @@ struct DailyActiveTokenStoreTests {
         let original = try #require(await store.record(for: date))
         await store.markSucceeded(
             day: original.day,
+            token: original.token,
             version: "0.2.40",
             brand: "QuotaMonitor",
             channel: "direct")
@@ -308,6 +313,116 @@ struct DailyActiveTokenStoreTests {
             version: "0.2.40",
             brand: "QuotaMonitor",
             channel: "direct") == false)
+    }
+
+    @Test("Clearing before a stale success write cannot resurrect success")
+    func clearBeforeStaleMarkLeavesStoreEmpty() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+        let stale = try #require(await store.record(for: date))
+
+        await store.clear()
+        await store.markSucceeded(
+            day: stale.day,
+            token: stale.token,
+            version: "0.2.40",
+            brand: "QuotaMonitor",
+            channel: "direct")
+
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+    }
+
+    @Test("Clearing after a success write leaves both records empty")
+    func markBeforeClearLeavesStoreEmpty() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16)
+        let source = RandomSourceProbe(values: [Array(0 ... 15)])
+        let store = makeStore(defaults: defaults, source: source)
+        let record = try #require(await store.record(for: date))
+        await store.markSucceeded(
+            day: record.day,
+            token: record.token,
+            version: "0.2.40",
+            brand: "QuotaMonitor",
+            channel: "direct")
+
+        await store.clear()
+
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+    }
+
+    @Test("A stale token cannot overwrite success for a replacement token")
+    func staleMarkCannotOverwriteReplacementSuccess() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let date = try utcDate(year: 2026, month: 7, day: 16)
+        let source = RandomSourceProbe(values: [
+            Array(0 ... 15),
+            Array(16 ... 31),
+        ])
+        let store = makeStore(defaults: defaults, source: source)
+        let stale = try #require(await store.record(for: date))
+        await store.clear()
+        let replacement = try #require(await store.record(for: date))
+        await store.markSucceeded(
+            day: replacement.day,
+            token: replacement.token,
+            version: "0.2.41",
+            brand: "QuotaMonitor",
+            channel: "direct")
+
+        await store.markSucceeded(
+            day: stale.day,
+            token: stale.token,
+            version: "0.2.40",
+            brand: "CodexMonitor",
+            channel: "app-store")
+
+        let tokenData = try #require(
+            defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) as? Data)
+        #expect(try JSONDecoder().decode(DailyActiveTokenRecord.self, from: tokenData)
+            == replacement)
+        #expect(await store.hasSucceeded(
+            day: replacement.day,
+            version: "0.2.41",
+            brand: "QuotaMonitor",
+            channel: "direct"))
+        #expect(await store.hasSucceeded(
+            day: stale.day,
+            version: "0.2.40",
+            brand: "CodexMonitor",
+            channel: "app-store") == false)
+    }
+
+    @Test("An invalid persisted token blocks success and self-heals")
+    func invalidTokenBlocksSuccessWrite() async throws {
+        let (defaults, suiteName) = makeDefaults(named: #function)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let invalid = DailyActiveTokenRecord(
+            day: "2026-07-16",
+            token: "not-a-canonical-token")
+        defaults.set(
+            try JSONEncoder().encode(invalid),
+            forKey: DailyActiveTokenStore.tokenStorageKey)
+        let source = RandomSourceProbe(values: [])
+        let store = makeStore(defaults: defaults, source: source)
+
+        await store.markSucceeded(
+            day: "2026-07-16",
+            token: "AAECAwQFBgcICQoLDA0ODw",
+            version: "0.2.40",
+            brand: "QuotaMonitor",
+            channel: "direct")
+
+        #expect(defaults.object(forKey: DailyActiveTokenStore.tokenStorageKey) == nil)
+        #expect(defaults.object(forKey: DailyActiveTokenStore.successStorageKey) == nil)
+        #expect(source.callCount == 0)
     }
 
     private func makeStore(
