@@ -752,6 +752,8 @@ enum L10n {
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
+    /// Product copy intentionally stays English in both app languages.
+    static var updateEntryTitle: String { t(en: "Update", zh: "Update") }
     static func updateBadgeTitle(_ version: String?) -> String {
         if let version, !version.isEmpty {
             return t(en: "Update to \(version)", zh: "更新到 \(version)")
@@ -765,15 +767,6 @@ enum L10n {
         }
         return t(en: "Install the available update", zh: "安装可用更新")
     }
-    static func statusItemUpdateTooltip(_ version: String) -> String {
-        t(en: "Install the \(Branding.appCodeName) \(version) update",
-          zh: "安装 \(Branding.appCodeName) \(version) 更新")
-    }
-    static func statusItemUpdateAccessibilityLabel(_ version: String) -> String {
-        t(en: "Update available for \(Branding.appCodeName) \(version)",
-          zh: "\(Branding.appCodeName) \(version) 有可用更新")
-    }
-
     // MARK: - update window (custom Sparkle UI)
 
     static var updateWindowTitle: String {

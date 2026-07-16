@@ -15,25 +15,30 @@ struct MainWindowLayoutTests {
         #expect(!source.contains("line.3.horizontal.decrease.circle"))
     }
 
-    @Test("Available updates stay visible from main and menu surfaces via the shared badge")
-    func persistentUpdateBadgeIsExposedOnPrimarySurfaces() throws {
+    @Test("Available updates use one blue Update text entry on visible app surfaces")
+    func persistentUpdateEntryIsExposedOnVisibleAppSurfaces() throws {
         let mainWindow = try Self.source(named: "QuotaMonitor/Features/MainWindow/MainWindowView.swift")
         let menuBar = try Self.source(named: "QuotaMonitor/Features/MenuBar/MenuBarContentView.swift")
+        let settings = try Self.source(named: "QuotaMonitor/Features/Settings/AdvancedSettingsTab.swift")
         let badge = try Self.source(named: "QuotaMonitor/Features/Shared/PersistentUpdateBadge.swift")
         let windowManager = try Self.source(named: "QuotaMonitor/App/WindowManager.swift")
         let statusItemController = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
 
-        // Both primary surfaces render the one shared component…
-        #expect(mainWindow.contains("PersistentUpdateBadge("))
-        #expect(menuBar.contains("PersistentUpdateBadge("))
-        // …and the install action lives in that single shared place.
+        #expect(mainWindow.contains("PersistentUpdateBadge()"))
+        #expect(menuBar.contains("PersistentUpdateBadge()"))
+        #expect(settings.contains("PersistentUpdateBadge()"))
         #expect(badge.contains("updater.installAvailableUpdate()"))
+        #expect(badge.contains("Text(L10n.updateEntryTitle)"))
+        #expect(badge.contains(".buttonStyle(.borderedProminent)"))
+        #expect(badge.contains(".tint(.blue)"))
+        #expect(!badge.contains("systemImage:"))
+        #expect(!badge.contains(".orange"))
         #expect(windowManager.contains(".environment(updater)"))
         #expect(statusItemController.contains(".environment(updater)"))
     }
 
-    @Test("Native status item observes update version and localization redraws")
-    func nativeStatusItemObservesUpdateAndLocalization() throws {
+    @Test("Native status item stays unchanged when an update is available")
+    func nativeStatusItemDoesNotRenderUpdateState() throws {
         let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
         let renderLabel = try Self.sourceSlice(
             source,
@@ -42,17 +47,15 @@ struct MainWindowLayoutTests {
 
         #expect(source.contains("private let localization: LocalizationStore"))
         #expect(source.contains("self.localization = localization"))
-        #expect(renderLabel.contains("updater.updateAvailability.version"))
         #expect(renderLabel.contains("localization.tickForceRedraw"))
-        #expect(renderLabel.contains("button.toolTip = nil"))
-        #expect(!renderLabel.contains("button.setAccessibilityLabel(nil)"))
-        #expect(renderLabel.contains("StatusItemUpdateMarker.accessibilityLabel("))
-        #expect(renderLabel.contains("button.setAccessibilityLabel(accessibilityLabel)"))
-        #expect(renderLabel.contains("L10n.statusItemUpdateTooltip(updateVersion)"))
+        #expect(!renderLabel.contains("updateAvailability"))
+        #expect(!source.contains("StatusItemUpdateMarker"))
+        #expect(!source.contains("pulseUpdateMarker"))
+        #expect(!source.contains("systemOrange"))
     }
 
-    @Test("Gauge fallback remains visible beside an available update marker")
-    func gaugeFallbackPreservesImageAndMarker() throws {
+    @Test("Gauge fallback remains the unchanged image-only status item")
+    func gaugeFallbackRemainsImageOnly() throws {
         let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
         let renderLabel = try Self.sourceSlice(
             source,
@@ -64,35 +67,22 @@ struct MainWindowLayoutTests {
             to: "} else {")
 
         #expect(fallback.contains("button.image = Self.gaugeImage"))
-        #expect(fallback.contains("button.imagePosition = updateVersion == nil ? .imageOnly : .imageLeading"))
+        #expect(fallback.contains("button.imagePosition = .imageOnly"))
         #expect(fallback.contains("NSAttributedString(string: \"\")"))
-        #expect(renderLabel.contains("StatusItemUpdateMarker.title("))
+        #expect(!fallback.contains("update"))
     }
 
-    @Test("English and Chinese status-item update copy includes the version")
-    func localizedStatusItemUpdateCopyIncludesVersion() {
-        let version = "0.2.41"
+    @Test("The update entry remains the requested English word in both languages")
+    func localizedUpdateEntryUsesExactText() {
         let english = LocalizationTestSupport.withLanguage(.english) {
-            (
-                L10n.statusItemUpdateTooltip(version),
-                L10n.statusItemUpdateAccessibilityLabel(version)
-            )
+            L10n.updateEntryTitle
         }
         let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            (
-                L10n.statusItemUpdateTooltip(version),
-                L10n.statusItemUpdateAccessibilityLabel(version)
-            )
+            L10n.updateEntryTitle
         }
 
-        #expect(english.0.contains(version))
-        #expect(english.1.contains(version))
-        #expect(english.0.localizedCaseInsensitiveContains("update"))
-        #expect(english.1.localizedCaseInsensitiveContains("update"))
-        #expect(chinese.0.contains(version))
-        #expect(chinese.1.contains(version))
-        #expect(chinese.0.contains("更新"))
-        #expect(chinese.1.contains("更新"))
+        #expect(english == "Update")
+        #expect(chinese == "Update")
     }
 
     @Test("Dashboard overview keeps the original single-stack section order")

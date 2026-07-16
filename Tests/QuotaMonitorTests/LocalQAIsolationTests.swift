@@ -250,15 +250,13 @@ struct LocalQAIsolationTests {
             displayVersion: "0.2.41",
             phase: .available,
             firstSeenAt: Date(timeIntervalSince1970: 100),
-            nextReminderAt: Date(timeIntervalSince1970: 200),
-            deliveredReminderCount: 0)
+            isDeferred: true)
         let qaSnapshot = PendingUpdateSnapshot(
             internalVersion: "42",
             displayVersion: "0.2.42-qa",
             phase: .readyToInstall,
             firstSeenAt: Date(timeIntervalSince1970: 300),
-            nextReminderAt: Date(timeIntervalSince1970: 400),
-            deliveredReminderCount: 1)
+            isDeferred: true)
         productionDefaults.set(
             try JSONEncoder().encode(productionSnapshot),
             forKey: pendingUpdateStorageKey)
@@ -272,7 +270,6 @@ struct LocalQAIsolationTests {
             localQARequested: false)
         #expect(production.updateAvailability.snapshot == productionSnapshot)
         #expect(production.sparkleEnabled)
-        #expect(production.reminderPresentationEnabled)
 
         let qa = UpdaterController.makeRuntimeConfiguration(
             distribution: .developerID,
@@ -282,7 +279,6 @@ struct LocalQAIsolationTests {
         #expect(qa.updateAvailability.snapshot == qaSnapshot)
         #expect(qa.updateAvailability.snapshot != productionSnapshot)
         #expect(!qa.sparkleEnabled)
-        #expect(!qa.reminderPresentationEnabled)
 
         let appStore = UpdaterController.makeRuntimeConfiguration(
             distribution: .appStore,
@@ -291,13 +287,12 @@ struct LocalQAIsolationTests {
             localQARequested: false)
         #expect(appStore.updateAvailability.snapshot == nil)
         #expect(!appStore.sparkleEnabled)
-        #expect(!appStore.reminderPresentationEnabled)
         appStore.updateAvailability.recordDiscovery(
             internalVersion: "43",
             displayVersion: "0.2.43",
             userInitiated: false,
             now: Date(timeIntervalSince1970: 500))
-        appStore.updateAvailability.markLater(now: Date(timeIntervalSince1970: 500))
+        appStore.updateAvailability.markLater()
         #expect(qaDefaults.data(forKey: pendingUpdateStorageKey) == qaStoredData)
     }
 
@@ -331,7 +326,6 @@ struct LocalQAIsolationTests {
                 localQARequested: requested)
 
             #expect(!runtime.sparkleEnabled)
-            #expect(!runtime.reminderPresentationEnabled)
         }
 
         let source = try Self.source(
@@ -353,8 +347,7 @@ struct LocalQAIsolationTests {
             displayVersion: "0.2.41-production",
             phase: .available,
             firstSeenAt: Date(timeIntervalSince1970: 100),
-            nextReminderAt: Date(timeIntervalSince1970: 200),
-            deliveredReminderCount: 0)
+            isDeferred: true)
         let productionData = try JSONEncoder().encode(productionSnapshot)
         standardDefaults.set(productionData, forKey: pendingUpdateStorageKey)
 
@@ -367,13 +360,12 @@ struct LocalQAIsolationTests {
 
         #expect(qa.updateAvailability.snapshot == nil)
         #expect(!qa.sparkleEnabled)
-        #expect(!qa.reminderPresentationEnabled)
         qa.updateAvailability.recordDiscovery(
             internalVersion: "42",
             displayVersion: "0.2.42-qa",
             userInitiated: false,
             now: Date(timeIntervalSince1970: 300))
-        qa.updateAvailability.markLater(now: Date(timeIntervalSince1970: 300))
+        qa.updateAvailability.markLater()
         #expect(standardDefaults.data(forKey: pendingUpdateStorageKey) == productionData)
     }
 

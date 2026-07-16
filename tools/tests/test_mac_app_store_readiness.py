@@ -57,6 +57,7 @@ class MacAppStoreReadinessTests(unittest.TestCase):
     def test_runtime_has_distribution_channel_and_disables_sparkle_for_app_store(self):
         channel = self.read_text("QuotaMonitor/Core/DistributionChannel.swift")
         updater = self.read_text("QuotaMonitor/Core/Updater/UpdaterController.swift")
+        app_delegate = self.read_text("QuotaMonitor/App/AppDelegate.swift")
         settings = self.read_text("QuotaMonitor/Features/Settings/AdvancedSettingsTab.swift")
 
         self.assertIn("QMDistributionChannel", channel)
@@ -71,10 +72,9 @@ class MacAppStoreReadinessTests(unittest.TestCase):
             updater,
             r"sparkleEnabled:\s*!isAppStore\s*&&\s*!localQARequested",
         )
-        self.assertRegex(
-            updater,
-            r"reminderPresentationEnabled:\s*!isAppStore\s*&&\s*!localQARequested",
-        )
+        self.assertNotIn("reminderPresentationEnabled", updater)
+        self.assertNotIn("UpdateReminderCoordinator", updater)
+        self.assertNotIn("startUpdateReminders", app_delegate)
         self.assertIn("if DistributionChannel.current != .appStore", settings)
 
     def test_readiness_doc_records_submission_boundary_and_remaining_risks(self):

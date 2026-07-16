@@ -182,7 +182,7 @@ struct MenuBarContentView: View {
                 .font(.headline)
             Spacer()
             if updater.updateAvailability.isVisible {
-                PersistentUpdateBadge(style: .menu)
+                PersistentUpdateBadge()
             }
             if env.isLoadingMenuBar {
                 ProgressView().controlSize(.small)

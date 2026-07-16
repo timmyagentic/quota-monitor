@@ -50,6 +50,10 @@ Quota Monitor 是一个 macOS 菜单栏工具，用来查看 Codex 和 Claude Co
 - `Settings...`：打开设置窗口。
 - `Quit`：退出 Quota Monitor。
 
+如果有尚未处理的新版本，弹窗标题栏会显示蓝色 `Update` 按钮；点击它会重新打开更新流程。macOS 菜单栏里的额度文字或仪表图标本身不会因为有更新而增加箭头或变色。
+
+![菜单栏弹窗中的蓝色 Update 按钮](assets/product-manual/4ede5cd/update-popover.png)
+
 ## Dashboard
 
 Dashboard 用来快速判断整体趋势和额度风险。
@@ -138,6 +142,7 @@ General 适合普通用户日常调整：
 
 Advanced 适合需要排查或维护数据的用户：
 
+- `Update`：仅在有尚未处理的新版本时显示，点击后继续更新流程。
 - `Check for updates automatically`：控制是否每天自动检查新版本。
 - `Check Now`：立即检查更新。检查更新会访问更新源。
 - `Live quotas`：选择 Claude Code live quota 的凭据读取方式。
@@ -180,7 +185,7 @@ Advanced 适合需要排查或维护数据的用户：
 - `Cancel`：下载中取消。
 - `Done`：关闭错误或完成提示。
 
-选择 `Later` 或直接关闭“发现更新”窗口后，更新不会从应用里消失：菜单栏、菜单栏弹窗、Dashboard 工具栏和 Advanced 设置会继续显示该版本的更新入口。第一次到期提醒安排在 24 小时后，之后每 3 天一次；到期时只会把菜单栏更新标记强调 8 秒，不会抢走焦点或反复弹窗。点击更新入口或 `Check Now` 可以随时重新打开更新窗口。选择 `Skip This Version` 只会跳过当前版本；以后发现新版本时仍会重新提示。
+选择 `Later` 或直接关闭“发现更新”窗口后，更新不会从应用里消失：再次打开菜单栏弹窗、Dashboard 或 Advanced 设置时，蓝色 `Update` 按钮会继续显示，并且跨重启保留。macOS 菜单栏文字保持原样，同一版本的后续自动检查也不会反复弹窗；点击 `Update` 或 `Check Now` 可以随时重新打开更新窗口。选择 `Skip This Version` 只会跳过当前版本；以后发现新版本时仍会重新提示。
 
 ## 持续更新规则
 
@@ -194,9 +199,22 @@ Advanced 适合需要排查或维护数据的用户：
 
 ## 更新记录
 
+### 2026-07-16 · 0.2.41（待验收） · 4ede5cd
+
+更新入口改为应用内蓝色 `Update` 文字按钮；macOS 原生菜单栏标题不再显示更新箭头或强调色，选择 `Later` 后也不再为同一版本安排定时提醒。
+
+维护记录：
+
+- 使用 `./qa/prepare-computer-use-real-data.sh` 启动隔离 QA App；QA artifact 为 `.build/qa-artifacts/20260716T144846Z-computer-use-real-data`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`。
+- 在隔离 defaults 中注入 `99.0 QA` 待更新状态，验证跨重启保留和 `Later` 状态；Local QA 禁用 Sparkle 网络检查、下载和安装，未复制凭据。
+- `./qa/check-artifacts.sh .build/qa-artifacts/20260716T144846Z-computer-use-real-data` 通过，保护报告确认真实数据库在 QA 前后大小与 SHA-256 均未变化。
+- 使用 Computer Use 验证 Dashboard 工具栏、Advanced 设置和菜单栏弹窗中的蓝色 `Update`；原生菜单栏标题仍只有额度信息。
+- 弹窗截图位于 `docs/assets/product-manual/4ede5cd/update-popover.png`，截图仅包含隔离 QA App 区域。
+- 完成文档后运行 `./qa/run-static.sh` 作为最终静态与测试门禁。
+
 ### 2026-07-16 · 0.2.41 · 87c757d
 
-更新提醒现在会跨重启保留，并通过常驻菜单栏标记和温和的 24 小时／3 天节奏继续可见；General 设置新增可选的匿名版本统计和完整隐私说明。
+更新提醒现在会跨重启保留；该记录最初采用常驻菜单栏标记和定时强调，随后在同日的待验收改动中改为仅在打开应用界面后显示蓝色 `Update` 按钮。General 设置新增可选的匿名版本统计和完整隐私说明。
 
 维护记录：
 
