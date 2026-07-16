@@ -419,6 +419,10 @@ describe("public product content", () => {
     expect(html).toContain('href="/styles.css"');
     expect(html).toContain('type="module" src="/app.js"');
     expect(html).toContain('class="privacy-policy-list"');
+    expect(html).toContain(
+      `content="How Quota Monitor's anonymous daily active installation check-in works, what it excludes, and how long aggregate counts are retained."`,
+    );
+    expect(html).not.toContain("optional anonymous daily active installation check-in");
     expect(html).not.toMatch(/<style\b|\sstyle\s*=|\son[a-z]+\s*=|javascript:/i);
     expect(html).not.toMatch(/github/i);
     expect(ruleBody(css, ".privacy-policy-layout")).toMatch(/max-width:\s*880px\s*;/);
