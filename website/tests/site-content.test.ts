@@ -147,12 +147,7 @@ describe("public product content", () => {
     expect(config.assets.binding).toBe("ASSETS");
     expect(config.assets.not_found_handling).toBe("404-page");
     expect(config.assets.html_handling).toBe("auto-trailing-slash");
-    expect(config.assets.run_worker_first).toEqual([
-      "/download",
-      "/api/release",
-      "/api/v1/daily-active",
-      "/maintainer/versions",
-    ]);
+    expect(config.assets.run_worker_first).toBe(true);
     expect(config.d1_databases).toEqual([
       {
         binding: "VERSION_STATS_DB",

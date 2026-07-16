@@ -54,6 +54,7 @@ window copy.
 
 ### Fixed
 
+- **Worker-owned HTTP redirects cover static pages.** Every website route now runs through the Worker before static asset delivery, so insecure GET and HEAD requests receive the same exact HTTPS 301 contract as API and maintainer routes.
 - **Update publication cannot silently skip the Appcast.** A release now hard-fails when publishing credentials are missing, checks the completed notarized DMG against its sidecar checksum, Sparkle-signs it before uploading the same unchanged file, and fails if its bytes change or Appcast publication cannot proceed.
 - **Legacy CodexMonitor feed size.** The oversized installed-client feed was surgically reduced without changing versions, download URLs, lengths, signatures, or the legacy URL existing clients use.
 - **Pending updates no longer disappear.** The pending version and menu-bar marker survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
