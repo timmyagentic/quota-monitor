@@ -52,6 +52,8 @@ Quota Monitor 是一个 macOS 菜单栏工具，用来查看 Codex 和 Claude Co
 
 如果有尚未处理的新版本，弹窗标题栏会显示蓝色 `Update` 按钮；点击它会重新打开更新流程。macOS 菜单栏里的额度文字或仪表图标本身不会因为有更新而增加箭头或变色。
 
+![菜单栏弹窗中的蓝色 Update 按钮](assets/product-manual/4ede5cd/update-popover.png)
+
 ## Dashboard
 
 Dashboard 用来快速判断整体趋势和额度风险。
@@ -196,6 +198,19 @@ Advanced 适合需要排查或维护数据的用户：
 5. 不把实现细节写进用户说明；实现、命令和 QA 证据只放在维护记录里。
 
 ## 更新记录
+
+### 2026-07-16 · 0.2.41（待验收） · 4ede5cd
+
+更新入口改为应用内蓝色 `Update` 文字按钮；macOS 原生菜单栏标题不再显示更新箭头或强调色，选择 `Later` 后也不再为同一版本安排定时提醒。
+
+维护记录：
+
+- 使用 `./qa/prepare-computer-use-real-data.sh` 启动隔离 QA App；QA artifact 为 `.build/qa-artifacts/20260716T144846Z-computer-use-real-data`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`。
+- 在隔离 defaults 中注入 `99.0 QA` 待更新状态，验证跨重启保留和 `Later` 状态；Local QA 禁用 Sparkle 网络检查、下载和安装，未复制凭据。
+- `./qa/check-artifacts.sh .build/qa-artifacts/20260716T144846Z-computer-use-real-data` 通过，保护报告确认真实数据库在 QA 前后大小与 SHA-256 均未变化。
+- 使用 Computer Use 验证 Dashboard 工具栏、Advanced 设置和菜单栏弹窗中的蓝色 `Update`；原生菜单栏标题仍只有额度信息。
+- 弹窗截图位于 `docs/assets/product-manual/4ede5cd/update-popover.png`，截图仅包含隔离 QA App 区域。
+- 完成文档后运行 `./qa/run-static.sh` 作为最终静态与测试门禁。
 
 ### 2026-07-16 · 0.2.41 · 87c757d
 
