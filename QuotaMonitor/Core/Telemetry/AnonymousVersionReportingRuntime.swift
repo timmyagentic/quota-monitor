@@ -30,13 +30,4 @@ enum AnonymousVersionReportingRuntime {
             appStoreReportingAllowed: isAppStoreReportingApproved(
                 infoDictionary: infoDictionary))
     }
-
-    static func shouldShowSettings(
-        context: DailyActiveReportingContext?,
-        isQARequested: Bool,
-        isQAActive: Bool
-    ) -> Bool {
-        guard context != nil else { return false }
-        return !isQARequested || isQAActive
-    }
 }

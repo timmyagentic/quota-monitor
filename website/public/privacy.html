@@ -40,12 +40,12 @@
       <header class="privacy-policy-hero">
         <p class="privacy-policy-eyebrow" data-i18n="privacyPolicyEyebrow">Privacy policy</p>
         <h1 data-i18n="privacyPolicyTitle">Anonymous version statistics privacy policy</h1>
-        <p class="privacy-policy-intro" data-i18n="privacyPolicyIntro">Quota Monitor sends an anonymous daily active installation check-in only after you explicitly opt in. These counts estimate active installations, never users.</p>
+        <p class="privacy-policy-intro" data-i18n="privacyPolicyIntro">Eligible Quota Monitor builds automatically send one anonymous daily active installation check-in. These counts estimate active installations, never users.</p>
         <p class="privacy-policy-scope" data-i18n="privacyPolicyScopeBody">This policy applies to Quota Monitor and CodexMonitor-branded builds that link to this page. The check-in's brand field distinguishes quota-monitor from codex-monitor.</p>
       </header>
 
       <article class="privacy-policy-section" aria-labelledby="privacy-data-title">
-        <h2 id="privacy-data-title" data-i18n="privacyPolicyDataTitle">What the optional check-in sends</h2>
+        <h2 id="privacy-data-title" data-i18n="privacyPolicyDataTitle">What the check-in sends</h2>
         <ul class="privacy-policy-list">
           <li><p data-i18n="privacyPolicyWireBody">Each check-in contains exactly six fields: schema (the number 1), UTC day (YYYY-MM-DD), a fresh random daily token, app version, brand, and distribution channel. It contains no other app data.</p></li>
           <li><p data-i18n="privacyPolicyTokenBody">The random token rotates every UTC day. A failed request reuses it only within the same UTC day. If the app version changes that day, a later check-in can reclassify the same record. The check-in JSON payload and D1 raw or aggregate datasets contain no stable installation or device ID, and the service is not designed to link installations across UTC days. This statement does not cover Cloudflare's separate network-boundary processing, which is disclosed below.</p></li>
@@ -70,8 +70,8 @@
       </article>
 
       <article class="privacy-policy-section" aria-labelledby="privacy-choice-title">
-        <h2 id="privacy-choice-title" data-i18n="privacyPolicyOptOutTitle">Your choice and opt-out</h2>
-        <p data-i18n="privacyPolicyOptOutBody">Turning reporting off immediately stops new requests, attempts to cancel any in-flight request, deletes the local token and success state for that day, and suppresses same-UTC-day re-enablement until the next UTC day. A request that has already reached the service may still be accepted. Any resulting or previously received anonymous row cannot be individually found or deleted because no stable ID or deletion handle exists; it follows the same live raw-row and D1 Time Travel retention above.</p>
+        <h2 id="privacy-choice-title" data-i18n="privacyPolicyOptOutTitle">When reporting runs</h2>
+        <p data-i18n="privacyPolicyOptOutBody">Reporting starts automatically in eligible production builds and runs at most once per UTC day for each version context. Local QA and builds without an approved reporting context do not send check-ins. Anonymous rows cannot be individually found or deleted because no stable ID or deletion handle exists; they follow the live raw-row and D1 Time Travel retention above.</p>
       </article>
 
       <article class="privacy-policy-section" aria-labelledby="privacy-provider-title">

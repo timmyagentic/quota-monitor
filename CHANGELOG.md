@@ -50,12 +50,12 @@ window copy.
 - Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
 - Available updates now survive relaunches as a blue `Update` button inside Quota Monitor, without adding a marker to the macOS menu-bar title or repeatedly prompting after Later.
 - Update releases are now checked end to end so a published download cannot quietly disappear from the in-app updater.
-- You can now choose to share anonymous version statistics, helping show which app versions remain active without sending account or usage data.
+- Anonymous version statistics now run automatically without a settings switch or permission dialog, helping show which app versions remain active without sending account or usage data.
 
 ### Added
 
 - **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile; its download button serves the latest notarized DMG directly from the site, adds no application-level visitor analytics or custom request logging, and never reuses a stale browser-cached installer.
-- **Opt-in anonymous version statistics.** With explicit permission, Developer ID builds send only the UTC day, app version, brand, distribution channel, schema version, and a rotating daily token so maintainers can see anonymous active-install version distribution; Settings can turn it off at any time, and the bilingual privacy policy explains retention and network-boundary handling.
+- **Anonymous version statistics.** Eligible Developer ID builds automatically send only the UTC day, app version, brand, distribution channel, schema version, and a rotating daily token so maintainers can see anonymous active-install version distribution; no account, usage data, device ID, or stable identifier is included, and the bilingual privacy policy explains retention and network-boundary handling.
 
 ### Changed
 
