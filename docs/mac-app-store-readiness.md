@@ -10,6 +10,8 @@ pipeline.
 QM_DISTRIBUTION=app-store CONFIG=release ./build.sh
 codesign -dvvv --entitlements :- .build/QuotaMonitor.app
 plutil -p .build/QuotaMonitor.app/Contents/Info.plist
+python3 tools/verify-privacy-manifest.py \
+  .build/QuotaMonitor.app/Contents/Resources/PrivacyInfo.xcprivacy
 ```
 
 Expected local smoke evidence:
@@ -34,6 +36,42 @@ This command is a local smoke build only. It has not uploaded anything to App
 Store Connect, has not used Transporter or `altool`, and has not created or
 modified Apple certificates, provisioning profiles, App Store Connect app
 records, GitHub secrets, or production release automation.
+
+## Privacy Manifest and App Store Connect Gate
+
+PrivacyInfo.xcprivacy describes only the current artifact. It declares one
+collected data type: Product Interaction for Analytics, unlinked to the user
+and not used for tracking. `NSPrivacyTracking` is false, and the current
+macOS-only target declares no required-reason accessed API entries. The build,
+DMG, and release scripts verify that exact source manifest and reject a bundle
+or mounted DMG whose copy differs.
+
+This declaration does not mean App Store Connect has approved the app or its
+privacy answers. The current `QM_DISTRIBUTION=app-store` build remains a local
+smoke artifact, not a real Xcode Mac App Store archive. Before submission, the
+repository needs an archive-capable Xcode app target built with an App Store
+signing certificate and provisioning profile. In Xcode Organizer, run
+Generate Privacy Report and review the merged privacy manifests from the app,
+Sparkle, and every SDK, then run Validate App against the actual archive.
+
+The daily observation uses a 16-byte random daily token, with no stable or
+cross-day identifier. There is still an Apple classification ambiguity:
+whether the final archive and App Store Connect questionnaire should classify
+that token only as Product Interaction or also as Device ID. The final answer
+must be made manually from Organizer's generated report, the archived binary,
+and the current App Store Connect definitions; this document does not silently
+choose the less conservative label.
+
+App Store Connect metadata must be completed manually with both URLs set to:
+
+- Privacy Policy URL: `https://quota-monitor.timmyagentic.com/privacy`
+- Privacy Choices URL: `https://quota-monitor.timmyagentic.com/privacy`
+
+The App Privacy label can be published only by an Account Holder, Admin, or App
+Manager. Until the real archive has passed the report review, Validate App,
+the manual privacy-label decision, and App Review preparation, the strict Info
+key `QMAnonymousVersionReportingAppStoreApproved` must remain absent or false.
+That keeps anonymous version reporting unavailable in App Store-shaped builds.
 
 ## Developer ID Guardrail
 
@@ -67,8 +105,9 @@ Expected evidence:
 The repository can produce a local Mac App Store-shaped `.app` smoke artifact:
 it is sandbox-signed, carries an app-store distribution marker, and routes local
 Codex / Claude history import roots through user-selected security-scoped
-bookmarks. The existing Developer ID source plist and release scripts remain
-unchanged.
+bookmarks. The existing Developer ID update behavior remains unchanged; its
+packaging pipeline now also verifies the privacy manifest in the app and
+mounted DMG.
 
 This is not yet a production-ready App Store submission. It proves a build-time
 separation point and exposes the remaining product and review risks.
@@ -91,14 +130,15 @@ separation point and exposes the remaining product and review risks.
    separately spawns the `claude` binary to detect the Code version. Those
    reads — not the refresh — need an App-Store-safe path (e.g. a user-selected
    credential flow) or disabling.
-4. Sparkle is runtime-disabled and its update plist keys are removed from the
-   app-store artifact, but the SwiftPM target still links and embeds Sparkle in
-   this spike because the existing app code depends on update-window types. A
-   submission-hardening pass should compile Sparkle out of the App Store target
-   entirely.
-5. A real App Store Connect upload still needs App Store metadata, a privacy
-   policy URL, a bundle/app record decision, an App Store provisioning profile,
-   and review notes that explain the data sources and sandbox permissions.
+4. Sparkle remains linked and embedded in the app-store smoke artifact even
+   though it is runtime-disabled and its update plist keys are removed. This is
+   still a submission blocker because the existing app code depends on
+   update-window types. A submission-hardening pass must compile Sparkle out of
+   the real App Store target entirely.
+5. A real App Store Connect upload still needs App Store metadata, the privacy
+   URLs and label described above, a bundle/app record decision, an App Store
+   provisioning profile, and review notes that explain the data sources and
+   sandbox permissions.
 6. Data continuity for a user moving from the Developer ID build to the App
    Store build is unaddressed. `DatabaseManager` migrates the legacy
    `~/Library/Application Support/CodexMonitor/*.sqlite` on first launch, but in
@@ -113,9 +153,10 @@ separation point and exposes the remaining product and review risks.
 1. Manually validate the folder authorization flow from a signed App Store
    smoke build, including persistence of security-scoped bookmarks after
    relaunch.
-2. Add a compile-time App Store target or package variant that removes Sparkle
-   from target dependencies instead of only disabling it at runtime.
+2. Add an archive-capable Xcode App Store target that removes Sparkle from
+   target dependencies instead of only disabling it at runtime, then generate
+   and inspect its merged privacy report in Organizer.
 3. Decide whether the App Store product should support live Codex/Claude quota
    checks, or ship a history-only App Store variant.
-4. Prepare privacy-policy copy and App Review notes before creating the App
-   Store Connect record.
+4. Complete the Privacy Policy URL, Privacy Choices URL, App Privacy label, and
+   App Review notes before enabling the strict reporting approval gate.

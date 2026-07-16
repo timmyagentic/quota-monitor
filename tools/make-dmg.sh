@@ -29,6 +29,8 @@ cd "$(dirname "$0")/.."
 CONFIG=${CONFIG:-release}
 APP=".build/QuotaMonitor.app"
 DIST="dist"
+PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
+APP_PRIVACY_MANIFEST="${APP}/Contents/Resources/PrivacyInfo.xcprivacy"
 
 # Branding — read from the single source of truth in Branding.swift.
 BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
@@ -83,6 +85,14 @@ fi
 
 if [[ ! -d "$APP" ]]; then
     echo "error: $APP not found after build" >&2
+    exit 1
+fi
+
+echo "==> Verifying app privacy manifest before packaging"
+python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"
+python3 tools/verify-privacy-manifest.py "${APP_PRIVACY_MANIFEST}"
+if ! cmp -s "${PRIVACY_MANIFEST_SOURCE}" "${APP_PRIVACY_MANIFEST}"; then
+    echo "error: app privacy manifest differs from source" >&2
     exit 1
 fi
 
