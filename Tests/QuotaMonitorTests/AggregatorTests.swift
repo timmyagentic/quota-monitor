@@ -21,6 +21,38 @@ import GRDB
 @Suite("Aggregator queries")
 struct AggregatorTests {
 
+    @Test("timestamp parser handles stored shapes without hot-loop formatter cost")
+    func timestampParserHandlesStoredShapesEfficiently() throws {
+        let expected = try #require(ISO8601.parse("2026-07-15T16:06:20Z"))
+        let isoTimestamps = [
+            "2026-07-15T16:06:20Z",
+            "2026-07-15T16:06:20.000Z",
+            "2026-07-15T16:06:20.000000Z",
+            "2026-07-16T00:06:20.000+08:00",
+            "2026-07-15T09:06:20.000-07:00",
+        ]
+        for timestamp in isoTimestamps {
+            #expect(Aggregator.parseTimestamp(timestamp) == expected)
+        }
+
+        let sqliteTimestamp = "2026-07-15 16:06:20"
+        #expect(Aggregator.parseTimestamp(sqliteTimestamp) == expected)
+
+        let sample = "2026-07-15T16:06:20.471Z"
+        var parsedCount = 0
+        let elapsed = ContinuousClock().measure {
+            for _ in 0..<20_000 {
+                if Aggregator.parseTimestamp(sample) != nil {
+                    parsedCount += 1
+                }
+            }
+        }
+        #expect(parsedCount == 20_000)
+        #expect(
+            elapsed < .milliseconds(250),
+            "20,000 canonical timestamps took \(elapsed)")
+    }
+
     // MARK: - in-memory DB harness
 
     /// Build a fresh on-disk SQLite at a temp path so the GRDB pool can

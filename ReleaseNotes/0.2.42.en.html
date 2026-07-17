@@ -114,12 +114,16 @@
   gap: 7px;
 }
 .qm-release-highlight {
-  min-height: 70px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 54px;
   padding: 8px 9px;
 }
 .qm-release-highlight:first-child {
   grid-column: 1 / -1;
-  min-height: 58px;
+  min-height: 50px;
 }
 .qm-release-highlight::before {
   content: "";
@@ -141,7 +145,7 @@
   place-items: center;
   width: 22px;
   height: 22px;
-  margin-bottom: 5px;
+  margin: 0;
   border-radius: 7px;
   color: white;
   background: var(--tone);
@@ -151,8 +155,8 @@
 .qm-release-highlight p {
   margin: 0;
   color: var(--release-ink);
-  font-size: 11.5px;
-  line-height: 1.38;
+  font-size: 12px;
+  line-height: 1.36;
 }
 .release-animate {
   opacity: 0;
@@ -195,8 +199,8 @@
 <div class="qm-release-hero release-animate" style="--i:0">
 <div class="qm-release-hero-content">
 <p class="qm-release-eyebrow">Version 0.2.42</p>
-<h2 class="qm-release-title">A calmer, more dependable update</h2>
-<p class="qm-release-subtitle">0.2.41 was withdrawn. This release brings together the improvements re-checked since 0.2.40.</p>
+<h2 class="qm-release-title">Faster history, calmer updates</h2>
+<p class="qm-release-subtitle">0.2.41 was withdrawn. This build contains the improvements re-checked since 0.2.40.</p>
 <div class="qm-release-rhythm" aria-hidden="true">
 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
 </div>
@@ -205,15 +209,15 @@
 <div class="qm-release-highlights">
 <article class="qm-release-highlight release-animate" style="--i:1">
 <span class="qm-release-number">1</span>
-<p>A discovered update now stays available as a blue <code>Update</code> button across relaunches; choosing Later stays quiet, and the macOS menu-bar title remains unchanged.</p>
+<p>History starts with the latest week, fills larger windows, and loads older weeks as you scroll.</p>
 </article>
 <article class="qm-release-highlight release-animate" style="--i:2">
 <span class="qm-release-number">2</span>
-<p>Eligible builds send one minimal anonymous version check-in per day—never account or usage data, a device ID, or a stable identifier.</p>
+<p>The blue <code>Update</code> entry survives relaunches. Later stays quiet; the menu-bar title is unchanged.</p>
 </article>
 <article class="qm-release-highlight release-animate" style="--i:3">
 <span class="qm-release-number">3</span>
-<p>The new bilingual website shows rich 30-day examples, and both download paths now point to the same fully checked Mac installer.</p>
+<p>One minimal anonymous version record per day—no account, usage, device ID, or stable identifier.</p>
 </article>
 </div>
 </section>

@@ -5,8 +5,8 @@ import GRDB
 
 /// DST / time-zone bucketing regressions for the report + history query layer.
 ///
-/// Before this fix `fetchDaily`, `fetchMonthly`, `fetchDays`, `fetchDayDetail`,
-/// and `fetchEventsForSessionOnDay` bucketed days/months in SQL using a SINGLE
+/// Before this fix `fetchDaily`, `fetchMonthly`, `fetchDayDetail`, and
+/// `fetchEventsForSessionOnDay` bucketed days/months in SQL using a SINGLE
 /// fixed UTC offset (today's `TimeZone.current` offset). That offset is wrong
 /// for any historical timestamp in the opposite DST half of the year, so events
 /// near local midnight leaked into the adjacent day. These tests pin the
@@ -124,59 +124,6 @@ struct AggregatorDSTTests {
         #expect(abs(monthly[2].valueUSD - 4.00) < 0.0001, "June bucket")
         let total = monthly.reduce(0) { $0 + $1.valueUSD }
         #expect(abs(total - 7.00) < 0.0001, "March sits outside the 3-month window")
-    }
-
-    // MARK: - fetchDays (History list)
-
-    @Test("fetchDays buckets near-midnight events on their own local day across DST")
-    func fetchDays_dstCorrect() throws {
-        let cal = nyCalendar()
-        let db = try makeDatabase()
-        try seed(in: db, sessionId: "winter",
-                 timestamp: "2025-01-15T04:30:00Z", tokens: 2000)
-        try seed(in: db, sessionId: "summer",
-                 timestamp: "2025-06-15T03:30:00Z", tokens: 1000)
-
-        let days = try db.pool.read { conn in
-            try Aggregator.fetchDays(db: conn, calendar: cal)
-        }
-        func tokens(_ y: Int, _ m: Int, _ d: Int) -> Int64? {
-            let target = cal.date(from: DateComponents(
-                year: y, month: m, day: d, hour: 12))!
-            return days.first { cal.isDate($0.date, inSameDayAs: target) }?.tokens
-        }
-        #expect(days.count == 2, "exactly two active local days")
-        #expect(tokens(2025, 1, 14) == 2000, "winter event lands on its local Jan 14")
-        #expect(tokens(2025, 6, 14) == 1000, "summer event lands on its local Jun 14")
-        #expect(tokens(2025, 1, 15) == nil, "no bucket leaks onto Jan 15")
-        #expect(tokens(2025, 6, 15) == nil, "no bucket leaks onto Jun 15")
-    }
-
-    @Test("fetchDays uses timestamp-descending scan for limited History lists")
-    func fetchDays_usesTimestampDescendingScan() throws {
-        let cal = nyCalendar()
-        let db = try makeDatabase()
-        try seed(in: db, sessionId: "recent",
-                 timestamp: "2025-06-15T03:30:00Z", tokens: 1000)
-        try seed(in: db, sessionId: "older",
-                 timestamp: "2025-01-15T04:30:00Z", tokens: 2000)
-
-        let statements = try db.pool.read { conn in
-            var traced: [String] = []
-            conn.trace { event in
-                guard case .statement(let statement) = event else { return }
-                traced.append(statement.sql)
-            }
-            _ = try Aggregator.fetchDays(db: conn, limit: 1, calendar: cal)
-            conn.trace(options: [])
-            return traced
-        }
-
-        let historyQuery = try #require(statements.first {
-            $0.contains("FROM usage_events")
-                && $0.contains("ORDER BY timestamp DESC")
-        })
-        #expect(historyQuery.contains("ORDER BY timestamp DESC"))
     }
 
     // MARK: - fetchDayDetail

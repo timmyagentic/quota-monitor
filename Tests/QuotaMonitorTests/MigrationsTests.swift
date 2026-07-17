@@ -196,8 +196,8 @@ struct MigrationsTests {
         }
     }
 
-    @Test("usage_events has a timestamp index for all-provider History scans")
-    func usageEventsTimestampIndexExists() throws {
+    @Test("usage_events has covering indexes for History aggregates")
+    func usageEventsHistoryCoveringIndexesExist() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-usage-events-index")
         let manager = try DatabaseManager(url: url)
 
@@ -208,7 +208,62 @@ struct MigrationsTests {
                 """)
         }
 
-        #expect(indexes.contains("idx_usage_events_timestamp"))
+        #expect(indexes.contains("idx_usage_events_history_cover"))
+        #expect(indexes.contains("idx_usage_events_provider_history_cover"))
+        #expect(!indexes.contains("idx_usage_events_timestamp"))
+        #expect(!indexes.contains("index_usage_events_on_provider_timestamp"))
+    }
+
+    @Test("v16 replaces legacy History indexes without losing events")
+    func historyCoveringIndexesUpgradeFromV15() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-history-index-upgrade")
+        let migrationId = "v16-history-covering-indexes"
+        let stamp = "2026-07-15T16:06:20.471Z"
+
+        do {
+            let queue = try DatabaseQueue(path: url.path)
+            var migrator = DatabaseMigrator()
+            Migrations.register(in: &migrator)
+            try migrator.migrate(queue, upTo: "v15-codex-pricing-policy-reprice")
+            try queue.write { db in
+                try db.execute(sql: """
+                    INSERT INTO sessions
+                        (session_id, root_session_id, started_at, updated_at,
+                         last_model_id, created_at, imported_at, provider)
+                    VALUES
+                        ('history-v15', 'history-v15', ?, ?, 'gpt-5.5', ?, ?, 'codex')
+                    """, arguments: [stamp, stamp, stamp, stamp])
+                try db.execute(sql: """
+                    INSERT INTO usage_events
+                        (session_id, timestamp, model_id, total_tokens,
+                         value_usd, provider)
+                    VALUES ('history-v15', ?, 'gpt-5.5', 42, 0.25, 'codex')
+                    """, arguments: [stamp])
+
+                let indexes = try String.fetchAll(db, sql: """
+                    SELECT name FROM pragma_index_list('usage_events')
+                    """)
+                #expect(indexes.contains("idx_usage_events_timestamp"))
+                #expect(indexes.contains("index_usage_events_on_provider_timestamp"))
+                #expect(!indexes.contains("idx_usage_events_history_cover"))
+            }
+        }
+
+        let manager = try DatabaseManager(url: url)
+        try manager.pool.read { db in
+            let indexes = try String.fetchAll(db, sql: """
+                SELECT name FROM pragma_index_list('usage_events')
+                """)
+            #expect(indexes.contains("idx_usage_events_history_cover"))
+            #expect(indexes.contains("idx_usage_events_provider_history_cover"))
+            #expect(!indexes.contains("idx_usage_events_timestamp"))
+            #expect(!indexes.contains("index_usage_events_on_provider_timestamp"))
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM usage_events") == 1)
+            #expect(try String.fetchOne(
+                db,
+                sql: "SELECT identifier FROM grdb_migrations WHERE identifier = ?",
+                arguments: [migrationId]) == migrationId)
+        }
     }
 
     @Test(

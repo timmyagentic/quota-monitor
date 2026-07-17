@@ -1,60 +1,150 @@
 import Foundation
 import GRDB
 
+private struct HistoryDayRange {
+    let dayKey: String
+    let ordinal: Int
+    let start: Date
+    let end: Date
+
+    var lowerISO: String { ISO8601.fractional.string(from: start) }
+    var upperISO: String { ISO8601.fractional.string(from: end) }
+}
+
 // Day-bucketed history queries powering the History tab.
 //
-// All day grouping is local-calendar correct across DST: `fetchDays` buckets
-// client-side via `Calendar.startOfDay(for:)`, and the per-day drilldowns filter
-// on a half-open local-day range `[startOfDay, nextDay)` computed with the
-// calendar — so the window honours the DST offset for THAT day, not today's. The
-// previous SQL `date(timestamp, ±offset)` applied today's single offset to all
-// history, mis-bucketing near-midnight events from the opposite DST half.
+// All day grouping is local-calendar correct across DST: paged list windows and
+// per-day drilldowns use half-open local-day ranges `[startOfDay, nextDay)`
+// computed with the same captured calendar. Each window therefore honours the
+// offset for that historical day rather than applying today's offset to all
+// history.
 
 extension Aggregator {
 
-    /// Returns days that had at least one usage_event, newest first.
-    /// Buckets by local-calendar day client-side (mirrors `fetchActivity`) so
-    /// each event uses the UTC offset in effect at its own instant.
-    static func fetchDays(
-        db: Database, limit: Int = 365, provider: ProviderFilter = .all,
+    static func fetchHistoryPage(
+        db: Database,
+        before cursor: Date? = nil,
+        pageSize: Int = 7,
+        provider: ProviderFilter = .all,
+        now: Date = Date(),
         calendar: Calendar = .current
-    ) throws -> [DaySummary] {
-        guard limit > 0 else { return [] }
-        let rows = try Row.fetchCursor(db, sql: """
-            SELECT timestamp, value_usd, total_tokens, session_id
-            FROM usage_events
-            \(provider.whereClause(table: "usage_events"))
-            ORDER BY timestamp DESC, id DESC
-            """)
-
-        var byDay: [Date: (value: Double, tokens: Int64, events: Int, sessions: Set<String>)] = [:]
-        var orderedDays: [Date] = []
-        while let row = try rows.next() {
-            let ts: String = row["timestamp"] ?? ""
-            guard let date = parseTimestamp(ts) else { continue }
-            let dayStart = calendar.startOfDay(for: date)
-            var bucket = byDay[dayStart] ?? (0, 0, 0, [])
-            if bucket.events == 0 {
-                guard orderedDays.count < limit else { break }
-                orderedDays.append(dayStart)
+    ) throws -> HistoryPage {
+        precondition(pageSize > 0)
+        let today = calendar.startOfDay(for: now)
+        let requestedUpper = cursor.map { calendar.startOfDay(for: $0) }
+            ?? calendar.date(byAdding: .day, value: 1, to: today)!
+        let allowGapJump = cursor != nil
+        var upper = requestedUpper
+        while true {
+            let page = try fetchHistoryWindow(
+                db: db,
+                upperBound: upper,
+                pageSize: pageSize,
+                provider: provider,
+                calendar: calendar)
+            if !page.days.isEmpty || !allowGapJump || !page.hasMore {
+                return page
             }
-            bucket.value += row["value_usd"] ?? 0
-            bucket.tokens += row["total_tokens"] ?? 0
-            bucket.events += 1
-            if let sid: String = row["session_id"] { bucket.sessions.insert(sid) }
-            byDay[dayStart] = bucket
+            guard let timestamp = try newestOlderTimestamp(
+                      db: db, before: page.nextCursor, provider: provider),
+                  let olderDate = parseTimestamp(timestamp),
+                  let jumpedUpper = calendar.date(
+                      byAdding: .day,
+                      value: 1,
+                      to: calendar.startOfDay(for: olderDate)),
+                  jumpedUpper < upper
+            else {
+                return HistoryPage(
+                    days: [], nextCursor: page.nextCursor, hasMore: false)
+            }
+            upper = jumpedUpper
         }
+    }
 
-        let dayFormatter = Self.dayKeyFormatter(calendar)
-        return orderedDays.map { dayStart in
-            let bucket = byDay[dayStart] ?? (0, 0, 0, [])
+    private static func fetchHistoryWindow(
+        db: Database,
+        upperBound: Date,
+        pageSize: Int,
+        provider: ProviderFilter,
+        calendar: Calendar
+    ) throws -> HistoryPage {
+        let ranges = historyDayRanges(
+            endingAt: upperBound, pageSize: pageSize, calendar: calendar)
+        let bucketCases = Array(
+            repeating: "WHEN timestamp >= ? AND timestamp < ? THEN ?",
+            count: ranges.count
+        ).joined(separator: "\n")
+        let sql = """
+            SELECT CASE
+                   \(bucketCases)
+                   END AS ordinal,
+                   SUM(value_usd) AS value_usd,
+                   SUM(total_tokens) AS tokens,
+                   COUNT(*) AS events,
+                   COUNT(DISTINCT session_id) AS sessions
+            FROM usage_events
+            WHERE timestamp >= ? AND timestamp < ?
+            \(provider.clause(table: "usage_events"))
+            GROUP BY ordinal
+            """
+        var arguments: [(any DatabaseValueConvertible)?] = []
+        for range in ranges {
+            arguments.append(range.lowerISO)
+            arguments.append(range.upperISO)
+            arguments.append(range.ordinal)
+        }
+        let lower = ranges.last!.start
+        arguments.append(ISO8601.fractional.string(from: lower))
+        arguments.append(ranges.first!.upperISO)
+        let rows = try Row.fetchAll(
+            db, sql: sql, arguments: StatementArguments(arguments))
+        let byOrdinal = Dictionary(uniqueKeysWithValues: ranges.map { ($0.ordinal, $0) })
+        let days = rows.compactMap { row -> DaySummary? in
+            let events: Int = row["events"] ?? 0
+            let ordinal: Int = row["ordinal"] ?? -1
+            guard events > 0, let range = byOrdinal[ordinal] else { return nil }
             return DaySummary(
-                day: dayFormatter.string(from: dayStart),
-                date: dayStart,
-                valueUSD: bucket.value,
-                tokens: bucket.tokens,
-                eventCount: bucket.events,
-                sessionCount: bucket.sessions.count)
+                day: range.dayKey,
+                date: range.start,
+                valueUSD: row["value_usd"] ?? 0,
+                tokens: row["tokens"] ?? 0,
+                eventCount: events,
+                sessionCount: row["sessions"] ?? 0)
+        }.sorted { $0.date > $1.date }
+        let older = try newestOlderTimestamp(
+            db: db, before: lower, provider: provider)
+        return HistoryPage(days: days, nextCursor: lower, hasMore: older != nil)
+    }
+
+    private static func newestOlderTimestamp(
+        db: Database,
+        before boundary: Date,
+        provider: ProviderFilter
+    ) throws -> String? {
+        try String.fetchOne(db, sql: """
+            SELECT timestamp
+            FROM usage_events
+            WHERE timestamp < ?
+            \(provider.clause(table: "usage_events"))
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """, arguments: [ISO8601.fractional.string(from: boundary)])
+    }
+
+    private static func historyDayRanges(
+        endingAt upperBound: Date,
+        pageSize: Int,
+        calendar: Calendar
+    ) -> [HistoryDayRange] {
+        let formatter = dayKeyFormatter(calendar)
+        return (0..<pageSize).map { ordinal in
+            let end = calendar.date(byAdding: .day, value: -ordinal, to: upperBound)!
+            let start = calendar.date(byAdding: .day, value: -1, to: end)!
+            return HistoryDayRange(
+                dayKey: formatter.string(from: start),
+                ordinal: ordinal,
+                start: start,
+                end: end)
         }
     }
 

@@ -114,12 +114,16 @@
   gap: 7px;
 }
 .qm-release-highlight {
-  min-height: 70px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  min-height: 54px;
   padding: 8px 9px;
 }
 .qm-release-highlight:first-child {
   grid-column: 1 / -1;
-  min-height: 58px;
+  min-height: 50px;
 }
 .qm-release-highlight::before {
   content: "";
@@ -141,7 +145,7 @@
   place-items: center;
   width: 22px;
   height: 22px;
-  margin-bottom: 5px;
+  margin: 0;
   border-radius: 7px;
   color: white;
   background: var(--tone);
@@ -151,8 +155,8 @@
 .qm-release-highlight p {
   margin: 0;
   color: var(--release-ink);
-  font-size: 11.5px;
-  line-height: 1.38;
+  font-size: 12px;
+  line-height: 1.36;
 }
 .release-animate {
   opacity: 0;
@@ -195,8 +199,8 @@
 <div class="qm-release-hero release-animate" style="--i:0">
 <div class="qm-release-hero-content">
 <p class="qm-release-eyebrow">0.2.42 正式版</p>
-<h2 class="qm-release-title">更安静，也更可靠</h2>
-<p class="qm-release-subtitle">0.2.41 已撤回；这个版本汇总了自 0.2.40 以来重新确认过的改进。</p>
+<h2 class="qm-release-title">历史更快，更新更安静</h2>
+<p class="qm-release-subtitle">0.2.41 已撤回；0.2.42 汇总了自 0.2.40 以来重新确认过的改进。</p>
 <div class="qm-release-rhythm" aria-hidden="true">
 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
 </div>
@@ -205,15 +209,15 @@
 <div class="qm-release-highlights">
 <article class="qm-release-highlight release-animate" style="--i:1">
 <span class="qm-release-number">1</span>
-<p>发现更新后，蓝色 <code>Update</code> 入口会跨重启保留；选择“稍后”不会反复弹窗，macOS 菜单栏文字也保持不变。</p>
+<p>历史记录会先快速显示最近一周；大窗口会有限补载，继续向下滚动时再逐页加载。</p>
 </article>
 <article class="qm-release-highlight release-animate" style="--i:2">
 <span class="qm-release-number">2</span>
-<p>符合条件的版本每天只发送一次最小化匿名版本记录，不包含账号、用量数据、设备 ID 或长期标识。</p>
+<p>蓝色 <code>Update</code> 入口会跨重启保留；选择“稍后”不会反复弹窗，菜单栏文字保持不变。</p>
 </article>
 <article class="qm-release-highlight release-animate" style="--i:3">
 <span class="qm-release-number">3</span>
-<p>新的中英双语官网展示 30 天合成示例；官网与应用内更新都会提供同一份经过完整检查的 Mac 安装包。</p>
+<p>每天最多发送一条最小化匿名版本记录；不包含账号、用量数据、设备 ID 或长期标识。</p>
 </article>
 </div>
 </section>

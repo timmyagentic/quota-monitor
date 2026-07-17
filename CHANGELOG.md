@@ -34,6 +34,7 @@ window copy.
 
 #### Summary
 
+- History now opens quickly with the latest week, automatically fills larger windows with a bounded number of older weeks, and continues loading on deliberate downward scrolls.
 - A discovered update now stays available as a blue `Update` button across relaunches; choosing Later stays quiet, and the macOS menu-bar title remains unchanged.
 - Eligible builds send one minimal anonymous version check-in per day—never account or usage data, a device ID, or a stable identifier.
 - The new bilingual website shows rich 30-day examples, and both download paths now point to the same fully checked Mac installer.
@@ -45,6 +46,7 @@ window copy.
 
 ### Changed
 
+- **Adaptive History pagination.** History loads in indexed seven-day pages, automatically adds at most three older pages when the initial sidebar cannot fill its viewport, then requires one deliberate downward gesture for each subsequent page.
 - **Fresh version after the withdrawn build.** Version 0.2.42 supersedes the withdrawn 0.2.41 build so any installation that received it can continue updating normally.
 - **Calm update follow-up.** Choosing Later keeps the same version quiet during automatic checks while a blue `Update` button remains visible in the menu popover, Dashboard toolbar, and Advanced settings until the update is resolved; the native menu-bar title stays unchanged.
 - **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
