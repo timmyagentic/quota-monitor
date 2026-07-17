@@ -458,6 +458,7 @@ struct DaySummary: Sendable, Identifiable, Equatable {
 
 enum HistoryPageLoadTrigger: String, Sendable, Equatable {
     case initial
+    case viewportFill
     case scroll
     case retry
 }

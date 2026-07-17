@@ -158,10 +158,14 @@ struct HistoryView: View {
         .background(
             HistoryPaginationScrollBridge(
                 isEnabled: pagination.hasMore && pagination.paginationFailure == nil,
-                isLoading: pagination.isLoadingNextPage
-            ) {
-                _ = pagination.beginNextPage(trigger: .scroll)
-            }
+                isLoading: pagination.isLoadingNextPage,
+                canFillViewport: pagination.canFillViewport,
+                onViewportFill: {
+                    _ = pagination.beginNextPage(trigger: .viewportFill)
+                },
+                onLoadMore: {
+                    _ = pagination.beginNextPage(trigger: .scroll)
+                })
         )
     }
 

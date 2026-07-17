@@ -50,14 +50,11 @@ struct AdvancedSettingsTab: View {
                 Section(L10n.sectionUpdates) {
                     if updater.updateAvailability.isVisible {
                         HStack(spacing: 8) {
-                            Label(L10n.updateBadgeTitle(updater.updateAvailability.version),
-                                  systemImage: "arrow.down.circle.fill")
+                            Text(L10n.updateBadgeTitle(updater.updateAvailability.version))
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.secondary)
                             Spacer()
-                            Button(updateActionTitle) {
-                                updater.installAvailableUpdate()
-                            }
+                            PersistentUpdateBadge()
                         }
                     }
 
@@ -320,12 +317,6 @@ struct AdvancedSettingsTab: View {
         formatter.locale = LocalizationStore.activeLanguage.locale
         formatter.unitsStyle = .short
         return L10n.lastRefreshed(formatter.localizedString(for: date, relativeTo: Date()))
-    }
-
-    private var updateActionTitle: String {
-        updater.updateAvailability.primaryAction == .installAndRelaunch
-            ? L10n.updateInstallAndRelaunch
-            : L10n.updateInstallButton
     }
 
     private var lastCheckedLabel: String {

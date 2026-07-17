@@ -46,7 +46,7 @@ shasum -c QuotaMonitor-<version>.dmg.sha256
 - **History** — per-day rollups + per-session inspection on each day.
 - **Settings** — two tabs:
   - **General** — language, Dock-icon visibility, Codex service-tier estimates,
-    menu-bar display window, tracked tools toggle.
+    menu-bar display window, and tracked tools toggle.
   - **Advanced** — Codex poll interval, Claude Keychain policy + optional
     credentials mirror, database location, CSV export, pricing catalog
     (Sync from LiteLLM / Restore Defaults / View Catalog), Developer Mode
@@ -121,6 +121,21 @@ General / Advanced preferences.
 - **Claude local history** is scanned from `~/.claude/projects` and
   `~/.config/claude/projects`.
 
+## Privacy and anonymous version statistics
+
+Session history and usage events stay in the app's local SQLite database. Live
+quota refreshes contact the corresponding Codex or Claude provider service.
+Eligible Developer ID builds automatically send one anonymous daily version
+check-in. It contains exactly six fields: schema version, UTC day,
+app version, brand, distribution channel, and a fresh random daily token. It
+does not contain account details, quota values, usage history, paths, a device
+ID, or any stable identifier. Failed attempts may reuse the same day's token,
+which lets the service form at most one deduplicated anonymous active-install
+record per UTC day; the token rotates on the next UTC day.
+See the bilingual [privacy policy](https://quota-monitor.timmyagentic.com/privacy)
+for the complete server-side aggregation, retention, Cloudflare
+network-boundary, and individual-deletion limits.
+
 ## Layout
 
 ```
@@ -146,6 +161,7 @@ QuotaMonitor/
 │   ├── Pricing/                    // seed catalog + LiteLLM source + value backfill
 │   ├── RateLimits/                 // background poller + UN notifier
 │   ├── Settings/                   // SettingsStore + UserDefaultsMigration
+│   ├── Telemetry/                  // anonymous daily version reporting
 │   ├── Localization/               // L10n.swift + LocalizationStore
 │   ├── Models/                     // domain types
 │   ├── DeveloperFileLogger.swift   // optional persistent Developer Mode log

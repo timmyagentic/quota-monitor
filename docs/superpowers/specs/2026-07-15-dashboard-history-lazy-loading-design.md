@@ -194,12 +194,13 @@ be reused from the originally requested empty window.
 - `paginationError` preserves loaded rows and offers an inline Retry action.
 
 The initial `.task` requests exactly one page. It auto-selects the newest
-returned active day exactly as today. Pagination appends without changing a
-valid selection or reloading its detail. If the first page is empty but
-`hasMore` is true, the sidebar shows localized “no usage in the latest seven
-days” guidance and keeps the pagination footer available for a deliberate
-scroll. Only an empty page with `hasMore == false` uses the existing all-history
-empty state.
+returned active day exactly as today. After that result is laid out, the
+viewport-fill path may request up to three older pages if the whole History
+document still fits inside the visible sidebar. Pagination appends without
+changing a valid selection or reloading its detail. If the first page is empty
+but `hasMore` is true, the same bounded viewport-fill path can continue through
+older calendar windows. Only an empty page with `hasMore == false` uses the
+existing all-history empty state.
 
 Every page-loading async path checks cancellation before applying results. A
 request captures its provider filter and cursor; stale results from a cancelled
@@ -209,9 +210,11 @@ cursor unchanged so Retry requests the identical window.
 
 ## Genuine-scroll trigger on macOS 14
 
-A plain footer `.onAppear` or `.task` is explicitly forbidden: the sidebar can
-display roughly fourteen rows, so a seven-row first page makes its footer visible
-immediately and would silently preload page two.
+A plain footer `.onAppear` or `.task` is explicitly forbidden: footer
+visibility alone cannot distinguish a genuinely underfilled document from a
+scrollable document whose footer happens to be visible. The bridge must compare
+the whole document height with the visible viewport before using the bounded
+viewport-fill path.
 
 QuotaMonitor supports macOS 14, where the newer SwiftUI scroll-phase APIs are
 unavailable. Add a narrow AppKit bridge attached to the History `List`. The
@@ -235,15 +238,23 @@ and horizontal-only input. The scroll-view notifications remain useful for
 scrollbar drags and for reevaluating bottom geometry as the visible rectangle
 moves.
 
-Pagination fires only when both conditions have occurred for the current page:
+Automatic viewport fill uses its own `viewportFill` trigger and fires only when
+the footer intersects the visible rectangle, the whole document height is no
+greater than the viewport height (with a one-point layout tolerance), no request
+or error is active, more history exists, and fewer than three automatic pages
+have completed. Clip-view bounds and document-frame changes reevaluate this
+condition, so enlarging an already-open window can fill newly exposed space.
+
+Ordinary scroll pagination fires only when both conditions have occurred for the
+current page:
 
 1. the user generated a downward scroll gesture inside this sidebar after the
    page became current;
 2. the footer frame intersects the document's visible rectangle.
 
 Either ordering is valid: scrolling can arm the page before the footer appears,
-or an initially visible footer can wait for a deliberate scroll gesture. The
-gate is consumed before starting the async request.
+or a visible footer in an already-scrollable document can wait for a deliberate
+scroll gesture. The gate is consumed before starting the async request.
 
 The bridge assigns a generation to each physical gesture. Trackpad phase and
 live-scroll start/end notifications delimit a generation; phase-less mouse-wheel
@@ -259,8 +270,8 @@ cascade through page two into page three.
 
 The coordinator removes the local event monitor and every notification observer
 when its view is dismantled, and rebinds them if SwiftUI replaces the enclosing
-scroll view. The initial render creates no gesture generation and never performs
-a second query.
+scroll view. The initial render creates no gesture generation; any follow-up
+query is labeled `viewportFill` and remains subject to the three-page budget.
 
 When `hasMore` is false, the footer shows no spinner and the bridge does not arm
 another request. The pagination error Retry button is an explicit user action
@@ -319,13 +330,15 @@ Write failing tests before production changes. Automated coverage must prove:
   confirming timestamp-range index use; a bounded temporary structure used by
   `COUNT(DISTINCT session_id)` is permitted;
 - the view pagination reducer/state helper enforces single flight, monotonic
-  cursor advancement, deduplication, cancellation/stale-result rejection, and
-  retry with an unchanged cursor;
+  cursor advancement, deduplication, cancellation/stale-result rejection,
+  retry with an unchanged cursor, and a resettable three-page viewport-fill
+  budget;
 - the AppKit bridge tests or a focused seam prove footer-frame visibility,
   in-scroll-view event filtering, downward-direction filtering, one load per
   gesture generation, momentum suppression, and phase-less wheel debouncing;
-- source/static UI checks reject a footer-only initial `.onAppear` trigger and
-  pin the user-gesture-plus-footer-geometry gate;
+- source/static UI checks reject a footer-only initial `.onAppear` trigger,
+  pin the whole-document viewport-fill check, and preserve the
+  user-gesture-plus-footer-geometry gate after content becomes scrollable;
 - switching provider or recreating History performs one fresh initial-page
   request.
 
@@ -347,8 +360,9 @@ unchanged. Verification must demonstrate:
 - the shadow still contains 61,628 events and the first natural seven-day page
   still represents 5,222 events, unless live imports legitimately changed the
   source before the final run;
-- clicking History issues one `query.days.page` operation and no second page
-  query before an actual scroll;
+- clicking History issues one initial `query.days.page` operation; a large
+  underfilled sidebar may then issue at most three `viewportFill` page
+  operations, while a scrollable initial document issues no automatic page;
 - each `query.days.page.database.finish` is under 100 ms, the corresponding
   facade-level `query.days.page.finish` remains recorded for transparency, and
   visible History content appears within 500 ms on this machine;

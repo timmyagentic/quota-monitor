@@ -31,7 +31,6 @@ final class UpdaterController {
     struct RuntimeConfiguration {
         let updateAvailability: PersistentUpdateAvailability
         let sparkleEnabled: Bool
-        let reminderPresentationEnabled: Bool
     }
 
     /// `true` when Sparkle is idle and a new check can start. Mirrors
@@ -56,16 +55,10 @@ final class UpdaterController {
     let updateAvailability: PersistentUpdateAvailability
 
     @ObservationIgnored
-    private let reminderPresentationEnabled: Bool
-
-    @ObservationIgnored
     private let updater: SPUUpdater?
 
     @ObservationIgnored
     private let userDriver: CustomUserDriver?
-
-    @ObservationIgnored
-    private var reminderCoordinator: UpdateReminderCoordinator?
 
     @ObservationIgnored
     private var cancellables: Set<AnyCancellable> = []
@@ -80,9 +73,8 @@ final class UpdaterController {
             standardDefaults: .standard,
             currentInternalVersion: Bundle.main.object(
                 forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
-            localQAActive: LocalQAEnvironment.isActive())
+            localQARequested: LocalQAEnvironment.isQARequested())
         self.updateAvailability = runtime.updateAvailability
-        self.reminderPresentationEnabled = runtime.reminderPresentationEnabled
 
         guard runtime.sparkleEnabled else {
             self.updater = nil
@@ -147,7 +139,7 @@ final class UpdaterController {
         distribution: DistributionChannel,
         defaults: UserDefaults,
         currentInternalVersion: String,
-        localQAActive: Bool
+        localQARequested: Bool
     ) -> RuntimeConfiguration {
         let isAppStore = distribution == .appStore
         return RuntimeConfiguration(
@@ -155,8 +147,7 @@ final class UpdaterController {
                 defaults: defaults,
                 currentInternalVersion: currentInternalVersion,
                 persistenceEnabled: !isAppStore),
-            sparkleEnabled: !isAppStore && !localQAActive,
-            reminderPresentationEnabled: !isAppStore && !localQAActive)
+            sparkleEnabled: !isAppStore && !localQARequested)
     }
 
     static func makeDefaultRuntimeConfiguration(
@@ -164,48 +155,21 @@ final class UpdaterController {
         defaults: UserDefaults?,
         standardDefaults: UserDefaults,
         currentInternalVersion: String,
-        localQAActive: Bool
+        localQARequested: Bool
     ) -> RuntimeConfiguration {
-        guard !localQAActive || defaults != nil else {
+        guard !localQARequested || defaults != nil else {
             return RuntimeConfiguration(
                 updateAvailability: PersistentUpdateAvailability(
                     defaults: standardDefaults,
                     currentInternalVersion: currentInternalVersion,
                     persistenceEnabled: false),
-                sparkleEnabled: false,
-                reminderPresentationEnabled: false)
+                sparkleEnabled: false)
         }
         return makeRuntimeConfiguration(
             distribution: distribution,
             defaults: defaults ?? standardDefaults,
             currentInternalVersion: currentInternalVersion,
-            localQAActive: localQAActive)
-    }
-
-    func startUpdateReminders(
-        now: @escaping @MainActor () -> Date = Date.init,
-        sleep: @escaping UpdateReminderCoordinator.Sleep = { duration in
-            try await Task<Never, Never>.sleep(for: duration)
-        },
-        present: @escaping UpdateReminderCoordinator.Present
-    ) {
-        guard reminderPresentationEnabled else { return }
-        if let reminderCoordinator {
-            reminderCoordinator.start()
-            return
-        }
-        let coordinator = UpdateReminderCoordinator(
-            availability: updateAvailability,
-            now: now,
-            sleep: sleep,
-            present: present)
-        reminderCoordinator = coordinator
-        coordinator.start()
-    }
-
-    func stopUpdateReminders() {
-        reminderCoordinator?.stop()
-        reminderCoordinator = nil
+            localQARequested: localQARequested)
     }
 
     /// Whether the custom update window is currently on screen. Lets

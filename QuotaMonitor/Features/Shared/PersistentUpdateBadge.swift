@@ -1,44 +1,24 @@
 import SwiftUI
 
-/// The "an update is waiting" affordance shown on QuotaMonitor's primary
-/// surfaces — the main-window toolbar and the menu-bar popover header.
+/// The "an update is waiting" affordance shown after the user opens a
+/// QuotaMonitor surface — the menu-bar popover, main window, or Settings.
 ///
-/// One definition so the icon, orange tint, tooltip, accessibility label, and
-/// install action stay in lockstep across surfaces. Visibility is gated by the
-/// caller (`UpdaterController.updateAvailability.isVisible`); this view only
-/// renders the button. Tapping it routes through
-/// `UpdaterController.installAvailableUpdate()`.
+/// One definition keeps the requested blue `Update` text, tooltip,
+/// accessibility label, and install action in lockstep. Visibility is gated by
+/// the caller (`UpdaterController.updateAvailability.isVisible`).
 struct PersistentUpdateBadge: View {
-    enum Style {
-        /// Window toolbar: an icon-only `Label` using the default toolbar button.
-        case toolbar
-        /// Inline header (menu popover): a hierarchical, borderless symbol.
-        case menu
-    }
-
     @Environment(UpdaterController.self) private var updater
-    let style: Style
 
-    private static let symbol = "arrow.down.circle.fill"
     private var version: String? { updater.updateAvailability.version }
 
     var body: some View {
-        Group {
-            switch style {
-            case .toolbar:
-                Button(action: install) {
-                    Label(L10n.updateBadgeTitle(version), systemImage: Self.symbol)
-                        .labelStyle(.iconOnly)
-                }
-            case .menu:
-                Button(action: install) {
-                    Image(systemName: Self.symbol)
-                        .symbolRenderingMode(.hierarchical)
-                }
-                .buttonStyle(.borderless)
-            }
+        Button(action: install) {
+            Text(L10n.updateEntryTitle)
+                .fontWeight(.semibold)
         }
-        .foregroundStyle(.orange)
+        .buttonStyle(.borderedProminent)
+        .controlSize(.small)
+        .tint(.blue)
         .help(L10n.updateBadgeHelp(version))
         .accessibilityLabel(L10n.updateBadgeTitle(version))
     }

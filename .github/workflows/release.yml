@@ -128,6 +128,9 @@ jobs:
       - name: Run tooling tests
         run: python3 -m unittest discover tools/tests
 
+      - name: Verify production version statistics service
+        run: python3 tools/check-version-statistics-service.py
+
       - name: Run tests
         run: swift test --disable-keychain
 

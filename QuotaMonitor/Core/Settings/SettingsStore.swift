@@ -27,7 +27,6 @@ final class SettingsStore {
         defaults: LocalQAEnvironment.userDefaults() ?? .standard)
 
     private let defaults: UserDefaults
-
     var pollIntervalSeconds: Int {
         didSet { defaults.set(pollIntervalSeconds, forKey: Keys.pollInterval) }
     }

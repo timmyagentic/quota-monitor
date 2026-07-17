@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var updater: UpdaterController!
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
+    private var dailyActiveReporter: DailyActiveReporter?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
@@ -38,9 +39,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.enforceClipFallback()
         }
         self.statusItemController = controller
-        updater.startUpdateReminders { [weak controller] version in
-            controller?.pulseUpdateMarker(version: version)
-        }
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
@@ -77,6 +75,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Pure menu-bar agent: windows open on demand only.
             scheduleDiscoverabilityCheck()
         }
+
+        let dailyActiveTokenStore = DailyActiveTokenStore(
+            defaults: DailyActiveUserDefaults(
+                LocalQAEnvironment.userDefaults() ?? .standard))
+        let reportingContext = AnonymousVersionReportingRuntime.resolveContext(
+            version: Bundle.main.infoDictionary?["CFBundleShortVersionString"]
+                as? String ?? "unknown",
+            appCodeName: Branding.appCodeName,
+            infoDictionary: Bundle.main.infoDictionary,
+            environment: ProcessInfo.processInfo.environment)
+        let reporter = DailyActiveReporter(
+            store: dailyActiveTokenStore,
+            eligibility: {
+                if LocalQAEnvironment.isQARequested() { return .localQA }
+                return reportingContext == nil ? .disabled : .enabled
+            },
+            context: {
+                reportingContext
+            })
+        dailyActiveReporter = reporter
+        Task { await reporter.start() }
 
         if let qa = LocalQAConfiguration() {
             let qaController = LocalQAController(
@@ -130,7 +149,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        updater?.stopUpdateReminders()
         statusItemController?.stop()
         statusItemController = nil
     }

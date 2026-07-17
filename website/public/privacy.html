@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <title data-i18n="privacyMetaTitle">Privacy policy — Quota Monitor</title>
+  <meta name="description" content="How Quota Monitor's anonymous daily active installation check-in works, what it excludes, and how long aggregate counts are retained." data-i18n-content="privacyMetaDescription">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Privacy policy — Quota Monitor" data-i18n-content="privacyMetaTitle">
+  <meta property="og:description" content="How Quota Monitor's anonymous daily active installation check-in works, what it excludes, and how long aggregate counts are retained." data-i18n-content="privacyMetaDescription">
+  <meta property="og:url" content="https://quota-monitor.timmyagentic.com/privacy">
+  <link rel="canonical" href="https://quota-monitor.timmyagentic.com/privacy">
+  <link rel="icon" href="/assets/app-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body data-page="privacy">
+  <a class="skip-link" href="#main-content" data-i18n="skipLink">Skip to main content</a>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand-lockup" href="/" aria-label="Quota Monitor home" data-i18n-aria-label="homeLinkLabel">
+        <img class="brand-icon" src="/assets/app-icon.png" width="48" height="48" alt="Quota Monitor app icon" data-i18n-alt="appIconAlt">
+        <span class="brand-name" data-i18n="brand">Quota Monitor</span>
+      </a>
+      <nav class="site-navigation" aria-label="Primary navigation" data-i18n-aria-label="primaryNavigationLabel">
+        <a href="/" data-i18n="homeNav">Home</a>
+        <a href="/privacy" aria-current="page" data-i18n="privacyNav">Privacy</a>
+      </nav>
+      <div class="language-control" role="group" aria-label="Choose display language" data-i18n-aria-label="languageLabel">
+        <button type="button" data-language="zh-Hans" aria-label="Switch to Simplified Chinese" data-i18n-aria-label="chooseChinese" aria-pressed="false">中</button>
+        <span aria-hidden="true">/</span>
+        <button type="button" data-language="en" aria-label="Switch to English" data-i18n-aria-label="chooseEnglish" aria-pressed="true">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content" class="privacy-policy-page">
+    <div class="container privacy-policy-layout">
+      <header class="privacy-policy-hero">
+        <p class="privacy-policy-eyebrow" data-i18n="privacyPolicyEyebrow">Privacy policy</p>
+        <h1 data-i18n="privacyPolicyTitle">Anonymous version statistics privacy policy</h1>
+        <p class="privacy-policy-intro" data-i18n="privacyPolicyIntro">Eligible Quota Monitor builds automatically send one anonymous daily active installation check-in. These counts estimate active installations, never users.</p>
+        <p class="privacy-policy-scope" data-i18n="privacyPolicyScopeBody">This policy applies to Quota Monitor and CodexMonitor-branded builds that link to this page. The check-in's brand field distinguishes quota-monitor from codex-monitor.</p>
+      </header>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-data-title">
+        <h2 id="privacy-data-title" data-i18n="privacyPolicyDataTitle">What the check-in sends</h2>
+        <ul class="privacy-policy-list">
+          <li><p data-i18n="privacyPolicyWireBody">Each check-in contains exactly six fields: schema (the number 1), UTC day (YYYY-MM-DD), a fresh random daily token, app version, brand, and distribution channel. It contains no other app data.</p></li>
+          <li><p data-i18n="privacyPolicyTokenBody">The random token rotates every UTC day. A failed request reuses it only within the same UTC day. If the app version changes that day, a later check-in can reclassify the same record. The check-in JSON payload and D1 raw or aggregate datasets contain no stable installation or device ID, and the service is not designed to link installations across UTC days. This statement does not cover Cloudflare's separate network-boundary processing, which is disclosed below.</p></li>
+          <li><p data-i18n="privacyPolicyDedupeBody">The service keeps at most one deduplicated active-installation record per token per UTC day. Retries do not increase the count.</p></li>
+        </ul>
+      </article>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-excluded-title">
+        <h2 id="privacy-excluded-title" data-i18n="privacyPolicyExcludedTitle">What reporting never sends</h2>
+        <p data-i18n="privacyPolicyExcludedBody">Reporting never sends: name or account details; email; a persistent identifier; system or hardware information; session titles; prompts, messages, or history; quota or usage values; token counts or cost estimates; file paths; credentials; or API or authentication tokens.</p>
+      </article>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-processing-title">
+        <h2 id="privacy-processing-title" data-i18n="privacyPolicyProcessingTitle">Processing and Cloudflare's network boundary</h2>
+        <p data-i18n="privacyPolicyProcessingBody">The Worker sees the original token only in memory, then computes a date-domain-separated SHA-256 hash before D1. The original token is never written to D1 or the app's custom logs.</p>
+        <p data-i18n="privacyPolicyCloudflareBody">Cloudflare handles HTTPS, security controls, and rate limiting and therefore processes the source IP at its network boundary. The Worker passes the source IP only to a best-effort Workers RateLimit binding; it does not write the IP to D1 or custom logs. Cloudflare infrastructure, CDN, WAF, and network-error logging may retain operational data under Cloudflare's terms; we do not claim that those layers are log-free.</p>
+      </article>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-retention-title">
+        <h2 id="privacy-retention-title" data-i18n="privacyPolicyRetentionTitle">Retention and access</h2>
+        <p data-i18n="privacyPolicyRetentionBody">Live raw rows are deleted after the next successful closed-day aggregation. Operational failures can delay that cleanup, so this is not an exact one-hour promise. After deletion, D1 Time Travel may still restore database state for 7 days on the Free plan or 30 days on a Paid plan. Aggregates contain only day, version, brand, channel, and counts, are retained for 400 days, and appear only in a private maintainer dashboard.</p>
+      </article>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-choice-title">
+        <h2 id="privacy-choice-title" data-i18n="privacyPolicyOptOutTitle">When reporting runs</h2>
+        <p data-i18n="privacyPolicyOptOutBody">Reporting starts automatically in eligible production builds and runs at most once per UTC day for each version context. Local QA and builds without an approved reporting context do not send check-ins. Anonymous rows cannot be individually found or deleted because no stable ID or deletion handle exists; they follow the live raw-row and D1 Time Travel retention above.</p>
+      </article>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-provider-title">
+        <h2 id="privacy-provider-title" data-i18n="privacyPolicyProviderTitle">Other app networking</h2>
+        <p data-i18n="privacyPolicyProviderBody">Session and history data stays in the app's local SQLite database. If you use live Codex or Claude Code quota refresh, Quota Monitor contacts the corresponding provider services. This traffic is separate from anonymous version statistics and is governed by the provider's privacy terms.</p>
+      </article>
+
+      <article class="privacy-policy-section" aria-labelledby="privacy-website-title">
+        <h2 id="privacy-website-title" data-i18n="privacyPolicyWebsiteTitle">This website</h2>
+        <p data-i18n="privacyPolicyWebsiteBody">The website stores only your language choice in localStorage. It uses no cookies, client analytics, or third-party UI runtime. Cloudflare processes network data at the boundary described above.</p>
+      </article>
+
+      <a class="button button-secondary privacy-policy-home" href="/" data-i18n="backHome">Back to Quota Monitor</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-layout" aria-label="Footer information" data-i18n-aria-label="footerNavigationLabel">
+      <span data-i18n="brand">Quota Monitor</span>
+      <span data-i18n="license">MIT License</span>
+      <span data-i18n="copyright">© 2026 Quota Monitor</span>
+      <div class="language-control" role="group" aria-label="Choose display language" data-i18n-aria-label="languageLabel">
+        <button type="button" data-language="zh-Hans" aria-label="Switch to Simplified Chinese" data-i18n-aria-label="chooseChinese" aria-pressed="false">中</button>
+        <span aria-hidden="true">/</span>
+        <button type="button" data-language="en" aria-label="Switch to English" data-i18n-aria-label="chooseEnglish" aria-pressed="true">EN</button>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

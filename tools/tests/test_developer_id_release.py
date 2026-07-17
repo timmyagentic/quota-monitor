@@ -179,6 +179,74 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("    needs: test", quota_job)
         self.assertIn("    needs: test", codex_job)
 
+    def test_shared_gate_probes_the_fixed_live_statistics_service_before_swift(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        pull_request_workflow = self.read_text(".github/workflows/tests.yml")
+        shared_job = self.workflow_job(
+            workflow,
+            "test",
+            "release-quota-monitor",
+        )
+        quota_job = self.workflow_job(
+            workflow,
+            "release-quota-monitor",
+            "release-codex-monitor",
+        )
+        codex_job = self.workflow_job(workflow, "release-codex-monitor")
+
+        tooling_index = shared_job.index("      - name: Run tooling tests")
+        probe_index = shared_job.index(
+            "      - name: Verify production version statistics service"
+        )
+        swift_index = shared_job.index("      - name: Run tests")
+        self.assertLess(tooling_index, probe_index)
+        self.assertLess(probe_index, swift_index)
+
+        probe_step = self.workflow_step(
+            shared_job,
+            "Verify production version statistics service",
+            "Run tests",
+        )
+        self.assertEqual(
+            probe_step.strip(),
+            "- name: Verify production version statistics service\n"
+            "        run: python3 tools/check-version-statistics-service.py",
+        )
+        self.assertNotIn("env:", probe_step)
+        self.assertNotIn("secrets.", probe_step)
+        self.assertNotIn("${{", probe_step)
+        self.assertEqual(
+            workflow.count("python3 tools/check-version-statistics-service.py"),
+            1,
+        )
+        self.assertNotIn("check-version-statistics-service.py", pull_request_workflow)
+        self.assertIn("    needs: test", quota_job)
+        self.assertIn("    needs: test", codex_job)
+
+    def test_statistics_probe_cleanup_uses_the_failed_run_day_before_deleting(self):
+        release_doc = self.read_text("docs/release.md")
+        section = release_doc[
+            release_doc.index("## Production version-statistics release precondition"):
+            release_doc.index("## Per-release checklist")
+        ]
+
+        self.assertNotIn("datetime.now", section)
+        self.assertIn('SYNTHETIC_DAY="YYYY-MM-DD"', section)
+        self.assertIn("exact UTC day sent by the failed probe", section)
+        self.assertEqual(section.count('(\n  case "${SYNTHETIC_DAY'), 2)
+
+        first_select = section.index('  --command "SELECT day, version, brand, channel')
+        second_select = section.index(
+            '  --command "SELECT day, version, brand, channel, active_count'
+        )
+        confirmation = section.index("Only after confirming those SELECT results")
+        first_delete = section.index('  --command "DELETE FROM daily_active_observations')
+        second_delete = section.index('  --command "DELETE FROM daily_version_counts')
+        self.assertLess(first_select, second_select)
+        self.assertLess(second_select, confirmation)
+        self.assertLess(confirmation, first_delete)
+        self.assertLess(first_delete, second_delete)
+
     def test_release_workflow_scopes_write_permissions_to_quota_job(self):
         workflow = self.read_text(".github/workflows/release.yml")
         shared_job = self.workflow_job(
@@ -405,6 +473,28 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("--max-bytes 100000", workflow)
         self.assertIn("--token-env GITHUB_TOKEN", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
+
+    def test_scheduled_feed_monitor_documents_asset_integrity_and_safe_probe(self):
+        release_doc = self.read_text("docs/release.md")
+        section_start = release_doc.index("### Scheduled release/feed health monitor")
+        section_end = release_doc.index("## One-time setup: Sparkle Ed25519 signing")
+        section = " ".join(release_doc[section_start:section_end].split())
+
+        for required_text in (
+            "64-byte Ed25519",
+            "`Range: bytes=0-0`",
+            "`206 Partial Content`",
+            "`Content-Range`",
+            "`release-assets.githubusercontent.com`",
+            "legacy URL may first make one exact `301` transition",
+            "that same `302` transition",
+            "never sends `Authorization`, `Cookie`, or `Proxy-Authorization`",
+        ):
+            with self.subTest(required_text=required_text):
+                self.assertIn(required_text, section)
+        self.assertIn("asset filename and byte size", section)
+        self.assertIn("404", section)
+        self.assertIn("200", section)
 
     def test_developer_id_helpers_are_present_and_do_not_hide_notary_status(self):
         common = self.read_text("tools/developer-id-common.sh")

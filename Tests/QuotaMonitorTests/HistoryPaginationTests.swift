@@ -105,8 +105,12 @@ struct HistoryPaginationTests {
 
     @Test("page load triggers have stable diagnostics values")
     func pageLoadTriggerRawValues() {
-        let triggers: [HistoryPageLoadTrigger] = [.initial, .scroll, .retry]
-        #expect(triggers.map(\.rawValue) == ["initial", "scroll", "retry"])
+        let triggers: [HistoryPageLoadTrigger] = [
+            .initial, .viewportFill, .scroll, .retry,
+        ]
+        #expect(triggers.map(\.rawValue) == [
+            "initial", "viewportFill", "scroll", "retry",
+        ])
     }
 
     @Test("initial page is today plus the previous six natural dates")

@@ -42,7 +42,7 @@ Avoid dark-first presentation, glossy promotional card grids, decorative badges,
 ### Header
 
 - Quota Monitor icon and wordmark.
-- In-page links for Features and Privacy.
+- Same-origin links for the homepage Features section and the full Privacy page.
 - A compact `中 / EN` language control.
 - No external repository or social links.
 
@@ -113,11 +113,29 @@ End with a second direct-download call to action and a minimal footer containing
 Place the website in a focused `website/` module inside the repository.
 
 - Static semantic HTML, CSS, and a small JavaScript localization/interaction layer.
-- A Cloudflare Worker entry point handles `/download`; all other requests fall through to Workers Static Assets.
+- Workers Static Assets serves the bilingual homepage and full privacy policy.
+- A Cloudflare Worker handles `/download`, `/api/release`, the opt-in
+  `/api/v1/daily-active` endpoint, and the private
+  `/maintainer/versions` dashboard before other requests fall through to the
+  static assets binding.
 - `wrangler.jsonc` declares the Worker name `quota-monitor-site`, the current compatibility date, the static asset directory, and the custom domain route.
-- No database, authentication, analytics, cookies, or third-party UI runtime is required.
+- D1 stores date-scoped anonymous observations and closed-day aggregate counts;
+  a scheduled Worker aggregates and expires them. The maintainer dashboard
+  uses a required secret-backed Basic challenge, and public/private routes use
+  separate rate-limit bindings.
+- Website pages use no cookies, client analytics, or third-party UI runtime.
+  Anonymous app version reporting is a separate, explicit opt-in and is fully
+  disclosed on the privacy page.
+- Invocation logs, Logpush, tail consumers, and traces remain disabled for
+  request handling. Purpose-built scheduled-operation logs contain only the
+  UTC aggregation day, change counts, and a generic result; they never contain
+  request payloads, tokens, header values, IP addresses, or database rows.
 
-This small static architecture is preferred over a client framework because the site has one page, one locale state, and one server-side action. It reduces JavaScript, build complexity, and privacy surface while keeping the page easy to maintain with the Swift app.
+This focused static-plus-Worker architecture is preferred over a client
+framework because the two public pages share one small locale layer while the
+four service routes stay server-side and narrowly scoped. It reduces
+JavaScript and build complexity while keeping the privacy and release
+contracts testable beside the Swift app.
 
 ## Download Data Flow
 
@@ -138,7 +156,10 @@ No visitor-facing response, redirect, HTML anchor, or metadata field contains a 
 - If a download cannot begin, the Worker returns a branded bilingual HTML error with Retry and Back controls instead of redirecting to an external site.
 - Upstream status codes, missing enclosures, incorrect asset content, and non-DMG filenames are treated as failures.
 - Download responses set `Content-Disposition`, `X-Content-Type-Options: nosniff`, and a conservative content type.
-- No credentials or Cloudflare secrets are required.
+- Visitors need no credential for the homepage, privacy policy, release
+  metadata, download, or opt-in check-in. A Cloudflare secret is required only
+  for the private maintainer dashboard and is never exposed to public routes or
+  client JavaScript.
 
 ## Accessibility, Responsive Behavior, and SEO
 
@@ -158,6 +179,12 @@ Automated verification covers:
 - Release/appcast parsing and newest-DMG selection.
 - `/api/release` success and failure responses.
 - `/download` attachment headers, filename, status handling, and streamed bytes.
+- Daily-active HTTPS, bounded-body, exact-schema, same-day deduplication, and
+  rate-limit behavior.
+- Private dashboard authentication, cache isolation, allowlisted filters,
+  aggregation, raw-row deletion, and 400-day aggregate retention.
+- Project-owned HTTP GET/HEAD 301 redirects that preserve host, path, and query,
+  while insecure POST bodies are rejected instead of redirected.
 - Chinese/English string completeness and browser-locale selection.
 - A rendered-site audit that fails on visible/clickable GitHub references.
 - Static asset, semantic, and link integrity checks.
@@ -178,11 +205,17 @@ Visual and functional verification covers:
 - Both changelog files receive a concise user-facing Unreleased entry.
 - Run focused website checks first, then the repository's `./qa/run-static.sh` gate.
 - Commit, push, and open a ready PR with verification evidence and screenshots.
-- Deploy the verified branch to the Cloudflare Worker and custom domain, then verify the public site and download path.
+- Apply the D1 migration and required bindings, deploy the verified branch to
+  the Cloudflare Worker and custom domain, then verify the public pages,
+  download path, private boundary, and synthetic check-in cleanup before the
+  app reporter is released.
 
 ## Non-Goals
 
-- No documentation portal, blog, mailing list, payments, accounts, telemetry, or CMS.
+- No documentation portal, blog, mailing list, payments, visitor accounts,
+  behavioral visitor analytics, or CMS. The narrowly scoped, consented
+  anonymous version check-in and private aggregate dashboard are the only
+  telemetry surfaces in scope.
 - No App Store download path in the first release.
 - No GitHub, social-media, or community links anywhere in the rendered website.
 - No hosting the DMG as a checked-in static asset.

@@ -57,6 +57,7 @@ class MacAppStoreReadinessTests(unittest.TestCase):
     def test_runtime_has_distribution_channel_and_disables_sparkle_for_app_store(self):
         channel = self.read_text("QuotaMonitor/Core/DistributionChannel.swift")
         updater = self.read_text("QuotaMonitor/Core/Updater/UpdaterController.swift")
+        app_delegate = self.read_text("QuotaMonitor/App/AppDelegate.swift")
         settings = self.read_text("QuotaMonitor/Features/Settings/AdvancedSettingsTab.swift")
 
         self.assertIn("QMDistributionChannel", channel)
@@ -69,12 +70,11 @@ class MacAppStoreReadinessTests(unittest.TestCase):
         self.assertRegex(updater, r"persistenceEnabled:\s*!isAppStore")
         self.assertRegex(
             updater,
-            r"sparkleEnabled:\s*!isAppStore\s*&&\s*!localQAActive",
+            r"sparkleEnabled:\s*!isAppStore\s*&&\s*!localQARequested",
         )
-        self.assertRegex(
-            updater,
-            r"reminderPresentationEnabled:\s*!isAppStore\s*&&\s*!localQAActive",
-        )
+        self.assertNotIn("reminderPresentationEnabled", updater)
+        self.assertNotIn("UpdateReminderCoordinator", updater)
+        self.assertNotIn("startUpdateReminders", app_delegate)
         self.assertIn("if DistributionChannel.current != .appStore", settings)
 
     def test_readiness_doc_records_submission_boundary_and_remaining_risks(self):
@@ -86,6 +86,80 @@ class MacAppStoreReadinessTests(unittest.TestCase):
         self.assertIn("not uploaded", doc)
         self.assertIn("security-scoped bookmarks", doc)
         self.assertIn("Sparkle", doc)
+
+    def test_privacy_manifest_declares_only_unlinked_nontracking_analytics(self):
+        manifest = self.read_plist("Resources/PrivacyInfo.xcprivacy")
+
+        self.assertEqual(
+            set(manifest),
+            {
+                "NSPrivacyTracking",
+                "NSPrivacyCollectedDataTypes",
+                "NSPrivacyAccessedAPITypes",
+            },
+        )
+        self.assertIs(manifest["NSPrivacyTracking"], False)
+        self.assertEqual(manifest["NSPrivacyAccessedAPITypes"], [])
+        self.assertEqual(len(manifest["NSPrivacyCollectedDataTypes"]), 1)
+        collected = manifest["NSPrivacyCollectedDataTypes"][0]
+        self.assertEqual(
+            collected["NSPrivacyCollectedDataType"],
+            "NSPrivacyCollectedDataTypeProductInteraction",
+        )
+        self.assertIs(collected["NSPrivacyCollectedDataTypeLinked"], False)
+        self.assertIs(collected["NSPrivacyCollectedDataTypeTracking"], False)
+        self.assertEqual(
+            collected["NSPrivacyCollectedDataTypePurposes"],
+            ["NSPrivacyCollectedDataTypePurposeAnalytics"],
+        )
+
+    def test_readiness_doc_records_manual_privacy_and_archive_gates(self):
+        doc = self.read_text("docs/mac-app-store-readiness.md")
+        normalized_doc = " ".join(doc.split())
+
+        required_evidence = (
+            "PrivacyInfo.xcprivacy describes only the current artifact",
+            "does not mean App Store Connect has approved",
+            "real Xcode Mac App Store archive",
+            "App Store signing certificate and provisioning profile",
+            "Organizer",
+            "Generate Privacy Report",
+            "Validate App",
+            "merged privacy manifests from the app, Sparkle, and every SDK",
+            "https://quota-monitor.timmyagentic.com/privacy",
+            "Privacy Policy URL",
+            "Privacy Choices URL",
+            "Account Holder, Admin, or App Manager",
+            "Product Interaction",
+            "Device ID",
+            "16-byte random daily token",
+            "QMAnonymousVersionReportingAppStoreApproved",
+            "must remain absent or false",
+            "Sparkle remains linked and embedded",
+        )
+        for evidence in required_evidence:
+            with self.subTest(evidence=evidence):
+                self.assertIn(evidence, normalized_doc)
+
+        self.assertRegex(
+            normalized_doc,
+            r"Apple classification ambiguity.*Product Interaction.*Device ID",
+        )
+
+    def test_app_store_reporting_gate_stays_strict_while_sparkle_is_embedded(self):
+        info = self.read_plist("Resources/Info.plist")
+        runtime = self.read_text(
+            "QuotaMonitor/Core/Telemetry/AnonymousVersionReportingRuntime.swift"
+        )
+        package = self.read_text("Package.swift")
+        build = self.read_text("build.sh")
+
+        self.assertNotIn("QMAnonymousVersionReportingAppStoreApproved", info)
+        self.assertIn("QMAnonymousVersionReportingAppStoreApproved", runtime)
+        self.assertIn("CFGetTypeID(object) == CFBooleanGetTypeID()", runtime)
+        self.assertIn("object === kCFBooleanTrue", runtime)
+        self.assertIn('.product(name: "Sparkle", package: "Sparkle")', package)
+        self.assertIn('cp -R "${SPARKLE_SLICE}"', build)
 
     def test_history_importers_do_not_use_network_clients(self):
         importer_sources = [

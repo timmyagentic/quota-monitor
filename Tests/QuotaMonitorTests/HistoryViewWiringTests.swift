@@ -81,6 +81,10 @@ struct HistoryViewWiringTests {
         #expect(footer.contains("HistoryPaginationScrollBridge("))
         #expect(footer.contains("isEnabled: pagination.hasMore && pagination.paginationFailure == nil"))
         #expect(footer.contains("isLoading: pagination.isLoadingNextPage"))
+        #expect(footer.contains("canFillViewport: pagination.canFillViewport"))
+        #expect(footer.contains(
+            "pagination.beginNextPage(trigger: .viewportFill)"))
+        #expect(footer.contains("pagination.beginNextPage(trigger: .scroll)"))
         #expect(!footer.contains(".onAppear"))
         #expect(!footer.contains(".task"))
     }

@@ -1,6 +1,8 @@
 import Foundation
 
 struct HistoryPaginationState {
+    static let maximumViewportFillPageCount = 3
+
     enum Failure: Equatable {
         case query(String)
         case nonAdvancingCursor
@@ -18,11 +20,19 @@ struct HistoryPaginationState {
     private(set) var initialFailure: Failure?
     private(set) var paginationFailure: Failure?
     private(set) var inFlightRequest: Request?
+    private(set) var viewportFillPageCount = 0
 
     var isLoadingInitial: Bool { inFlightRequest?.trigger == .initial }
     var isLoadingNextPage: Bool {
         guard let trigger = inFlightRequest?.trigger else { return false }
-        return trigger == .scroll || trigger == .retry
+        return trigger != .initial
+    }
+    var canFillViewport: Bool {
+        inFlightRequest == nil &&
+            hasMore &&
+            nextCursor != nil &&
+            paginationFailure == nil &&
+            viewportFillPageCount < Self.maximumViewportFillPageCount
     }
 
     @discardableResult
@@ -34,6 +44,7 @@ struct HistoryPaginationState {
         initialFailure = nil
         paginationFailure = nil
         inFlightRequest = request
+        viewportFillPageCount = 0
         return request
     }
 
@@ -41,7 +52,11 @@ struct HistoryPaginationState {
         trigger: HistoryPageLoadTrigger,
         requestID: UUID = UUID()
     ) -> Request? {
-        guard trigger != .initial,
+        guard trigger != .initial else { return nil }
+        if trigger == .viewportFill {
+            guard canFillViewport else { return nil }
+        }
+        guard
               inFlightRequest == nil,
               hasMore,
               let nextCursor else { return nil }
@@ -72,6 +87,9 @@ struct HistoryPaginationState {
                 seen.insert($0.id).inserted
             })
             paginationFailure = nil
+            if request.trigger == .viewportFill {
+                viewportFillPageCount += 1
+            }
         }
         nextCursor = page.nextCursor
         hasMore = page.hasMore

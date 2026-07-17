@@ -10,8 +10,19 @@ enum HistoryScrollPhase: Equatable {
 }
 
 struct HistoryScrollGeometry {
+    private static let viewportFillTolerance: CGFloat = 1
+
     static func footerIsVisible(footerFrame: CGRect, visibleRect: CGRect) -> Bool {
         !footerFrame.isEmpty && footerFrame.intersects(visibleRect)
+    }
+
+    static func documentUnderfillsViewport(
+        documentFrame: CGRect,
+        visibleRect: CGRect
+    ) -> Bool {
+        !documentFrame.isEmpty &&
+            visibleRect.height > 0 &&
+            documentFrame.height <= visibleRect.height + viewportFillTolerance
     }
 
     static func eventIsInsideScrollView(
@@ -297,10 +308,14 @@ final class FooterProbeView: NSView {
 struct HistoryPaginationScrollBridge: NSViewRepresentable {
     let isEnabled: Bool
     let isLoading: Bool
+    let canFillViewport: Bool
+    let onViewportFill: @MainActor () -> Void
     let onLoadMore: @MainActor () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onLoadMore: onLoadMore)
+        Coordinator(
+            onViewportFill: onViewportFill,
+            onLoadMore: onLoadMore)
     }
 
     func makeNSView(context: Context) -> FooterProbeView {
@@ -314,6 +329,8 @@ struct HistoryPaginationScrollBridge: NSViewRepresentable {
             probe: view,
             isEnabled: isEnabled,
             isLoading: isLoading,
+            canFillViewport: canFillViewport,
+            onViewportFill: onViewportFill,
             onLoadMore: onLoadMore)
     }
 
@@ -332,15 +349,25 @@ extension HistoryPaginationScrollBridge {
 
         private weak var probe: FooterProbeView?
         private weak var scrollView: NSScrollView?
+        private weak var observedDocumentView: NSView?
         private var eventMonitor: Any?
         private var notificationTokens: [NSObjectProtocol] = []
         private var phaseLessExpiryTimer: Timer?
         private var scheduledPhaseLessExpiry: TimeInterval?
+        private var viewportFillEvaluationScheduled = false
         private var gate = HistoryScrollLoadGate()
         private var lastVisibleRect = CGRect.zero
+        private var isEnabled = false
+        private var isLoading = false
+        private var canFillViewport = false
+        private var onViewportFill: @MainActor () -> Void
         private var onLoadMore: @MainActor () -> Void
 
-        init(onLoadMore: @escaping @MainActor () -> Void) {
+        init(
+            onViewportFill: @escaping @MainActor () -> Void,
+            onLoadMore: @escaping @MainActor () -> Void
+        ) {
+            self.onViewportFill = onViewportFill
             self.onLoadMore = onLoadMore
         }
 
@@ -359,9 +386,15 @@ extension HistoryPaginationScrollBridge {
             probe: FooterProbeView,
             isEnabled: Bool,
             isLoading: Bool,
+            canFillViewport: Bool,
+            onViewportFill: @escaping @MainActor () -> Void,
             onLoadMore: @escaping @MainActor () -> Void
         ) {
             self.probe = probe
+            self.isEnabled = isEnabled
+            self.isLoading = isLoading
+            self.canFillViewport = canFillViewport
+            self.onViewportFill = onViewportFill
             self.onLoadMore = onLoadMore
             gate.updateAvailability(isEnabled: isEnabled, isLoading: isLoading)
             installEventMonitorIfNeeded()
@@ -370,6 +403,7 @@ extension HistoryPaginationScrollBridge {
             let timestamp = ProcessInfo.processInfo.systemUptime
             evaluate(at: timestamp)
             synchronizePhaseLessExpiry(referenceTimestamp: timestamp)
+            scheduleViewportFillEvaluation()
         }
 
         func detach() {
@@ -380,9 +414,13 @@ extension HistoryPaginationScrollBridge {
             eventMonitor = nil
             removeScrollObservers()
             scrollView = nil
+            observedDocumentView = nil
             cancelPhaseLessExpiry()
             gate.resetGestureState()
             lastVisibleRect = .zero
+            isEnabled = false
+            isLoading = false
+            canFillViewport = false
             probe = nil
         }
 
@@ -407,20 +445,26 @@ extension HistoryPaginationScrollBridge {
                 ancestor = view.superview
             }
             let bindingIsUnchanged = scrollView === candidate &&
+                observedDocumentView === candidate?.documentView &&
                 (candidate != nil || notificationTokens.isEmpty)
             guard !bindingIsUnchanged else { return }
 
             removeScrollObservers()
             scrollView = nil
+            observedDocumentView = nil
             cancelPhaseLessExpiry()
             gate.resetGestureState()
             lastVisibleRect = .zero
 
             guard let candidate else { return }
             scrollView = candidate
+            observedDocumentView = candidate.documentView
             lastVisibleRect = candidate.documentVisibleRect
             let center = NotificationCenter.default
-            notificationTokens = [
+            let clipView = candidate.contentView
+            clipView.postsBoundsChangedNotifications = true
+            candidate.documentView?.postsFrameChangedNotifications = true
+            var tokens = [
                 center.addObserver(
                     forName: NSScrollView.willStartLiveScrollNotification,
                     object: candidate,
@@ -439,7 +483,22 @@ extension HistoryPaginationScrollBridge {
                     queue: .main) { [weak self] _ in
                         MainActor.assumeIsolated { self?.endLiveScroll() }
                     },
+                center.addObserver(
+                    forName: NSView.boundsDidChangeNotification,
+                    object: clipView,
+                    queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.geometryDidChange() }
+                    },
             ]
+            if let documentView = candidate.documentView {
+                tokens.append(center.addObserver(
+                    forName: NSView.frameDidChangeNotification,
+                    object: documentView,
+                    queue: .main) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.geometryDidChange() }
+                    })
+            }
+            notificationTokens = tokens
         }
 
         private func removeScrollObservers() {
@@ -545,6 +604,11 @@ extension HistoryPaginationScrollBridge {
                 referenceTimestamp: ProcessInfo.processInfo.systemUptime)
         }
 
+        private func geometryDidChange() {
+            refreshFooterVisibility()
+            scheduleViewportFillEvaluation()
+        }
+
         private func refreshFooterVisibility() {
             guard let probe,
                   let scrollView,
@@ -562,6 +626,36 @@ extension HistoryPaginationScrollBridge {
             if gate.consumeIfEligible() {
                 onLoadMore()
             }
+        }
+
+        private func scheduleViewportFillEvaluation() {
+            guard isEnabled, !isLoading, canFillViewport,
+                  !viewportFillEvaluationScheduled else { return }
+            viewportFillEvaluationScheduled = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.viewportFillEvaluationScheduled = false
+                self.evaluateViewportFill()
+            }
+        }
+
+        private func evaluateViewportFill() {
+            guard isEnabled, !isLoading, canFillViewport,
+                  let probe,
+                  let scrollView,
+                  let documentView = scrollView.documentView else { return }
+            let visibleRect = scrollView.documentVisibleRect
+            let footerFrame = probe.convert(probe.bounds, to: documentView)
+            guard HistoryScrollGeometry.footerIsVisible(
+                footerFrame: footerFrame,
+                visibleRect: visibleRect
+            ), HistoryScrollGeometry.documentUnderfillsViewport(
+                documentFrame: documentView.bounds,
+                visibleRect: visibleRect
+            ) else { return }
+
+            canFillViewport = false
+            onViewportFill()
         }
 
         private static func phase(_ phase: NSEvent.Phase) -> HistoryScrollPhase {

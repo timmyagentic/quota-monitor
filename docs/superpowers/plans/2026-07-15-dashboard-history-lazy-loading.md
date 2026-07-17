@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Dashboard > History open from one indexed seven-calendar-day query and load one older seven-day page only after each genuine downward scroll gesture.
+**Goal:** Make Dashboard > History open from one indexed seven-calendar-day query, fill otherwise unusable large-screen whitespace with a bounded number of older pages, and load later pages only after each genuine downward scroll gesture.
 
-**Architecture:** Replace the raw all-history cursor with a GRDB page query built from seven explicit DST-correct UTC ranges and an exclusive time cursor. Keep paging behavior in a pure value-state reducer, translate macOS 14 AppKit scroll input through a narrow footer bridge and testable gesture gate, then let `HistoryView` drive page requests through cancellable SwiftUI tasks. Reuse one captured calendar snapshot for list, detail, and expanded events until the view is reset.
+**Architecture:** Replace the raw all-history cursor with a GRDB page query built from seven explicit DST-correct UTC ranges and an exclusive time cursor. Keep paging behavior and a three-page viewport-fill budget in a pure value-state reducer, translate macOS 14 AppKit geometry and scroll input through a narrow footer bridge and testable gesture gate, then let `HistoryView` drive page requests through cancellable SwiftUI tasks. Reuse one captured calendar snapshot for list, detail, and expanded events until the view is reset.
 
 **Tech Stack:** Swift 6 with strict concurrency, SwiftUI, AppKit, Swift Testing, GRDB/SQLite, SwiftPM, bilingual `L10n`, shell QA, Computer Use, GitHub CLI.
 
@@ -17,7 +17,7 @@
 - Generate local-day boundaries with one captured `Calendar`; never subtract fixed 24-hour seconds or group with SQL `localtime`/a fixed UTC offset.
 - Aggregate in SQL through indexed timestamp ranges; do not fetch raw event rows to build the list and do not retain the existing 365-active-day compatibility path.
 - Use the existing `idx_usage_events_timestamp` and `(provider, timestamp)` indexes; add no schema migration, materialized rollup, persistent cache, or new dependency.
-- A visible footer alone must not load page two. Require downward input inside the exact History sidebar plus actual footer/document-visible-rect intersection.
+- A visible footer alone must not load page two when the document is scrollable. If the whole document does not exceed the viewport, allow at most three `viewportFill` pages; after it becomes scrollable, require downward input inside the exact History sidebar plus actual footer/document-visible-rect intersection.
 - One gesture generation loads at most one page; momentum cannot cascade, and phase-less wheel events use a 250 ms idle boundary.
 - Keep provider filtering, automatic initial selection, detail/session behavior, and session-event lazy rendering; pagination must not change a valid selection.
 - Initial errors replace only the initial list; pagination errors preserve loaded days and expose localized Retry; detail errors must not replace the sidebar.
@@ -43,6 +43,16 @@ publication:
   honest facade/data-ready metric that can include MainActor scheduling. The
   independent click-to-visible gate remains `<500 ms`.
 
+### Execution amendment from large-screen validation
+
+The original no-automatic-second-page rule is superseded for a document that
+cannot fill the History viewport. The AppKit bridge observes clip-view bounds
+and document-frame changes, verifies both footer visibility and whole-document
+underfill, then uses the distinct `viewportFill` trigger. The pagination state
+allows at most three completed viewport-fill pages per reset. Once the document
+is scrollable—or the budget, history, or error boundary is reached—the existing
+one-genuine-gesture-per-page behavior remains authoritative.
+
 ---
 
 ## File Structure
@@ -54,7 +64,7 @@ publication:
 - `Tests/QuotaMonitorTests/HistoryPaginationTests.swift` — calendar-page aggregation, gaps, providers, and SQLite query-plan coverage.
 - `Tests/QuotaMonitorTests/HistoryPaginationStateTests.swift` — single-flight, cursor, deduplication, retry, and cancellation semantics.
 - `Tests/QuotaMonitorTests/HistoryPaginationScrollBridgeTests.swift` — input generation, geometry, momentum, and bridge source-contract coverage.
-- `Tests/QuotaMonitorTests/HistoryViewWiringTests.swift` — view/query-facade wiring, dual database/facade timing, and the prohibition on footer-only auto-loading.
+- `Tests/QuotaMonitorTests/HistoryViewWiringTests.swift` — view/query-facade wiring, dual database/facade timing, bounded viewport-fill wiring, and the prohibition on footer-only auto-loading for scrollable content.
 - `docs/superpowers/plans/2026-07-15-dashboard-history-lazy-loading.md` — this execution plan.
 
 **Modified:**
@@ -118,7 +128,7 @@ extension AppEnvironment {
 }
 ```
 
-`HistoryPaginationState.Request` is the only value that starts a page task. It carries an ID, trigger, and optional exclusive cursor; `HistoryView` passes those values unchanged to the query facade. The scroll bridge has no database knowledge and only invokes a synchronous `onLoadMore` callback after its gesture gate consumes an eligible generation.
+`HistoryPaginationState.Request` is the only value that starts a page task. It carries an ID, trigger, and optional exclusive cursor; `HistoryView` passes those values unchanged to the query facade. The scroll bridge has no database knowledge and invokes either a synchronous viewport-fill callback after the whole-document geometry check or `onLoadMore` after its gesture gate consumes an eligible generation.
 
 ---
 

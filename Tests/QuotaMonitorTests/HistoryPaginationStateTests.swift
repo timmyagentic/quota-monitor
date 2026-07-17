@@ -292,6 +292,88 @@ struct HistoryPaginationStateTests {
         #expect(paginationState.inFlightRequest == nil)
     }
 
+    @Test("viewport fill adds at most three pages and resets its budget")
+    func viewportFillIsBoundedAndResettable() throws {
+        var state = HistoryPaginationState()
+        let initial = state.reset()
+        #expect(!state.canFillViewport)
+        let completedInitial = state.complete(
+            HistoryPage(
+                days: [day("2026-07-15")],
+                nextCursor: Date(timeIntervalSince1970: 4_000),
+                hasMore: true),
+            for: initial)
+        #expect(completedInitial)
+        #expect(state.canFillViewport)
+
+        let pageDays = ["2026-07-08", "2026-07-01", "2026-06-24"]
+        for (index, pageDay) in pageDays.enumerated() {
+            let requestValue = state.beginNextPage(trigger: .viewportFill)
+            let request = try #require(requestValue)
+            #expect(request.trigger == .viewportFill)
+            #expect(state.isLoadingNextPage)
+            #expect(!state.canFillViewport)
+
+            let completed = state.complete(
+                HistoryPage(
+                    days: [day(pageDay)],
+                    nextCursor: Date(
+                        timeIntervalSince1970: TimeInterval(3_000 - index * 1_000)),
+                    hasMore: true),
+                for: request)
+            #expect(completed)
+            #expect(state.viewportFillPageCount == index + 1)
+        }
+
+        #expect(state.viewportFillPageCount ==
+            HistoryPaginationState.maximumViewportFillPageCount)
+        #expect(!state.canFillViewport)
+        #expect(state.beginNextPage(trigger: .viewportFill) == nil)
+
+        let deliberateScrollValue = state.beginNextPage(trigger: .scroll)
+        let deliberateScroll = try #require(deliberateScrollValue)
+        #expect(deliberateScroll.trigger == .scroll)
+        state.cancel(deliberateScroll)
+
+        _ = state.reset()
+        #expect(state.viewportFillPageCount == 0)
+        #expect(!state.canFillViewport)
+    }
+
+    @Test("viewport fill stops on failure or the final page")
+    func viewportFillStopsOnFailureOrEnd() throws {
+        var state = HistoryPaginationState()
+        let initial = state.reset()
+        let completedInitial = state.complete(
+            HistoryPage(
+                days: [day("2026-07-15")],
+                nextCursor: Date(timeIntervalSince1970: 4_000),
+                hasMore: true),
+            for: initial)
+        #expect(completedInitial)
+
+        let automaticValue = state.beginNextPage(trigger: .viewportFill)
+        let automatic = try #require(automaticValue)
+        let failed = state.fail("database busy", for: automatic)
+        #expect(failed)
+        #expect(state.viewportFillPageCount == 0)
+        #expect(!state.canFillViewport)
+        #expect(state.beginNextPage(trigger: .viewportFill) == nil)
+
+        let retryValue = state.beginNextPage(trigger: .retry)
+        let retry = try #require(retryValue)
+        let completedFinal = state.complete(
+            HistoryPage(
+                days: [day("2026-07-08")],
+                nextCursor: Date(timeIntervalSince1970: 3_000),
+                hasMore: false),
+            for: retry)
+        #expect(completedFinal)
+        #expect(!state.hasMore)
+        #expect(!state.canFillViewport)
+        #expect(state.viewportFillPageCount == 0)
+    }
+
     @Test("next page requires pagination trigger cursor and more history")
     func nextPageGuards() {
         var state = HistoryPaginationState()

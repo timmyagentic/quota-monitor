@@ -37,7 +37,7 @@ struct UpdateWindowReplyHandlerTests {
         // Badge-triggered install while the window is still on screen…
         state.fireInstall()
         // …then the user closes the still-open window before Sparkle advances.
-        state.handleWindowClose()
+        #expect(state.handleWindowClose())
 
         #expect(installCount == 1)
         #expect(dismissCount == 0)
@@ -52,9 +52,35 @@ struct UpdateWindowReplyHandlerTests {
 
         state.fireDismiss()
         // A second close after the reply was already sent must be a no-op.
-        state.handleWindowClose()
+        #expect(state.handleWindowClose())
 
         #expect(dismissCount == 1)
+    }
+
+    @Test("Downloading close cancels once and allows the window to close")
+    func downloadingCloseCancelsAndAllowsClose() {
+        let state = UpdateWindowState()
+        var cancelCount = 0
+        state.phase = .downloading
+        state.onCancel = { cancelCount += 1 }
+
+        #expect(state.handleWindowClose())
+        #expect(cancelCount == 1)
+        #expect(state.handleWindowClose())
+        #expect(cancelCount == 1)
+    }
+
+    @Test("Extraction and installation reject close without firing download cancellation")
+    func nonCancellablePhasesRejectClose() {
+        for phase in [UpdateWindowState.Phase.extracting, .installing] {
+            let state = UpdateWindowState()
+            var cancelCount = 0
+            state.phase = phase
+            state.onCancel = { cancelCount += 1 }
+
+            #expect(!state.handleWindowClose())
+            #expect(cancelCount == 0)
+        }
     }
 
     @Test("Every update choice consumes all sibling reply handlers", arguments: [
@@ -94,6 +120,25 @@ struct UpdateWindowReplyHandlerTests {
             named: "QuotaMonitor/Core/Updater/UpdateWindowView.swift")
 
         #expect(source.contains("if state.availableActions.contains(.skip)"))
+    }
+
+    @Test("Beginning extraction expires the download cancellation callback")
+    func extractionExpiresDownloadCancellation() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/CustomUserDriver.swift")
+        let extraction = try Self.methodBody(
+            source, signature: "func showDownloadDidStartExtractingUpdate")
+
+        #expect(extraction.contains("state.onCancel = nil"))
+    }
+
+    private static func methodBody(_ source: String, signature: String) throws -> String {
+        guard let start = source.range(of: signature) else {
+            throw CocoaError(.formatting)
+        }
+        let rest = source[start.upperBound...]
+        let end = rest.range(of: "\n    func ")?.lowerBound ?? rest.endIndex
+        return String(rest[..<end])
     }
 
     private static func source(named relativePath: String) throws -> String {

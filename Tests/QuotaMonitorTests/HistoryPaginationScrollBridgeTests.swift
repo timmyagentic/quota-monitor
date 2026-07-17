@@ -1005,6 +1005,28 @@ struct HistoryPaginationScrollBridgeTests {
             visibleRect: visibleRect))
     }
 
+    @Test("viewport fill requires the whole document to fit")
+    func viewportFillGeometry() {
+        let visibleRect = CGRect(x: 0, y: 0, width: 240, height: 500)
+        let visibleFooter = CGRect(x: 0, y: 480, width: 240, height: 20)
+
+        #expect(HistoryScrollGeometry.footerIsVisible(
+            footerFrame: visibleFooter,
+            visibleRect: visibleRect))
+        #expect(HistoryScrollGeometry.documentUnderfillsViewport(
+            documentFrame: CGRect(x: 0, y: 0, width: 240, height: 450),
+            visibleRect: visibleRect))
+        #expect(HistoryScrollGeometry.documentUnderfillsViewport(
+            documentFrame: CGRect(x: 0, y: 0, width: 240, height: 500),
+            visibleRect: visibleRect))
+        #expect(!HistoryScrollGeometry.documentUnderfillsViewport(
+            documentFrame: CGRect(x: 0, y: 0, width: 240, height: 700),
+            visibleRect: visibleRect))
+        #expect(!HistoryScrollGeometry.documentUnderfillsViewport(
+            documentFrame: .zero,
+            visibleRect: visibleRect))
+    }
+
     @Test("bridge source scopes events and removes every lifecycle hook")
     func bridgeLifecycleSourceContract() throws {
         let source = try Self.source(named:
@@ -1105,7 +1127,11 @@ struct HistoryPaginationScrollBridgeTests {
         #expect(refreshGeometry < evaluate)
         #expect(evaluate < finishGesture)
 
-        #expect(!source.contains("NSView.boundsDidChangeNotification"))
+        #expect(source.contains("NSView.boundsDidChangeNotification"))
+        #expect(source.contains("NSView.frameDidChangeNotification"))
+        #expect(source.contains("scheduleViewportFillEvaluation()"))
+        #expect(source.contains(
+            "HistoryScrollGeometry.documentUnderfillsViewport"))
         #expect(!source.contains("object: nil"))
     }
 

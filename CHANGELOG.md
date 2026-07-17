@@ -32,29 +32,45 @@ window copy.
 
 #### Summary
 
-- History now opens quickly with the latest week and loads older weeks only when you scroll down.
+- History now opens quickly with the latest week, automatically fills larger windows with a bounded number of older weeks, and continues loading on deliberate downward scrolls.
+- Website HTTP requests now reach the Worker before static asset delivery, so insecure links consistently redirect to HTTPS.
+- Available updates now appear as a blue `Update` button after you open Quota Monitor, without changing the macOS menu-bar title or repeatedly prompting after Later.
+
+### Changed
+
+- **Adaptive History pagination.** History loads in indexed seven-day pages, automatically adds at most three older pages when the initial sidebar cannot fill its viewport, then requires one deliberate downward gesture for each subsequent page.
+- **Calmer persistent update entry.** Choosing Later keeps the same version quiet during automatic checks while its blue `Update` button remains available across relaunches in the menu popover, Dashboard toolbar, and Advanced settings.
+
+### Fixed
+
+- **Worker-owned HTTP redirects cover static pages.** Every website route now runs through the Worker before static asset delivery, so insecure GET and HEAD requests receive the same exact HTTPS 301 contract as API and maintainer routes.
+
+## [0.2.41] — 2026-07-16
+
+#### Summary
+
 - Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
-- Update reminders now survive relaunches, remain visible in the menu bar, and return gently instead of disappearing after Later.
+- Available updates now survive relaunches as a blue `Update` button inside Quota Monitor, without adding a marker to the macOS menu-bar title or repeatedly prompting after Later.
 - Update releases are now checked end to end so a published download cannot quietly disappear from the in-app updater.
+- Anonymous version statistics now run automatically without a settings switch or permission dialog, helping show which app versions remain active without sending account or usage data.
 
 ### Added
 
-- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile, and its download button serves the latest notarized DMG directly from the site without retaining routine visitor request logs or reusing a stale browser-cached installer.
+- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile; its download button serves the latest notarized DMG directly from the site, adds no application-level visitor analytics or custom request logging, and never reuses a stale browser-cached installer.
+- **Anonymous version statistics.** Eligible Developer ID builds automatically send only the UTC day, app version, brand, distribution channel, schema version, and a rotating daily token so maintainers can see anonymous active-install version distribution; no account, usage data, device ID, or stable identifier is included, and the bilingual privacy policy explains retention and network-boundary handling.
 
 ### Changed
 
 - **Brand-aware update-feed migration.** Existing custom and CodexMonitor feeds now stay untouched while only known incorrect QuotaMonitor feeds are repaired.
-- **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, and fail when a feed exceeds 100 KB.
-- **Gentle reminder cadence.** Choosing Later schedules the first reminder for exactly 24 hours later, followed by another reminder every 3 days until the update is resolved.
-- **Quiet menu-bar reminders.** A due reminder emphasizes the native menu-bar status item for eight seconds without stealing focus, opening a window, or requesting notification permission.
+- **Daily release-feed monitoring.** Read-only daily checks now cover both brands, compare each latest release with its installed-client Appcast, verify the newest DMG's URL, size, signature-metadata format, and byte-range availability, and fail when a feed exceeds 100 KB.
+- **Calm update follow-up.** Choosing Later keeps the same version quiet during automatic checks while a blue `Update` button remains visible in the menu popover, Dashboard toolbar, and Advanced settings until the update is resolved; the native menu-bar title stays unchanged.
 - **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
 
 ### Fixed
 
-- **Faster History loading.** History now queries seven calendar days at a time and loads the previous week only after a downward scroll, avoiding a full-history scan whenever the page opens.
 - **Update publication cannot silently skip the Appcast.** A release now hard-fails when publishing credentials are missing, checks the completed notarized DMG against its sidecar checksum, Sparkle-signs it before uploading the same unchanged file, and fails if its bytes change or Appcast publication cannot proceed.
 - **Legacy CodexMonitor feed size.** The oversized installed-client feed was surgically reduced without changing versions, download URLs, lengths, signatures, or the legacy URL existing clients use.
-- **Pending updates no longer disappear.** The pending version and menu-bar marker survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
+- **Pending updates no longer disappear.** The pending version and blue in-app `Update` entry survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
 
 ## [0.2.40] — 2026-07-15
 
