@@ -85,6 +85,15 @@ struct MainWindowLayoutTests {
         #expect(chinese == "Update")
     }
 
+    @Test("Advanced settings hide internal data-management sections")
+    func advancedSettingsHideInternalDataManagementSections() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Settings/AdvancedSettingsTab.swift")
+
+        #expect(!source.contains("Section(L10n.sectionDatabase)"))
+        #expect(!source.contains("Section(L10n.sectionExport)"))
+        #expect(!source.contains("Section(L10n.settingsTabPricing)"))
+    }
+
     @Test("Dashboard overview keeps the original single-stack section order")
     func dashboardOverviewKeepsOriginalSingleStackSectionOrder() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
