@@ -229,4 +229,46 @@ struct BillingBlocksTests {
         #expect((comps.nanosecond ?? 0) == 0)
         #expect(block.startTime <= when)
     }
+
+    @Test("History covering indexes preserve billing entry order")
+    func billingEntryQueryPlanAvoidsTimestampIDSort() throws {
+        let manager = try makeDatabase()
+        let now = Date()
+        try seedEvent(
+            in: manager,
+            sessionId: "plan",
+            at: now.addingTimeInterval(-60))
+
+        for provider in [ProviderFilter.all, .claude] {
+            try manager.pool.read { db in
+                var statements: [String] = []
+                db.trace { event in
+                    guard case .statement(let statement) = event else { return }
+                    statements.append(statement.expandedSQL)
+                }
+                _ = try BillingBlocks.loadSnapshot(
+                    db: db,
+                    provider: provider,
+                    now: now)
+                db.trace(options: [])
+
+                let entrySQL = try #require(statements.first {
+                    $0.contains("ORDER BY timestamp ASC, id ASC")
+                })
+                let plan = try Row.fetchAll(
+                    db,
+                    sql: "EXPLAIN QUERY PLAN \(entrySQL)"
+                ).map { $0["detail"] as String }
+
+                #expect(plan.contains {
+                    $0.contains("SEARCH usage_events USING INDEX")
+                })
+                #expect(plan.allSatisfy { !$0.contains("TEMP B-TREE") })
+                let expectedIndex = provider == .all
+                    ? "idx_usage_events_history_cover"
+                    : "idx_usage_events_provider_history_cover"
+                #expect(plan.contains { $0.contains(expectedIndex) })
+            }
+        }
+    }
 }

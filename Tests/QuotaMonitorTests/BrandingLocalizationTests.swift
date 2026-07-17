@@ -65,4 +65,28 @@ struct BrandingLocalizationTests {
         #expect(en.2 == "No active cards")
     }
 
+    @Test("History pagination copy is bilingual")
+    func historyPaginationCopy() {
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            (L10n.historyNoUsageLatestSevenDays,
+             L10n.historyLoadingOlder,
+             L10n.historyLoadOlderFailed,
+             L10n.retry)
+        }
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (L10n.historyNoUsageLatestSevenDays,
+             L10n.historyLoadingOlder,
+             L10n.historyLoadOlderFailed,
+             L10n.retry)
+        }
+        #expect(en.0 == "No usage in the latest 7 days")
+        #expect(en.1 == "Loading older history")
+        #expect(en.2 == "Couldn't load older history.")
+        #expect(en.3 == "Retry")
+        #expect(zh.0 == "最近 7 天暂无使用记录")
+        #expect(zh.1 == "正在加载更早的历史记录")
+        #expect(zh.2 == "加载更早的历史记录失败。")
+        #expect(zh.3 == "重试")
+    }
+
 }

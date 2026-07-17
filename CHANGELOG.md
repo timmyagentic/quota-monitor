@@ -32,11 +32,13 @@ window copy.
 
 #### Summary
 
+- History now opens quickly with the latest week, automatically fills larger windows with a bounded number of older weeks, and continues loading on deliberate downward scrolls.
 - Website HTTP requests now reach the Worker before static asset delivery, so insecure links consistently redirect to HTTPS.
 - Available updates now appear as a blue `Update` button after you open Quota Monitor, without changing the macOS menu-bar title or repeatedly prompting after Later.
 
 ### Changed
 
+- **Adaptive History pagination.** History loads in indexed seven-day pages, automatically adds at most three older pages when the initial sidebar cannot fill its viewport, then requires one deliberate downward gesture for each subsequent page.
 - **Calmer persistent update entry.** Choosing Later keeps the same version quiet during automatic checks while its blue `Update` button remains available across relaunches in the menu popover, Dashboard toolbar, and Advanced settings.
 
 ### Fixed

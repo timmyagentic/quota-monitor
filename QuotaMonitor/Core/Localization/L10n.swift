@@ -657,6 +657,16 @@ enum L10n {
     static var historyTitle: String { t(en: "History", zh: "历史") }
     static var daysHeader: String { t(en: "Days", zh: "天数") }
     static var noUsageHistory: String { t(en: "No usage history yet", zh: "暂无使用历史") }
+    static var historyNoUsageLatestSevenDays: String {
+        t(en: "No usage in the latest 7 days", zh: "最近 7 天暂无使用记录")
+    }
+    static var historyLoadingOlder: String {
+        t(en: "Loading older history", zh: "正在加载更早的历史记录")
+    }
+    static var historyLoadOlderFailed: String {
+        t(en: "Couldn't load older history.", zh: "加载更早的历史记录失败。")
+    }
+    static var retry: String { t(en: "Retry", zh: "重试") }
     static var selectDayPrompt: String {
         t(en: "Select a day to inspect its calls",
           zh: "选择一天以查看其调用")

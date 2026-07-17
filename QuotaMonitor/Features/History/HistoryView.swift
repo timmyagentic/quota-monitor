@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 // Day-by-day call history. Sidebar lists every local-calendar day that had
@@ -7,14 +8,20 @@ import SwiftUI
 struct HistoryView: View {
     @Environment(AppEnvironment.self) private var env
 
-    @State private var days: [DaySummary] = []
+    @State private var pagination = HistoryPaginationState()
     @State private var selection: DaySummary.ID?
     @State private var detail: DayDetail?
-    @State private var loadingList = false
     @State private var loadingDetail = false
-    @State private var errorMessage: String?
+    @State private var detailErrorMessage: String?
+    @State private var historyCalendar = Calendar.current
+    @State private var calendarRevision = 0
+    @State private var detailRequestID: UUID?
 
     var body: some View {
+        let pageRequest = pagination.inFlightRequest
+        let selectedDay = selection
+        let selectedCalendar = historyCalendar
+
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
@@ -24,9 +31,50 @@ struct HistoryView: View {
         // Allow click-and-drag selection on day labels, USD figures,
         // model names — handy for pasting a number elsewhere.
         .textSelection(.enabled)
-        .task { await reloadList() }
-        .onChange(of: selection) { _, newValue in
-            Task { await loadDetail(for: newValue) }
+        .task(id: calendarRevision) {
+            historyCalendar = Calendar.current
+            selection = nil
+            detail = nil
+            detailErrorMessage = nil
+            detailRequestID = nil
+            loadingDetail = false
+            pagination.reset()
+        }
+        .task(id: pageRequest?.id) {
+            guard let request = pageRequest else { return }
+            do {
+                try Task.checkCancellation()
+                let page = try await env.fetchHistoryPage(
+                    before: request.cursor,
+                    now: Date(),
+                    calendar: selectedCalendar,
+                    trigger: request.trigger)
+                try Task.checkCancellation()
+                guard pagination.complete(page, for: request) else { return }
+                if request.trigger == .initial {
+                    let selectedStillExists = selection.map { selectedID in
+                        pagination.days.contains { $0.id == selectedID }
+                    } ?? false
+                    if !selectedStillExists {
+                        selection = pagination.days.first?.id
+                    }
+                }
+            } catch is CancellationError {
+                pagination.cancel(request)
+            } catch {
+                pagination.fail(String(describing: error), for: request)
+            }
+        }
+        .task(id: selectedDay) {
+            await loadDetail(for: selectedDay, calendar: selectedCalendar)
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: Notification.Name.NSSystemTimeZoneDidChange)) { _ in
+                calendarRevision &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(
+            for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+                calendarRevision &+= 1
         }
     }
 
@@ -37,27 +85,88 @@ struct HistoryView: View {
             HStack {
                 Text(L10n.daysHeader).font(.headline)
                 Spacer()
-                Text("\(days.count)")
+                Text("\(pagination.days.count)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             .padding(10)
             Divider()
-            if loadingList && days.isEmpty {
+            if pagination.isLoadingInitial && pagination.days.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorMessage {
-                Text(err).font(.caption).foregroundStyle(.red).padding()
-            } else if days.isEmpty {
+            } else if let message = initialErrorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if pagination.days.isEmpty && !pagination.hasMore {
                 Text(L10n.noUsageHistory)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(days, selection: $selection) { day in
-                    DayRowView(day: day).tag(day.id)
+                List(selection: $selection) {
+                    if pagination.days.isEmpty {
+                        Text(L10n.historyNoUsageLatestSevenDays)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowSeparator(.hidden)
+                    }
+                    ForEach(pagination.days) { day in
+                        DayRowView(day: day).tag(day.id)
+                    }
+                    if pagination.hasMore {
+                        paginationFooter
+                    }
                 }
                 .listStyle(.inset)
             }
         }
+    }
+
+    private var initialErrorMessage: String? {
+        guard let failure = pagination.initialFailure,
+              case .query(let message) = failure else { return nil }
+        return message
+    }
+
+    private var paginationErrorMessage: String? {
+        guard pagination.paginationFailure != nil else { return nil }
+        return L10n.historyLoadOlderFailed
+    }
+
+    private var paginationFooter: some View {
+        HStack(spacing: 8) {
+            if pagination.isLoadingNextPage {
+                ProgressView().controlSize(.small)
+                Text(L10n.historyLoadingOlder)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let message = paginationErrorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                Button(L10n.retry) {
+                    _ = pagination.beginNextPage(trigger: .retry)
+                }
+                .controlSize(.small)
+            } else {
+                Color.clear.frame(height: 1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 1)
+        .listRowSeparator(.hidden)
+        .background(
+            HistoryPaginationScrollBridge(
+                isEnabled: pagination.hasMore && pagination.paginationFailure == nil,
+                isLoading: pagination.isLoadingNextPage,
+                canFillViewport: pagination.canFillViewport,
+                onViewportFill: {
+                    _ = pagination.beginNextPage(trigger: .viewportFill)
+                },
+                onLoadMore: {
+                    _ = pagination.beginNextPage(trigger: .scroll)
+                })
+        )
     }
 
     // MARK: - Detail pane
@@ -67,7 +176,13 @@ struct HistoryView: View {
         if loadingDetail {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail {
-            DayDetailView(detail: detail)
+            DayDetailView(detail: detail, calendar: historyCalendar)
+        } else if let detailErrorMessage {
+            Text(detailErrorMessage)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "calendar")
@@ -82,33 +197,42 @@ struct HistoryView: View {
 
     // MARK: - Loading
 
-    private func reloadList() async {
-        loadingList = true
-        defer { loadingList = false }
-        do {
-            let result = try await env.fetchDaysList()
-            days = result
-            // Auto-select the most recent day on first load.
-            if selection == nil, let first = result.first {
-                selection = first.id
-            } else if let sel = selection,
-                      !result.contains(where: { $0.id == sel }) {
-                selection = result.first?.id
-                detail = nil
-            }
-        } catch {
-            errorMessage = String(describing: error)
+    private func loadDetail(
+        for id: DaySummary.ID?,
+        calendar: Calendar
+    ) async {
+        guard !Task.isCancelled else { return }
+        guard let id else {
+            detailRequestID = nil
+            loadingDetail = false
+            detail = nil
+            detailErrorMessage = nil
+            return
         }
-    }
-
-    private func loadDetail(for id: DaySummary.ID?) async {
-        guard let id else { detail = nil; return }
+        let requestID = UUID()
+        detailRequestID = requestID
         loadingDetail = true
-        defer { loadingDetail = false }
         do {
-            detail = try await env.fetchDayDetail(day: id)
+            let loaded = try await env.fetchDayDetail(
+                day: id,
+                calendar: calendar)
+            try Task.checkCancellation()
+            guard detailRequestID == requestID else { return }
+            detail = loaded
+            detailErrorMessage = nil
+            loadingDetail = false
+            detailRequestID = nil
+        } catch is CancellationError {
+            guard detailRequestID == requestID else { return }
+            loadingDetail = false
+            detailRequestID = nil
         } catch {
-            errorMessage = String(describing: error)
+            guard !Task.isCancelled else { return }
+            guard detailRequestID == requestID else { return }
+            detail = nil
+            detailErrorMessage = String(describing: error)
+            loadingDetail = false
+            detailRequestID = nil
         }
     }
 }
@@ -147,6 +271,7 @@ private struct DayRowView: View {
 private struct DayDetailView: View {
     @Environment(SettingsStore.self) private var settings
     let detail: DayDetail
+    let calendar: Calendar
 
     var body: some View {
         ScrollView {
@@ -234,7 +359,10 @@ private struct DayDetailView: View {
             } else {
                 LazyVStack(spacing: 6) {
                     ForEach(detail.sessions) { session in
-                        ExpandableSessionRow(day: detail.summary.day, session: session)
+                        ExpandableSessionRow(
+                            day: detail.summary.day,
+                            session: session,
+                            calendar: calendar)
                     }
                 }
             }
@@ -249,6 +377,7 @@ private struct ExpandableSessionRow: View {
     @Environment(SettingsStore.self) private var settings
     let day: String
     let session: SessionRow
+    let calendar: Calendar
 
     @State private var expanded = false
     @State private var events: [SessionDetail.Event] = []
@@ -339,7 +468,9 @@ private struct ExpandableSessionRow: View {
         defer { loadingEvents = false }
         do {
             events = try await env.fetchSessionEventsOnDay(
-                sessionId: session.sessionId, day: day)
+                sessionId: session.sessionId,
+                day: day,
+                calendar: calendar)
         } catch {
             errorMessage = String(describing: error)
         }
