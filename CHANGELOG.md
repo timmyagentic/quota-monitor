@@ -30,20 +30,35 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.42] — 2026-07-17
+
 #### Summary
 
 - History now opens quickly with the latest week, automatically fills larger windows with a bounded number of older weeks, and continues loading on deliberate downward scrolls.
-- Website HTTP requests now reach the Worker before static asset delivery, so insecure links consistently redirect to HTTPS.
-- Available updates now appear as a blue `Update` button after you open Quota Monitor, without changing the macOS menu-bar title or repeatedly prompting after Later.
+- A discovered update now stays available as a blue `Update` button across relaunches; choosing Later stays quiet, and the macOS menu-bar title remains unchanged.
+- Eligible builds send one minimal anonymous version check-in per day—never account or usage data, a device ID, or a stable identifier.
+- The new bilingual website shows rich 30-day examples, and both download paths now point to the same fully checked Mac installer.
+
+### Added
+
+- **Quota Monitor product website.** The new English and Simplified Chinese product tour uses rich synthetic 30-day Dashboard and Sessions examples on desktop and mobile; its download button serves the latest notarized DMG directly from the site, adds no application-level visitor analytics or custom request logging, and never reuses a stale browser-cached installer.
+- **Anonymous version statistics.** Eligible Developer ID builds automatically send only the UTC day, app version, brand, distribution channel, schema version, and a rotating daily token so maintainers can see anonymous active-install version distribution; no account, usage data, device ID, or stable identifier is included, and the bilingual privacy policy explains retention and network-boundary handling.
 
 ### Changed
 
 - **Adaptive History pagination.** History loads in indexed seven-day pages, automatically adds at most three older pages when the initial sidebar cannot fill its viewport, then requires one deliberate downward gesture for each subsequent page.
-- **Calmer persistent update entry.** Choosing Later keeps the same version quiet during automatic checks while its blue `Update` button remains available across relaunches in the menu popover, Dashboard toolbar, and Advanced settings.
+- **Fresh version after the withdrawn build.** Version 0.2.42 supersedes the withdrawn 0.2.41 build so any installation that received it can continue updating normally.
+- **Calm update follow-up.** Choosing Later keeps the same version quiet during automatic checks while a blue `Update` button remains visible in the menu popover, Dashboard toolbar, and Advanced settings until the update is resolved; the native menu-bar title stays unchanged.
+- **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
+- **Brand-aware update-feed migration.** Existing custom and CodexMonitor feeds stay untouched while only known incorrect QuotaMonitor feeds are repaired.
+- **Daily release-feed monitoring.** Read-only daily checks cover both brands, compare each latest release with its installed-client feed, verify the newest download and signature metadata, and fail when a feed grows beyond its reliability ceiling.
 
 ### Fixed
 
 - **Worker-owned HTTP redirects cover static pages.** Every website route now runs through the Worker before static asset delivery, so insecure GET and HEAD requests receive the same exact HTTPS 301 contract as API and maintainer routes.
+- **Pending updates no longer disappear.** The pending version and blue in-app `Update` entry survive relaunches, then clear after installation or current-version validation, an explicit Skip, or a definitive no-update result.
+- **Update publication cannot silently skip the updater feed.** A release now fails when publishing prerequisites are missing, verifies the completed installer against its checksum before and after update signing, and refuses to publish a download that cannot also become available to installed clients.
+- **Legacy CodexMonitor feed size.** The oversized installed-client feed was reduced without changing versions, download URLs, lengths, signatures, or the legacy URL existing clients use.
 
 ## [0.2.41] — 2026-07-16
 
