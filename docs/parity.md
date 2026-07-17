@@ -17,7 +17,7 @@ Snapshot of where the Swift rewrite stands relative to the original Tauri/Rust +
 | Live rate-limit polling (background) | ✅ | ✅ `RateLimitPoller` actor, configurable interval | parity |
 | Pricing catalog & API-equivalent value | ✅ | ✅ same formula, 13 model entries (incl. `gpt-5` legacy fallback) | parity |
 | Pricing seed updates idempotent on launch | ✅ | ✅ `INSERT … ON CONFLICT DO UPDATE` | parity |
-| Pricing editor (per-model) | ✅ | 🚫 **removed** — Pricing tab folded into Advanced in 0.2.8 with Sync + Restore Defaults only. A read-only "View Catalog" sheet (added 0.2.14) shows the 5-column rate table for inspection; bulk fixes go through LiteLLM Sync or by editing the sqlite catalog directly. | removed |
+| Pricing editor (per-model) | ✅ | 🚫 **removed** — pricing storage and refresh logic remain internal, but Settings no longer exposes Sync, Restore Defaults, or the read-only catalog. | removed |
 | Backfill recompute after pricing edit | ✅ | ✅ single UPDATE … FROM subquery | parity |
 | 14-day spend bar chart | ✅ | 🚫 **removed** in dashboard redesign — replaced by Trends section (7d / 30d toggle with prior-period delta). See `dashboard-redesign.md`. | removed |
 | 12-month spend bar chart + MoM delta | ✅ ccusage `monthly` report | 🚫 **removed** in dashboard redesign — month-level rollup did not earn its space alongside Trends + Composition. | removed |
@@ -28,10 +28,10 @@ Snapshot of where the Swift rewrite stands relative to the original Tauri/Rust +
 | Sessions list + drilldown | ✅ | ✅ `NavigationSplitView`, search, sort | parity |
 | Per-session timeline (token-level) | ✅ | ✅ event chips: in / cache / out / reasoning | parity |
 | Per-session model breakdown | ✅ | ✅ when >1 model used in a session | parity |
-| Settings: poll interval, language, tracked tools, menu-bar display, pricing sync, diagnostics | ✅ pacer exposes codex binary + CODEX_HOME + threshold inline | ✅ `Settings` scene split into General + Advanced; **path overrides intentionally removed** in 0.2.14 (env-var + well-known-location autoprobe handles all path resolution); threshold notifications removed in 0.2.10; Advanced includes opt-in Developer Mode file diagnostics. | partial (path overrides absent by design) |
-| CSV export of usage events | ✅ | ✅ Settings → Advanced → Export → Export usage_events.csv (NSSavePanel, streamed) | parity |
+| Settings: poll interval, language, tracked tools, menu-bar display, diagnostics | ✅ pacer exposes codex binary + CODEX_HOME + threshold inline | ✅ `Settings` scene split into General + Advanced; **path overrides intentionally removed** in 0.2.14 (env-var + well-known-location autoprobe handles all path resolution); threshold notifications removed in 0.2.10; Advanced includes opt-in Developer Mode file diagnostics. | partial (path overrides absent by design) |
+| CSV export of usage events | ✅ | 🚫 **removed from UI** — the streaming export implementation remains internal, but Settings no longer exposes an export action. | removed |
 | Threshold notifications (≥85%) | ✅ | 🚫 **removed** in 0.2.10 — only Codex was covered (Claude 5h/7d have different semantics and were never wired in), and the menu-bar percentage is glanceable enough on its own. | removed |
-| Open DB in Finder | ✅ | ✅ Settings → Advanced → Database → Reveal in Finder | parity |
+| Open DB in Finder | ✅ | 🚫 **removed from UI** — the database remains local, but Settings no longer exposes its path or a Finder action. | removed |
 | OSLog / structured logging | ✅ Rust `tracing` | ✅ `OSLog` plus opt-in persistent Developer Mode log. Structured events use normal info/warn/error levels and categories include app/appserver/importer/poller/pricing/query/scan/settings/storage/ui/uninstall/export. | parity+ |
 | First-launch onboarding wizard | ✅ | ✅ language picker on first launch (English / 简体中文); other paths covered by auto-discovery + clear empty states | parity |
 | Notarized DMG distribution | ✅ | ✅ Developer ID signs/notarizes the `.app` and DMG; Sparkle still signs the exact published DMG for installed-client updates | parity |
