@@ -34,10 +34,9 @@ window copy.
 
 #### Summary
 
-- Quota Monitor now has a bilingual website where you can explore rich synthetic 30-day Dashboard and Sessions examples and download the latest Mac installer in one click.
-- Available updates now survive relaunches as a blue `Update` button inside Quota Monitor, without changing the macOS menu-bar title or repeatedly prompting after Later.
-- Anonymous version statistics now run automatically without a settings switch or permission dialog, helping show which app versions remain active without sending account or usage data.
-- In-app updates are more dependable because every published installer is checked end to end before it becomes available through the updater.
+- A discovered update now stays available as a blue `Update` button across relaunches; choosing Later stays quiet, and the macOS menu-bar title remains unchanged.
+- Eligible builds send one minimal anonymous version check-in per day—never account or usage data, a device ID, or a stable identifier.
+- The new bilingual website shows rich 30-day examples, and both download paths now point to the same fully checked Mac installer.
 
 ### Added
 
@@ -46,6 +45,7 @@ window copy.
 
 ### Changed
 
+- **Fresh version after the withdrawn build.** Version 0.2.42 supersedes the withdrawn 0.2.41 build so any installation that received it can continue updating normally.
 - **Calm update follow-up.** Choosing Later keeps the same version quiet during automatic checks while a blue `Update` button remains visible in the menu popover, Dashboard toolbar, and Advanced settings until the update is resolved; the native menu-bar title stays unchanged.
 - **Clear update choices.** Automatic checks for the same version stay quiet while snoozed, while Check Now still presents the update; Skip is offered only before download, and a ready update offers Later or Install & Relaunch.
 - **Brand-aware update-feed migration.** Existing custom and CodexMonitor feeds stay untouched while only known incorrect QuotaMonitor feeds are repaired.

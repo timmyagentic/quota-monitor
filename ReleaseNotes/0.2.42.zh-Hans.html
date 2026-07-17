@@ -117,6 +117,10 @@
   min-height: 70px;
   padding: 8px 9px;
 }
+.qm-release-highlight:first-child {
+  grid-column: 1 / -1;
+  min-height: 58px;
+}
 .qm-release-highlight::before {
   content: "";
   position: absolute;
@@ -190,9 +194,9 @@
 <section class="qm-release-page" aria-label="Release highlights">
 <div class="qm-release-hero release-animate" style="--i:0">
 <div class="qm-release-hero-content">
-<p class="qm-release-eyebrow">更新亮点</p>
-<h2 class="qm-release-title">这次更新带来了什么</h2>
-<p class="qm-release-subtitle">下面是这次版本里最值得留意的改进。</p>
+<p class="qm-release-eyebrow">0.2.42 正式版</p>
+<h2 class="qm-release-title">更安静，也更可靠</h2>
+<p class="qm-release-subtitle">0.2.41 已撤回；这个版本汇总了自 0.2.40 以来重新确认过的改进。</p>
 <div class="qm-release-rhythm" aria-hidden="true">
 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
 </div>
@@ -201,19 +205,15 @@
 <div class="qm-release-highlights">
 <article class="qm-release-highlight release-animate" style="--i:1">
 <span class="qm-release-number">1</span>
-<p>Quota Monitor 现在有了中英双语官网，可以通过内容丰富的 30 天合成 Dashboard 与 Sessions 示例了解应用，并一键下载最新的 Mac 安装包。</p>
+<p>发现更新后，蓝色 <code>Update</code> 入口会跨重启保留；选择“稍后”不会反复弹窗，macOS 菜单栏文字也保持不变。</p>
 </article>
 <article class="qm-release-highlight release-animate" style="--i:2">
 <span class="qm-release-number">2</span>
-<p>可用更新现在会以应用内蓝色 <code>Update</code> 按钮的形式跨重启保留，不会改动 macOS 菜单栏文字，也不会在选择“稍后”后反复弹窗。</p>
+<p>符合条件的版本每天只发送一次最小化匿名版本记录，不包含账号、用量数据、设备 ID 或长期标识。</p>
 </article>
 <article class="qm-release-highlight release-animate" style="--i:3">
 <span class="qm-release-number">3</span>
-<p>匿名版本统计现在会自动运行，不再提供设置开关或说明弹窗，并且仍不会发送账号或用量数据。</p>
-</article>
-<article class="qm-release-highlight release-animate" style="--i:4">
-<span class="qm-release-number">4</span>
-<p>每个已发布安装包现在都会经过端到端检查，确认可以通过应用内更新获取后才会提供给用户，因此更新更加可靠。</p>
+<p>新的中英双语官网展示 30 天合成示例；官网与应用内更新都会提供同一份经过完整检查的 Mac 安装包。</p>
 </article>
 </div>
 </section>
