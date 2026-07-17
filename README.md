@@ -47,10 +47,10 @@ shasum -c QuotaMonitor-<version>.dmg.sha256
 - **Settings** — two tabs:
   - **General** — language, Dock-icon visibility, Codex service-tier estimates,
     menu-bar display window, and tracked tools toggle.
-  - **Advanced** — Codex poll interval, Claude Keychain policy + optional
-    credentials mirror, database location, CSV export, pricing catalog
-    (Sync from LiteLLM / Restore Defaults / View Catalog), Developer Mode
-    diagnostics, in-app uninstaller.
+  - **Advanced** — update controls, Codex poll interval, Claude credential
+    recovery + optional credentials mirror, Developer Mode diagnostics, and
+    the in-app uninstaller. Internal database, CSV export, and pricing tools
+    remain implemented but are intentionally not exposed in Settings.
 
 Languages: English (default) and 简体中文, hot-swappable.
 

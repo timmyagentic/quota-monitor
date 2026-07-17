@@ -138,23 +138,21 @@ General 适合普通用户日常调整：
 
 截图使用隔离 Local QA 预览，因此开关被禁用并明确标注不会发送数据。正式 Developer ID 版本中可以自行开启或关闭；点击 `Privacy details` 可查看完整的中英双语隐私说明。
 
-![Settings Advanced](assets/product-manual/508accc/settings-advanced.png)
+![Settings Advanced](assets/product-manual/b87bc89/settings-advanced.png)
 
-Advanced 适合需要排查或维护数据的用户：
+Advanced 适合需要调整更新、轮询或诊断选项的用户：
 
 - `Update`：仅在有尚未处理的新版本时显示，点击后继续更新流程。
 - `Check for updates automatically`：控制是否每天自动检查新版本。
 - `Check Now`：立即检查更新。检查更新会访问更新源。
-- `Live quotas`：选择 Claude Code live quota 的凭据读取方式。
+- `Interval`：调整从本地 Codex 获取限额信息的间隔。
+- Claude 凭据恢复提示：只有此前保存的“仅文件”模式阻止自动凭据刷新时才会显示恢复按钮。
 - `Cache Claude credentials to disk`：将 Keychain 中读到的 Claude 凭据缓存到文件，减少重复提示；开启前应理解安全影响。
-- `Database / Reveal in Finder`：查看本地数据库位置，或在 Finder 中打开。
-- `Export usage events as CSV...`：导出用量事件到 CSV 文件。
-- `Pricing / Sync from LiteLLM`：从 LiteLLM 同步模型价格。
-- `View Catalog...`：查看当前价格目录。
-- `Restore Defaults`：恢复内置价格。
 - `Developer Mode`：写入本地诊断日志，主要用于排查问题。
 - `Reveal Log File`：在 Finder 中打开诊断日志位置。
 - `Uninstall Quota Monitor...`：删除 Quota Monitor 的数据库、设置和缓存，并把 App 移到废纸篓。`~/.codex` 和 `~/.claude` 不会被删除。点击后会出现确认弹窗。
+
+数据库位置、CSV 导出和价格目录管理属于内部维护能力，不再显示在 Advanced 设置中；这次界面精简不会改变应用日常的数据读取、汇总和计价行为。
 
 ## 菜单栏图标帮助
 
@@ -198,6 +196,18 @@ Advanced 适合需要排查或维护数据的用户：
 5. 不把实现细节写进用户说明；实现、命令和 QA 证据只放在维护记录里。
 
 ## 更新记录
+
+### 2026-07-17 · 0.2.42（待验收） · b87bc89
+
+Advanced 设置不再显示数据库位置、CSV 导出和价格目录管理入口；底层数据读取、汇总和计价行为保持不变。
+
+维护记录：
+
+- 使用 `./qa/prepare-computer-use-real-data.sh` 启动隔离 QA App；QA artifact 为 `.build/qa-artifacts/20260717T153359Z-computer-use-real-data`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`。
+- 使用 Computer Use 检查 Advanced 设置的完整可访问性树，确认只显示更新、Codex CLI、Claude Code、开发者模式和卸载区块。
+- `./qa/check-artifacts.sh .build/qa-artifacts/20260717T153359Z-computer-use-real-data` 通过，保护报告确认真实数据库在 QA 前后大小与 SHA-256 均未变化。
+- 新截图位于 `docs/assets/product-manual/b87bc89/settings-advanced.png`，仅包含隔离 QA App 的 Advanced 设置窗口。
+- 文档更新后再次运行 `./qa/run-static.sh`，159 个工具测试和 678 个 Swift 测试通过。
 
 ### 2026-07-16 · 0.2.41（待验收） · 4ede5cd
 

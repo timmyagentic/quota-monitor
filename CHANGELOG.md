@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
+
+### Removed
+
+- **Internal data-management settings.** The Database, Export, and Pricing sections no longer appear in Advanced settings; underlying data and pricing behavior is unchanged.
+
 ## [0.2.42] — 2026-07-17
 
 #### Summary

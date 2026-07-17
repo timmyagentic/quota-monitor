@@ -7,9 +7,6 @@ import UniformTypeIdentifiers
 ///
 ///   - Codex CLI: rate-limit poll interval
 ///   - Claude Code: credential refresh status + prompt-reduction toggle
-///   - Database: location + reveal in Finder
-///   - Export: usage_events.csv dump
-///   - Pricing: LiteLLM sync + Restore Defaults + view catalog
 ///
 /// Path resolution (codex binary, CODEX_HOME, Claude home) is the
 /// app's problem to solve — we autoprobe env vars and well-known
@@ -165,62 +162,6 @@ struct AdvancedSettingsTab: View {
                             historyGrantVersion += 1
                         }
                     }
-                }
-            }
-
-            Section(L10n.sectionDatabase) {
-                LabeledContent(L10n.location) {
-                    Text(DatabaseManager.defaultURL().path)
-                        .font(.caption.monospaced())
-                        .textSelection(.enabled)
-                        .lineLimit(2)
-                        .truncationMode(.middle)
-                }
-                Button(L10n.revealInFinder) {
-                    NSWorkspace.shared.activateFileViewerSelecting([DatabaseManager.defaultURL()])
-                }
-            }
-
-            Section(L10n.sectionExport) {
-                Button(L10n.exportUsageEventsCsv) {
-                    Task { await exportCSV() }
-                }
-                .disabled(exporting)
-                if let exportStatus {
-                    Text(exportStatus).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section(L10n.settingsTabPricing) {
-                Text(lastPricingRefreshedLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Button(L10n.pricingFetchLiteLLM) {
-                        Task { await refreshPricingFromLiteLLM() }
-                    }
-                    .disabled(restoringPricing || refreshingPricing)
-                    if refreshingPricing { ProgressView().controlSize(.small) }
-                    Button(L10n.pricingViewCatalog) {
-                        showingPricingSheet = true
-                    }
-                    .disabled(pricingRows.isEmpty)
-                    Spacer()
-                    Button(L10n.pricingRestoreDefaults) {
-                        Task { await restorePricingDefaults() }
-                    }
-                    .disabled(restoringPricing || refreshingPricing)
-                }
-                if let pricingStatusMessage {
-                    Text(pricingStatusMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                } else if let pricingErrorMessage {
-                    Text(pricingErrorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
                 }
             }
 
