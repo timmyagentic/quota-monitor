@@ -47,6 +47,7 @@ final result: passed
 - Shared implementation: `QuotaMonitor/Features/Shared/PersistentUpdateBadge.swift`.
 - Comparison image: `docs/assets/pr/update-download-icon/reference-vs-implementation.png` (reference on the left, implementation on the right).
 - In-context image: `docs/assets/pr/update-download-icon/dashboard-toolbar.png`.
+- Complete three-surface board: `docs/assets/pr/update-download-icon/three-entry-comparison.png`, covering the Dashboard toolbar, menu-bar popover, and Advanced settings entry in one shareable image.
 
 ## Viewport and state
 
