@@ -36,3 +36,45 @@ The in-app Browser's stitched full-page screenshot repeated the first viewport, 
 - Console warning/error checks were empty during desktop, mobile, language, anchor, 404, and download validation.
 
 final result: passed
+
+---
+
+# Persistent Update Download Icon Design QA
+
+## Source and target
+
+- Source image: the user-provided reference preserved on the left side of `docs/assets/pr/update-download-icon/reference-vs-implementation.png`.
+- Shared implementation: `QuotaMonitor/Features/Shared/PersistentUpdateBadge.swift`.
+- Comparison image: `docs/assets/pr/update-download-icon/reference-vs-implementation.png` (reference on the left, implementation on the right).
+- In-context image: `docs/assets/pr/update-download-icon/dashboard-toolbar.png`.
+- Complete three-surface board: `docs/assets/pr/update-download-icon/three-entry-comparison.png`, covering the Dashboard toolbar, menu-bar popover, and Advanced settings entry in one shareable image.
+
+## Viewport and state
+
+- macOS light appearance on a Retina display at 2x capture scale.
+- Simplified Chinese Local QA session with a copied real-data database and copied user preferences.
+- Pending version `0.2.99` injected only into the isolated QA defaults suite so the persistent entry rendered without contacting Sparkle.
+- Exact app target: `/Volumes/SamsungDisk/Code/.worktrees/quota-monitor-update-download-icon/.build/QuotaMonitor.app`.
+
+## Comparison evidence
+
+- The source circle measures 40 px across; the implementation circle also measures 40 px, corresponding to 20 pt at the captured scale.
+- Both use the sampled `#339CFF` fill, a white download-to-container glyph, and no border or shadow on the circle.
+- The implementation uses the native SF Symbol `square.and.arrow.down`, the closest available library icon to the supplied tray-and-arrow silhouette.
+- The first implementation pass measured 44 px and was reduced to 40 px before final comparison.
+
+## Fidelity surfaces
+
+- Dashboard toolbar: passed; the icon is compact, vertically centered, and leaves the adjacent Reload and Settings actions unchanged.
+- Menu-bar popover header: passed; the icon is aligned opposite the product title without changing the native menu-bar text.
+- Advanced settings update row: passed; the version copy remains readable and the icon stays aligned at the trailing edge.
+- Interaction contract: passed by source inspection and tests; the existing install action, contextual help, and accessibility label remain attached to the icon-only button. The QA boundary prohibited activating the updater, so the button was not clicked.
+
+## Evidence files
+
+- `.build/qa-artifacts/update-download-icon/dashboard-update-icon-final.png`
+- `.build/qa-artifacts/update-download-icon/menu-popover-update-icon-active.png`
+- `.build/qa-artifacts/update-download-icon/settings-update-icon.png`
+- `.build/qa-artifacts/update-download-icon/reference-vs-implementation-final.png`
+
+final result: passed

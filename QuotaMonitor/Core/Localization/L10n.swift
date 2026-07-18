@@ -724,8 +724,6 @@ enum L10n {
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
-    /// Product copy intentionally stays English in both app languages.
-    static var updateEntryTitle: String { t(en: "Update", zh: "Update") }
     static func updateBadgeTitle(_ version: String?) -> String {
         if let version, !version.isEmpty {
             return t(en: "Update to \(version)", zh: "更新到 \(version)")
