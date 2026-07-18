@@ -46,12 +46,38 @@ so three everyday questions take seconds to answer:
 Use the menu-bar popover for a quick check, then open the full Dashboard when
 you want to investigate further.
 
+## Start in the menu bar
+
+<p align="center">
+  <a href="website/public/assets/menu-bar-popover.webp">
+    <img src="website/public/assets/menu-bar-popover.webp" width="386" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards">
+  </a>
+</p>
+
+Quota Monitor has two everyday layers before you ever open the Dashboard:
+
+- **Always-visible readout — `7d 4%`.** The status item shows only the quota
+  windows that each provider currently exposes, using either the percentage
+  consumed or the percentage remaining. If Codex currently exposes only a
+  weekly window, Quota Monitor shows only `7d 4%`; it does not splice in a
+  stale 5-hour value. Choose Codex, Claude Code, both side by side, or only the
+  gauge icon in Settings.
+- **Click-to-open popover.** Each provider block combines the selected 7- or
+  30-day token total, API-equivalent cost estimate, and session count with live
+  quota rows, reset countdowns, pace or reserve guidance, model-specific
+  limits, and Codex reset cards. Refresh in place, or continue to Dashboard and
+  Settings from the same panel.
+
+The dollar figures are API-list-price equivalents for the displayed tokens,
+not subscription charges or provider invoices. The screenshot above uses only
+isolated synthetic data.
+
 ## Highlights
 
 - **Live quota clarity** — see Codex and Claude Code quota windows, usage
   percentages, reset times, availability, and burn-rate projections.
-- **One-click menu-bar overview** — keep the most important 5-hour and 7-day
-  numbers visible without leaving your current workflow.
+- **One-click menu-bar overview** — keep each provider's currently available
+  5-hour or 7-day percentage visible without leaving your current workflow.
 - **Trends and forecasts** — compare recent periods, inspect activity over
   time, and understand which providers and models dominate usage.
 - **Session-level detail** — search and sort sessions, then inspect models,

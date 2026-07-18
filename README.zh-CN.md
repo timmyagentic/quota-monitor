@@ -44,12 +44,34 @@ Codex 与 Claude Code 的额度和用量信息分散在不同位置。Quota Moni
 
 平时从菜单栏弹窗快速查看，需要深入分析时再打开完整 Dashboard。
 
+## 先看菜单栏
+
+<p align="center">
+  <a href="website/public/assets/menu-bar-popover.webp">
+    <img src="website/public/assets/menu-bar-popover.webp" width="386" alt="使用合成数据展示 Codex 与 Claude Code 额度、重置时间、节奏提示、模型独立额度和主动重置卡的 Quota Monitor 菜单栏弹窗">
+  </a>
+</p>
+
+在打开 Dashboard 之前，Quota Monitor 已经提供两层日常入口：
+
+- **常驻紧凑读数 —— `7d 4%`。** 状态栏只显示 Provider 当前实际提供的
+  额度周期，并可按设置展示“已用”或“剩余”百分比。如果 Codex 此刻只有周
+  额度，Quota Monitor 就只显示 `7d 4%`，不会拼接旧的 5 小时数据。你可以在
+  设置中选择 Codex、Claude Code、两者并排，或只保留仪表图标。
+- **点击展开弹窗。** 每个 Provider 卡片会把选定的近 7/30 天 Token 总量、
+  API 等价费用估算和会话数，与实时额度、重置倒计时、节奏或余量提示、模型
+  独立额度及 Codex 主动重置卡放在一起。可以直接刷新，也可以从同一个面板
+  进入 Dashboard 和设置。
+
+其中金额是按所显示 Token 和 API 标价计算的等价估算，不代表订阅实际扣费或
+Provider 账单。上方截图完全使用隔离的合成数据。
+
 ## 核心能力
 
 - **实时额度一目了然** —— 查看 Codex 与 Claude Code 的额度周期、使用比例、
   重置时间、可用状态和消耗速度预测。
-- **一点即开的菜单栏概览** —— 无需离开当前工作流，就能随时查看最重要的
-  5 小时与 7 天数据。
+- **一点即开的菜单栏概览** —— 无需离开当前工作流，就能随时查看每个
+  Provider 当前实际提供的 5 小时或 7 天百分比。
 - **趋势与预测** —— 对比近期周期、观察活跃变化，并了解主要用量来自哪些
   Provider 和模型。
 - **会话级明细** —— 搜索、排序会话，并继续查看模型、事件、Token 分类、

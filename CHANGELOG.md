@@ -33,12 +33,14 @@ window copy.
 #### Summary
 
 - Available updates now use a compact blue circular download icon instead of the heavier text button.
+- The website and bilingual README now show the always-visible quota readout and the click-to-open Codex/Claude popover, with a privacy-safe synthetic example of reset timing, pace guidance, model limits, and reset cards.
 - The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
 - Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
 
 ### Changed
 
 - **Cleaner update entry.** The persistent update action in the menu popover, Dashboard toolbar, and Advanced settings now matches the compact blue download control used across the product.
+- **Menu-bar product tour.** The official website and both README languages now explain what a compact readout such as `7d 4%` means, why unavailable windows are omitted, and what the full two-provider popover contains.
 - **Bilingual project README.** Parallel English and Simplified Chinese README files now keep the product story, installation, privacy, screenshots, and contributor guidance aligned while linking directly to the official website and download.
 
 ### Removed
