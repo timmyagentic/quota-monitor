@@ -15,7 +15,7 @@ struct MainWindowLayoutTests {
         #expect(!source.contains("line.3.horizontal.decrease.circle"))
     }
 
-    @Test("Available updates use one blue Update text entry on visible app surfaces")
+    @Test("Available updates use one blue circular download entry on visible app surfaces")
     func persistentUpdateEntryIsExposedOnVisibleAppSurfaces() throws {
         let mainWindow = try Self.source(named: "QuotaMonitor/Features/MainWindow/MainWindowView.swift")
         let menuBar = try Self.source(named: "QuotaMonitor/Features/MenuBar/MenuBarContentView.swift")
@@ -28,10 +28,15 @@ struct MainWindowLayoutTests {
         #expect(menuBar.contains("PersistentUpdateBadge()"))
         #expect(settings.contains("PersistentUpdateBadge()"))
         #expect(badge.contains("updater.installAvailableUpdate()"))
-        #expect(badge.contains("Text(L10n.updateEntryTitle)"))
-        #expect(badge.contains(".buttonStyle(.borderedProminent)"))
-        #expect(badge.contains(".tint(.blue)"))
-        #expect(!badge.contains("systemImage:"))
+        #expect(badge.contains("Image(systemName: \"square.and.arrow.down\")"))
+        #expect(badge.contains(".font(.system(size: 10, weight: .medium))"))
+        #expect(badge.contains(".frame(width: 20, height: 20)"))
+        #expect(badge.contains(".clipShape(Circle())"))
+        #expect(badge.contains("red: 51.0 / 255.0"))
+        #expect(badge.contains("green: 156.0 / 255.0"))
+        #expect(badge.contains(".help(L10n.updateBadgeHelp(version))"))
+        #expect(badge.contains(".accessibilityLabel(L10n.updateBadgeTitle(version))"))
+        #expect(!badge.contains("L10n.updateEntryTitle"))
         #expect(!badge.contains(".orange"))
         #expect(windowManager.contains(".environment(updater)"))
         #expect(statusItemController.contains(".environment(updater)"))
@@ -70,19 +75,6 @@ struct MainWindowLayoutTests {
         #expect(fallback.contains("button.imagePosition = .imageOnly"))
         #expect(fallback.contains("NSAttributedString(string: \"\")"))
         #expect(!fallback.contains("update"))
-    }
-
-    @Test("The update entry remains the requested English word in both languages")
-    func localizedUpdateEntryUsesExactText() {
-        let english = LocalizationTestSupport.withLanguage(.english) {
-            L10n.updateEntryTitle
-        }
-        let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            L10n.updateEntryTitle
-        }
-
-        #expect(english == "Update")
-        #expect(chinese == "Update")
     }
 
     @Test("Advanced settings hide internal data-management sections")

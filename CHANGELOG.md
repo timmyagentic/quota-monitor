@@ -32,11 +32,13 @@ window copy.
 
 #### Summary
 
+- Available updates now use a compact blue circular download icon instead of the heavier text button.
 - The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
 - Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
 
 ### Changed
 
+- **Cleaner update entry.** The persistent update action in the menu popover, Dashboard toolbar, and Advanced settings now matches the compact blue download control used across the product.
 - **Bilingual project README.** Parallel English and Simplified Chinese README files now keep the product story, installation, privacy, screenshots, and contributor guidance aligned while linking directly to the official website and download.
 
 ### Removed
