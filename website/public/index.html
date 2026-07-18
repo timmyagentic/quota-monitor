@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <title data-i18n="metaTitle">Quota Monitor — Know your quota. Keep your flow.</title>
-  <meta name="description" content="Quota Monitor brings Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details into one lightweight macOS menu-bar app." data-i18n-content="metaDescription">
+  <meta name="description" content="Keep Codex and Claude Code quota percentages visible in the macOS menu bar, then open detailed reset times, token trends, cost estimates, and sessions." data-i18n-content="metaDescription">
   <meta property="og:type" content="website">
   <meta property="og:title" content="Quota Monitor — Know your quota. Keep your flow." data-i18n-content="ogTitle">
-  <meta property="og:description" content="See Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details in one native macOS app." data-i18n-content="ogDescription">
+  <meta property="og:description" content="Keep Codex and Claude Code quotas visible in the menu bar, then open reset times, token trends, cost estimates, and session details." data-i18n-content="ogDescription">
   <meta property="og:url" content="https://quota-monitor.timmyagentic.com/">
   <meta property="og:image" content="https://quota-monitor.timmyagentic.com/assets/social-card.webp">
   <meta property="og:image:alt" content="Quota Monitor product page with a native macOS dashboard window" data-i18n-content="ogImageAlt">
@@ -55,7 +55,7 @@
       <div class="container hero-layout">
         <div class="hero-copy">
           <h1 id="hero-title"><span class="hero-title-line" data-i18n="heroTitleFirstLine">Know your quota.</span><span class="hero-title-line" data-i18n="heroTitleSecondLine"> Keep your flow.</span></h1>
-          <p class="hero-description" data-i18n="heroDescription">Quota Monitor brings Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details into one lightweight macOS menu-bar app.</p>
+          <p class="hero-description" data-i18n="heroDescription">Keep Codex and Claude Code quota percentages visible in the menu bar, then click for reset times, token trends, API-equivalent cost estimates, and session details.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="/download">
               <span data-i18n="downloadAction">Download QuotaMonitor</span>
@@ -79,7 +79,37 @@
       </div>
     </section>
 
-    <section id="features" class="feature-story feature-story-quota" aria-labelledby="feature-quota-title">
+    <section id="features" class="feature-story feature-story-menu" aria-labelledby="feature-menu-title">
+      <div class="container feature-layout feature-layout-reversed feature-layout-menu">
+        <div class="feature-copy">
+          <h2 id="feature-menu-title" data-i18n="featureMenuTitle">Quota, right in the menu bar</h2>
+          <p class="feature-lead" data-i18n="featureMenuLead">See the active window before you open a window.</p>
+          <p data-i18n="featureMenuBody">The compact readout shows each provider's available 5-hour or 7-day quota and your chosen used-or-remaining percentage. If Codex exposes only a weekly window, it simply reads “7d 4%”.</p>
+          <dl class="menu-surface-details">
+            <div>
+              <dt>
+                <span class="menu-readout-sample" aria-hidden="true"><span>7d</span><strong>4%</strong></span>
+                <span data-i18n="menuReadoutTitle">Always-visible readout</span>
+              </dt>
+              <dd data-i18n="menuReadoutBody">Show Codex, Claude Code, both side by side, or only the gauge icon. Unavailable windows disappear instead of leaving stale numbers.</dd>
+            </div>
+            <div>
+              <dt data-i18n="menuPopoverTitle">Click for the full picture</dt>
+              <dd data-i18n="menuPopoverBody">The popover brings both providers together with 7- or 30-day tokens, API-equivalent estimates, session counts, reset countdowns, pace or reserve guidance, model-specific limits, reset cards, refresh, and shortcuts to Dashboard and Settings.</dd>
+            </div>
+          </dl>
+        </div>
+        <a class="product-image-link" href="/assets/menu-bar-popover.webp">
+          <picture class="product-window menu-popover-window">
+            <source srcset="/assets/menu-bar-popover.webp" type="image/webp">
+            <img src="/assets/menu-bar-popover.webp" width="386" height="661" loading="lazy" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards" data-i18n-alt="menuPopoverAlt">
+          </picture>
+          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+        </a>
+      </div>
+    </section>
+
+    <section class="feature-story feature-story-quota" aria-labelledby="feature-quota-title">
       <div class="container feature-layout">
         <div class="feature-copy">
           <h2 id="feature-quota-title" data-i18n="featureQuotaTitle">Live quota clarity</h2>
