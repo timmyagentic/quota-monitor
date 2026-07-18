@@ -32,7 +32,12 @@ window copy.
 
 #### Summary
 
+- The project page now puts the official website and download first, with a clearer product overview, privacy summary, screenshots, and separate app and website development paths.
 - Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
+
+### Changed
+
+- **Project README.** The GitHub front page now links directly to the official website and download, explains the core product and data boundaries in user-facing language, and documents the repository's `website/` source and validation workflow.
 
 ### Removed
 
