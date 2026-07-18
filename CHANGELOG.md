@@ -36,6 +36,11 @@ window copy.
 - The website and bilingual README now show the always-visible quota readout and the click-to-open Codex/Claude popover, with a privacy-safe synthetic example of reset timing, pace guidance, model limits, and reset cards.
 - The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
 - Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
+- Quota Monitor can now be installed with one `npx` command or by asking an AI coding agent, while the familiar DMG download remains available.
+
+### Added
+
+- **One-command and AI-assisted installation.** The official npm installer downloads and verifies the same signed and notarized Quota Monitor release offered by GitHub, while the README provides a ready-to-copy prompt for AI coding agents and keeps manual DMG installation available.
 
 ### Changed
 

@@ -46,12 +46,13 @@ jobs:
     outputs:
       swift-test: ${{ steps.filter.outputs.swift-test }}
       website-test: ${{ steps.filter.outputs.website-test }}
+      installer-test: ${{ steps.filter.outputs.installer-test }}
     steps:
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
 
-      - name: Detect whether macOS Swift tests are needed
+      - name: Detect affected test surfaces
         id: filter
         shell: bash
         run: |
@@ -63,6 +64,7 @@ jobs:
           elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "swift-test=true" >> "${GITHUB_OUTPUT}"
             echo "website-test=true" >> "${GITHUB_OUTPUT}"
+            echo "installer-test=true" >> "${GITHUB_OUTPUT}"
             exit 0
           else
             BASE="${{ github.event.before }}"
@@ -72,6 +74,7 @@ jobs:
           if [[ -z "${BASE}" || "${BASE}" =~ ^0+$ ]]; then
             echo "swift-test=true" >> "${GITHUB_OUTPUT}"
             echo "website-test=true" >> "${GITHUB_OUTPUT}"
+            echo "installer-test=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
 
@@ -81,6 +84,7 @@ jobs:
 
           needs_swift_test=false
           needs_website_test=false
+          needs_installer_test=false
           for path in "${changed[@]}"; do
             case "${path}" in
               .github/workflows/tests.yml|\
@@ -99,10 +103,17 @@ jobs:
                 needs_website_test=true
                 ;;
             esac
+            case "${path}" in
+              .github/workflows/tests.yml|\
+              npm/quotamonitor/**)
+                needs_installer_test=true
+                ;;
+            esac
           done
 
           echo "swift-test=${needs_swift_test}" >> "${GITHUB_OUTPUT}"
           echo "website-test=${needs_website_test}" >> "${GITHUB_OUTPUT}"
+          echo "installer-test=${needs_installer_test}" >> "${GITHUB_OUTPUT}"
 
   pr_changelog:
     name: PR changelog
@@ -153,6 +164,85 @@ jobs:
       - name: Check website
         run: npm run check
 
+  installer_test:
+    name: npm installer checks
+    needs: [changes, pr_changelog]
+    if: >-
+      ${{
+        always() &&
+        needs.changes.result == 'success' &&
+        needs.changes.outputs.installer-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.17.0, 22]
+    defaults:
+      run:
+        working-directory: npm/quotamonitor
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: npm/quotamonitor/package-lock.json
+
+      - name: Install package dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Test installer
+        run: npm test
+
+      - name: Verify published file allowlist
+        run: npm run pack:check
+
+  installer_macos_smoke:
+    name: npm installer macOS smoke
+    needs: [changes, pr_changelog]
+    if: >-
+      ${{
+        always() &&
+        needs.changes.result == 'success' &&
+        needs.changes.outputs.installer-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
+        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
+      }}
+    runs-on: macos-15
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: npm/quotamonitor
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: npm/quotamonitor/package-lock.json
+
+      - name: Install package dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install the delivered app into an isolated directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          qm_smoke_dir="$(mktemp -d "${RUNNER_TEMP}/quotamonitor-installer.XXXXXX")"
+          output="$(node bin/quotamonitor.js install --app-dir "${qm_smoke_dir}" --no-open)"
+          echo "${output}"
+          grep -F "Checks: SHA-256, Sparkle Ed25519, Developer ID, Gatekeeper" <<< "${output}"
+          test -d "${qm_smoke_dir}/QuotaMonitor.app"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${qm_smoke_dir}/QuotaMonitor.app/Contents/Info.plist"
+          /usr/bin/codesign --verify --deep --strict "${qm_smoke_dir}/QuotaMonitor.app"
+          /usr/sbin/spctl --assess --type execute --verbose=2 "${qm_smoke_dir}/QuotaMonitor.app"
+
   macos_swift_test:
     name: macOS Swift tests
     needs: [changes, pr_changelog]
@@ -195,7 +285,7 @@ jobs:
 
   swift-test:
     name: swift-test
-    needs: [changes, pr_changelog, website_test, macos_swift_test]
+    needs: [changes, pr_changelog, website_test, installer_test, installer_macos_smoke, macos_swift_test]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -208,6 +298,9 @@ jobs:
           PR_CHANGELOG_RESULT: ${{ needs.pr_changelog.result }}
           NEEDS_WEBSITE_TEST: ${{ needs.changes.outputs.website-test }}
           WEBSITE_RESULT: ${{ needs.website_test.result }}
+          NEEDS_INSTALLER_TEST: ${{ needs.changes.outputs.installer-test }}
+          INSTALLER_RESULT: ${{ needs.installer_test.result }}
+          INSTALLER_SMOKE_RESULT: ${{ needs.installer_macos_smoke.result }}
           MACOS_SWIFT_RESULT: ${{ needs.macos_swift_test.result }}
           IS_DRAFT: ${{ github.event.pull_request.draft || 'false' }}
         run: |
@@ -218,6 +311,9 @@ jobs:
           echo "PR changelog result: ${PR_CHANGELOG_RESULT}"
           echo "needs website tests: ${NEEDS_WEBSITE_TEST}"
           echo "website result: ${WEBSITE_RESULT}"
+          echo "needs npm installer tests: ${NEEDS_INSTALLER_TEST}"
+          echo "npm installer result: ${INSTALLER_RESULT}"
+          echo "npm installer macOS smoke result: ${INSTALLER_SMOKE_RESULT}"
           echo "macOS Swift result: ${MACOS_SWIFT_RESULT}"
 
           if [[ "${CHANGES_RESULT}" != "success" ]]; then
@@ -245,6 +341,16 @@ jobs:
             exit 1
           fi
 
+          if [[ "${NEEDS_INSTALLER_TEST}" == "true" && "${INSTALLER_RESULT}" != "success" ]]; then
+            echo "::error::npm installer tests did not pass"
+            exit 1
+          fi
+
+          if [[ "${NEEDS_INSTALLER_TEST}" == "true" && "${INSTALLER_SMOKE_RESULT}" != "success" ]]; then
+            echo "::error::npm installer macOS smoke did not pass"
+            exit 1
+          fi
+
           if [[ "${NEEDS_SWIFT_TEST}" == "true" ]]; then
             echo "macOS Swift tests passed"
           else
@@ -255,4 +361,10 @@ jobs:
             echo "Website tests passed"
           else
             echo "No website changes; website tests intentionally skipped"
+          fi
+
+          if [[ "${NEEDS_INSTALLER_TEST}" == "true" ]]; then
+            echo "npm installer tests passed"
+          else
+            echo "No npm installer changes; npm installer tests intentionally skipped"
           fi

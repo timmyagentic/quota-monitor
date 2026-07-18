@@ -634,6 +634,53 @@ defaults delete dev.tjzhou.QuotaMonitor SUFeedURL
 
 ---
 
+## Publishing the npm installer
+
+The `quotamonitor` npm package is a small, dependency-free installer; it does
+not contain the app and does not use lifecycle install scripts. Its version is
+independent from the app version because every run resolves the newest
+compatible release already delivered through `appcast.xml`. Bump the npm
+version only when the installer itself changes.
+
+Publish from `npm/quotamonitor` after the package source is committed:
+
+```bash
+cd npm/quotamonitor
+npm whoami
+npm test
+npm run pack:check
+npm publish --access public
+```
+
+Then verify registry metadata and execute the published tarball's read-only
+commands, using the exact version rather than a local checkout:
+
+```bash
+npm view quotamonitor@<installer-version> name version dist.integrity dist.tarball
+npx --yes quotamonitor@<installer-version> --version
+npx --yes quotamonitor@<installer-version> --help
+```
+
+Finally, execute the published installer itself against a fresh disposable
+Applications directory. This must use the exact registry version, not `latest`
+or the local package:
+
+```bash
+qm_installer_version="<installer-version>"
+qm_smoke_dir="$(mktemp -d /tmp/quotamonitor-registry-smoke.XXXXXX)"
+npx --yes "quotamonitor@${qm_installer_version}" install --app-dir "${qm_smoke_dir}" --no-open
+/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${qm_smoke_dir}/QuotaMonitor.app/Contents/Info.plist"
+/usr/bin/codesign --verify --deep --strict "${qm_smoke_dir}/QuotaMonitor.app"
+/usr/sbin/spctl --assess --type execute --verbose=2 "${qm_smoke_dir}/QuotaMonitor.app"
+rm -rf -- "${qm_smoke_dir}"
+```
+
+The first public package must be created with an npm login and maintainer 2FA.
+After that, configure npm Trusted Publishing for this exact GitHub repository
+and a dedicated npm release workflow; do not attach it to the app's existing
+`v*` tag flow. Keep the package set to require 2FA and disallow long-lived
+publish tokens once OIDC publishing is verified.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
