@@ -119,7 +119,7 @@ extension AppEnvironment {
                 let enabled = snap.enabledProviders
                 // A requested scope (e.g. the Claude file-watcher's
                 // ["claude"]) is intersected with the enabled set so a
-                // ~/.claude write never triggers Codex's whole-file re-parse.
+                // ~/.claude write never triggers a separate Codex scan.
                 let requestedScope = Self.resolveScanProviders(
                     requested: providers, enabled: enabled)
                 // In App Store builds, further restrict to providers whose
@@ -155,9 +155,10 @@ extension AppEnvironment {
                     seconds: 300, context: "runScan"
                 ) {
                     // Skip per-provider engines when the user has disabled
-                    // them in Settings. Returning `.empty` keeps the merge +
-                    // backfill logic below identical regardless of which
-                    // providers are active.
+                    // them in Settings. Returning `.empty` keeps report
+                    // merging identical regardless of which providers are
+                    // active. Each importer prices its affected session in
+                    // the same transaction that advances its import state.
                     async let codexReport = scanProviders.contains("codex")
                         ? engine.performScan(progress: progressHandler)
                         : ImportEngine.ScanReport.empty
@@ -171,19 +172,8 @@ extension AppEnvironment {
                         }
                         return try await claude.performScan(progress: progressHandler)
                     }
-                    let merged = Self.mergeScanReports(
+                    return Self.mergeScanReports(
                         try await codexReport, try await claudeTask.value)
-                    // Single backfill at the tail values any Codex/Claude rows
-                    // imported in this pass and propagates price-table edits.
-                    // Skip when nothing changed — backfill is sub-second, but
-                    // it still pulls a write lock and walks every event row.
-                    if merged.changedFiles > 0 {
-                        await MainActor.run { self.markScanPricing(runID: scanRunID) }
-                        try await db.pool.write {
-                            try PricingService.backfillAllValues(in: $0)
-                        }
-                    }
-                    return merged
                 }
                 await MainActor.run {
                     self.lastScanReport = merged
@@ -310,7 +300,7 @@ extension AppEnvironment {
     /// providers. `nil` means "scan everything enabled" (the default
     /// for refresh/popover/manual). The Claude file-watcher passes
     /// `["claude"]` so reacting to a `~/.claude` write only runs the
-    /// cheap incremental Claude import, never Codex's whole-file re-parse.
+    /// cheap incremental Claude import, without starting a Codex scan.
     nonisolated static func resolveScanProviders(
         requested: Set<String>?, enabled: Set<String>
     ) -> Set<String> {
@@ -327,6 +317,8 @@ extension AppEnvironment {
             importedSessions: a.importedSessions + b.importedSessions,
             importedEvents: a.importedEvents + b.importedEvents,
             importedRateLimitSamples: a.importedRateLimitSamples + b.importedRateLimitSamples,
+            incrementalFiles: a.incrementalFiles + b.incrementalFiles,
+            sourceBytesRead: a.sourceBytesRead + b.sourceBytesRead,
             errors: a.errors + b.errors,
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
     }
@@ -381,16 +373,6 @@ extension AppEnvironment {
             totalFiles: update.totalFiles,
             currentFile: update.currentFile)
         scanProgress = Self.aggregateScanProgress(scanProgressStates, phase: .indexing)
-    }
-
-    func markScanPricing(runID: UUID) {
-        guard scanProgressRunID == runID, isScanning else { return }
-        DeveloperLog.eventRecord(
-            "scan.progress.pricing",
-            level: .debug,
-            category: "scan",
-            fields: ["scan_run_id": .string(runID.uuidString)])
-        scanProgress = Self.aggregateScanProgress(scanProgressStates, phase: .pricing)
     }
 
     func clearScanProgress(runID: UUID) {

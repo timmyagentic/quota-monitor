@@ -466,6 +466,15 @@ struct ClaudeRolloutParserIncrementalTests {
 
         let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
         _ = try await engine.performScan()
+        let initialValue = try await db.pool.read { conn in
+            try Double.fetchOne(conn, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE session_id = ?
+                """, arguments: [sid]) ?? 0
+        }
+        #expect(initialValue > 0,
+                "Claude importer must price new usage before advancing its offset")
 
         // The message keeps streaming after the first scan: its final
         // snapshot (complete output count) lands in a later append. The
@@ -484,6 +493,9 @@ struct ClaudeRolloutParserIncrementalTests {
         #expect(rows.count == 1)
         #expect((rows.first?["output_tokens"] as Int64?) == 350)
         #expect((rows.first?["total_tokens"] as Int64?) == 450)
+        let updatedValue = rows.first?["value_usd"] as Double? ?? 0
+        #expect(updatedValue > initialValue,
+                "updating a priced usage snapshot must update its value in the same scan")
 
         // Re-emitting an identical row (offset landing mid-message) must
         // stay a no-op: same snapshot again → nothing imported.

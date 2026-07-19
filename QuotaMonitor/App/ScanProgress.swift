@@ -10,7 +10,6 @@ struct ScanProgress: Sendable, Equatable {
     enum Phase: Sendable, Equatable {
         case discovering
         case indexing
-        case pricing
     }
 
     let phase: Phase
