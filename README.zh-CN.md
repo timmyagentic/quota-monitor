@@ -23,11 +23,29 @@
   <p>
     <a href="https://github.com/timmyagentic/quota-monitor/releases/latest"><img src="https://img.shields.io/github/v/release/timmyagentic/quota-monitor?display_name=tag&sort=semver&style=flat-square" alt="最新版本"></a>
     <a href="https://github.com/timmyagentic/quota-monitor/releases"><img src="https://img.shields.io/github/downloads/timmyagentic/quota-monitor/total?style=flat-square" alt="累计下载量"></a>
+    <a href="https://www.npmjs.com/package/quotamonitor"><img src="https://img.shields.io/npm/v/quotamonitor?style=flat-square&logo=npm" alt="npm 安装器版本"></a>
     <img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple" alt="需要 macOS 14 或更高版本">
     <img src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6">
     <a href="LICENSE"><img src="https://img.shields.io/github/license/timmyagentic/quota-monitor?style=flat-square" alt="MIT 许可证"></a>
   </p>
 </div>
+
+## 使用 AI Agent 安装
+
+把下面这段话复制给 Codex、Claude Code、Cursor 或其他本地编程 Agent：
+
+> 请在这台 Mac 上安装最新的 Quota Monitor 官方版本，严格按照
+> <https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md>
+> 操作。不要使用 sudo，也不要修改 Shell 配置；替换已有 App 前先征求我的确认。
+> 完成后请报告已安装版本、路径、Developer ID 和 Gatekeeper 验证结果。
+
+更喜欢自己运行命令？一条命令即可验证、安装并打开应用：
+
+```bash
+npx --yes quotamonitor@latest install
+```
+
+需要 Apple Silicon Mac、macOS 14 或更高版本，以及 Node.js 20.17 或更高版本。
 
 <a href="https://quota-monitor.timmyagentic.com/">
   <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor Dashboard，展示使用合成数据的额度卡片、Token 趋势和构成图表">
@@ -87,7 +105,27 @@ Provider 账单。上方截图完全使用隔离的合成数据。
 
 ## 安装
 
-Quota Monitor 需要 **macOS 14 Sonoma 或更高版本**。
+Quota Monitor 需要 **Apple Silicon Mac 和 macOS 14 Sonoma 或更高版本**。
+
+### npm（推荐）
+
+本机已经安装 Node.js 20.17 或更高版本时，运行：
+
+```bash
+npx --yes quotamonitor@latest install
+```
+
+这是一条显式安装命令，不含 `postinstall` Hook。它会从 Quota Monitor 官方
+Appcast 获取已交付的最新兼容版本，并在复制 App 前依次检查 GitHub Release URL
+与文件长度、SHA-256、Sparkle Ed25519 签名、Developer ID Team ID 和 Apple
+Gatekeeper 验证结果。它不会使用 `sudo`，也不会读取 Codex、Claude Code 或
+Quota Monitor 的用户数据。
+
+如果已安装当前版本，安装器只会原地验证；替换旧版本前，请先确认安装器显示的
+路径、退出 Quota Monitor，再加上 `--replace` 重新运行。安装完成后，后续 App
+版本可继续通过内置 Sparkle 更新器获取。
+
+### DMG
 
 1. [下载最新的已公证 DMG](https://quota-monitor.timmyagentic.com/download)。
 2. 打开 DMG，把 **Quota Monitor** 拖入 **Applications（应用程序）**。
@@ -95,8 +133,7 @@ Quota Monitor 需要 **macOS 14 Sonoma 或更高版本**。
 
 指定版本和校验和可在
 [GitHub Releases](https://github.com/timmyagentic/quota-monitor/releases) 获取。
-正式版本经过 Developer ID 签名和 Apple 公证；安装后可通过内置 Sparkle
-更新器获取后续版本。
+正式版本经过 Developer ID 签名和 Apple 公证。
 
 可选的校验和验证：
 
@@ -181,6 +218,7 @@ QuotaMonitor/
 └── Features/            菜单栏、Dashboard、History、Sessions 和 Settings UI
 Tests/QuotaMonitorTests/ Swift Testing 测试与 Fixtures
 website/                 官网、Worker API、D1 Migration 和测试
+npm/quotamonitor/        可验证的一条命令安装器及其测试
 qa/                      静态检查与隔离的 macOS QA 工具
 docs/                    架构、行为、发布与产品文档
 tools/                   构建、DMG、公证与发布自动化
@@ -189,6 +227,7 @@ tools/                   构建、DMG、公证与发布自动化
 常用文档：
 
 - [产品手册](docs/product-manual.md)
+- [AI Agent 安装 Runbook](docs/agent-install.md)
 - [架构说明](CLAUDE.md)
 - [Codex 与 Claude 集成发现](docs/findings.md)
 - [功能对照与设计取舍](docs/parity.md)

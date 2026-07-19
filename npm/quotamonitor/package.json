@@ -1,0 +1,46 @@
+{
+  "name": "quotamonitor",
+  "version": "0.1.0",
+  "description": "Verified one-command installer for the Quota Monitor macOS app",
+  "type": "module",
+  "bin": {
+    "quotamonitor": "bin/quotamonitor.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "pack:check": "node test/package-contents.js"
+  },
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "codex",
+    "claude-code",
+    "macos",
+    "quota",
+    "installer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timmyagentic/quota-monitor.git",
+    "directory": "npm/quotamonitor"
+  },
+  "homepage": "https://github.com/timmyagentic/quota-monitor#install",
+  "bugs": {
+    "url": "https://github.com/timmyagentic/quota-monitor/issues"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

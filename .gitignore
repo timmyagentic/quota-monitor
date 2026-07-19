@@ -29,6 +29,8 @@ __pycache__/
 website/node_modules/
 website/.wrangler/
 website/startup-profile.*
+npm/quotamonitor/node_modules/
+quotamonitor-*.tgz
 .env
 .env.*
 .dev.vars

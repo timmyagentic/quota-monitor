@@ -23,11 +23,30 @@
   <p>
     <a href="https://github.com/timmyagentic/quota-monitor/releases/latest"><img src="https://img.shields.io/github/v/release/timmyagentic/quota-monitor?display_name=tag&sort=semver&style=flat-square" alt="Latest release"></a>
     <a href="https://github.com/timmyagentic/quota-monitor/releases"><img src="https://img.shields.io/github/downloads/timmyagentic/quota-monitor/total?style=flat-square" alt="Total downloads"></a>
+    <a href="https://www.npmjs.com/package/quotamonitor"><img src="https://img.shields.io/npm/v/quotamonitor?style=flat-square&logo=npm" alt="npm installer version"></a>
     <img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple" alt="macOS 14 or later">
     <img src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6">
     <a href="LICENSE"><img src="https://img.shields.io/github/license/timmyagentic/quota-monitor?style=flat-square" alt="MIT License"></a>
   </p>
 </div>
+
+## Install with an AI agent
+
+Paste this into Codex, Claude Code, Cursor, or another local coding agent:
+
+> Install the latest official Quota Monitor release on this Mac. Follow
+> <https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md>
+> exactly. Do not use sudo or change shell configuration. Ask before replacing
+> an existing app. At the end, report the installed version, path, Developer ID,
+> and Gatekeeper result.
+
+Prefer the terminal? One command installs and opens the verified app:
+
+```bash
+npx --yes quotamonitor@latest install
+```
+
+Requires macOS 14 or later on Apple Silicon and Node.js 20.17 or later.
 
 <a href="https://quota-monitor.timmyagentic.com/">
   <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor dashboard showing quota cards, token trends, and composition charts with synthetic data">
@@ -93,7 +112,28 @@ isolated synthetic data.
 
 ## Install
 
-Quota Monitor requires **macOS 14 Sonoma or later**.
+Quota Monitor requires **macOS 14 Sonoma or later on Apple Silicon**.
+
+### npm (recommended)
+
+With Node.js 20.17 or later already installed:
+
+```bash
+npx --yes quotamonitor@latest install
+```
+
+This explicit command has no `postinstall` hook. It downloads the newest
+compatible version delivered through Quota Monitor's official Appcast, then
+checks the GitHub Release URL and length, SHA-256, Sparkle Ed25519 signature,
+Developer ID Team ID, and Apple Gatekeeper assessment before copying the app.
+It never uses `sudo` or reads Codex, Claude Code, or Quota Monitor user data.
+
+An existing current version is verified in place. To replace an older copy,
+quit Quota Monitor and rerun with `--replace` after confirming the path shown by
+the installer. Installed copies receive later app releases through the built-in
+Sparkle updater.
+
+### DMG
 
 1. [Download the latest notarized DMG](https://quota-monitor.timmyagentic.com/download).
 2. Open the DMG and drag **Quota Monitor** into **Applications**.
@@ -101,8 +141,7 @@ Quota Monitor requires **macOS 14 Sonoma or later**.
 
 Specific versions and checksums are available on
 [GitHub Releases](https://github.com/timmyagentic/quota-monitor/releases).
-Release builds are Developer ID signed and Apple notarized; installed copies
-receive future releases through the built-in Sparkle updater.
+Release builds are Developer ID signed and Apple notarized.
 
 Optional checksum verification:
 
@@ -194,6 +233,7 @@ QuotaMonitor/
 └── Features/            Menu bar, Dashboard, History, Sessions, and Settings UI
 Tests/QuotaMonitorTests/ Swift Testing suites and fixtures
 website/                 Official website, Worker APIs, D1 migrations, and tests
+npm/quotamonitor/        Verified one-command installer and its tests
 qa/                      Static checks and isolated macOS QA helpers
 docs/                    Architecture, behavior, release, and product documentation
 tools/                   Build, DMG, notarization, and release automation
@@ -202,6 +242,7 @@ tools/                   Build, DMG, notarization, and release automation
 Useful references:
 
 - [Product manual](docs/product-manual.md)
+- [AI-agent installation runbook](docs/agent-install.md)
 - [Architecture notes](CLAUDE.md)
 - [Codex and Claude integration findings](docs/findings.md)
 - [Feature parity and design choices](docs/parity.md)
