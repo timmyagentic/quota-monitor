@@ -51,6 +51,7 @@ window copy.
 
 ### Added
 
+- **Performance review document.** A full audit of scan, pricing-backfill, dashboard-query, launch, and menu-bar hot paths now lives in `docs/performance-review-2026-07-19.md`, ranking every finding and anchoring the upcoming performance optimizations. App behavior is unchanged.
 - **One-command and AI-assisted installation.** The official npm installer downloads and verifies the same signed and notarized Quota Monitor release offered by GitHub, while the README provides a ready-to-copy prompt for AI coding agents and keeps manual DMG installation available.
 
 ### Changed
