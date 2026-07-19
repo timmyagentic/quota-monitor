@@ -166,8 +166,9 @@ QuotaMonitor now checks both user-level and system-level `ChatGPT.app` bundles,
 prefers them over the corresponding legacy `Codex.app` fallback, and resolves a
 desktop bundle before starting a login shell. App-bundled native binaries also
 skip login-shell PATH augmentation at launch. Standalone CLI installs retain a
-two-second shell execution deadline plus bounded process-tree cleanup, so an
-inaccessible mount or slow shell plugin cannot block quota polling indefinitely.
+two-second shell execution deadline. If it expires, QuotaMonitor cleans up only
+the shell and descendants observed at that deadline; successful probes leave
+background helpers untouched.
 
 ## Rollout JSONL shape
 
@@ -246,7 +247,7 @@ first when "the menu bar number is wrong."
   can be stale, and first-party desktop apps may bundle the only working
   binary. Picking the wrong executable makes the menu bar look frozen even
   though the user's terminal works.
-- **Coverage today**: 16 tests in `AppServerClientResolverTests`, plus separate
+- **Coverage today**: 20 tests in `AppServerClientResolverTests`, plus separate
   Claude binary-locator coverage and real-machine smoke probes against the
   unified `/Applications/ChatGPT.app/Contents/Resources/codex`, legacy
   `Codex.app`, and Claude Desktop bundled Claude Code helper paths.

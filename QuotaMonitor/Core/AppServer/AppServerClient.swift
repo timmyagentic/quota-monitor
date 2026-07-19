@@ -92,8 +92,7 @@ actor AppServerClient {
             "\(home)/.local/bin/codex",
             "\(home)/.cargo/bin/codex",
             "\(home)/.bun/bin/codex",
-            "\(home)/Applications/Codex.app/Contents/Resources/codex",
-            "/Applications/Codex.app/Contents/Resources/codex",
+        ] + legacyCodexBundleCandidates(home: home) + [
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
         ]
@@ -110,16 +109,24 @@ actor AppServerClient {
         ]
     }
 
-    private static func isDesktopBundleBinary(_ path: String) -> Bool {
-        path.hasSuffix("/ChatGPT.app/Contents/Resources/codex")
-            || path.hasSuffix("/Codex.app/Contents/Resources/codex")
+    private static func legacyCodexBundleCandidates(home: String) -> [String] {
+        [
+            "\(home)/Applications/Codex.app/Contents/Resources/codex",
+            "/Applications/Codex.app/Contents/Resources/codex",
+        ]
+    }
+
+    private static func isDesktopBundleBinary(_ path: String, home: String) -> Bool {
+        (chatGPTBundleCandidates(home: home) + legacyCodexBundleCandidates(home: home))
+            .contains(path)
     }
 
     static func loginShellPathForEnvironment(
         binaryPath: String,
+        home: String = ProcessInfo.processInfo.environment["HOME"] ?? "",
         discoveredPath: @autoclosure () -> String?
     ) -> String? {
-        guard !isDesktopBundleBinary(binaryPath) else { return nil }
+        guard !isDesktopBundleBinary(binaryPath, home: home) else { return nil }
         return discoveredPath()
     }
 
@@ -138,10 +145,11 @@ actor AppServerClient {
         return nil
     }
 
-    /// Runs a login-shell probe with a bounded execution deadline and bounded
-    /// process-tree cleanup. Shell startup can block on a slow version manager,
-    /// inaccessible mount, or a permission-gated PATH entry; quota polling must
-    /// still reach the app-bundle fallbacks.
+    /// Runs a login-shell probe with a bounded execution deadline. Shell startup
+    /// can block on a slow version manager, inaccessible mount, or a permission-
+    /// gated PATH entry; quota polling must still reach the app-bundle fallbacks.
+    /// A timed-out probe terminates the shell and descendants observed at the
+    /// deadline. Successful probes never terminate shell-started background jobs.
     static func runLoginShellLine(
         shell: String,
         command: String,
@@ -150,46 +158,64 @@ actor AppServerClient {
         let fileManager = FileManager.default
         let outputURL = fileManager.temporaryDirectory
             .appendingPathComponent("quota-monitor-shell-probe-\(UUID().uuidString)")
-        guard fileManager.createFile(atPath: outputURL.path, contents: nil) else {
+        let helperURL = fileManager.temporaryDirectory
+            .appendingPathComponent("quota-monitor-shell-helper-\(UUID().uuidString)")
+        guard fileManager.createFile(
+            atPath: outputURL.path,
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
             return nil
         }
         defer { try? fileManager.removeItem(at: outputURL) }
 
+        let maximumOutputBytes = 64 * 1024
+        let helperScript = """
+        #!/bin/sh
+        # macOS /bin/sh expresses RLIMIT_FSIZE in 1 KiB blocks.
+        ulimit -f \(maximumOutputBytes / 1024) || exit 1
+        {
+        \(command)
+        } > \(shellSingleQuote(outputURL.path))
+        """
+        guard fileManager.createFile(
+            atPath: helperURL.path,
+            contents: Data(helperScript.utf8),
+            attributes: [.posixPermissions: 0o700]
+        ) else {
+            return nil
+        }
+        defer { try? fileManager.removeItem(at: helperURL) }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
-        // Keep the shell alive briefly after the probe command so the parent
-        // can observe background jobs started by interactive startup files,
-        // even when those jobs move into their own process groups.
-        let supervisedCommand = """
-        \(command)
-        __quota_monitor_probe_status=$?
-        /bin/sleep 0.05
-        exit $__quota_monitor_probe_status
-        """
-        process.arguments = ["-ilc", supervisedCommand]
+        // The user's shell only loads its login environment and launches this
+        // helper path. Probe syntax stays inside the explicit /bin/sh script so
+        // non-POSIX login shells such as fish and csh remain compatible.
+        process.arguments = loginShellArguments(
+            shell: shell,
+            command: shellSingleQuote(helperURL.path))
         process.standardInput = FileHandle.nullDevice
+        // Startup-file chatter is not probe output and must never grow the
+        // result file. Only the explicitly supervised command writes there.
+        process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do {
-            let stdout = try FileHandle(forWritingTo: outputURL)
-            defer { try? stdout.close() }
-            process.standardOutput = stdout
             try process.run()
-            var processTree = ProcessTree(rootProcessID: process.processIdentifier)
             let deadline = Date().addingTimeInterval(timeout)
-            let exitedBeforeDeadline = waitForExit(
-                process,
-                until: deadline,
-                processTree: &processTree)
-            let terminationStatus = exitedBeforeDeadline ? process.terminationStatus : nil
+            guard waitForExit(process, until: deadline) else {
+                let observedProcesses = observedProcessTree(
+                    rootProcessID: process.processIdentifier)
+                stopTimedOutProcess(process, observedProcesses: observedProcesses)
+                return nil
+            }
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else { return nil }
 
-            // Foundation launches Process in its own process group on macOS.
-            // Clean that group even after the shell itself exits: an rc file can
-            // leave a background child alive with inherited standard handles.
-            stopProcessTree(process, processTree: &processTree)
-
-            guard exitedBeforeDeadline, terminationStatus == 0 else { return nil }
-            try stdout.synchronize()
-            let data = try Data(contentsOf: outputURL)
+            let outputHandle = try FileHandle(forReadingFrom: outputURL)
+            defer { try? outputHandle.close() }
+            let data = try outputHandle.read(upToCount: maximumOutputBytes + 1) ?? Data()
+            guard data.count <= maximumOutputBytes else { return nil }
             let output = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return output.isEmpty ? nil : output
@@ -198,103 +224,118 @@ actor AppServerClient {
         }
     }
 
-    private struct ProcessTree {
-        let rootProcessID: pid_t
-        var processIDs: Set<pid_t>
-        var processGroupIDs: Set<pid_t>
+    private static func shellSingleQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
+    }
 
-        init(rootProcessID: pid_t) {
-            self.rootProcessID = rootProcessID
-            self.processIDs = [rootProcessID]
-            self.processGroupIDs = [rootProcessID]
-        }
-
-        mutating func refresh() {
-            let processInfos = Self.allProcessInfos()
-            var foundDescendant = true
-            while foundDescendant {
-                foundDescendant = false
-                for info in processInfos {
-                    guard processIDs.contains(info.parentProcessID),
-                          !processIDs.contains(info.processID) else { continue }
-                    processIDs.insert(info.processID)
-                    processGroupIDs.insert(info.processGroupID)
-                    foundDescendant = true
-                }
-            }
-        }
-
-        private struct ProcessInfo {
-            let processID: pid_t
-            let parentProcessID: pid_t
-            let processGroupID: pid_t
-        }
-
-        private static func allProcessInfos() -> [ProcessInfo] {
-            let estimatedCount = max(Int(proc_listallpids(nil, 0)), 1)
-            var processIDs = [pid_t](repeating: 0, count: estimatedCount + 32)
-            let count = processIDs.withUnsafeMutableBufferPointer { buffer in
-                proc_listallpids(
-                    buffer.baseAddress,
-                    Int32(buffer.count * MemoryLayout<pid_t>.stride))
-            }
-            guard count > 0 else { return [] }
-
-            return processIDs.prefix(Int(count)).compactMap { processID in
-                var info = proc_bsdinfo()
-                let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.size)
-                guard proc_pidinfo(
-                    processID,
-                    PROC_PIDTBSDINFO,
-                    0,
-                    &info,
-                    expectedSize) == expectedSize else { return nil }
-                return ProcessInfo(
-                    processID: pid_t(info.pbi_pid),
-                    parentProcessID: pid_t(info.pbi_ppid),
-                    processGroupID: pid_t(info.pbi_pgid))
-            }
+    private static func loginShellArguments(shell: String, command: String) -> [String] {
+        switch URL(fileURLWithPath: shell).lastPathComponent.lowercased() {
+        case "csh", "tcsh":
+            // tcsh only accepts -l when it is the sole option. Interactive csh
+            // still loads .cshrc, which is where PATH customization belongs.
+            return ["-ic", command]
+        default:
+            return ["-ilc", command]
         }
     }
 
     private static func waitForExit(
         _ process: Process,
-        until deadline: Date,
-        processTree: inout ProcessTree
+        until deadline: Date
     ) -> Bool {
-        processTree.refresh()
         while process.isRunning {
             let remaining = deadline.timeIntervalSinceNow
             guard remaining > 0 else { return false }
             Thread.sleep(forTimeInterval: min(0.01, remaining))
-            processTree.refresh()
         }
         return true
     }
 
-    private static func stopProcessTree(
-        _ process: Process,
-        processTree: inout ProcessTree
-    ) {
-        processTree.refresh()
-        guard signalTargetIsRunning(process, processTree: processTree) else {
-            if !process.isRunning {
-                process.waitUntilExit()
+    private struct ProcessIdentity: Hashable {
+        let processID: pid_t
+        let startSeconds: UInt64
+        let startMicroseconds: UInt64
+    }
+
+    private struct ObservedProcess {
+        let identity: ProcessIdentity
+        let parentProcessID: pid_t
+    }
+
+    private static func observedProcessTree(rootProcessID: pid_t) -> [ProcessIdentity] {
+        let processInfos = allProcessInfos()
+        var processIDs: Set<pid_t> = [rootProcessID]
+        var orderedProcessIDs: [pid_t] = [rootProcessID]
+        var foundDescendant = true
+        while foundDescendant {
+            foundDescendant = false
+            for info in processInfos {
+                let processID = info.identity.processID
+                guard processIDs.contains(info.parentProcessID),
+                      !processIDs.contains(processID) else { continue }
+                processIDs.insert(processID)
+                orderedProcessIDs.append(processID)
+                foundDescendant = true
             }
-            return
         }
 
-        sendSignal(SIGTERM, processTree: processTree)
+        let byProcessID = processInfos.reduce(into: [pid_t: ProcessIdentity]()) {
+            $0[$1.identity.processID] = $1.identity
+        }
+        return orderedProcessIDs.compactMap { byProcessID[$0] }
+    }
+
+    private static func allProcessInfos() -> [ObservedProcess] {
+        let estimatedCount = max(Int(proc_listallpids(nil, 0)), 1)
+        var processIDs = [pid_t](repeating: 0, count: estimatedCount + 32)
+        let count = processIDs.withUnsafeMutableBufferPointer { buffer in
+            proc_listallpids(
+                buffer.baseAddress,
+                Int32(buffer.count * MemoryLayout<pid_t>.stride))
+        }
+        guard count > 0 else { return [] }
+        return processIDs.prefix(Int(count)).compactMap(processInfo(for:))
+    }
+
+    private static func processInfo(for processID: pid_t) -> ObservedProcess? {
+        var info = proc_bsdinfo()
+        let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(
+            processID,
+            PROC_PIDTBSDINFO,
+            0,
+            &info,
+            expectedSize) == expectedSize else { return nil }
+        return ObservedProcess(
+            identity: ProcessIdentity(
+                processID: pid_t(info.pbi_pid),
+                startSeconds: info.pbi_start_tvsec,
+                startMicroseconds: info.pbi_start_tvusec),
+            parentProcessID: pid_t(info.pbi_ppid))
+    }
+
+    private static func identityIsCurrent(_ identity: ProcessIdentity) -> Bool {
+        guard let current = processInfo(for: identity.processID)?.identity else {
+            return false
+        }
+        return current == identity
+    }
+
+    private static func stopTimedOutProcess(
+        _ process: Process,
+        observedProcesses: [ProcessIdentity]
+    ) {
+        sendSignal(SIGTERM, process: process, observedProcesses: observedProcesses)
         let termDeadline = Date().addingTimeInterval(0.1)
-        while signalTargetIsRunning(process, processTree: processTree),
+        while signalTargetIsRunning(process, observedProcesses: observedProcesses),
               Date() < termDeadline {
             Thread.sleep(forTimeInterval: 0.01)
         }
 
-        if signalTargetIsRunning(process, processTree: processTree) {
-            sendSignal(SIGKILL, processTree: processTree)
+        if signalTargetIsRunning(process, observedProcesses: observedProcesses) {
+            sendSignal(SIGKILL, process: process, observedProcesses: observedProcesses)
             let killDeadline = Date().addingTimeInterval(0.1)
-            while signalTargetIsRunning(process, processTree: processTree),
+            while signalTargetIsRunning(process, observedProcesses: observedProcesses),
                   Date() < killDeadline {
                 Thread.sleep(forTimeInterval: 0.01)
             }
@@ -309,30 +350,27 @@ actor AppServerClient {
 
     private static func signalTargetIsRunning(
         _ process: Process,
-        processTree: ProcessTree
+        observedProcesses: [ProcessIdentity]
     ) -> Bool {
         if process.isRunning { return true }
-        for processID in processTree.processIDs where processID != getpid() {
-            errno = 0
-            if kill(processID, 0) == 0 || errno == EPERM {
-                return true
-            }
-        }
-        for processGroupID in processTree.processGroupIDs where processGroupID != getpgrp() {
-            errno = 0
-            if kill(-processGroupID, 0) == 0 || errno == EPERM {
-                return true
-            }
-        }
-        return false
+        return observedProcesses.contains(where: identityIsCurrent)
     }
 
-    private static func sendSignal(_ signal: Int32, processTree: ProcessTree) {
-        for processGroupID in processTree.processGroupIDs where processGroupID != getpgrp() {
-            _ = kill(-processGroupID, signal)
+    private static func sendSignal(
+        _ signal: Int32,
+        process: Process,
+        observedProcesses: [ProcessIdentity]
+    ) {
+        // Descendants first, then the root shell. Revalidate start time before
+        // every signal so a recycled PID can never target an unrelated process.
+        for identity in observedProcesses.reversed() where identityIsCurrent(identity) {
+            _ = kill(identity.processID, signal)
         }
-        for processID in processTree.processIDs where processID != getpid() {
-            _ = kill(processID, signal)
+        if process.isRunning,
+           !observedProcesses.contains(where: {
+               $0.processID == process.processIdentifier
+           }) {
+            _ = kill(process.processIdentifier, signal)
         }
     }
 

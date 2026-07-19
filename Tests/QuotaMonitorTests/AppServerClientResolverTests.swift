@@ -81,6 +81,24 @@ struct AppServerClientResolverTests {
         #expect(!evaluatedLoginShell)
     }
 
+    @Test("a custom binary with an app-like suffix still receives login-shell PATH")
+    func customAppLikeBinaryReceivesLoginShellPATH() throws {
+        var evaluatedLoginShell = false
+
+        func loginShellPATH() -> String? {
+            evaluatedLoginShell = true
+            return "/Users/test/.nvm/bin"
+        }
+
+        let resolved = AppServerClient.loginShellPathForEnvironment(
+            binaryPath: "/tmp/Custom/ChatGPT.app/Contents/Resources/codex",
+            home: "/Users/test",
+            discoveredPath: loginShellPATH())
+
+        #expect(resolved == "/Users/test/.nvm/bin")
+        #expect(evaluatedLoginShell)
+    }
+
     @Test("login-shell PATH resolution keeps the first executable")
     func loginShellPATHResolutionKeepsFirstExecutable() throws {
         let executable: Set<String> = [
@@ -104,7 +122,7 @@ struct AppServerClientResolverTests {
         let result = AppServerClient.runLoginShellLine(
             shell: "/bin/sh",
             command: "printf %s $$ > \(Self.shellQuote(pidFile.path)); trap '' TERM; exec sleep 3",
-            timeout: 0.05)
+            timeout: 0.5)
 
         #expect(result == nil)
         #expect(Date().timeIntervalSince(startedAt) < 1)
@@ -116,15 +134,33 @@ struct AppServerClientResolverTests {
         }
     }
 
-    @Test("login-shell probe does not wait for a background child's stdout")
-    func loginShellProbeDoesNotWaitForBackgroundChildStdout() throws {
+    @Test("login-shell timeout kills an observed background child")
+    func loginShellTimeoutKillsObservedBackgroundChild() throws {
+        let pidFile = Self.temporaryPIDFile()
+        defer { try? FileManager.default.removeItem(at: pidFile) }
+        let result = AppServerClient.runLoginShellLine(
+            shell: "/bin/sh",
+            command: "(trap '' HUP TERM; exec sleep 3) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); wait",
+            timeout: 0.5)
+
+        #expect(result == nil)
+        let pidText = try String(contentsOf: pidFile, encoding: .utf8)
+        let pid = pid_t(pidText.trimmingCharacters(in: .whitespacesAndNewlines))
+        #expect(pid != nil)
+        if let pid {
+            #expect(Self.waitForProcessToExit(pid, timeout: 0.5))
+        }
+    }
+
+    @Test("successful login-shell probe does not wait for or terminate a background child")
+    func successfulLoginShellProbeLeavesBackgroundChildRunning() throws {
         let pidFile = Self.temporaryPIDFile()
         defer { try? FileManager.default.removeItem(at: pidFile) }
         let startedAt = Date()
         let result = AppServerClient.runLoginShellLine(
             shell: "/bin/sh",
-            command: "(trap '' TERM; exec sleep 3) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); printf /tmp/codex",
-            timeout: 0.1)
+            command: "(trap '' HUP TERM; exec sleep 3) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); printf /tmp/codex",
+            timeout: 1)
 
         #expect(result == "/tmp/codex")
         #expect(Date().timeIntervalSince(startedAt) < 1)
@@ -132,8 +168,32 @@ struct AppServerClientResolverTests {
         let pid = pid_t(pidText.trimmingCharacters(in: .whitespacesAndNewlines))
         #expect(pid != nil)
         if let pid {
+            #expect(Self.processIsRunning(pid))
+            _ = kill(pid, SIGKILL)
             #expect(Self.waitForProcessToExit(pid, timeout: 0.5))
         }
+    }
+
+    @Test("login-shell probe rejects oversized command output")
+    func loginShellProbeRejectsOversizedOutput() throws {
+        let result = AppServerClient.runLoginShellLine(
+            shell: "/bin/sh",
+            command: "/usr/bin/yes x | /usr/bin/head -c 70000",
+            timeout: 1)
+
+        #expect(result == nil)
+    }
+
+    @Test("login-shell probe supports a non-POSIX csh command parser")
+    func loginShellProbeSupportsCsh() throws {
+        guard FileManager.default.isExecutableFile(atPath: "/bin/csh") else { return }
+
+        let result = AppServerClient.runLoginShellLine(
+            shell: "/bin/csh",
+            command: "printf /tmp/codex",
+            timeout: 1)
+
+        #expect(result == "/tmp/codex")
     }
 
     @Test("home npm-global bin is used before Homebrew install")
@@ -298,5 +358,10 @@ struct AppServerClientResolverTests {
             Thread.sleep(forTimeInterval: 0.01)
         } while Date() < deadline
         return false
+    }
+
+    private static func processIsRunning(_ pid: pid_t) -> Bool {
+        errno = 0
+        return kill(pid, 0) == 0 || errno == EPERM
     }
 }
