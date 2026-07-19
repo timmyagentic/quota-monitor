@@ -263,11 +263,17 @@ describe("public product content", () => {
     expect(html).toContain('data-i18n="privacyProviderSummary"');
     expect(html).toContain('id="installation"');
     expect(html.match(/href="\/download"/g)).toHaveLength(2);
-    expect(html).toContain("Know your quota. Keep your flow.");
+    expect(html).toContain("Quota at a glance,");
+    expect(html).toContain(" right in your menu bar.");
     expect(html).toContain("Keep Codex and Claude Code quota percentages visible in the menu bar, then click for reset times, token trends, API-equivalent cost estimates, and session details.");
     expect(html.match(/<section\b/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
     expect(html).toMatch(/<h1\b[^>]*id="hero-title"/);
+    expect(html).toContain('class="hero-product"');
+    expect(html).toContain('class="product-window hero-dashboard-window"');
+    expect(html).toContain('class="product-window hero-menu-window"');
     expect(html).toContain('src="/assets/dashboard-hero.webp"');
+    expect(html).toContain('src="/assets/menu-bar-popover.webp"');
+    expect(html).toContain('data-i18n="heroPrivacy"');
     expect(html).toContain('src="/assets/sessions-detail.webp"');
     expect(html).toContain('href="/styles.css"');
     expect(html).toContain('src="/app.js"');
@@ -279,10 +285,11 @@ describe("public product content", () => {
     const { translations } = await loadAppModule();
 
     expect(html).toContain(
-      '<span class="hero-title-line" data-i18n="heroTitleFirstLine">Know your quota.</span><span class="hero-title-line" data-i18n="heroTitleSecondLine"> Keep your flow.</span>',
+      '<span class="hero-title-line" data-i18n="heroTitleFirstLine">Quota at a glance,</span><span class="hero-title-line hero-title-line--accent" data-i18n="heroTitleSecondLine"> right in your menu bar.</span>',
     );
-    expect(translations.en.heroTitleFirstLine).toBe("Know your quota.");
-    expect(translations.en.heroTitleSecondLine).toBe(" Keep your flow.");
+    expect(translations.en.heroTitleFirstLine).toBe("Quota at a glance,");
+    expect(translations.en.heroTitleSecondLine).toBe(" right in your menu bar.");
+    expect(translations.en.heroPrivacy).toContain("Quota history stays on your Mac");
     const mobileLine = ruleBody(css, ".hero-title-line");
     expect(mobileLine).toMatch(/display:\s*inline\s*;/);
     expect(mobileLine).toMatch(/white-space:\s*normal\s*;/);
@@ -726,7 +733,7 @@ describe("public product content", () => {
       }))
       .filter(({ source }) => productSources.has(source));
 
-    expect(productImages).toHaveLength(6);
+    expect(productImages).toHaveLength(7);
     for (const image of productImages) {
       const dimensions = imageDimensions(join(publicDirectory, image.source));
       expect(image.width, `${image.source} width`).toBe(dimensions.width);
@@ -782,7 +789,7 @@ describe("public product content", () => {
       /<a\b[^>]*class="product-image-link"[^>]*href="([^\"]+)"[^>]*>([\s\S]*?)<\/a>/g,
     )];
 
-    expect(productLinks).toHaveLength(6);
+    expect(productLinks).toHaveLength(7);
     for (const [, href = "", contents = ""] of productLinks) {
       expect(href).toMatch(/^\/assets\/(?:menu-bar-popover|dashboard-hero|dashboard-insights|sessions-detail|history-detail)\.webp$/);
       expect(contents).toContain(`src="${href}"`);

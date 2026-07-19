@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- The website now leads with the real menu-bar popover and Dashboard together, so the always-visible quota experience is clear before download.
 - Available updates now use a compact blue circular download icon instead of the heavier text button.
 - The website and bilingual README now show the always-visible quota readout and the click-to-open Codex/Claude popover, with a privacy-safe synthetic example of reset timing, pace guidance, model limits, and reset cards.
 - The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
@@ -44,6 +45,7 @@ window copy.
 
 ### Changed
 
+- **Menu-bar-first website.** The production site now presents the compact menu-bar experience as the primary product story, pairs it with the real Dashboard screenshot, and keeps download, privacy, language, and product-tour flows intact across desktop and mobile.
 - **Cleaner update entry.** The persistent update action in the menu popover, Dashboard toolbar, and Advanced settings now matches the compact blue download control used across the product.
 - **Menu-bar product tour.** The official website and both README languages now explain what a compact readout such as `7d 4%` means, why unavailable windows are omitted, and what the full two-provider popover contains.
 - **Bilingual project README.** Parallel English and Simplified Chinese README files now keep the product story, installation, privacy, screenshots, and contributor guidance aligned while linking directly to the official website and download.
