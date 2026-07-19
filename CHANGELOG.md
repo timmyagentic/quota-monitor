@@ -30,16 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+## [0.2.43] — 2026-07-20
+
 #### Summary
 
-- Live Codex usage percentages now work when Codex is provided by the unified ChatGPT desktop app.
-- The website now leads with the real menu-bar popover and Dashboard together, so the always-visible quota experience is clear before download.
-- Available updates now use a compact blue circular download icon instead of the heavier text button.
-- The website and bilingual README now show the always-visible quota readout and the click-to-open Codex/Claude popover, with a privacy-safe synthetic example of reset timing, pace guidance, model limits, and reset cards.
-- The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
-- Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
-- Quota Monitor can now be installed with one `npx` command or by asking an AI coding agent, while the familiar DMG download remains available.
-- Large active Codex histories now refresh from newly appended data instead of rereading the entire session, while preserving the same token, quota, and cost totals.
+- Live Codex usage now works with the unified ChatGPT desktop app, while large active histories refresh from newly appended data instead of being reread in full.
+- Quota Monitor can now be installed with one `npx` command or through an AI coding agent, while the familiar DMG download remains available.
+- Available updates now use a compact blue download icon, while Advanced settings stay focused by hiding internal data tools.
+- The website and bilingual README now lead with always-visible menu-bar quotas, clearer screenshots, privacy guidance, and the official download.
 
 ### Added
 
