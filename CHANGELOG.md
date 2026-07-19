@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Live Codex usage percentages now work when Codex is provided by the unified ChatGPT desktop app.
 - The website now leads with the real menu-bar popover and Dashboard together, so the always-visible quota experience is clear before download.
 - Available updates now use a compact blue circular download icon instead of the heavier text button.
 - The website and bilingual README now show the always-visible quota readout and the click-to-open Codex/Claude popover, with a privacy-safe synthetic example of reset timing, pace guidance, model limits, and reset cards.
@@ -49,6 +50,10 @@ window copy.
 - **Cleaner update entry.** The persistent update action in the menu popover, Dashboard toolbar, and Advanced settings now matches the compact blue download control used across the product.
 - **Menu-bar product tour.** The official website and both README languages now explain what a compact readout such as `7d 4%` means, why unavailable windows are omitted, and what the full two-provider popover contains.
 - **Bilingual project README.** Parallel English and Simplified Chinese README files now keep the product story, installation, privacy, screenshots, and contributor guidance aligned while linking directly to the official website and download.
+
+### Fixed
+
+- **Find Codex inside ChatGPT.** Codex quota polling now detects the CLI bundled in the unified ChatGPT desktop app before probing the login shell, restoring live percentages for app-only installs even when shell startup is blocked.
 
 ### Removed
 

@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // Single-shot client for `codex app-server`.
@@ -47,18 +48,22 @@ actor AppServerClient {
 
     private static func resolveBinary() -> String? {
         let env = ProcessInfo.processInfo.environment
+        let isExecutable = FileManager.default.isExecutableFile(atPath:)
 
         return resolveBinary(
             explicitOverride: env["CODEX_BINARY"],
             home: env["HOME"] ?? "",
-            loginShellPath: discoverViaLoginShell(),
-            isExecutable: FileManager.default.isExecutableFile(atPath:))
+            loginShellPath: executable(
+                named: "codex",
+                inPath: loginShellPATH,
+                isExecutable: isExecutable),
+            isExecutable: isExecutable)
     }
 
     static func resolveBinary(
         explicitOverride: String?,
         home: String,
-        loginShellPath: String?,
+        loginShellPath: @autoclosure () -> String?,
         isExecutable: (String) -> Bool
     ) -> String? {
         // 1. Explicit override (set in launchctl or via env var).
@@ -66,26 +71,28 @@ actor AppServerClient {
             return override
         }
 
-        // 2. Match the user's terminal first. A hardcoded install path can be
-        // stale or half-uninstalled while the login shell points at the working
-        // version-manager install (nvm/asdf/bun/etc.).
-        if let shellPath = loginShellPath, !shellPath.isEmpty, isExecutable(shellPath) {
+        // 2. Prefer the unified first-party ChatGPT bundle before starting an
+        // interactive shell. App-only installs should work from a minimal GUI
+        // environment even when shell startup is slow or permission-gated.
+        for path in chatGPTBundleCandidates(home: home) where isExecutable(path) {
+            return path
+        }
+
+        // 3. Match the user's terminal when no unified bundle is installed.
+        // This still supports version-manager installs (nvm/asdf/bun/etc.).
+        if let shellPath = loginShellPath(), !shellPath.isEmpty, isExecutable(shellPath) {
             return shellPath
         }
 
-        // 3. Common install locations. GUI-launched apps inherit a minimal PATH,
-        // so we probe well-known bin dirs ourselves when the login shell probe
-        // cannot find codex. Prefer the first-party desktop bundle before
-        // hardcoded package-manager paths: users may have Codex.app installed
-        // without a standalone CLI, and old Homebrew shims can be executable
-        // while pointing at a missing vendor binary.
+        // 4. Common CLI locations and the legacy Codex bundle. Preserve the
+        // established CLI-before-legacy ordering so a stale legacy app cannot
+        // displace the user's working terminal install.
         let candidates = [
             "\(home)/.npm-global/bin/codex",
             "\(home)/.local/bin/codex",
             "\(home)/.cargo/bin/codex",
             "\(home)/.bun/bin/codex",
-            "\(home)/Applications/Codex.app/Contents/Resources/codex",
-            "/Applications/Codex.app/Contents/Resources/codex",
+        ] + legacyCodexBundleCandidates(home: home) + [
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
         ]
@@ -95,24 +102,275 @@ actor AppServerClient {
         return nil
     }
 
-    private static func discoverViaLoginShell() -> String? {
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+    private static func chatGPTBundleCandidates(home: String) -> [String] {
+        [
+            "\(home)/Applications/ChatGPT.app/Contents/Resources/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/codex",
+        ]
+    }
+
+    private static func legacyCodexBundleCandidates(home: String) -> [String] {
+        [
+            "\(home)/Applications/Codex.app/Contents/Resources/codex",
+            "/Applications/Codex.app/Contents/Resources/codex",
+        ]
+    }
+
+    private static func isDesktopBundleBinary(_ path: String, home: String) -> Bool {
+        (chatGPTBundleCandidates(home: home) + legacyCodexBundleCandidates(home: home))
+            .contains(path)
+    }
+
+    static func loginShellPathForEnvironment(
+        binaryPath: String,
+        home: String = ProcessInfo.processInfo.environment["HOME"] ?? "",
+        discoveredPath: @autoclosure () -> String?
+    ) -> String? {
+        guard !isDesktopBundleBinary(binaryPath, home: home) else { return nil }
+        return discoveredPath()
+    }
+
+    static func executable(
+        named name: String,
+        inPath path: String?,
+        isExecutable: (String) -> Bool
+    ) -> String? {
+        guard let path else { return nil }
+        for directory in path.split(separator: ":") {
+            let candidate = "\(directory)/\(name)"
+            if isExecutable(candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// Runs a login-shell probe with a bounded execution deadline. Shell startup
+    /// can block on a slow version manager, inaccessible mount, or a permission-
+    /// gated PATH entry; quota polling must still reach the app-bundle fallbacks.
+    /// A timed-out probe terminates the shell and descendants observed at the
+    /// deadline. Successful probes never terminate shell-started background jobs.
+    static func runLoginShellLine(
+        shell: String,
+        command: String,
+        timeout: TimeInterval
+    ) -> String? {
+        let fileManager = FileManager.default
+        let outputURL = fileManager.temporaryDirectory
+            .appendingPathComponent("quota-monitor-shell-probe-\(UUID().uuidString)")
+        let helperURL = fileManager.temporaryDirectory
+            .appendingPathComponent("quota-monitor-shell-helper-\(UUID().uuidString)")
+        guard fileManager.createFile(
+            atPath: outputURL.path,
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            return nil
+        }
+        defer { try? fileManager.removeItem(at: outputURL) }
+
+        let maximumOutputBytes = 64 * 1024
+        let helperScript = """
+        #!/bin/sh
+        # macOS /bin/sh expresses RLIMIT_FSIZE in 1 KiB blocks.
+        ulimit -f \(maximumOutputBytes / 1024) || exit 1
+        {
+        \(command)
+        } > \(shellSingleQuote(outputURL.path))
+        """
+        guard fileManager.createFile(
+            atPath: helperURL.path,
+            contents: Data(helperScript.utf8),
+            attributes: [.posixPermissions: 0o700]
+        ) else {
+            return nil
+        }
+        defer { try? fileManager.removeItem(at: helperURL) }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
-        process.arguments = ["-ilc", "command -v codex"]
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
+        // The user's shell only loads its login environment and launches this
+        // helper path. Probe syntax stays inside the explicit /bin/sh script so
+        // non-POSIX login shells such as fish and csh remain compatible.
+        process.arguments = loginShellArguments(
+            shell: shell,
+            command: shellSingleQuote(helperURL.path))
+        process.standardInput = FileHandle.nullDevice
+        // Startup-file chatter is not probe output and must never grow the
+        // result file. Only the explicitly supervised command writes there.
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
             try process.run()
+            let deadline = Date().addingTimeInterval(timeout)
+            guard waitForExit(process, until: deadline) else {
+                let observedProcesses = observedProcessTree(
+                    rootProcessID: process.processIdentifier)
+                stopTimedOutProcess(process, observedProcesses: observedProcesses)
+                return nil
+            }
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            let path = String(data: data, encoding: .utf8)?
+
+            let outputHandle = try FileHandle(forReadingFrom: outputURL)
+            defer { try? outputHandle.close() }
+            let data = try outputHandle.read(upToCount: maximumOutputBytes + 1) ?? Data()
+            guard data.count <= maximumOutputBytes else { return nil }
+            let output = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+            return output.isEmpty ? nil : output
         } catch {
             return nil
+        }
+    }
+
+    private static func shellSingleQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
+    }
+
+    private static func loginShellArguments(shell: String, command: String) -> [String] {
+        switch URL(fileURLWithPath: shell).lastPathComponent.lowercased() {
+        case "csh", "tcsh":
+            // tcsh only accepts -l when it is the sole option. Interactive csh
+            // still loads .cshrc, which is where PATH customization belongs.
+            return ["-ic", command]
+        default:
+            return ["-ilc", command]
+        }
+    }
+
+    private static func waitForExit(
+        _ process: Process,
+        until deadline: Date
+    ) -> Bool {
+        while process.isRunning {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { return false }
+            Thread.sleep(forTimeInterval: min(0.01, remaining))
+        }
+        return true
+    }
+
+    private struct ProcessIdentity: Hashable {
+        let processID: pid_t
+        let startSeconds: UInt64
+        let startMicroseconds: UInt64
+    }
+
+    private struct ObservedProcess {
+        let identity: ProcessIdentity
+        let parentProcessID: pid_t
+    }
+
+    private static func observedProcessTree(rootProcessID: pid_t) -> [ProcessIdentity] {
+        let processInfos = allProcessInfos()
+        var processIDs: Set<pid_t> = [rootProcessID]
+        var orderedProcessIDs: [pid_t] = [rootProcessID]
+        var foundDescendant = true
+        while foundDescendant {
+            foundDescendant = false
+            for info in processInfos {
+                let processID = info.identity.processID
+                guard processIDs.contains(info.parentProcessID),
+                      !processIDs.contains(processID) else { continue }
+                processIDs.insert(processID)
+                orderedProcessIDs.append(processID)
+                foundDescendant = true
+            }
+        }
+
+        let byProcessID = processInfos.reduce(into: [pid_t: ProcessIdentity]()) {
+            $0[$1.identity.processID] = $1.identity
+        }
+        return orderedProcessIDs.compactMap { byProcessID[$0] }
+    }
+
+    private static func allProcessInfos() -> [ObservedProcess] {
+        let estimatedCount = max(Int(proc_listallpids(nil, 0)), 1)
+        var processIDs = [pid_t](repeating: 0, count: estimatedCount + 32)
+        let count = processIDs.withUnsafeMutableBufferPointer { buffer in
+            proc_listallpids(
+                buffer.baseAddress,
+                Int32(buffer.count * MemoryLayout<pid_t>.stride))
+        }
+        guard count > 0 else { return [] }
+        return processIDs.prefix(Int(count)).compactMap(processInfo(for:))
+    }
+
+    private static func processInfo(for processID: pid_t) -> ObservedProcess? {
+        var info = proc_bsdinfo()
+        let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(
+            processID,
+            PROC_PIDTBSDINFO,
+            0,
+            &info,
+            expectedSize) == expectedSize else { return nil }
+        return ObservedProcess(
+            identity: ProcessIdentity(
+                processID: pid_t(info.pbi_pid),
+                startSeconds: info.pbi_start_tvsec,
+                startMicroseconds: info.pbi_start_tvusec),
+            parentProcessID: pid_t(info.pbi_ppid))
+    }
+
+    private static func identityIsCurrent(_ identity: ProcessIdentity) -> Bool {
+        guard let current = processInfo(for: identity.processID)?.identity else {
+            return false
+        }
+        return current == identity
+    }
+
+    private static func stopTimedOutProcess(
+        _ process: Process,
+        observedProcesses: [ProcessIdentity]
+    ) {
+        sendSignal(SIGTERM, process: process, observedProcesses: observedProcesses)
+        let termDeadline = Date().addingTimeInterval(0.1)
+        while signalTargetIsRunning(process, observedProcesses: observedProcesses),
+              Date() < termDeadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+
+        if signalTargetIsRunning(process, observedProcesses: observedProcesses) {
+            sendSignal(SIGKILL, process: process, observedProcesses: observedProcesses)
+            let killDeadline = Date().addingTimeInterval(0.1)
+            while signalTargetIsRunning(process, observedProcesses: observedProcesses),
+                  Date() < killDeadline {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+        }
+
+        // Process.isRunning observes and reaps the direct child. Never call the
+        // blocking wait while it still reports running after the bounded grace.
+        if !process.isRunning {
+            process.waitUntilExit()
+        }
+    }
+
+    private static func signalTargetIsRunning(
+        _ process: Process,
+        observedProcesses: [ProcessIdentity]
+    ) -> Bool {
+        if process.isRunning { return true }
+        return observedProcesses.contains(where: identityIsCurrent)
+    }
+
+    private static func sendSignal(
+        _ signal: Int32,
+        process: Process,
+        observedProcesses: [ProcessIdentity]
+    ) {
+        // Descendants first, then the root shell. Revalidate start time before
+        // every signal so a recycled PID can never target an unrelated process.
+        for identity in observedProcesses.reversed() where identityIsCurrent(identity) {
+            _ = kill(identity.processID, signal)
+        }
+        if process.isRunning,
+           !observedProcesses.contains(where: {
+               $0.processID == process.processIdentifier
+           }) {
+            _ = kill(process.processIdentifier, signal)
         }
     }
 
@@ -125,33 +383,18 @@ actor AppServerClient {
     /// poller logging `env: node: No such file or directory` and the
     /// menu bar collapsing to the gauge fallback icon forever.
     ///
-    /// Spawning a login shell costs ~100-300 ms. `static let` lazily
-    /// caches the result; nil means the probe failed and callers fall
-    /// back to just the hardcoded extras list.
+    /// Spawning a login shell normally costs ~100-300 ms. `static let` lazily
+    /// caches the result; nil means the bounded probe failed and callers fall
+    /// back to the user-local CLI, legacy Codex bundle, and hardcoded extras.
     static let loginShellPATH: String? = computeLoginShellPATH()
 
     private static func computeLoginShellPATH() -> String? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shell)
         // `printf %s` with no trailing newline keeps the trim trivial.
-        // `-ilc` matches discoverViaLoginShell() so we get the same
-        // post-rc PATH the user would see in their own terminal.
-        process.arguments = ["-ilc", "printf %s \"$PATH\""]
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            let path = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return path.isEmpty ? nil : path
-        } catch {
-            return nil
-        }
+        return runLoginShellLine(
+            shell: shell,
+            command: "printf %s \"$PATH\"",
+            timeout: 2)
     }
 
     /// Build the environment we hand to spawned codex processes. Same idea
@@ -302,7 +545,10 @@ actor AppServerClient {
         // when codex shells out. Without this, the child exits before
         // replying to `initialize` and the menu bar shows a misleading
         // "Sign in via codex CLI" forever.
-        process.environment = Self.augmentedEnvironment()
+        let loginShellPath = Self.loginShellPathForEnvironment(
+            binaryPath: binaryPath,
+            discoveredPath: Self.loginShellPATH)
+        process.environment = Self.augmentedEnvironment(loginShellPath: loginShellPath)
 
         let stdin = Pipe()
         let stdout = Pipe()

@@ -168,9 +168,9 @@ the legacy database and preferences; the old
 | Claude Code | Anthropic's OAuth usage endpoint with local Claude Code credentials | `~/.claude/projects` and `~/.config/claude/projects` |
 
 Quota Monitor can use a standalone Codex or Claude Code CLI, the Codex binary
-bundled in the first-party `Codex.app`, or Claude Desktop's bundled Claude Code
-helper. It does not decrypt or reuse Claude Desktop's separate Electron token
-cache.
+bundled in the unified first-party `ChatGPT.app` or legacy `Codex.app`, or
+Claude Desktop's bundled Claude Code helper. It does not decrypt or reuse
+Claude Desktop's separate Electron token cache.
 
 API-equivalent costs are estimates derived from model pricing and token counts.
 They are not provider invoices or subscription charges.

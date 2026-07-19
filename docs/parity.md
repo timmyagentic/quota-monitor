@@ -10,7 +10,7 @@ Snapshot of where the Swift rewrite stands relative to the original Tauri/Rust +
 | Additional limits (e.g. GPT-5.3-Codex-Spark) | ✅ | ✅ | parity |
 | `prolite` plan-type decode bug salvage | n/a (pre-existed bug) | ✅ brace-balance JSON extractor | new |
 | `account/rateLimits/read` RPC (current name) | ❌ uses removed `rateLimits/read` | ✅ | ahead |
-| Codex binary auto-discovery for GUI launches | partial | ✅ explicit override + login-shell path + candidate dirs + Codex.app bundled binary fallback | ahead |
+| Codex binary auto-discovery for GUI launches | partial | ✅ explicit override + unified ChatGPT.app before bounded login-shell / CLI discovery, with legacy Codex.app fallback | ahead |
 | JSONL importer (`~/.codex/sessions/**/*.jsonl` + `archived_sessions/`) | ✅ | ✅ scans both directories, prunes orphan import_state rows on archival | parity |
 | Cumulative→delta token logic | ✅ | ✅ with reset detection | parity |
 | Embedded rate-limit samples extracted from rollouts | ✅ | ✅ stored as `source_kind='jsonl'` | parity |

@@ -158,9 +158,9 @@ CodexMonitor 已于 2026-05-07 更名为 Quota Monitor，当前 Bundle ID 为
 | Codex | `codex app-server` 与 `account/rateLimits/read` | `~/.codex/sessions` 与 `~/.codex/archived_sessions` |
 | Claude Code | 使用本机 Claude Code 凭据访问 Anthropic OAuth 用量接口 | `~/.claude/projects` 与 `~/.config/claude/projects` |
 
-Quota Monitor 可以使用独立安装的 Codex 或 Claude Code CLI，也可以发现第一方
-`Codex.app` 内置的 Codex 二进制，以及 Claude Desktop 内置的 Claude Code
-Helper。它不会解密或复用 Claude Desktop 独立的 Electron Token 缓存。
+Quota Monitor 可以使用独立安装的 Codex 或 Claude Code CLI，也可以发现合并后的
+第一方 `ChatGPT.app` 或旧版 `Codex.app` 内置的 Codex 二进制，以及 Claude Desktop
+内置的 Claude Code Helper。它不会解密或复用 Claude Desktop 独立的 Electron Token 缓存。
 
 API 等价费用根据模型价格和 Token 数量估算，不代表 Provider 账单或订阅费用。
 
