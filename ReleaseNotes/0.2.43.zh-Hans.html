@@ -110,7 +110,7 @@
 .qm-release-rhythm span:nth-child(4) { background: var(--release-coral); }
 .qm-release-highlights {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 7px;
 }
 .qm-release-highlight {
@@ -120,10 +120,6 @@
   gap: 8px;
   min-height: 54px;
   padding: 8px 9px;
-}
-.qm-release-highlight:first-child {
-  grid-column: 1 / -1;
-  min-height: 50px;
 }
 .qm-release-highlight::before {
   content: "";
@@ -199,8 +195,8 @@
 <div class="qm-release-hero release-animate" style="--i:0">
 <div class="qm-release-hero-content">
 <p class="qm-release-eyebrow">更新亮点</p>
-<h2 class="qm-release-title">Codex 用量，更快更新</h2>
-<p class="qm-release-subtitle">自动识别 ChatGPT 内置 Codex，大型历史只读取新增内容。</p>
+<h2 class="qm-release-title">性能更快，使用更稳</h2>
+<p class="qm-release-subtitle">本次更新聚焦性能优化与 Bug 修复。</p>
 <div class="qm-release-rhythm" aria-hidden="true">
 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
 </div>
@@ -209,7 +205,11 @@
 <div class="qm-release-highlights">
 <article class="qm-release-highlight release-animate" style="--i:1">
 <span class="qm-release-number">1</span>
-<p><b>Codex 用量更新更快。</b>Quota Monitor 会自动找到 ChatGPT 内置的 Codex，并只读取历史中的新增内容，同时保持统计结果一致。</p>
+<p><b>性能优化。</b>大型 Codex 历史现在只读取新增内容，减少重复处理，刷新速度更快。</p>
+</article>
+<article class="qm-release-highlight release-animate" style="--i:2">
+<span class="qm-release-number">2</span>
+<p><b>修复 Bug。</b>修复无法识别 ChatGPT 内置 Codex 的问题，实时用量现在可以正常获取。</p>
 </article>
 </div>
 </section>

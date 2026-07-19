@@ -110,7 +110,7 @@
 .qm-release-rhythm span:nth-child(4) { background: var(--release-coral); }
 .qm-release-highlights {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 7px;
 }
 .qm-release-highlight {
@@ -120,10 +120,6 @@
   gap: 8px;
   min-height: 54px;
   padding: 8px 9px;
-}
-.qm-release-highlight:first-child {
-  grid-column: 1 / -1;
-  min-height: 50px;
 }
 .qm-release-highlight::before {
   content: "";
@@ -199,8 +195,8 @@
 <div class="qm-release-hero release-animate" style="--i:0">
 <div class="qm-release-hero-content">
 <p class="qm-release-eyebrow">Release highlights</p>
-<h2 class="qm-release-title">Codex usage, ready faster</h2>
-<p class="qm-release-subtitle">Find Codex inside ChatGPT and refresh large histories from only what is new.</p>
+<h2 class="qm-release-title">Faster performance, more reliable usage</h2>
+<p class="qm-release-subtitle">This update focuses on performance improvements and bug fixes.</p>
 <div class="qm-release-rhythm" aria-hidden="true">
 <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
 </div>
@@ -209,7 +205,11 @@
 <div class="qm-release-highlights">
 <article class="qm-release-highlight release-animate" style="--i:1">
 <span class="qm-release-number">1</span>
-<p><b>Codex usage stays current with less waiting.</b> Quota Monitor finds Codex inside ChatGPT and reads only newly appended history while preserving the same totals.</p>
+<p><b>Performance improvements.</b> Large Codex histories now process only newly appended data, reducing repeated work and speeding up refreshes.</p>
+</article>
+<article class="qm-release-highlight release-animate" style="--i:2">
+<span class="qm-release-number">2</span>
+<p><b>Bug fixes.</b> Fixed an issue that prevented Codex bundled with ChatGPT from being detected, restoring real-time usage updates.</p>
 </article>
 </div>
 </section>
