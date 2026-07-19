@@ -266,6 +266,66 @@ struct MigrationsTests {
         }
     }
 
+    @Test("v17 adds lazy Codex checkpoints and removes negative offsets")
+    func codexCheckpointMigrationIsLazyAndPreservesProbeState() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-codex-checkpoint-v17")
+        let queue = try DatabaseQueue(path: url.path)
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(queue, upTo: "v16-history-covering-indexes")
+
+        let stamp = "2026-07-19T00:00:00Z"
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO sessions
+                    (session_id, root_session_id, created_at, imported_at, provider)
+                VALUES
+                    ('codex-probed', 'codex-probed', ?, ?, 'codex'),
+                    ('claude-control', 'claude-control', ?, ?, 'claude')
+                """, arguments: [stamp, stamp, stamp, stamp])
+            try db.execute(sql: """
+                INSERT INTO import_state
+                    (source_path, session_id, file_size, file_mtime_ms,
+                     last_imported_at, byte_offset)
+                VALUES
+                    ('/codex/probed.jsonl', 'codex-probed', 100, 200, ?, -1),
+                    ('/claude/control.jsonl', 'claude-control', 300, 400, ?, 250)
+                """, arguments: [stamp, stamp])
+        }
+
+        try migrator.migrate(queue)
+
+        try queue.read { db in
+            let columns = try String.fetchAll(db, sql: """
+                SELECT name FROM pragma_table_info('import_state')
+                """)
+            #expect(columns.contains("parser_checkpoint"))
+            #expect(columns.contains("metadata_probe_complete"))
+
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT session_id, file_size, file_mtime_ms, byte_offset,
+                       parser_checkpoint, metadata_probe_complete
+                FROM import_state
+                ORDER BY session_id
+                """)
+            let bySession = Dictionary(uniqueKeysWithValues: rows.map {
+                ($0["session_id"] as String, $0)
+            })
+
+            let codex = try #require(bySession["codex-probed"])
+            #expect(codex["file_size"] as Int64 == 100)
+            #expect(codex["file_mtime_ms"] as Int64 == 200)
+            #expect(codex["byte_offset"] as Int64 == 0)
+            #expect(codex["parser_checkpoint"] as Data? == nil)
+            #expect(codex["metadata_probe_complete"] as Bool == true)
+
+            let claude = try #require(bySession["claude-control"])
+            #expect(claude["byte_offset"] as Int64 == 250)
+            #expect(claude["parser_checkpoint"] as Data? == nil)
+            #expect(claude["metadata_probe_complete"] as Bool == false)
+        }
+    }
+
     @Test(
         "Claude re-read migrations reset import_state so files are rebuilt once",
         arguments: [

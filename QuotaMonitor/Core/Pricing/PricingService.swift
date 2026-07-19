@@ -318,9 +318,37 @@ enum PricingService {
     /// must NOT be reverted to seed values, otherwise a relaunch would erase the
     /// LiteLLM refresh / user's edits. We INSERT new rows but only UPDATE when
     /// price_source is still 'seed'.
-    static func seedCatalog(in db: Database) throws {
+    @discardableResult
+    static func seedCatalog(in db: Database) throws -> Bool {
         let now = ISO8601.fractional.string(from: Date())
+        var pricingChanged = false
         for entry in PricingSeed.entries {
+            let existing = try Row.fetchOne(db, sql: """
+                SELECT input_price_per_million,
+                       cached_input_price_per_million,
+                       output_price_per_million,
+                       cache_creation_price_per_million,
+                       effective_model_id,
+                       price_source
+                FROM pricing_catalog
+                WHERE model_id = ?
+                """, arguments: [entry.modelId])
+            if existing == nil {
+                pricingChanged = true
+            } else if existing?["price_source"] as String? == "seed" {
+                let calculationChanged =
+                    existing?["input_price_per_million"] as Double?
+                        != entry.inputPricePerMillion
+                    || existing?["cached_input_price_per_million"] as Double?
+                        != entry.cachedInputPricePerMillion
+                    || existing?["output_price_per_million"] as Double?
+                        != entry.outputPricePerMillion
+                    || existing?["cache_creation_price_per_million"] as Double?
+                        != entry.cacheCreationPricePerMillion
+                    || existing?["effective_model_id"] as String?
+                        != entry.effectiveModelId
+                pricingChanged = pricingChanged || calculationChanged
+            }
             try db.execute(sql: """
                 INSERT INTO pricing_catalog
                   (model_id, display_name, input_price_per_million,
@@ -354,6 +382,7 @@ enum PricingService {
                     now
                 ])
         }
+        return pricingChanged
     }
 
     /// Apply a LiteLLM fetch result to `pricing_catalog`.
@@ -545,6 +574,33 @@ enum PricingService {
         in db: Database,
         codexFastModeBilling: Bool = false
     ) throws {
+        try backfillValues(
+            in: db,
+            scope: nil,
+            codexFastModeBilling: codexFastModeBilling)
+    }
+
+    /// Recalculate values for one imported session without walking every
+    /// historical event. This intentionally shares the exact SQL expression
+    /// used by `backfillAllValues` so incremental imports cannot drift from a
+    /// later catalog-wide reprice.
+    static func backfillValues(
+        in db: Database,
+        sessionId: String,
+        provider: String,
+        codexFastModeBilling: Bool = false
+    ) throws {
+        try backfillValues(
+            in: db,
+            scope: (sessionId: sessionId, provider: provider),
+            codexFastModeBilling: codexFastModeBilling)
+    }
+
+    private static func backfillValues(
+        in db: Database,
+        scope: (sessionId: String, provider: String)?,
+        codexFastModeBilling: Bool
+    ) throws {
         // Keep the argument for source compatibility with callers and older
         // settings, but missing tier evidence is now always Standard.
         _ = codexFastModeBilling
@@ -553,8 +609,25 @@ enum PricingService {
             multiplier: CodexLongContextPricing.inputMultiplier)
         let outputMultiplierExpr = longContextMultiplierSQL(
             multiplier: CodexLongContextPricing.outputMultiplier)
-        try db.execute(sql: """
-            UPDATE usage_events
+        let scopeClause = scope == nil
+            ? ""
+            : """
+              AND usage_events.session_id = ?
+              AND usage_events.provider = ?
+              """
+        // SQLite can otherwise prefer the provider/history covering index for
+        // this correlated UPDATE and rescan most historical rows once per
+        // imported session. The existing session/timestamp index makes scoped
+        // pricing proportional to that session's rows. Catalog-wide repricing
+        // deliberately keeps the planner's normal choice.
+        let updateTarget = scope == nil
+            ? "UPDATE usage_events"
+            : """
+              UPDATE usage_events
+              INDEXED BY index_usage_events_on_session_id_timestamp
+              """
+        let sql = """
+            \(updateTarget)
             SET value_usd = (
               SELECT
                   CASE usage_events.provider
@@ -599,7 +672,15 @@ enum PricingService {
               SELECT 1 FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
             )
-            """)
+            \(scopeClause)
+            """
+        if let scope {
+            try db.execute(
+                sql: sql,
+                arguments: [scope.sessionId, scope.provider])
+        } else {
+            try db.execute(sql: sql)
+        }
     }
 
     /// SQL expression that resolves to the catalog `model_id` we should

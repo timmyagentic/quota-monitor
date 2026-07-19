@@ -39,6 +39,7 @@ window copy.
 - The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
 - Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
 - Quota Monitor can now be installed with one `npx` command or by asking an AI coding agent, while the familiar DMG download remains available.
+- Large active Codex histories now refresh from newly appended data instead of rereading the entire session, while preserving the same token, quota, and cost totals.
 
 ### Added
 
@@ -47,6 +48,8 @@ window copy.
 ### Changed
 
 - **Menu-bar-first website.** The production site now presents the compact menu-bar experience as the primary product story, pairs it with the real Dashboard screenshot, and keeps download, privacy, language, and product-tour flows intact across desktop and mobile.
+- **Incremental Codex history refreshes.** Root Codex rollouts now resume from a validated parser checkpoint; atomic replacements rebuild in full, while in-place truncation or lineage changes preserve the last correct import. Large histories update faster without changing calculated usage or cost.
+- **Deterministic Codex source handling.** QuotaMonitor keeps following the committed rollout while it exists, follows real file moves automatically, and selects one active source for fresh or orphaned history without asking users to move or maintain JSONL files.
 - **Cleaner update entry.** The persistent update action in the menu popover, Dashboard toolbar, and Advanced settings now matches the compact blue download control used across the product.
 - **Menu-bar product tour.** The official website and both README languages now explain what a compact readout such as `7d 4%` means, why unavailable windows are omitted, and what the full two-provider popover contains.
 - **Bilingual project README.** Parallel English and Simplified Chinese README files now keep the product story, installation, privacy, screenshots, and contributor guidance aligned while linking directly to the official website and download.

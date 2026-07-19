@@ -379,5 +379,33 @@ enum Migrations {
                 DROP INDEX IF EXISTS index_usage_events_on_provider_timestamp
                 """)
         }
+
+        // v17: Codex root rollouts can resume from a byte cursor when the
+        // parser's complete reducer state is available. Existing rows remain
+        // lazy: unchanged files are not reread during migration, and the first
+        // later change performs one final full parse to create a checkpoint.
+        migrator.registerMigration("v17-codex-parser-checkpoints") { db in
+            try db.alter(table: "import_state") { t in
+                t.add(column: "parser_checkpoint", .blob)
+                t.add(column: "metadata_probe_complete", .boolean)
+                    .notNull().defaults(to: false)
+            }
+            // Older Codex imports used -1 as a metadata-probe sentinel. Keep
+            // that information explicitly and restore byte_offset's invariant.
+            try db.execute(sql: """
+                UPDATE import_state
+                SET metadata_probe_complete = 1,
+                    byte_offset = 0
+                WHERE byte_offset < 0
+                  AND session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                  )
+                """)
+            try db.execute(sql: """
+                UPDATE import_state
+                SET byte_offset = 0
+                WHERE byte_offset < 0
+                """)
+        }
     }
 }

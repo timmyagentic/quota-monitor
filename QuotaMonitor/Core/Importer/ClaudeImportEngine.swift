@@ -515,6 +515,15 @@ actor ClaudeImportEngine {
                 }
             }
 
+            // Price this session before advancing the import offset. Keeping
+            // the usage upsert, derived value, and checkpoint in one GRDB
+            // write transaction means a failure cannot leave committed rows
+            // at $0 that a later unchanged-file scan would skip.
+            try PricingService.backfillValues(
+                in: db,
+                sessionId: parsed.sessionId,
+                provider: "claude")
+
             let state = ImportStateRecord(
                 sourcePath: file.path,
                 sessionId: parsed.sessionId,
