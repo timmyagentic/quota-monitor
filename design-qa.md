@@ -2,38 +2,40 @@
 
 ## Reference and implementation
 
-- Approved source: `website/design/native-focus-homepage.png` (Native Focus, 864 × 1821).
-- Desktop implementation: `docs/assets/website/homepage-desktop-en.jpg`, captured in the Codex in-app Browser with a 1440 × 1000 viewport override (1425 × 990 content image), English state.
-- Mobile implementation: `docs/assets/website/homepage-mobile-en.jpg`, captured in the same Browser with a 390 × 844 viewport override (375 × 812 content image), English state.
-- Full-view comparison: `docs/assets/website/design-qa-hero-comparison.png` places the approved first viewport on the left and the rendered first viewport on the right at the same 864 × 600 comparison size.
-- Focused comparison: `docs/assets/website/design-qa-title-comparison.png` places the approved hero-title region on the left and the post-fix rendered region on the right.
+- Source visual truth: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/selected/quota-monitor.png`.
+- Desktop implementation screenshot: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/local/quota-monitor/desktop-en-1440x1024.png`.
+- Mobile implementation screenshot: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/local/quota-monitor/mobile-en-390x844.png`.
+- Viewports: 1440 × 1024 desktop and 390 × 844 mobile, captured in the Codex in-app Browser.
+- State: English home-page hero after entrance motion settled. The local static QA server has no `/api/release` response, so it intentionally shows the checked-in `0.2.40` fallback; the production Worker hydrates the current release dynamically.
+- Full-view desktop comparison: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/comparisons/local/quota-monitor-desktop-en.png`.
+- Full-view mobile comparison: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/comparisons/local/quota-monitor-mobile-en.png`.
+- Focused product comparison: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/comparisons/local/quota-monitor-focus-product.png`.
 
-The in-app Browser's stitched full-page screenshot repeated the first viewport, so it was excluded as unreliable evidence. Below-fold coverage instead used the complete rendered DOM snapshot plus direct Features, Privacy, and installation-anchor navigation. The comparison images above use only trustworthy viewport captures.
+Each comparison board places the selected visual direction and the rendered implementation in the same image. The focused board makes the real menu-bar popover, app icon, Dashboard window, crop, borders, shadows, and relative scale readable enough for asset-level review.
 
 ## Findings and disposition
 
 - Final severity count: P0 0, P1 0, P2 0.
-- Hero copy now matches the approved two-line phrase boundary on desktop: `Know your quota.` / `Keep your flow.`. Mobile remains unclipped and free of horizontal overflow.
-- Header, cool white and pale-blue palette, bold system typography, primary blue CTA, product-window framing, whitespace, and next-section reveal remain aligned with Native Focus.
-- The implementation intentionally uses the current Quota Monitor top-toolbar Dashboard rather than the concept's invented sidebar, so the public page represents the shipping product. The planned secondary in-page Features CTA remains after the primary download CTA.
-- Dashboard and Sessions artwork is marked as synthetic data. No private user information appears in the assets.
+- Fonts and typography: the bold system display face, blue second phrase, compact navigation, body hierarchy, line height, and optical weight preserve the selected direction. The final desktop title is fully visible; mobile wraps cleanly without clipping or awkward orphaned punctuation.
+- Spacing and layout rhythm: the hero keeps the copy/product split, deliberate product overlap, broad white space, and compact metadata row from the source. At 390 px the layout becomes a readable single column without horizontal overflow.
+- Colors and visual tokens: navy text, saturated accessible blue, pale rules, restrained shadows, white surfaces, and the dark privacy section form a coherent token system without decorative gradients or CSS art.
+- Image quality and asset fidelity: the hero uses the repository's real app icon, menu-bar popover capture, and Dashboard capture at their intrinsic aspect ratios. The source's simulated macOS menu strip is intentionally omitted; it is not part of the shipping website or product asset.
+- Copy and content: the menu-bar-first promise is accurate to the app, privacy language distinguishes local quota history from documented anonymous version statistics, and all product screenshots identify synthetic data in their accessible text.
+- Interaction and accessibility: native links and buttons retain visible focus styles, meaningful labels and alt text, 44 px language targets, forced-colors support, and reduced-motion handling. Marketing entrance motion uses only `transform` and `opacity`; the subtle image hover is pointer-gated and transform-only.
+- Expected non-blocking state difference: the selected visual shows release `0.2.42`, while the static local capture shows the `0.2.40` fallback because release hydration requires the Worker endpoint. This is dynamic data rather than visual drift and must be rechecked after production deployment.
 
 ## Comparison history
 
-1. P1: the first product capture showed a mid-scroll Dashboard, the social asset inherited an invented sidebar, the Worker error view was unstyled, and image dimensions were inaccurate. Fixed in `a5b3246` with current product framing, a branded error view, and correct intrinsic dimensions.
-2. P1: the revised hero used an empty seven-day state and compact language controls measured 40 px. Fixed in `01f1fd2` with populated recent synthetic activity and 44 px touch targets.
-3. P2: the English desktop hero title wrapped into three lines rather than the approved two-line composition. Fixed in `898363d` with localized semantic line spans that are stable above 980 px and return to natural wrapping on smaller viewports.
-4. Post-fix review: the combined hero and focused-title comparisons showed no remaining actionable P0, P1, or P2 issues.
+1. First English desktop comparison — P1: the longer English title was clipped and collided with the product composition. The hero grid proportions, title scale and width, product-stage height, menu-popover size and position, and desktop copy offset were revised in `website/public/styles.css`; the accent phrase was made a stable block for intentional wrapping.
+2. Post-fix desktop evidence: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/comparisons/local/quota-monitor-desktop-en.png` shows the complete title and separated copy/product regions with no remaining overlap.
+3. Post-fix mobile evidence: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/comparisons/local/quota-monitor-mobile-en.png` shows clean four-line heading wrap, usable CTA and metadata, and no horizontal overflow.
+4. Focused post-fix evidence: `/Users/timmy/.codex/visualizations/2026/07/19/019f79d0-42b0-7cc3-be35-4b071ec9aeec/five-site-redesign/comparisons/local/quota-monitor-focus-product.png` shows the intended menu-popover-over-Dashboard hierarchy using real product imagery. No actionable P0, P1, or P2 finding remains.
 
 ## Browser interaction QA
 
-- English and Simplified Chinese controls update `lang`, title, hero copy, CTA copy, metadata, and persist across reloads.
-- Desktop navigation reaches Features and Privacy anchors; the secondary hero action reaches Features.
-- Primary download emits a Browser download event and remains on the site origin.
-- Mobile 390 × 844 layout has no horizontal overflow; language targets measure 44 × 44 px.
-- Keyboard focus on the language control is visibly rendered with a 3 px blue focus ring.
-- The localized 404 page is responsive, carries `noindex`, and returns home through a same-origin link.
-- Console warning/error checks were empty during desktop, mobile, language, anchor, 404, and download validation.
+- The uniquely scoped English and Simplified Chinese controls were both activated; `lang`, heading, hero copy, metadata, accessible labels, and pressed state updated correctly.
+- Desktop and 390 × 844 mobile captures showed no horizontal overflow (`scrollWidth` did not exceed the rendered document width).
+- Console warning and error checks were empty during desktop, mobile, and language-switch validation.
 
 final result: passed
 

@@ -54,28 +54,44 @@
     <section class="hero" aria-labelledby="hero-title">
       <div class="container hero-layout">
         <div class="hero-copy">
-          <h1 id="hero-title"><span class="hero-title-line" data-i18n="heroTitleFirstLine">Know your quota.</span><span class="hero-title-line" data-i18n="heroTitleSecondLine"> Keep your flow.</span></h1>
+          <h1 id="hero-title"><span class="hero-title-line" data-i18n="heroTitleFirstLine">Quota at a glance,</span><span class="hero-title-line hero-title-line--accent" data-i18n="heroTitleSecondLine"> right in your menu bar.</span></h1>
           <p class="hero-description" data-i18n="heroDescription">Keep Codex and Claude Code quota percentages visible in the menu bar, then click for reset times, token trends, API-equivalent cost estimates, and session details.</p>
           <div class="hero-actions">
             <a class="button button-primary" href="/download">
               <span data-i18n="downloadAction">Download QuotaMonitor</span>
               <span data-version>0.2.40</span>
             </a>
-            <a class="button button-secondary" href="#features" data-i18n="exploreFeatures">Explore features</a>
           </div>
           <ul class="download-metadata" aria-label="Download requirements and security" data-i18n-aria-label="downloadRequirementsLabel">
             <li data-i18n="systemRequirement">macOS 14+</li>
             <li data-i18n="signedStatus">Developer ID signed</li>
             <li data-i18n="notarizedStatus">Apple notarized</li>
           </ul>
+          <p class="hero-privacy" data-i18n="heroPrivacy">Quota history stays on your Mac. Anonymous version statistics are documented in the privacy policy.</p>
         </div>
-        <a class="product-image-link" href="/assets/dashboard-hero.webp">
-          <picture class="product-window hero-window">
-            <source srcset="/assets/dashboard-hero.webp" type="image/webp">
-            <img src="/assets/dashboard-hero.webp" width="980" height="732" alt="Quota Monitor dashboard showing Codex and Claude Code quota cards, token trends, and API-equivalent cost estimates with synthetic data" data-i18n-alt="dashboardHeroAlt">
-          </picture>
-          <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
-        </a>
+        <div class="hero-product" aria-label="Quota Monitor menu-bar popover and dashboard" data-i18n-aria-label="heroProductLabel">
+          <div class="hero-product__canvas">
+            <div class="hero-dashboard-link">
+              <a class="product-image-link" href="/assets/dashboard-hero.webp">
+                <picture class="product-window hero-dashboard-window">
+                  <source srcset="/assets/dashboard-hero.webp" type="image/webp">
+                  <img src="/assets/dashboard-hero.webp" width="980" height="732" alt="Quota Monitor dashboard showing Codex and Claude Code quota cards, token trends, and API-equivalent cost estimates with synthetic data" data-i18n-alt="dashboardHeroAlt">
+                </picture>
+                <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+              </a>
+            </div>
+            <div class="hero-menu-link">
+              <img class="hero-product__icon" src="/assets/app-icon.png" width="48" height="48" alt="" aria-hidden="true">
+              <a class="product-image-link" href="/assets/menu-bar-popover.webp">
+                <picture class="product-window hero-menu-window">
+                  <source srcset="/assets/menu-bar-popover.webp" type="image/webp">
+                  <img src="/assets/menu-bar-popover.webp" width="386" height="661" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards" data-i18n-alt="menuPopoverAlt">
+                </picture>
+                <span class="view-image-full-size" data-i18n="viewImageFullSize">View image full size</span>
+              </a>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
