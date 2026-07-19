@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // Single-shot client for `codex app-server`.
@@ -47,18 +48,22 @@ actor AppServerClient {
 
     private static func resolveBinary() -> String? {
         let env = ProcessInfo.processInfo.environment
+        let isExecutable = FileManager.default.isExecutableFile(atPath:)
 
         return resolveBinary(
             explicitOverride: env["CODEX_BINARY"],
             home: env["HOME"] ?? "",
-            loginShellPath: discoverViaLoginShell(),
-            isExecutable: FileManager.default.isExecutableFile(atPath:))
+            loginShellPath: executable(
+                named: "codex",
+                inPath: loginShellPATH,
+                isExecutable: isExecutable),
+            isExecutable: isExecutable)
     }
 
     static func resolveBinary(
         explicitOverride: String?,
         home: String,
-        loginShellPath: String?,
+        loginShellPath: @autoclosure () -> String?,
         isExecutable: (String) -> Bool
     ) -> String? {
         // 1. Explicit override (set in launchctl or via env var).
@@ -66,19 +71,22 @@ actor AppServerClient {
             return override
         }
 
-        // 2. Match the user's terminal first. A hardcoded install path can be
-        // stale or half-uninstalled while the login shell points at the working
-        // version-manager install (nvm/asdf/bun/etc.).
-        if let shellPath = loginShellPath, !shellPath.isEmpty, isExecutable(shellPath) {
+        // 2. Prefer the unified first-party ChatGPT bundle before starting an
+        // interactive shell. App-only installs should work from a minimal GUI
+        // environment even when shell startup is slow or permission-gated.
+        for path in chatGPTBundleCandidates(home: home) where isExecutable(path) {
+            return path
+        }
+
+        // 3. Match the user's terminal when no unified bundle is installed.
+        // This still supports version-manager installs (nvm/asdf/bun/etc.).
+        if let shellPath = loginShellPath(), !shellPath.isEmpty, isExecutable(shellPath) {
             return shellPath
         }
 
-        // 3. Common install locations. GUI-launched apps inherit a minimal PATH,
-        // so we probe well-known bin dirs ourselves when the login shell probe
-        // cannot find codex. Prefer the first-party desktop bundle before
-        // hardcoded package-manager paths: users may have Codex.app installed
-        // without a standalone CLI, and old Homebrew shims can be executable
-        // while pointing at a missing vendor binary.
+        // 4. Common CLI locations and the legacy Codex bundle. Preserve the
+        // established CLI-before-legacy ordering so a stale legacy app cannot
+        // displace the user's working terminal install.
         let candidates = [
             "\(home)/.npm-global/bin/codex",
             "\(home)/.local/bin/codex",
@@ -95,24 +103,236 @@ actor AppServerClient {
         return nil
     }
 
-    private static func discoverViaLoginShell() -> String? {
-        let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+    private static func chatGPTBundleCandidates(home: String) -> [String] {
+        [
+            "\(home)/Applications/ChatGPT.app/Contents/Resources/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/codex",
+        ]
+    }
+
+    private static func isDesktopBundleBinary(_ path: String) -> Bool {
+        path.hasSuffix("/ChatGPT.app/Contents/Resources/codex")
+            || path.hasSuffix("/Codex.app/Contents/Resources/codex")
+    }
+
+    static func loginShellPathForEnvironment(
+        binaryPath: String,
+        discoveredPath: @autoclosure () -> String?
+    ) -> String? {
+        guard !isDesktopBundleBinary(binaryPath) else { return nil }
+        return discoveredPath()
+    }
+
+    static func executable(
+        named name: String,
+        inPath path: String?,
+        isExecutable: (String) -> Bool
+    ) -> String? {
+        guard let path else { return nil }
+        for directory in path.split(separator: ":") {
+            let candidate = "\(directory)/\(name)"
+            if isExecutable(candidate) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    /// Runs a login-shell probe with a bounded execution deadline and bounded
+    /// process-tree cleanup. Shell startup can block on a slow version manager,
+    /// inaccessible mount, or a permission-gated PATH entry; quota polling must
+    /// still reach the app-bundle fallbacks.
+    static func runLoginShellLine(
+        shell: String,
+        command: String,
+        timeout: TimeInterval
+    ) -> String? {
+        let fileManager = FileManager.default
+        let outputURL = fileManager.temporaryDirectory
+            .appendingPathComponent("quota-monitor-shell-probe-\(UUID().uuidString)")
+        guard fileManager.createFile(atPath: outputURL.path, contents: nil) else {
+            return nil
+        }
+        defer { try? fileManager.removeItem(at: outputURL) }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: shell)
-        process.arguments = ["-ilc", "command -v codex"]
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
+        // Keep the shell alive briefly after the probe command so the parent
+        // can observe background jobs started by interactive startup files,
+        // even when those jobs move into their own process groups.
+        let supervisedCommand = """
+        \(command)
+        __quota_monitor_probe_status=$?
+        /bin/sleep 0.05
+        exit $__quota_monitor_probe_status
+        """
+        process.arguments = ["-ilc", supervisedCommand]
+        process.standardInput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
         do {
+            let stdout = try FileHandle(forWritingTo: outputURL)
+            defer { try? stdout.close() }
+            process.standardOutput = stdout
             try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            let path = String(data: data, encoding: .utf8)?
+            var processTree = ProcessTree(rootProcessID: process.processIdentifier)
+            let deadline = Date().addingTimeInterval(timeout)
+            let exitedBeforeDeadline = waitForExit(
+                process,
+                until: deadline,
+                processTree: &processTree)
+            let terminationStatus = exitedBeforeDeadline ? process.terminationStatus : nil
+
+            // Foundation launches Process in its own process group on macOS.
+            // Clean that group even after the shell itself exits: an rc file can
+            // leave a background child alive with inherited standard handles.
+            stopProcessTree(process, processTree: &processTree)
+
+            guard exitedBeforeDeadline, terminationStatus == 0 else { return nil }
+            try stdout.synchronize()
+            let data = try Data(contentsOf: outputURL)
+            let output = String(data: data, encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return FileManager.default.isExecutableFile(atPath: path) ? path : nil
+            return output.isEmpty ? nil : output
         } catch {
             return nil
+        }
+    }
+
+    private struct ProcessTree {
+        let rootProcessID: pid_t
+        var processIDs: Set<pid_t>
+        var processGroupIDs: Set<pid_t>
+
+        init(rootProcessID: pid_t) {
+            self.rootProcessID = rootProcessID
+            self.processIDs = [rootProcessID]
+            self.processGroupIDs = [rootProcessID]
+        }
+
+        mutating func refresh() {
+            let processInfos = Self.allProcessInfos()
+            var foundDescendant = true
+            while foundDescendant {
+                foundDescendant = false
+                for info in processInfos {
+                    guard processIDs.contains(info.parentProcessID),
+                          !processIDs.contains(info.processID) else { continue }
+                    processIDs.insert(info.processID)
+                    processGroupIDs.insert(info.processGroupID)
+                    foundDescendant = true
+                }
+            }
+        }
+
+        private struct ProcessInfo {
+            let processID: pid_t
+            let parentProcessID: pid_t
+            let processGroupID: pid_t
+        }
+
+        private static func allProcessInfos() -> [ProcessInfo] {
+            let estimatedCount = max(Int(proc_listallpids(nil, 0)), 1)
+            var processIDs = [pid_t](repeating: 0, count: estimatedCount + 32)
+            let count = processIDs.withUnsafeMutableBufferPointer { buffer in
+                proc_listallpids(
+                    buffer.baseAddress,
+                    Int32(buffer.count * MemoryLayout<pid_t>.stride))
+            }
+            guard count > 0 else { return [] }
+
+            return processIDs.prefix(Int(count)).compactMap { processID in
+                var info = proc_bsdinfo()
+                let expectedSize = Int32(MemoryLayout<proc_bsdinfo>.size)
+                guard proc_pidinfo(
+                    processID,
+                    PROC_PIDTBSDINFO,
+                    0,
+                    &info,
+                    expectedSize) == expectedSize else { return nil }
+                return ProcessInfo(
+                    processID: pid_t(info.pbi_pid),
+                    parentProcessID: pid_t(info.pbi_ppid),
+                    processGroupID: pid_t(info.pbi_pgid))
+            }
+        }
+    }
+
+    private static func waitForExit(
+        _ process: Process,
+        until deadline: Date,
+        processTree: inout ProcessTree
+    ) -> Bool {
+        processTree.refresh()
+        while process.isRunning {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { return false }
+            Thread.sleep(forTimeInterval: min(0.01, remaining))
+            processTree.refresh()
+        }
+        return true
+    }
+
+    private static func stopProcessTree(
+        _ process: Process,
+        processTree: inout ProcessTree
+    ) {
+        processTree.refresh()
+        guard signalTargetIsRunning(process, processTree: processTree) else {
+            if !process.isRunning {
+                process.waitUntilExit()
+            }
+            return
+        }
+
+        sendSignal(SIGTERM, processTree: processTree)
+        let termDeadline = Date().addingTimeInterval(0.1)
+        while signalTargetIsRunning(process, processTree: processTree),
+              Date() < termDeadline {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+
+        if signalTargetIsRunning(process, processTree: processTree) {
+            sendSignal(SIGKILL, processTree: processTree)
+            let killDeadline = Date().addingTimeInterval(0.1)
+            while signalTargetIsRunning(process, processTree: processTree),
+                  Date() < killDeadline {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+        }
+
+        // Process.isRunning observes and reaps the direct child. Never call the
+        // blocking wait while it still reports running after the bounded grace.
+        if !process.isRunning {
+            process.waitUntilExit()
+        }
+    }
+
+    private static func signalTargetIsRunning(
+        _ process: Process,
+        processTree: ProcessTree
+    ) -> Bool {
+        if process.isRunning { return true }
+        for processID in processTree.processIDs where processID != getpid() {
+            errno = 0
+            if kill(processID, 0) == 0 || errno == EPERM {
+                return true
+            }
+        }
+        for processGroupID in processTree.processGroupIDs where processGroupID != getpgrp() {
+            errno = 0
+            if kill(-processGroupID, 0) == 0 || errno == EPERM {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func sendSignal(_ signal: Int32, processTree: ProcessTree) {
+        for processGroupID in processTree.processGroupIDs where processGroupID != getpgrp() {
+            _ = kill(-processGroupID, signal)
+        }
+        for processID in processTree.processIDs where processID != getpid() {
+            _ = kill(processID, signal)
         }
     }
 
@@ -125,33 +345,18 @@ actor AppServerClient {
     /// poller logging `env: node: No such file or directory` and the
     /// menu bar collapsing to the gauge fallback icon forever.
     ///
-    /// Spawning a login shell costs ~100-300 ms. `static let` lazily
-    /// caches the result; nil means the probe failed and callers fall
-    /// back to just the hardcoded extras list.
+    /// Spawning a login shell normally costs ~100-300 ms. `static let` lazily
+    /// caches the result; nil means the bounded probe failed and callers fall
+    /// back to the user-local CLI, legacy Codex bundle, and hardcoded extras.
     static let loginShellPATH: String? = computeLoginShellPATH()
 
     private static func computeLoginShellPATH() -> String? {
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: shell)
         // `printf %s` with no trailing newline keeps the trim trivial.
-        // `-ilc` matches discoverViaLoginShell() so we get the same
-        // post-rc PATH the user would see in their own terminal.
-        process.arguments = ["-ilc", "printf %s \"$PATH\""]
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
-        do {
-            try process.run()
-            process.waitUntilExit()
-            guard process.terminationStatus == 0 else { return nil }
-            let data = stdout.fileHandleForReading.readDataToEndOfFile()
-            let path = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return path.isEmpty ? nil : path
-        } catch {
-            return nil
-        }
+        return runLoginShellLine(
+            shell: shell,
+            command: "printf %s \"$PATH\"",
+            timeout: 2)
     }
 
     /// Build the environment we hand to spawned codex processes. Same idea
@@ -302,7 +507,10 @@ actor AppServerClient {
         // when codex shells out. Without this, the child exits before
         // replying to `initialize` and the menu bar shows a misleading
         // "Sign in via codex CLI" forever.
-        process.environment = Self.augmentedEnvironment()
+        let loginShellPath = Self.loginShellPathForEnvironment(
+            binaryPath: binaryPath,
+            discoveredPath: Self.loginShellPATH)
+        process.environment = Self.augmentedEnvironment(loginShellPath: loginShellPath)
 
         let stdin = Pipe()
         let stdout = Pipe()

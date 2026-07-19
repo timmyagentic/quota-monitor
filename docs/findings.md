@@ -117,10 +117,10 @@ install when the user already has the first-party desktop app. The resolver now
 checks:
 
 1. `CODEX_BINARY`
-2. the user's login-shell `command -v codex`
-3. common user install dirs (`~/.npm-global`, `~/.local`, `~/.cargo`, `~/.bun`)
-4. `~/Applications/Codex.app/Contents/Resources/codex`
-5. `/Applications/Codex.app/Contents/Resources/codex`
+2. first-party unified ChatGPT desktop bundles
+3. the first executable `codex` in the captured login-shell `PATH`
+4. common user install dirs (`~/.npm-global`, `~/.local`, `~/.cargo`, `~/.bun`)
+5. legacy Codex desktop bundles
 6. Homebrew / `/usr/local` fallbacks
 
 The ordering matters because an executable Homebrew shim can still be broken if
@@ -153,6 +153,21 @@ background poller if macOS wants interaction. The production path now shells
 through `/usr/bin/security find-generic-password -s "Claude Code-credentials" -w`
 with a short timeout and treats "interaction required" as unavailable. The older
 Security.framework helper remains only as a testable query-construction path.
+
+## 2026-07-19 unified ChatGPT app probe
+
+The first-party desktop merge moved the bundled Codex binary to
+`/Applications/ChatGPT.app/Contents/Resources/codex`. The local bundle reports
+`codex-cli 0.145.0-alpha.18`; direct `app-server` initialization and
+`account/rateLimits/read` both succeeded with the existing decoder. The current
+provider response was weekly-only, so omitting a 5-hour row is valid behavior.
+
+QuotaMonitor now checks both user-level and system-level `ChatGPT.app` bundles,
+prefers them over the corresponding legacy `Codex.app` fallback, and resolves a
+desktop bundle before starting a login shell. App-bundled native binaries also
+skip login-shell PATH augmentation at launch. Standalone CLI installs retain a
+two-second shell execution deadline plus bounded process-tree cleanup, so an
+inaccessible mount or slow shell plugin cannot block quota polling indefinitely.
 
 ## Rollout JSONL shape
 
@@ -231,13 +246,13 @@ first when "the menu bar number is wrong."
   can be stale, and first-party desktop apps may bundle the only working
   binary. Picking the wrong executable makes the menu bar look frozen even
   though the user's terminal works.
-- **Coverage today**: 8 tests in `AppServerClientResolverTests` and 6 resolver
-  tests inside `ClaudeCLIRefreshTriggerTests`, plus real-machine smoke probes
-  against `/Applications/Codex.app/Contents/Resources/codex` and the Claude
-  Desktop bundled Claude Code helper.
+- **Coverage today**: 16 tests in `AppServerClientResolverTests`, plus separate
+  Claude binary-locator coverage and real-machine smoke probes against the
+  unified `/Applications/ChatGPT.app/Contents/Resources/codex`, legacy
+  `Codex.app`, and Claude Desktop bundled Claude Code helper paths.
 - **Watch**: any new binary candidate must preserve the preference order:
-  explicit override, login shell, user-local installs, first-party app bundle,
-  then package-manager fallbacks.
+  explicit override, unified ChatGPT bundle, login shell, user-local installs,
+  legacy Codex bundle, then package-manager fallbacks.
 
 ### 5. `PricingService.backfillAllValues` — single SQL UPDATE that prices everything
 - **Why risky**: a typo in the JOIN, a wrong column name, or an `OR`
