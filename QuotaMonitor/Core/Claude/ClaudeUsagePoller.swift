@@ -282,9 +282,9 @@ actor ClaudeUsagePoller {
         let captured = ISO8601.fractional.string(from: snapshot.capturedAt)
         let plan = snapshot.tier
         try await database.pool.write { db in
-            // We persist all four windows under bucket=primary/secondary
-            // to share queries with the Codex pollers, distinguished by
-            // source_kind ("claude_oauth") + limit_name (model breakdown).
+            // Persist aggregate and model-scoped windows under the shared
+            // primary/secondary shape, distinguished by source_kind
+            // ("claude_oauth") + the model's generic limit_name.
             if let w = snapshot.fiveHour {
                 try Self.insert(db, captured: captured, plan: plan,
                                 bucket: "primary", limitName: nil, window: w)
@@ -293,13 +293,10 @@ actor ClaudeUsagePoller {
                 try Self.insert(db, captured: captured, plan: plan,
                                 bucket: "secondary", limitName: nil, window: w)
             }
-            if let w = snapshot.sevenDayOpus {
+            for scoped in ClaudeScopedQuotaRows.persistedRows(for: snapshot) {
                 try Self.insert(db, captured: captured, plan: plan,
-                                bucket: "secondary", limitName: "opus", window: w)
-            }
-            if let w = snapshot.sevenDaySonnet {
-                try Self.insert(db, captured: captured, plan: plan,
-                                bucket: "secondary", limitName: "sonnet", window: w)
+                                bucket: "secondary", limitName: scoped.limitName,
+                                window: scoped.window)
             }
             // Trim stale samples in the same transaction so the table stays
             // bounded — only writes grow it, so only writes need to prune.

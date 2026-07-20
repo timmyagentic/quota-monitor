@@ -97,7 +97,7 @@ extension MenuBarContentView {
         VStack(alignment: .leading, spacing: 6) {
             claudeRateLimitNotice()
             if let usage = env.latestClaudeUsage,
-               usage.fiveHour != nil || usage.staleFiveHour != nil || usage.sevenDay != nil {
+               usage.hasRenderableQuotaWindow {
                 claudeOAuthInner(usage: usage)
                 // A token revoked / de-scoped *after* a successful poll leaves
                 // a stale snapshot up, so this branch (not the fallback) is what
@@ -177,6 +177,7 @@ extension MenuBarContentView {
     /// same shape.
     @ViewBuilder
     func claudeOAuthInner(usage: ClaudeUsageSnapshot) -> some View {
+        let scopedRows = ClaudeScopedQuotaRows.visibleRows(for: usage)
         VStack(alignment: .leading, spacing: 6) {
             if let w = usage.fiveHour {
                 QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange)
@@ -194,14 +195,15 @@ extension MenuBarContentView {
             if let w = usage.sevenDay {
                 QuotaRow(title: L10n.quotaCardTitle7d, window: w, accent: .orange)
             }
-            // Model-specific 7d quotas (Pro/Max only). Render only when
-            // present and non-trivial so Free / lower-tier users don't
-            // see empty rows.
-            if let w = usage.sevenDayOpus, w.usedPercent > 0.5 {
-                QuotaRow(title: L10n.quotaCardTitle7dOpus, window: w, accent: .orange)
-            }
-            if let w = usage.sevenDaySonnet, w.usedPercent > 0.5 {
-                QuotaRow(title: L10n.quotaCardTitle7dSonnet, window: w, accent: .orange)
+            // Structured model-specific limits are useful even at 0%; their
+            // presence tells the user the allowance exists. Legacy top-level
+            // Opus/Sonnet rows retain their previous noise filter in the
+            // shared selector.
+            ForEach(scopedRows) { row in
+                QuotaRow(
+                    title: L10n.quotaCardTitle7dModel(row.displayName),
+                    window: row.window,
+                    accent: .orange)
             }
         }
     }

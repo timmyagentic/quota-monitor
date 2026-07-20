@@ -157,7 +157,10 @@ struct ForecastSection: View {
         // OAuth poll hasn't landed yet — that's the only signal we have.
         let liveFiveHour = claudeUsage?.fiveHour
         let liveSevenDay = claudeUsage?.sevenDay
-        let isFresh = liveFiveHour != nil || liveSevenDay != nil || block != nil
+        let scopedRows = claudeUsage.map {
+            ClaudeScopedQuotaRows.visibleRows(for: $0)
+        } ?? []
+        let isFresh = claudeUsage?.hasRenderableQuotaWindow == true || block != nil
 
         ProviderForecastCard(
             label: L10n.claude,
@@ -189,6 +192,13 @@ struct ForecastSection: View {
                         title: L10n.quotaCardTitle7d,
                         usedPercent: week.usedPercent,
                         resetsAt: week.resetAt,
+                        burn: nil)
+                }
+                ForEach(scopedRows) { row in
+                    QuotaProgressRow(
+                        title: L10n.quotaCardTitle7dModel(row.displayName),
+                        usedPercent: row.window.usedPercent,
+                        resetsAt: row.window.resetAt,
                         burn: nil)
                 }
                 if let burn {

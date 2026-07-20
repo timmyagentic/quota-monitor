@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
+
+### Added
+
+- **Fable 5 weekly quota.** Quota Monitor reads Anthropic's new model-scoped weekly limits, keeps them available after relaunch, and displays Fable 5 even when its allowance is still unused.
+
 ## [0.2.43] — 2026-07-20
 
 #### Summary

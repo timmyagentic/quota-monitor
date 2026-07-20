@@ -24,6 +24,14 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+
+- Claude 现在会在菜单栏弹窗和 Dashboard 中，将 Fable 5 专用周限额与整体 5 小时、7 天限额一同显示。
+
+### 新增
+
+- **Fable 5 专用周限额。** Quota Monitor 现在会读取 Anthropic 新增的模型专项周限额，在重启后继续保留，并且即使额度尚未使用也会显示 Fable 5。
+
 ## [0.2.43] — 2026-07-20
 
 #### Summary

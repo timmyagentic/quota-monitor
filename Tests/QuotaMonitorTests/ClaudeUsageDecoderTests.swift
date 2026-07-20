@@ -93,6 +93,102 @@ struct ClaudeUsageDecoderTests {
         #expect(abs((snap.sevenDaySonnet?.usedPercent ?? 0) - 9.8) < 0.0001)
     }
 
+    @Test("Fable 5: structured weekly limit decodes at its literal percent")
+    func fable5_structuredWeeklyLimitDecodes() throws {
+        let data = try loadFixture("live_fable5_weekly_scoped")
+        let snap = try ClaudeUsageClient.decode(data: data, capturedAt: capturedAt)
+
+        let scoped = try #require(snap.weeklyScoped.first)
+        #expect(scoped.key == "fable")
+        #expect(scoped.displayName == "Fable 5")
+        #expect(abs(scoped.window.usedPercent - 1.0) < 0.0001,
+                "limits[].percent is already 0...100; 1 must stay 1%, not become 100%")
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 1.0) < 0.0001,
+                "modern top-level utilization is also literal percent when limits[] is present")
+        #expect(snap.sevenDayFable == scoped.window)
+        #expect(snap.tier == "max20x")
+    }
+
+    @Test("structured Fable wins over a top-level compatibility fallback")
+    func fable5_structuredLimitWinsOverFallback() throws {
+        let json = """
+        {
+          "seven_day_fable": {
+            "utilization": 40.0,
+            "resets_at": "2026-07-05T10:00:00Z"
+          },
+          "limits": [{
+            "kind": "weekly_scoped",
+            "percent": 12.0,
+            "resets_at": "2026-07-06T10:00:00Z",
+            "scope": {"model": {"display_name": "Fable"}}
+          }]
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(snap.weeklyScoped.count == 1)
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 12.0) < 0.0001)
+    }
+
+    @Test("limits-only response restores aggregate and model weekly windows")
+    func limitsOnlyResponseRestoresAllWindowKinds() throws {
+        let json = """
+        {
+          "limits": [
+            {
+              "kind": "session",
+              "percent": 14.0,
+              "resets_at": "2026-07-20T14:00:00Z",
+              "scope": null
+            },
+            {
+              "kind": "weekly_all",
+              "percent": 22.0,
+              "resets_at": "2026-07-25T10:00:00Z",
+              "scope": null
+            },
+            {
+              "kind": "weekly_scoped",
+              "percent": 33.0,
+              "resets_at": "2026-07-24T10:00:00Z",
+              "scope": {"model": {"display_name": "Fable"}}
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(abs((snap.fiveHour?.usedPercent ?? -1) - 14.0) < 0.0001)
+        #expect(abs((snap.fiveHour?.windowDuration ?? -1) - 5 * 3600) < 0.0001)
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 22.0) < 0.0001)
+        #expect(abs((snap.sevenDay?.windowDuration ?? -1) - 7 * 86400) < 0.0001)
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 33.0) < 0.0001)
+    }
+
+    @Test("structured aggregate wins and 1 percent stays 1 when both shapes exist")
+    func structuredAggregateWinsAtOnePercent() throws {
+        let json = """
+        {
+          "seven_day": {
+            "utilization": 1.0,
+            "resets_at": "2026-07-24T10:00:00Z"
+          },
+          "limits": [{
+            "kind": "weekly_all",
+            "percent": 1.0,
+            "resets_at": "2026-07-25T10:00:00Z",
+            "scope": null
+          }]
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 1.0) < 0.0001)
+        #expect(snap.sevenDay?.resetAt == ISO8601.parse("2026-07-25T10:00:00Z"),
+                "structured weekly_all must win over the ambiguous top-level value")
+    }
+
     @Test("legacy `used_percent` + `reset_at` keys still decode")
     func legacyUsedPercent_andResetAt_stillDecode() throws {
         let data = try loadFixture("legacy_used_percent")
