@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 // Enumerates rollout-*.jsonl files under $CODEX_HOME/sessions/ and
@@ -10,6 +11,7 @@ struct SessionFile: Equatable {
     let path: String
     let fileSize: Int64
     let fileMtimeMs: Int64
+    let sourceIdentity: RolloutSourceIdentity
     /// Either "active" (under sessions/) or "archived" (under archived_sessions/).
     /// Mirrors codex-pacer's bucket label. Currently informational only.
     let bucket: String
@@ -79,18 +81,30 @@ enum SessionScanner {
             guard fileURL.pathExtension == "jsonl",
                   fileURL.lastPathComponent.hasPrefix("rollout-") else { continue }
 
-            let values = try? fileURL.resourceValues(forKeys: [
-                .fileSizeKey, .contentModificationDateKey, .isRegularFileKey])
+            let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
             guard values?.isRegularFile == true else { continue }
 
-            let size = Int64(values?.fileSize ?? 0)
-            let mtimeMs = Int64((values?.contentModificationDate?.timeIntervalSince1970 ?? 0) * 1000)
+            var value = Darwin.stat()
+            let status = fileURL.path.withCString { path in
+                Darwin.lstat(path, &value)
+            }
+            guard status == 0 else { continue }
+            let size = Int64(value.st_size)
+            let mtimeMs = RolloutFileSnapshot.modificationTimeMilliseconds(
+                seconds: Int64(value.st_mtimespec.tv_sec),
+                nanoseconds: Int64(value.st_mtimespec.tv_nsec))
+            let birthtimeNs = Int64(value.st_birthtimespec.tv_sec) * 1_000_000_000
+                + Int64(value.st_birthtimespec.tv_nsec)
 
             results.append(SessionFile(
                 url: fileURL,
                 path: fileURL.path,
                 fileSize: size,
                 fileMtimeMs: mtimeMs,
+                sourceIdentity: RolloutSourceIdentity(
+                    device: Int64(value.st_dev),
+                    inode: Int64(bitPattern: UInt64(value.st_ino)),
+                    birthtimeNs: birthtimeNs),
                 bucket: bucket))
         }
         return results

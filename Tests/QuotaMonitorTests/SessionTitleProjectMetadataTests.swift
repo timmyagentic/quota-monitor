@@ -838,14 +838,16 @@ struct SessionTitleProjectMetadataTests {
         #expect(secondReport.changedFiles == 0)
         #expect(secondReport.importedSessions == 0)
 
-        let marker = try await db.pool.read { conn in
-            try Int64.fetchOne(conn, sql: """
-                SELECT byte_offset
+        let marker = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT byte_offset, parser_checkpoint, metadata_probe_complete
                 FROM import_state
                 WHERE session_id = 's-no-cwd'
                 """)
-        }
-        #expect(marker == -1)
+        })
+        #expect((marker["byte_offset"] as Int64?) == 412)
+        #expect((marker["parser_checkpoint"] as Data?) != nil)
+        #expect(marker["metadata_probe_complete"] as Bool? == true)
 
         let thirdReport = try await engine.performScan()
         #expect(thirdReport.changedFiles == 0)

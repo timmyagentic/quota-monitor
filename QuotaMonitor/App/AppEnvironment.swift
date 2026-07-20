@@ -455,8 +455,8 @@ final class AppEnvironment {
     /// Claude is disabled / onboarding isn't done, when no Claude directory
     /// exists yet, or when it's already running. On a write it triggers a
     /// **Claude-only** rescan, throttled and routed through `runScan`'s
-    /// `isScanning` guard so a busy session can't cause a scan storm and
-    /// Codex is never re-parsed.
+    /// `isScanning` guard so a busy session can't cause a scan storm or
+    /// trigger a separate Codex scan.
     private func ensureClaudeFileWatcher() {
         guard claudeFileWatcher == nil else { return }
         guard LocalQAEnvironment.allowsExternalDataSources() else { return }

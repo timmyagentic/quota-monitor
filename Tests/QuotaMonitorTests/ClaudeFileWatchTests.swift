@@ -3,8 +3,8 @@ import Testing
 @testable import QuotaMonitor
 
 /// The Claude transcript file-watcher feeds a *Claude-only* scan so that
-/// reacting to `~/.claude` writes never triggers Codex's expensive
-/// whole-file re-parse. These pin the two pure helpers behind that wiring:
+/// reacting to `~/.claude` writes never starts a separate Codex scan. These
+/// pin the two pure helpers behind that wiring:
 /// which directories get watched, and how a requested provider scope is
 /// intersected with the user's enabled providers.
 @Suite("Claude file-watch helpers")

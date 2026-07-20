@@ -69,6 +69,7 @@ struct PricingValueBackfillTests {
 
     /// Insert a usage_events row. `valueUSD` is the seed value; backfill
     /// will overwrite it.
+    @discardableResult
     private func insertUsageEvent(
         in db: DatabaseManager,
         provider: String,
@@ -78,10 +79,11 @@ struct PricingValueBackfillTests {
         cacheCreation5m: Int64 = 0,
         cacheCreation1h: Int64 = 0,
         serviceTierPreference: String? = nil,
-        seedValueUSD: Double = -1
-    ) throws {
+        seedValueUSD: Double = -1,
+        sessionId: String? = nil
+    ) throws -> String {
         let stamp = "2026-04-29T10:00:00Z"
-        let sid = "s-\(UUID().uuidString)"
+        let sid = sessionId ?? "s-\(UUID().uuidString)"
         try db.pool.write { conn in
             try conn.execute(sql: """
                 INSERT OR IGNORE INTO sessions
@@ -113,6 +115,7 @@ struct PricingValueBackfillTests {
                     serviceTierPreference
                 ])
         }
+        return sid
     }
 
     private func valueUSD(in db: DatabaseManager, sessionPrefix: String? = nil) throws -> [Double] {
@@ -120,6 +123,21 @@ struct PricingValueBackfillTests {
             try Double.fetchAll(conn, sql: """
                 SELECT value_usd FROM usage_events ORDER BY id ASC
                 """)
+        }
+    }
+
+    private func valueBitPatterns(
+        in db: DatabaseManager,
+        sessionId: String
+    ) throws -> [UInt64] {
+        try db.pool.read { conn in
+            try Double.fetchAll(conn, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE session_id = ?
+                ORDER BY id ASC
+                """, arguments: [sessionId])
+                .map(\.bitPattern)
         }
     }
 
@@ -314,6 +332,75 @@ struct PricingValueBackfillTests {
 
     // MARK: - idempotency
 
+    @Test("seed catalog reports only calculation changes")
+    func seedCatalogChangeDetectionIsStable() throws {
+        let db = try makeDatabase()
+
+        let unchanged = try db.pool.write { conn in
+            try PricingService.seedCatalog(in: conn)
+        }
+        #expect(!unchanged, "an identical startup seed must not request a full reprice")
+
+        try db.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE pricing_catalog
+                SET input_price_per_million = 999
+                WHERE model_id = 'gpt-5.4' AND price_source = 'seed'
+                """)
+        }
+        let repaired = try db.pool.write { conn in
+            try PricingService.seedCatalog(in: conn)
+        }
+        #expect(repaired, "a changed seed calculation field must request a full reprice")
+
+        let stableAgain = try db.pool.write { conn in
+            try PricingService.seedCatalog(in: conn)
+        }
+        #expect(!stableAgain, "the repaired catalog must be stable on the next launch")
+    }
+
+    @Test("database startup reprices finished history after a seed price changes")
+    func databaseStartupRepricesAfterSeedChange() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codexmonitor-tests", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(
+            "pricing-startup-\(UUID().uuidString).sqlite")
+
+        var initial: DatabaseManager? = try DatabaseManager(url: url)
+        let sessionId = try insertUsageEvent(
+            in: try #require(initial),
+            provider: "codex",
+            modelId: "gpt-5.4",
+            input: 100,
+            cached: 20,
+            output: 10,
+            seedValueUSD: -1)
+        try initial?.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+        let expected = try valueBitPatterns(
+            in: try #require(initial),
+            sessionId: sessionId)
+        try initial?.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE pricing_catalog
+                SET input_price_per_million = 999
+                WHERE model_id = 'gpt-5.4' AND price_source = 'seed'
+                """)
+            try conn.execute(
+                sql: "UPDATE usage_events SET value_usd = -1 WHERE session_id = ?",
+                arguments: [sessionId])
+        }
+        initial = nil
+
+        let reopened = try DatabaseManager(url: url)
+        let values = try valueBitPatterns(in: reopened, sessionId: sessionId)
+        #expect(values == expected,
+                "startup must repair historical values when seed pricing changes")
+    }
+
     @Test("running backfill twice produces the same value (deterministic)")
     func idempotentOnSecondRun() throws {
         let db = try makeDatabase()
@@ -332,6 +419,79 @@ struct PricingValueBackfillTests {
         let after2 = try valueUSD(in: db)
         #expect(after1 == after2,
                 "second backfill must not change values (formula is pure)")
+    }
+
+    @Test("session-targeted pricing is bit-for-bit identical to full backfill")
+    func targetedBackfillMatchesFullBackfillBitForBit() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db, modelId: "gpt-test",
+            input: 1.00, cached: 0.10, output: 8.00)
+        try insertPriceRow(
+            in: db, modelId: "gpt-5.5",
+            input: 5.00, cached: 0.50, output: 30.00)
+        try insertPriceRow(
+            in: db, modelId: "gpt-5.5-fast",
+            input: 12.50, cached: 1.25, output: 75.00)
+        try insertPriceRow(
+            in: db, modelId: "gpt-5.5-flex",
+            input: 2.50, cached: 0.25, output: 15.00)
+
+        let affected = "targeted-pricing-session"
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-test",
+            input: 1_000_000, cached: 200_000, output: 100_000,
+            seedValueUSD: -10, sessionId: affected)
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.5",
+            input: 100_000, cached: 20_000, output: 100_000,
+            serviceTierPreference: "priority",
+            seedValueUSD: -11, sessionId: affected)
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.5",
+            input: 100_000, cached: 20_000, output: 100_000,
+            serviceTierPreference: "flex",
+            seedValueUSD: -12, sessionId: affected)
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.5",
+            input: CodexLongContextPricing.inputTokenThreshold + 1,
+            cached: 50_000, output: 20_000,
+            serviceTierPreference: "priority",
+            seedValueUSD: -13, sessionId: affected)
+        // Both paths deliberately leave models with no catalog entry alone.
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "ghost-model",
+            input: 100, cached: 0, output: 10,
+            seedValueUSD: -14, sessionId: affected)
+
+        let unaffected = try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-test",
+            input: 500_000, cached: 100_000, output: 50_000,
+            seedValueUSD: -99)
+
+        try db.pool.write { conn in
+            try PricingService.backfillValues(
+                in: conn,
+                sessionId: affected,
+                provider: "codex")
+        }
+        let targetedBits = try valueBitPatterns(in: db, sessionId: affected)
+        #expect(
+            try valueBitPatterns(in: db, sessionId: unaffected)
+                == [Double(-99).bitPattern],
+            "targeted pricing must not rewrite another session")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+        let fullBits = try valueBitPatterns(in: db, sessionId: affected)
+
+        #expect(targetedBits == fullBits,
+                "targeted and full pricing must produce identical Double bits")
+        #expect(
+            try valueBitPatterns(in: db, sessionId: unaffected)
+                != [Double(-99).bitPattern],
+            "full pricing should still cover sessions outside the target")
     }
 
     // MARK: - codex Fast-Mode billing remaps to -fast catalog row

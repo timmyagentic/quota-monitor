@@ -178,7 +178,7 @@ struct TokenCountInfo: Decodable {
     }
 }
 
-struct TokenUsageWire: Decodable, Equatable, Hashable {
+struct TokenUsageWire: Codable, Equatable, Hashable, Sendable {
     let inputTokens: Int64
     let cachedInputTokens: Int64
     let outputTokens: Int64

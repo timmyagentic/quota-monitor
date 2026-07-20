@@ -263,11 +263,17 @@ describe("public product content", () => {
     expect(html).toContain('data-i18n="privacyProviderSummary"');
     expect(html).toContain('id="installation"');
     expect(html.match(/href="\/download"/g)).toHaveLength(2);
-    expect(html).toContain("Know your quota. Keep your flow.");
-    expect(html).toContain("Quota Monitor brings Codex and Claude Code quotas, token trends, API-equivalent cost estimates, and session details into one lightweight macOS menu-bar app.");
+    expect(html).toContain("Quota at a glance,");
+    expect(html).toContain(" right in your menu bar.");
+    expect(html).toContain("Keep Codex and Claude Code quota percentages visible in the menu bar, then click for reset times, token trends, API-equivalent cost estimates, and session details.");
     expect(html.match(/<section\b/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
     expect(html).toMatch(/<h1\b[^>]*id="hero-title"/);
+    expect(html).toContain('class="hero-product"');
+    expect(html).toContain('class="product-window hero-dashboard-window"');
+    expect(html).toContain('class="product-window hero-menu-window"');
     expect(html).toContain('src="/assets/dashboard-hero.webp"');
+    expect(html).toContain('src="/assets/menu-bar-popover.webp"');
+    expect(html).toContain('data-i18n="heroPrivacy"');
     expect(html).toContain('src="/assets/sessions-detail.webp"');
     expect(html).toContain('href="/styles.css"');
     expect(html).toContain('src="/app.js"');
@@ -279,10 +285,11 @@ describe("public product content", () => {
     const { translations } = await loadAppModule();
 
     expect(html).toContain(
-      '<span class="hero-title-line" data-i18n="heroTitleFirstLine">Know your quota.</span><span class="hero-title-line" data-i18n="heroTitleSecondLine"> Keep your flow.</span>',
+      '<span class="hero-title-line" data-i18n="heroTitleFirstLine">Quota at a glance,</span><span class="hero-title-line hero-title-line--accent" data-i18n="heroTitleSecondLine"> right in your menu bar.</span>',
     );
-    expect(translations.en.heroTitleFirstLine).toBe("Know your quota.");
-    expect(translations.en.heroTitleSecondLine).toBe(" Keep your flow.");
+    expect(translations.en.heroTitleFirstLine).toBe("Quota at a glance,");
+    expect(translations.en.heroTitleSecondLine).toBe(" right in your menu bar.");
+    expect(translations.en.heroPrivacy).toContain("Quota history stays on your Mac");
     const mobileLine = ruleBody(css, ".hero-title-line");
     expect(mobileLine).toMatch(/display:\s*inline\s*;/);
     expect(mobileLine).toMatch(/white-space:\s*normal\s*;/);
@@ -562,6 +569,7 @@ describe("public product content", () => {
 
   it("ships complete, correctly sized raster design and production assets", () => {
     for (const source of [
+      "assets/menu-bar-popover.webp",
       "assets/dashboard-hero.webp",
       "assets/dashboard-insights.webp",
       "assets/sessions-detail.webp",
@@ -593,6 +601,13 @@ describe("public product content", () => {
         minimumBytes: 10_000,
         exactWidth: 1_024,
         exactHeight: 1_024,
+      },
+      {
+        path: join(publicDirectory, "assets/menu-bar-popover.webp"),
+        minimumBytes: 10_000,
+        exactWidth: 386,
+        exactHeight: 661,
+        sha256: "1a68b4f07fde23161d46e8f6126f6c61d4c77735b619d94e9e04a0b765e9ad1a",
       },
       {
         path: join(publicDirectory, "assets/dashboard-hero.webp"),
@@ -691,6 +706,7 @@ describe("public product content", () => {
       "/assets/dashboard-hero.webp",
       "/assets/dashboard-insights.webp",
       "/assets/history-detail.webp",
+      "/assets/menu-bar-popover.webp",
       "/assets/sessions-detail.webp",
     ]));
     for (const source of rasterSources) {
@@ -702,6 +718,7 @@ describe("public product content", () => {
   it("declares the real intrinsic dimensions for every product screenshot", () => {
     const html = readPublic("index.html");
     const productSources = new Set([
+      "/assets/menu-bar-popover.webp",
       "/assets/dashboard-hero.webp",
       "/assets/dashboard-insights.webp",
       "/assets/history-detail.webp",
@@ -716,7 +733,7 @@ describe("public product content", () => {
       }))
       .filter(({ source }) => productSources.has(source));
 
-    expect(productImages).toHaveLength(5);
+    expect(productImages).toHaveLength(7);
     for (const image of productImages) {
       const dimensions = imageDimensions(join(publicDirectory, image.source));
       expect(image.width, `${image.source} width`).toBe(dimensions.width);
@@ -727,6 +744,7 @@ describe("public product content", () => {
   it("maps each feature story to its verified real-app capture", () => {
     const html = readPublic("index.html");
     const hero = html.match(/<section\b[^>]*class="hero"[\s\S]*?<\/section>/)?.[0] ?? "";
+    const menu = html.match(/<section\b[^>]*feature-story-menu[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
     const quota = html.match(/<section\b[^>]*feature-story-quota[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
     const trends = html.match(/<section\b[^>]*feature-story-trends[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
     const sessions = html.match(/<section\b[^>]*feature-story-sessions[^>]*>[\s\S]*?<\/section>/)?.[0] ?? "";
@@ -736,12 +754,31 @@ describe("public product content", () => {
       expect(block).toContain('srcset="/assets/dashboard-hero.webp"');
       expect(block).toContain('src="/assets/dashboard-hero.webp"');
     }
+    expect(menu).toContain('srcset="/assets/menu-bar-popover.webp"');
+    expect(menu).toContain('src="/assets/menu-bar-popover.webp"');
     expect(trends).toContain('srcset="/assets/dashboard-insights.webp"');
     expect(trends).toContain('src="/assets/dashboard-insights.webp"');
     expect(sessions).toContain('srcset="/assets/sessions-detail.webp"');
     expect(sessions).toContain('src="/assets/sessions-detail.webp"');
     expect(history).toContain('srcset="/assets/history-detail.webp"');
     expect(history).toContain('src="/assets/history-detail.webp"');
+  });
+
+  it("documents the compact menu-bar readout and click-to-open popover in both languages", async () => {
+    const html = readPublic("index.html");
+    const { translations } = await loadAppModule();
+
+    expect(html).toContain('<span class="menu-readout-sample" aria-hidden="true"><span>7d</span><strong>4%</strong></span>');
+    expect(html).toContain('data-i18n="menuReadoutTitle"');
+    expect(html).toContain('data-i18n="menuPopoverTitle"');
+    expect(translations.en.featureMenuBody).toMatch(/available 5-hour or 7-day quota/i);
+    expect(translations.en.featureMenuBody).toContain("7d 4%");
+    expect(translations.en.menuReadoutBody).toMatch(/Codex, Claude Code, both side by side, or only the gauge icon/i);
+    expect(translations.en.menuPopoverBody).toMatch(/reset countdowns[\s\S]*model-specific limits[\s\S]*reset cards/i);
+    expect(translations["zh-Hans"].featureMenuBody).toMatch(/5 小时或 7 天额度/);
+    expect(translations["zh-Hans"].featureMenuBody).toContain("7d 4%");
+    expect(translations["zh-Hans"].menuReadoutBody).toMatch(/Codex、Claude Code、两者并排，或只保留仪表图标/);
+    expect(translations["zh-Hans"].menuPopoverBody).toMatch(/重置倒计时[\s\S]*模型独立额度[\s\S]*主动重置卡/);
   });
 
   it("links each product capture to its same-origin full-size asset", async () => {
@@ -752,9 +789,9 @@ describe("public product content", () => {
       /<a\b[^>]*class="product-image-link"[^>]*href="([^\"]+)"[^>]*>([\s\S]*?)<\/a>/g,
     )];
 
-    expect(productLinks).toHaveLength(5);
+    expect(productLinks).toHaveLength(7);
     for (const [, href = "", contents = ""] of productLinks) {
-      expect(href).toMatch(/^\/assets\/(?:dashboard-hero|dashboard-insights|sessions-detail|history-detail)\.webp$/);
+      expect(href).toMatch(/^\/assets\/(?:menu-bar-popover|dashboard-hero|dashboard-insights|sessions-detail|history-detail)\.webp$/);
       expect(contents).toContain(`src="${href}"`);
       expect(contents).toContain('data-i18n="viewImageFullSize"');
     }

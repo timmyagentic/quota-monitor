@@ -23,11 +23,29 @@
   <p>
     <a href="https://github.com/timmyagentic/quota-monitor/releases/latest"><img src="https://img.shields.io/github/v/release/timmyagentic/quota-monitor?display_name=tag&sort=semver&style=flat-square" alt="最新版本"></a>
     <a href="https://github.com/timmyagentic/quota-monitor/releases"><img src="https://img.shields.io/github/downloads/timmyagentic/quota-monitor/total?style=flat-square" alt="累计下载量"></a>
+    <a href="https://www.npmjs.com/package/quotamonitor"><img src="https://img.shields.io/npm/v/quotamonitor?style=flat-square&logo=npm" alt="npm 安装器版本"></a>
     <img src="https://img.shields.io/badge/macOS-14%2B-000000?style=flat-square&logo=apple" alt="需要 macOS 14 或更高版本">
     <img src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift 6">
     <a href="LICENSE"><img src="https://img.shields.io/github/license/timmyagentic/quota-monitor?style=flat-square" alt="MIT 许可证"></a>
   </p>
 </div>
+
+## 使用 AI Agent 安装
+
+把下面这段话复制给 Codex、Claude Code、Cursor 或其他本地编程 Agent：
+
+> 请在这台 Mac 上安装最新的 Quota Monitor 官方版本，严格按照
+> <https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md>
+> 操作。不要使用 sudo，也不要修改 Shell 配置；替换已有 App 前先征求我的确认。
+> 完成后请报告已安装版本、路径、Developer ID 和 Gatekeeper 验证结果。
+
+更喜欢自己运行命令？一条命令即可验证、安装并打开应用：
+
+```bash
+npx --yes quotamonitor@latest install
+```
+
+需要 Apple Silicon Mac、macOS 14 或更高版本，以及 Node.js 20.17 或更高版本。
 
 <a href="https://quota-monitor.timmyagentic.com/">
   <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor Dashboard，展示使用合成数据的额度卡片、Token 趋势和构成图表">
@@ -44,12 +62,34 @@ Codex 与 Claude Code 的额度和用量信息分散在不同位置。Quota Moni
 
 平时从菜单栏弹窗快速查看，需要深入分析时再打开完整 Dashboard。
 
+## 先看菜单栏
+
+<p align="center">
+  <a href="website/public/assets/menu-bar-popover.webp">
+    <img src="website/public/assets/menu-bar-popover.webp" width="386" alt="使用合成数据展示 Codex 与 Claude Code 额度、重置时间、节奏提示、模型独立额度和主动重置卡的 Quota Monitor 菜单栏弹窗">
+  </a>
+</p>
+
+在打开 Dashboard 之前，Quota Monitor 已经提供两层日常入口：
+
+- **常驻紧凑读数 —— `7d 4%`。** 状态栏只显示 Provider 当前实际提供的
+  额度周期，并可按设置展示“已用”或“剩余”百分比。如果 Codex 此刻只有周
+  额度，Quota Monitor 就只显示 `7d 4%`，不会拼接旧的 5 小时数据。你可以在
+  设置中选择 Codex、Claude Code、两者并排，或只保留仪表图标。
+- **点击展开弹窗。** 每个 Provider 卡片会把选定的近 7/30 天 Token 总量、
+  API 等价费用估算和会话数，与实时额度、重置倒计时、节奏或余量提示、模型
+  独立额度及 Codex 主动重置卡放在一起。可以直接刷新，也可以从同一个面板
+  进入 Dashboard 和设置。
+
+其中金额是按所显示 Token 和 API 标价计算的等价估算，不代表订阅实际扣费或
+Provider 账单。上方截图完全使用隔离的合成数据。
+
 ## 核心能力
 
 - **实时额度一目了然** —— 查看 Codex 与 Claude Code 的额度周期、使用比例、
   重置时间、可用状态和消耗速度预测。
-- **一点即开的菜单栏概览** —— 无需离开当前工作流，就能随时查看最重要的
-  5 小时与 7 天数据。
+- **一点即开的菜单栏概览** —— 无需离开当前工作流，就能随时查看每个
+  Provider 当前实际提供的 5 小时或 7 天百分比。
 - **趋势与预测** —— 对比近期周期、观察活跃变化，并了解主要用量来自哪些
   Provider 和模型。
 - **会话级明细** —— 搜索、排序会话，并继续查看模型、事件、Token 分类、
@@ -65,7 +105,27 @@ Codex 与 Claude Code 的额度和用量信息分散在不同位置。Quota Moni
 
 ## 安装
 
-Quota Monitor 需要 **macOS 14 Sonoma 或更高版本**。
+Quota Monitor 需要 **Apple Silicon Mac 和 macOS 14 Sonoma 或更高版本**。
+
+### npm（推荐）
+
+本机已经安装 Node.js 20.17 或更高版本时，运行：
+
+```bash
+npx --yes quotamonitor@latest install
+```
+
+这是一条显式安装命令，不含 `postinstall` Hook。它会从 Quota Monitor 官方
+Appcast 获取已交付的最新兼容版本，并在复制 App 前依次检查 GitHub Release URL
+与文件长度、SHA-256、Sparkle Ed25519 签名、Developer ID Team ID 和 Apple
+Gatekeeper 验证结果。它不会使用 `sudo`，也不会读取 Codex、Claude Code 或
+Quota Monitor 的用户数据。
+
+如果已安装当前版本，安装器只会原地验证；替换旧版本前，请先确认安装器显示的
+路径、退出 Quota Monitor，再加上 `--replace` 重新运行。安装完成后，后续 App
+版本可继续通过内置 Sparkle 更新器获取。
+
+### DMG
 
 1. [下载最新的已公证 DMG](https://quota-monitor.timmyagentic.com/download)。
 2. 打开 DMG，把 **Quota Monitor** 拖入 **Applications（应用程序）**。
@@ -73,8 +133,7 @@ Quota Monitor 需要 **macOS 14 Sonoma 或更高版本**。
 
 指定版本和校验和可在
 [GitHub Releases](https://github.com/timmyagentic/quota-monitor/releases) 获取。
-正式版本经过 Developer ID 签名和 Apple 公证；安装后可通过内置 Sparkle
-更新器获取后续版本。
+正式版本经过 Developer ID 签名和 Apple 公证。
 
 可选的校验和验证：
 
@@ -99,9 +158,9 @@ CodexMonitor 已于 2026-05-07 更名为 Quota Monitor，当前 Bundle ID 为
 | Codex | `codex app-server` 与 `account/rateLimits/read` | `~/.codex/sessions` 与 `~/.codex/archived_sessions` |
 | Claude Code | 使用本机 Claude Code 凭据访问 Anthropic OAuth 用量接口 | `~/.claude/projects` 与 `~/.config/claude/projects` |
 
-Quota Monitor 可以使用独立安装的 Codex 或 Claude Code CLI，也可以发现第一方
-`Codex.app` 内置的 Codex 二进制，以及 Claude Desktop 内置的 Claude Code
-Helper。它不会解密或复用 Claude Desktop 独立的 Electron Token 缓存。
+Quota Monitor 可以使用独立安装的 Codex 或 Claude Code CLI，也可以发现合并后的
+第一方 `ChatGPT.app` 或旧版 `Codex.app` 内置的 Codex 二进制，以及 Claude Desktop
+内置的 Claude Code Helper。它不会解密或复用 Claude Desktop 独立的 Electron Token 缓存。
 
 API 等价费用根据模型价格和 Token 数量估算，不代表 Provider 账单或订阅费用。
 
@@ -159,6 +218,7 @@ QuotaMonitor/
 └── Features/            菜单栏、Dashboard、History、Sessions 和 Settings UI
 Tests/QuotaMonitorTests/ Swift Testing 测试与 Fixtures
 website/                 官网、Worker API、D1 Migration 和测试
+npm/quotamonitor/        可验证的一条命令安装器及其测试
 qa/                      静态检查与隔离的 macOS QA 工具
 docs/                    架构、行为、发布与产品文档
 tools/                   构建、DMG、公证与发布自动化
@@ -167,6 +227,7 @@ tools/                   构建、DMG、公证与发布自动化
 常用文档：
 
 - [产品手册](docs/product-manual.md)
+- [AI Agent 安装 Runbook](docs/agent-install.md)
 - [架构说明](CLAUDE.md)
 - [Codex 与 Claude 集成发现](docs/findings.md)
 - [功能对照与设计取舍](docs/parity.md)

@@ -9,7 +9,7 @@ import Foundation
 /// a transcript, instead of only when the popover opens. The caller funnels
 /// `onChange` into a **Claude-scoped** `runScan` (see
 /// `AppEnvironment.resolveScanProviders`) so reacting to a `~/.claude` write
-/// never triggers Codex's expensive whole-file re-parse, and through the
+/// never invokes the Codex importer, and through the
 /// existing `runScan` throttle/`isScanning` guard so a chatty session can't
 /// cause a scan storm.
 final class ClaudeFileWatcher {

@@ -33,15 +33,36 @@ window copy.
 #### Summary
 
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening PR assets.
-- Available updates now use a compact blue circular download icon instead of the heavier text button.
-- The fully bilingual project page now puts the official website and download first, with a quick language switch, clearer product overview, privacy summary, screenshots, and separate app and website development paths.
-- Advanced settings now stay focused on controls users need, without exposing internal database, CSV export, or pricing-management tools.
 
 ### Changed
 
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
+
+## [0.2.43] — 2026-07-20
+
+#### Summary
+
+- Live Codex usage now works with the unified ChatGPT desktop app, while large active histories refresh from newly appended data instead of being reread in full.
+- Quota Monitor can now be installed with one `npx` command or through an AI coding agent, while the familiar DMG download remains available.
+- Available updates now use a compact blue download icon, while Advanced settings stay focused by hiding internal data tools.
+- The website and bilingual README now lead with always-visible menu-bar quotas, clearer screenshots, privacy guidance, and the official download.
+
+### Added
+
+- **One-command and AI-assisted installation.** The official npm installer downloads and verifies the same signed and notarized Quota Monitor release offered by GitHub, while the README provides a ready-to-copy prompt for AI coding agents and keeps manual DMG installation available.
+
+### Changed
+
+- **Menu-bar-first website.** The production site now presents the compact menu-bar experience as the primary product story, pairs it with the real Dashboard screenshot, and keeps download, privacy, language, and product-tour flows intact across desktop and mobile.
+- **Incremental Codex history refreshes.** Root Codex rollouts now resume from a validated parser checkpoint; atomic replacements rebuild in full, while in-place truncation or lineage changes preserve the last correct import. Large histories update faster without changing calculated usage or cost.
+- **Deterministic Codex source handling.** QuotaMonitor keeps following the committed rollout while it exists, follows real file moves automatically, and selects one active source for fresh or orphaned history without asking users to move or maintain JSONL files.
 - **Cleaner update entry.** The persistent update action in the menu popover, Dashboard toolbar, and Advanced settings now matches the compact blue download control used across the product.
+- **Menu-bar product tour.** The official website and both README languages now explain what a compact readout such as `7d 4%` means, why unavailable windows are omitted, and what the full two-provider popover contains.
 - **Bilingual project README.** Parallel English and Simplified Chinese README files now keep the product story, installation, privacy, screenshots, and contributor guidance aligned while linking directly to the official website and download.
+
+### Fixed
+
+- **Find Codex inside ChatGPT.** Codex quota polling now detects the CLI bundled in the unified ChatGPT desktop app before probing the login shell, restoring live percentages for app-only installs even when shell startup is blocked.
 
 ### Removed
 
