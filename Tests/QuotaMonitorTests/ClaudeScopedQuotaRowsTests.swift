@@ -41,6 +41,25 @@ struct ClaudeScopedQuotaRowsTests {
         #expect(rows.first?.window.usedPercent == 0)
     }
 
+    @Test("legacy model-only noise does not activate the OAuth branch")
+    func legacyNoiseDoesNotActivateOAuthBranch() {
+        let snap = snapshot(opus: 0.5, sonnet: 0.4)
+
+        #expect(ClaudeScopedQuotaRows.visibleRows(for: snap).isEmpty)
+        #expect(!snap.hasRenderableQuotaWindow)
+    }
+
+    @Test("visible legacy and zero-percent structured rows activate the OAuth branch")
+    func visibleModelRowsActivateOAuthBranch() {
+        let legacy = snapshot(opus: 0.6)
+        let structured = snapshot(scoped: [
+            .init(key: "fable", window: window(0)),
+        ])
+
+        #expect(legacy.hasRenderableQuotaWindow)
+        #expect(structured.hasRenderableQuotaWindow)
+    }
+
     @Test("structured entry wins over duplicate legacy model field")
     func structuredEntryWinsOverLegacyDuplicate() {
         let structuredOpus = ClaudeUsageSnapshot.WeeklyScopedLimit(

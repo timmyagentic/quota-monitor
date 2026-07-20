@@ -60,8 +60,7 @@ struct ClaudeUsageSnapshot: Equatable, Sendable {
     /// valid model-scoped weekly allowance.
     var hasRenderableQuotaWindow: Bool {
         fiveHour != nil || staleFiveHour != nil || sevenDay != nil
-            || sevenDayOpus != nil || sevenDaySonnet != nil
-            || !weeklyScoped.isEmpty
+            || !ClaudeScopedQuotaRows.visibleRows(for: self).isEmpty
     }
 
     func preservingStaleFiveHour(from previous: ClaudeUsageSnapshot?) -> ClaudeUsageSnapshot {
