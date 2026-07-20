@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import QuotaMonitor
 
@@ -51,5 +52,40 @@ struct WindowOnboardingGateTests {
         #expect(WindowManager.shouldCountManagedWindow(
             isVisible: false,
             isMiniaturized: false) == false)
+    }
+
+    @Test("Managed window close defers Dock policy reconciliation")
+    func managedWindowCloseDefersDockPolicyReconciliation() async {
+        var events = ["windowWillClose"]
+
+        await withCheckedContinuation { continuation in
+            WindowManager.shared.handleWillClose {
+                events.append("reconcileDockPolicy")
+                continuation.resume()
+            }
+            #expect(events == ["windowWillClose"])
+        }
+
+        #expect(events == ["windowWillClose", "reconcileDockPolicy"])
+    }
+
+    @Test("App window delegate forwards close lifecycle")
+    func appWindowDelegateForwardsCloseLifecycle() {
+        _ = NSApplication.shared
+        var callbackCount = 0
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false)
+        let controller = AppWindowController(
+            window: window,
+            id: "dashboard",
+            onWindowWillClose: { callbackCount += 1 })
+
+        controller.windowWillClose(
+            Notification(name: NSWindow.willCloseNotification))
+
+        #expect(callbackCount == 1)
     }
 }

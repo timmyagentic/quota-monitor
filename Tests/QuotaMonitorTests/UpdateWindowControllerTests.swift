@@ -8,16 +8,23 @@ import Testing
 struct UpdateWindowControllerTests {
 
     @Test
-    func windowCloseRunsLifecycleCallback() {
-        var didClose = false
-        let controller = UpdateWindowController(
-            state: UpdateWindowState(),
-            onWindowClosed: { didClose = true })
+    func windowCloseDefersLifecycleCallback() async {
+        var events = ["windowWillClose"]
 
-        controller.windowWillClose(
-            Notification(name: NSWindow.willCloseNotification))
+        await withCheckedContinuation { continuation in
+            let controller = UpdateWindowController(
+                state: UpdateWindowState(),
+                onWindowClosed: {
+                    events.append("lifecycleCallback")
+                    continuation.resume()
+                })
 
-        #expect(didClose == true)
+            controller.windowWillClose(
+                Notification(name: NSWindow.willCloseNotification))
+            #expect(events == ["windowWillClose"])
+        }
+
+        #expect(events == ["windowWillClose", "lifecycleCallback"])
     }
 
     @Test("Controller honors the update phase's close decision")
