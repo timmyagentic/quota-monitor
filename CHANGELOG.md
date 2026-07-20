@@ -32,7 +32,7 @@ window copy.
 
 #### Summary
 
-- Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening PR assets.
+- Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 
 ### Changed
 
