@@ -131,6 +131,22 @@ struct ClaudeUsageDecoderTests {
         #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 12.0) < 0.0001)
     }
 
+    @Test("top-level Fable fallback decodes modern percent literally")
+    func fable5_topLevelFallbackStaysAtLiteralOnePercent() throws {
+        let json = """
+        {
+          "seven_day_fable": {
+            "utilization": 1.0,
+            "resets_at": "2026-07-05T10:00:00Z"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 1.0) < 0.0001,
+                "seven_day_fable is a modern 0...100 field, even without limits[]")
+    }
+
     @Test("limits-only response restores aggregate and model weekly windows")
     func limitsOnlyResponseRestoresAllWindowKinds() throws {
         let json = """

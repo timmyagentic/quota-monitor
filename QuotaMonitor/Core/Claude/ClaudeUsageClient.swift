@@ -410,14 +410,16 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             .flatMap { mkLimitWindow($0, duration: 7 * 86400) }
 
         // A short-lived top-level `seven_day_fable` variant is accepted as a
-        // fallback. The self-describing limits array is the source of truth
-        // and replaces the fallback when both are present.
+        // fallback. Fable is a modern field whose utilization is always a
+        // literal percentage, even when `limits[]` is absent. The
+        // self-describing limits array is the source of truth and replaces
+        // the fallback when both are present.
         var weeklyScoped: [ClaudeUsageSnapshot.WeeklyScopedLimit] = []
         let allowsLegacyRatio = wire.limits == nil
         if let window = mkWindow(
             wire.seven_day_fable,
             duration: 7 * 86400,
-            allowsLegacyRatio: allowsLegacyRatio) {
+            allowsLegacyRatio: false) {
             weeklyScoped.append(.init(key: "fable", window: window))
         }
         for limit in structuredLimits where limit.kind == "weekly_scoped" {
