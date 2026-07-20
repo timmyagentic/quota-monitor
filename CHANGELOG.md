@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
+
+### Changed
+
+- **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
+
 ## [0.2.43] — 2026-07-20
 
 #### Summary
