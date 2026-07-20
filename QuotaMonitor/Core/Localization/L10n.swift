@@ -252,8 +252,8 @@ enum L10n {
     /// of the default-OFF behaviour so users don't think their
     /// windows are broken when they can't ⌘Tab back into them.
     static var showDockIconHelp: String {
-        t(en: "When off, \(Branding.appCodeName) stays in the menu bar only. The Dashboard and Settings windows will not appear in Cmd+Tab.",
-          zh: "关闭后 \(Branding.appCodeName) 完全只占菜单栏，但 Cmd+Tab 将切换不到 Dashboard 与设置窗口。")
+        t(en: "When off, \(Branding.appCodeName) stays in the menu bar only and its windows do not appear in Cmd+Tab. After the last window closes, macOS may keep a separate shortcut in the Dock's Recent Apps section; it is not the app's running Dock icon.",
+          zh: "关闭后 \(Branding.appCodeName) 仅驻留菜单栏，Cmd+Tab 不会显示其窗口。关闭最后一个窗口后，macOS 仍可能在程序坞的“最近使用的应用程序”区域保留单独的快捷项；它不代表应用仍有运行中的程序坞图标。")
     }
 
     static func headlineWindowLabel(_ window: HeadlineWindow) -> String {

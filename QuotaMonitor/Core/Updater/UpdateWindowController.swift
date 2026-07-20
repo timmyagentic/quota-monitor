@@ -78,9 +78,11 @@ final class UpdateWindowController: NSObject, NSWindowDelegate {
     }
 
     /// Drop our reference once the window actually closes (whether the user
-    /// closed it or we did) so the next `show()` builds a fresh window.
+    /// closed it or we did) so the next `show()` builds a fresh window. Defer
+    /// the lifecycle callback just like the WindowManager close path: AppKit
+    /// sends `windowWillClose` before the window has fully left the screen.
     func windowWillClose(_ notification: Notification) {
         window = nil
-        onWindowClosed()
+        WindowManager.scheduleAfterWindowCloses(onWindowClosed)
     }
 }

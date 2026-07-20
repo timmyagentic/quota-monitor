@@ -72,7 +72,7 @@ final class WindowManager {
         controllers[id]?.window?.close()
     }
 
-    /// Whether any app-owned window is currently on screen, excluding `ids`.
+    /// Whether any app-owned window is currently on screen.
     /// Covers the four `WindowManager` windows via this registry (replacing
     /// `hasVisibleAppWindow`'s old `NSPanel`/classname heuristics) **plus** the
     /// Sparkle update window, which is app-owned but lives outside the registry
@@ -82,12 +82,11 @@ final class WindowManager {
     /// `.accessory` out from under the updater. Miniaturized managed windows
     /// also count: `isVisible` is false while minimized, but the window still
     /// exists and needs the Dock/Cmd-Tab entry to be restorable.
-    func hasVisibleWindow(excluding ids: Set<String> = []) -> Bool {
-        let managedVisible = controllers.contains { id, controller in
-            !ids.contains(id)
-                && Self.shouldCountManagedWindow(
-                    isVisible: controller.window?.isVisible ?? false,
-                    isMiniaturized: controller.window?.isMiniaturized ?? false)
+    func hasVisibleWindow() -> Bool {
+        let managedVisible = controllers.contains { _, controller in
+            Self.shouldCountManagedWindow(
+                isVisible: controller.window?.isVisible ?? false,
+                isMiniaturized: controller.window?.isMiniaturized ?? false)
         }
         return managedVisible || (updater?.isUpdateWindowVisible ?? false)
     }
@@ -97,12 +96,28 @@ final class WindowManager {
         isVisible || isMiniaturized
     }
 
-    /// Called from `AppWindowController.windowWillClose`. Demote back to
-    /// menu-bar-only once the last app window goes away. Deliberately does NOT
-    /// mutate `controllers` — doing so here would deallocate the controller
-    /// mid-callback. The stale controller is replaced on the next `show(_:)`.
-    func handleWillClose(_ id: String) {
-        AppEnvironment.shared.demoteToAccessory(excludingWindowIDs: [id])
+    /// Called from `AppWindowController.windowWillClose`. AppKit sends that
+    /// callback before the window has actually left the screen, so defer the
+    /// Dock-policy reconciliation until the next main-actor turn. The fresh
+    /// visibility read then covers every window that is still open (including
+    /// a window reopened during the close) without carrying a stale exclusion
+    /// from the callback that scheduled it.
+    func handleWillClose(
+        reconcileDockPolicy: @escaping @MainActor () -> Void = {
+            AppEnvironment.shared.demoteToAccessory()
+        }
+    ) {
+        Self.scheduleAfterWindowCloses {
+            reconcileDockPolicy()
+        }
+    }
+
+    /// A small scheduling seam that keeps the close-callback ordering covered
+    /// without making tests mutate the process-wide `NSApp` activation policy.
+    static func scheduleAfterWindowCloses(
+        _ operation: @escaping @MainActor () -> Void
+    ) {
+        Task { @MainActor in operation() }
     }
 
     /// Pure decision for the onboarding hard-gate, extracted for unit testing.
@@ -288,9 +303,17 @@ private struct HostedWindow<Content: View>: View {
 final class AppWindowController: NSWindowController, NSWindowDelegate {
     private let id: String
     private var settingsToolbarCoordinator: SettingsToolbarCoordinator?
+    private let onWindowWillClose: @MainActor () -> Void
 
-    init(window: NSWindow, id: String) {
+    init(
+        window: NSWindow,
+        id: String,
+        onWindowWillClose: @escaping @MainActor () -> Void = {
+            WindowManager.shared.handleWillClose()
+        }
+    ) {
         self.id = id
+        self.onWindowWillClose = onWindowWillClose
         super.init(window: window)
     }
 
@@ -310,7 +333,7 @@ final class AppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        WindowManager.shared.handleWillClose(id)
+        onWindowWillClose()
     }
 
     func configureSettingsToolbar(selection: SettingsTabSelection) {
