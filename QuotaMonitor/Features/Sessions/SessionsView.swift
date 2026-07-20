@@ -3,16 +3,20 @@ import SwiftUI
 struct SessionsView: View {
     @Environment(AppEnvironment.self) private var env
 
-    @State private var rows: [SessionRow] = []
+    @State private var pagination = SessionsPaginationState()
     @State private var search: String = ""
     @State private var sort: SessionSort = .recent
     @State private var selection: SessionRow.ID?
     @State private var detail: SessionDetail?
-    @State private var loadingList = false
     @State private var loadingDetail = false
-    @State private var errorMessage: String?
+    @State private var detailErrorMessage: String?
+    @State private var detailRequestID: UUID?
 
     var body: some View {
+        let query = SessionsPaginationState.Query(sort: sort, search: search)
+        let pageRequest = pagination.inFlightRequest
+        let selectedSession = selection
+
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 280, ideal: 320)
@@ -23,15 +27,59 @@ struct SessionsView: View {
         // panes. List-row selection still works — `.textSelection` only
         // affects standalone Text views, not Lists or Buttons.
         .textSelection(.enabled)
-        .task { await reloadList() }
-        .onChange(of: search) { _, _ in
-            Task { await reloadList(debounceMs: 200) }
+        .task(id: query) {
+            if let request = pagination.inFlightRequest,
+               request.query != query {
+                pagination.cancel(request)
+            }
+            let shouldDebounce = pagination.currentQuery.map {
+                $0.search != query.search
+            } ?? false
+            if shouldDebounce {
+                do {
+                    try await Task.sleep(nanoseconds: 200_000_000)
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled else { return }
+            // Search and sort reset the list prefix, but keep the inspected
+            // session open. List filtering should not dismiss useful detail.
+            pagination.reset(query: query)
         }
-        .onChange(of: sort) { _, _ in
-            Task { await reloadList() }
+        .task(id: pageRequest?.id) {
+            guard let request = pageRequest else { return }
+            do {
+                try Task.checkCancellation()
+                let page = try await env.fetchSessionsPage(
+                    sort: request.query.sort,
+                    search: request.query.search,
+                    limit: request.limit,
+                    trigger: request.trigger)
+                try Task.checkCancellation()
+                let desiredQuery = SessionsPaginationState.Query(
+                    sort: sort,
+                    search: search)
+                guard request.query == desiredQuery else {
+                    pagination.cancel(request)
+                    return
+                }
+                guard pagination.complete(page, for: request) else { return }
+            } catch is CancellationError {
+                pagination.cancel(request)
+            } catch {
+                let desiredQuery = SessionsPaginationState.Query(
+                    sort: sort,
+                    search: search)
+                guard request.query == desiredQuery else {
+                    pagination.cancel(request)
+                    return
+                }
+                pagination.fail(String(describing: error), for: request)
+            }
         }
-        .onChange(of: selection) { _, newValue in
-            Task { await loadDetail(for: newValue) }
+        .task(id: selectedSession) {
+            await loadDetail(for: selectedSession)
         }
     }
 
@@ -41,21 +89,70 @@ struct SessionsView: View {
         VStack(spacing: 0) {
             controls
             Divider()
-            if loadingList && rows.isEmpty {
+            if pagination.isLoadingInitial && pagination.rows.isEmpty {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let err = errorMessage {
-                Text(err).font(.caption).foregroundStyle(.red).padding()
-            } else if rows.isEmpty {
+            } else if let message = initialErrorMessage {
+                Text(message).font(.caption).foregroundStyle(.red).padding()
+            } else if pagination.rows.isEmpty {
                 Text(L10n.noMatchingSessions)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(rows, selection: $selection) { row in
-                    SessionRowView(row: row).tag(row.id)
+                List(selection: $selection) {
+                    ForEach(pagination.rows) { row in
+                        SessionRowView(row: row).tag(row.id)
+                    }
+                    if pagination.hasMore {
+                        paginationFooter
+                    }
                 }
                 .listStyle(.inset)
             }
         }
+    }
+
+    private var initialErrorMessage: String? {
+        guard let failure = pagination.initialFailure,
+              case .query(let message) = failure else { return nil }
+        return message
+    }
+
+    private var paginationErrorMessage: String? {
+        guard pagination.paginationFailure != nil else { return nil }
+        return L10n.sessionsLoadMoreFailed
+    }
+
+    private var paginationFooter: some View {
+        HStack(spacing: 8) {
+            if pagination.isLoadingNextPage {
+                ProgressView().controlSize(.small)
+                Text(L10n.sessionsLoadingMore)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let message = paginationErrorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                Button(L10n.retry) {
+                    _ = pagination.beginNextPage(trigger: .retry)
+                }
+                .controlSize(.small)
+            } else {
+                Color.clear.frame(height: 1)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 1)
+        .listRowSeparator(.hidden)
+        .background(
+            PaginationScrollBridge(
+                isEnabled: pagination.hasMore && pagination.paginationFailure == nil,
+                isLoading: pagination.isLoadingNextPage,
+                canFillViewport: false,
+                onViewportFill: {},
+                onLoadMore: {
+                    _ = pagination.beginNextPage(trigger: .scroll)
+                })
+        )
     }
 
     private var controls: some View {
@@ -99,6 +196,12 @@ struct SessionsView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail {
             SessionDetailView(detail: detail)
+        } else if let detailErrorMessage {
+            Text(detailErrorMessage)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "list.bullet.rectangle")
@@ -113,38 +216,37 @@ struct SessionsView: View {
 
     // MARK: - Loading
 
-    private func reloadList(debounceMs: UInt64 = 0) async {
-        if debounceMs > 0 {
-            try? await Task.sleep(nanoseconds: debounceMs * 1_000_000)
-        }
-        let snapshotSearch = search
-        let snapshotSort = sort
-        loadingList = true
-        defer { loadingList = false }
-        do {
-            let result = try await env.fetchSessionsList(
-                sort: snapshotSort, search: snapshotSearch)
-            // Drop stale results if user kept typing.
-            if snapshotSearch == search && snapshotSort == sort {
-                rows = result
-                if let sel = selection, !rows.contains(where: { $0.id == sel }) {
-                    selection = nil
-                    detail = nil
-                }
-            }
-        } catch {
-            errorMessage = String(describing: error)
-        }
-    }
-
     private func loadDetail(for id: SessionRow.ID?) async {
-        guard let id else { detail = nil; return }
+        guard !Task.isCancelled else { return }
+        guard let id else {
+            detailRequestID = nil
+            loadingDetail = false
+            detail = nil
+            detailErrorMessage = nil
+            return
+        }
+        let requestID = UUID()
+        detailRequestID = requestID
         loadingDetail = true
-        defer { loadingDetail = false }
         do {
-            detail = try await env.fetchSessionDetail(sessionId: id)
+            let loaded = try await env.fetchSessionDetail(sessionId: id)
+            try Task.checkCancellation()
+            guard detailRequestID == requestID else { return }
+            detail = loaded
+            detailErrorMessage = nil
+            loadingDetail = false
+            detailRequestID = nil
+        } catch is CancellationError {
+            guard detailRequestID == requestID else { return }
+            loadingDetail = false
+            detailRequestID = nil
         } catch {
-            errorMessage = String(describing: error)
+            guard !Task.isCancelled else { return }
+            guard detailRequestID == requestID else { return }
+            detail = nil
+            detailErrorMessage = String(describing: error)
+            loadingDetail = false
+            detailRequestID = nil
         }
     }
 }

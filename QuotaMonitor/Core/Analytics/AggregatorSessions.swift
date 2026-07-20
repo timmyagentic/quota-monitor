@@ -5,6 +5,25 @@ import GRDB
 
 extension Aggregator {
 
+    static func fetchSessionsPage(
+        db: Database,
+        sort: SessionSort = .recent,
+        search: String = "",
+        provider: ProviderFilter = .all,
+        limit: Int = 50
+    ) throws -> SessionPage {
+        precondition(limit > 0 && limit < Int.max)
+        let candidates = try fetchSessions(
+            db: db,
+            sort: sort,
+            search: search,
+            provider: provider,
+            limit: limit + 1)
+        return SessionPage(
+            rows: Array(candidates.prefix(limit)),
+            hasMore: candidates.count > limit)
+    }
+
     static func fetchSessions(
         db: Database,
         sort: SessionSort = .recent,

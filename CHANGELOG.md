@@ -30,6 +30,16 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- History now opens with the latest three weeks while older records continue loading one week at a time.
+- Sessions now opens with a focused first batch and keeps loading more matches as you deliberately scroll, so histories beyond the old 500-row ceiling remain reachable.
+
+### Changed
+
+- **Broader initial History view.** History loads the latest 21 calendar days on first open, then keeps the existing seven-day incremental pages for viewport fill and deliberate downward scrolling.
+- **Progressive Sessions loading.** Sessions loads 50 globally searched and sorted rows at a time, preserves stable recency, cost, and token ordering, and continues past the former 500-session limit without rendering the entire history up front.
+
 ## [0.2.43] — 2026-07-20
 
 #### Summary

@@ -19,6 +19,7 @@ struct HistoryViewWiringTests {
         #expect(normalizedBody.contains("let pageRequest = pagination.inFlightRequest"))
         #expect(pageTask.contains(".task(id: pageRequest?.id)"))
         #expect(pageTask.contains("guard let request = pageRequest else { return }"))
+        #expect(pageTask.contains("pageSize: request.pageSize"))
         #expect(pageTask.contains("calendar: selectedCalendar"))
         #expect(!pageTask.contains("pagination.inFlightRequest"))
         #expect(!pageTask.contains("calendar: historyCalendar"))

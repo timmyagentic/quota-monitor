@@ -46,6 +46,7 @@ struct HistoryView: View {
                 try Task.checkCancellation()
                 let page = try await env.fetchHistoryPage(
                     before: request.cursor,
+                    pageSize: request.pageSize,
                     now: Date(),
                     calendar: selectedCalendar,
                     trigger: request.trigger)
@@ -106,7 +107,7 @@ struct HistoryView: View {
             } else {
                 List(selection: $selection) {
                     if pagination.days.isEmpty {
-                        Text(L10n.historyNoUsageLatestSevenDays)
+                        Text(L10n.historyNoUsageLatestTwentyOneDays)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .listRowSeparator(.hidden)

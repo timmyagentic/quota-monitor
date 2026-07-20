@@ -132,6 +132,58 @@ struct HistoryPaginationTests {
         #expect(page.hasMore)
     }
 
+    @Test("21-day initial page continues with one seven-day page")
+    func widerInitialPageKeepsIncrementalPageSize() throws {
+        let calendar = utcCalendar()
+        let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
+        let db = try makeDatabase()
+        try seed(in: db, sessionId: "today", timestamp: "2026-07-15T10:00:00Z")
+        try seed(
+            in: db,
+            sessionId: "initial-lower",
+            timestamp: "2026-06-25T00:00:00Z")
+        try seed(
+            in: db,
+            sessionId: "incremental-upper",
+            timestamp: "2026-06-24T23:59:59Z")
+        try seed(
+            in: db,
+            sessionId: "incremental-lower",
+            timestamp: "2026-06-18T00:00:00Z")
+        try seed(
+            in: db,
+            sessionId: "older",
+            timestamp: "2026-06-17T23:59:59Z")
+
+        let first = try db.pool.read {
+            try Aggregator.fetchHistoryPage(
+                db: $0,
+                pageSize: HistoryPaginationState.initialPageSize,
+                now: now,
+                calendar: calendar)
+        }
+        let second = try db.pool.read {
+            try Aggregator.fetchHistoryPage(
+                db: $0,
+                before: first.nextCursor,
+                pageSize: HistoryPaginationState.incrementalPageSize,
+                now: now,
+                calendar: calendar)
+        }
+        let initialCursor = try #require(
+            ISO8601.parse("2026-06-25T00:00:00Z"))
+        let incrementalCursor = try #require(
+            ISO8601.parse("2026-06-18T00:00:00Z"))
+
+        #expect(first.days.map(\.day) == ["2026-07-15", "2026-06-25"])
+        #expect(first.nextCursor == initialCursor)
+        #expect(first.hasMore)
+        #expect(second.days.map(\.day) == ["2026-06-24", "2026-06-18"])
+        #expect(second.nextCursor == incrementalCursor)
+        #expect(second.hasMore)
+        #expect(Set(first.days.map(\.id)).isDisjoint(with: second.days.map(\.id)))
+    }
+
     @Test("empty initial week does not jump to older history")
     func emptyInitialPageStaysRecent() throws {
         let calendar = utcCalendar()

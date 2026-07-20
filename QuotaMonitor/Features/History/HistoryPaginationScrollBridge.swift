@@ -1,6 +1,10 @@
 import AppKit
 import SwiftUI
 
+// The gesture-aware footer probe was introduced for History, but its callback
+// contract is list-agnostic and is also used by Sessions pagination.
+typealias PaginationScrollBridge = HistoryPaginationScrollBridge
+
 enum HistoryScrollPhase: Equatable {
     case none
     case began
