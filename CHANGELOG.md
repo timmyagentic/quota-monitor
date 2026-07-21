@@ -43,7 +43,7 @@ window copy.
 
 ### Added
 
-- **Fable 5 weekly quota.** Quota Monitor reads Anthropic's new model-scoped weekly limits, keeps them available after relaunch, and displays Fable 5 even when its allowance is still unused.
+- **Fable 5 weekly quota.** Quota Monitor reads Anthropic's new model-scoped weekly limits, keeps them available after relaunch, and labels the two weekly meters as Full and Fable 5.
 
 ### Changed
 

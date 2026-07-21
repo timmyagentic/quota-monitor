@@ -37,7 +37,7 @@ appcast 中按系统语言切换的双语更新说明。
 
 ### 新增
 
-- **Fable 5 专用周限额。** Quota Monitor 现在会读取 Anthropic 新增的模型专项周限额，在重启后继续保留，并且即使额度尚未使用也会显示 Fable 5。
+- **Fable 5 专用周限额。** Quota Monitor 现在会读取 Anthropic 新增的模型专项周限额，在重启后继续保留，并将两个周限额分别标记为 Full 和 Fable 5。
 
 ### 变更
 

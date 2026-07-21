@@ -191,7 +191,7 @@ extension MenuBarContentView {
                 claude5hIdleRow()
             }
             if let w = usage.sevenDay {
-                QuotaRow(title: L10n.quotaCardTitle7d, window: w, accent: .orange)
+                QuotaRow(title: L10n.quotaCardTitle7dFull, window: w, accent: .orange)
             }
             // Structured model-specific limits are useful even at 0%; their
             // presence tells the user the allowance exists. Legacy top-level

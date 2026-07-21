@@ -91,16 +91,24 @@ struct ClaudeScopedQuotaRowsTests {
         #expect(canonical("Claude Fable 5") == "fable")
     }
 
-    @Test("Fable weekly title is bilingual")
-    func fableTitleIsBilingual() {
-        let english = LocalizationTestSupport.withLanguage(.english) {
+    @Test("Full and Fable weekly titles are bilingual")
+    func weeklyTitlesAreBilingual() {
+        let englishFull = LocalizationTestSupport.withLanguage(.english) {
+            L10n.quotaCardTitle7dFull
+        }
+        let chineseFull = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            L10n.quotaCardTitle7dFull
+        }
+        let englishFable = LocalizationTestSupport.withLanguage(.english) {
             L10n.quotaCardTitle7dModel("Fable 5")
         }
-        let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+        let chineseFable = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
             L10n.quotaCardTitle7dModel("Fable 5")
         }
 
-        #expect(english == "7-day · Fable 5")
-        #expect(chinese == "7 天 · Fable 5")
+        #expect(englishFull == "7-day · Full")
+        #expect(chineseFull == "7 天 · Full")
+        #expect(englishFable == "7-day · Fable 5")
+        #expect(chineseFable == "7 天 · Fable 5")
     }
 }

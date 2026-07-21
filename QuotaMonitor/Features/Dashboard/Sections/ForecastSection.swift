@@ -190,7 +190,7 @@ struct ForecastSection: View {
                 }
                 if let week = liveSevenDay {
                     QuotaProgressRow(
-                        title: L10n.quotaCardTitle7d,
+                        title: L10n.quotaCardTitle7dFull,
                         usedPercent: week.usedPercent,
                         resetsAt: week.resetAt,
                         burn: nil)
