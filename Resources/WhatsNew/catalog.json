@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "featuredCampaignID": "2026-07-product-highlights",
+  "campaigns": [
+    {
+      "id": "2026-07-product-highlights",
+      "autoPresent": true,
+      "title": {
+        "en": "Product highlights",
+        "zh-Hans": "近期新功能"
+      },
+      "subtitle": {
+        "en": "A faster path from a quota glance to the full story",
+        "zh-Hans": "从额度速览，更快进入完整用量视图"
+      },
+      "pages": [
+        {
+          "id": "live-quotas-at-a-glance",
+          "title": {
+            "en": "Live quotas at a glance",
+            "zh-Hans": "实时额度，一眼掌握"
+          },
+          "body": {
+            "en": "Keep Codex and Claude limits, reset times, tokens, and API-equivalent usage within one click of the menu bar.",
+            "zh-Hans": "从菜单栏点一下，即可查看 Codex 与 Claude 的额度、重置时间、Token 和 API 等价用量。"
+          },
+          "media": {
+            "type": "image",
+            "path": "2026-07/menu-bar-overview.png",
+            "accessibilityLabel": {
+              "en": "Quota Monitor menu popover showing synthetic Codex and Claude quotas.",
+              "zh-Hans": "Quota Monitor 菜单弹窗，展示合成的 Codex 与 Claude 额度数据。"
+            }
+          }
+        },
+        {
+          "id": "from-glance-to-dashboard",
+          "title": {
+            "en": "From the menu bar to the full picture",
+            "zh-Hans": "从菜单栏，进入完整视图"
+          },
+          "body": {
+            "en": "A short, silent walkthrough connects the compact readout with Dashboard Forecast and Trends. Playback pauses whenever the page or window goes away.",
+            "zh-Hans": "这段简短的静音演示会把紧凑读数与 Dashboard 的 Forecast 和 Trends 串起来；切换页面或关闭窗口后会立即暂停。"
+          },
+          "media": {
+            "type": "video",
+            "path": "2026-07/glance-to-dashboard.mp4",
+            "posterPath": "2026-07/dashboard-overview.png",
+            "accessibilityLabel": {
+              "en": "Silent transition from the synthetic menu-bar quota popover to the Dashboard overview.",
+              "zh-Hans": "从合成的菜单栏额度弹窗过渡到 Dashboard 总览的静音演示。"
+            }
+          }
+        },
+        {
+          "id": "responsive-background-work",
+          "title": {
+            "en": "More responsive, less background work",
+            "zh-Hans": "操作更流畅，后台更轻量"
+          },
+          "body": {
+            "en": "Search waits for a pause in typing, incremental imports focus on new data, and unchanged refreshes avoid rebuilding the same summaries.",
+            "zh-Hans": "搜索会等输入停顿后再刷新，增量导入只关注新数据，无变化的后台刷新也不再重复计算相同摘要。"
+          },
+          "media": {
+            "type": "image",
+            "path": "2026-07/dashboard-overview.png",
+            "accessibilityLabel": {
+              "en": "Quota Monitor Dashboard with synthetic Forecast and Trends data.",
+              "zh-Hans": "Quota Monitor Dashboard，展示合成的 Forecast 与 Trends 数据。"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

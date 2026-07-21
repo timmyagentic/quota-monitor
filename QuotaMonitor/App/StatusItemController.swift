@@ -33,6 +33,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Invoked when the display configuration changes (external monitor,
     /// resolution, notch) so the owner can re-run the clip check.
     var onScreenChange: (() -> Void)?
+    /// Returns true when the user's click was consumed by a pending What's New
+    /// campaign. Programmatic first-run popover presentation intentionally
+    /// bypasses this hook.
+    var onUserRequestedPopover: (() -> Bool)?
 
     init(env: AppEnvironment,
          localization: LocalizationStore,
@@ -81,6 +85,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         guard !isStopped else { return }
         isStopped = true
         onScreenChange = nil
+        onUserRequestedPopover = nil
         NotificationCenter.default.removeObserver(self)
         statusItem.button?.target = nil
         statusItem.button?.action = nil
@@ -157,6 +162,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            if onUserRequestedPopover?() == true { return }
             showPopover()
         }
     }

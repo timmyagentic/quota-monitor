@@ -61,6 +61,21 @@ struct AppDelegateLifecycleTests {
         #expect(!launch.contains("env.refreshDashboard("))
     }
 
+    @Test("What's New waits for deliberate interaction and stays disabled in automatic QA")
+    func whatsNewDoesNotStealFocusAtLaunch() throws {
+        let delegate = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
+        let statusItem = try Self.source(
+            named: "QuotaMonitor/App/StatusItemController.swift")
+
+        #expect(delegate.contains("isLocalQA: LocalQAEnvironment.isQARequested()"))
+        #expect(delegate.contains("controller.onUserRequestedPopover"))
+        #expect(delegate.contains("whatsNewCoordinator?.presentPendingIfNeeded()"))
+        #expect(delegate.contains("onWhatsNewPresentationRequested:"))
+        #expect(delegate.contains("whatsNewCoordinator?.recordPresentationRequested()"))
+        #expect(statusItem.contains("if onUserRequestedPopover?() == true { return }"))
+        #expect(!delegate.contains("asyncAfter(deadline: .now() + 0.7) {\n                WindowManager.shared.show(\"whats-new\")"))
+    }
+
     private static func offset(of needle: String, in source: String) throws -> String.Index {
         guard let range = source.range(of: needle) else {
             throw CocoaError(.formatting)

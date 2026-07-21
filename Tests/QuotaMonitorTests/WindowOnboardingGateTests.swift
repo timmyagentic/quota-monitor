@@ -38,6 +38,7 @@ struct WindowOnboardingGateTests {
     func frameAutosaveNamesMatchPreviousSwiftUIWindowIDs() {
         #expect(WindowManager.frameAutosaveName(for: "dashboard") == "dashboard")
         #expect(WindowManager.frameAutosaveName(for: "settings") == "settings")
+        #expect(WindowManager.frameAutosaveName(for: "whats-new") == "whats-new")
         #expect(WindowManager.frameAutosaveName(for: "menubar-help") == nil)
     }
 
