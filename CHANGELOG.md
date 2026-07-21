@@ -32,11 +32,13 @@ window copy.
 
 #### Summary
 
+- Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 
 ### Changed
 
+- **Responsive session search.** Rapid edits now cancel the pending search refresh and issue one database query after typing pauses instead of repeating the same full-session query for every keystroke.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
 
