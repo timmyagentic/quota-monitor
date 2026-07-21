@@ -55,6 +55,13 @@ struct ClaudeUsageSnapshot: Equatable, Sendable {
         weeklyScoped.first { $0.key == "fable" }?.window
     }
 
+    /// Prefer the current 5-hour window, but keep the last completed window
+    /// visible when Anthropic temporarily omits `five_hour` from a later
+    /// weekly-only response.
+    var fiveHourForDisplay: Window? {
+        fiveHour ?? staleFiveHour
+    }
+
     /// The OAuth branch should remain active for model-only responses too.
     /// Anthropic can omit the aggregate windows while still returning a
     /// valid model-scoped weekly allowance.

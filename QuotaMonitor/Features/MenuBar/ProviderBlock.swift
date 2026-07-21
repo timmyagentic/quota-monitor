@@ -179,9 +179,7 @@ extension MenuBarContentView {
     func claudeOAuthInner(usage: ClaudeUsageSnapshot) -> some View {
         let scopedRows = ClaudeScopedQuotaRows.visibleRows(for: usage)
         VStack(alignment: .leading, spacing: 6) {
-            if let w = usage.fiveHour {
-                QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange)
-            } else if let w = usage.staleFiveHour {
+            if let w = usage.fiveHourForDisplay {
                 QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange)
             } else if usage.hasRenderableWeeklyQuotaWindow {
                 // Anthropic's /api/oauth/usage drops `five_hour` entirely
