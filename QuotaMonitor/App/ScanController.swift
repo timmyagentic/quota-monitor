@@ -4,6 +4,11 @@ import GRDB
 
 // File-scan + CSV-export actions extracted from AppEnvironment.
 
+struct ScanRefreshDecision: Equatable, Sendable {
+    let refreshMenuBar: Bool
+    let refreshDashboard: Bool
+}
+
 extension AppEnvironment {
 
     /// `minInterval` is honoured **only** by the auto-refresh-on-popover-open
@@ -193,30 +198,35 @@ extension AppEnvironment {
                         "imported_sessions": .int(merged.importedSessions),
                         "imported_events": .int(merged.importedEvents),
                         "imported_rate_limit_samples": .int(merged.importedRateLimitSamples),
+                        "updated_session_metadata": .int(merged.updatedSessionMetadata),
                         "errors": .int(merged.errors.count)
                     ])
-                // runScan() typically fires from the popover (open +
-                // Refresh button). Always refresh the menu bar; only
-                // refresh the Dashboard when its window is actually
-                // visible, since `loadDashboard` is a much heavier
-                // aggregator query and would be wasted work if no one
-                // is looking. When the Dashboard *is* open, skipping
-                // the refresh used to leave it lagging behind the
-                // menu-bar card until the user re-focused the window.
-                let blocks = try? await db.pool.read { conn in
-                    try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
+                // A no-op file scan leaves every summary query's input
+                // unchanged, so avoid re-running those queries. The one
+                // exception is an environment that has never obtained its
+                // first menu snapshot and has no request in flight.
+                let decision = await MainActor.run {
+                    Self.scanRefreshDecision(
+                        didChangeReadModel: merged.didChangeReadModel,
+                        hasMenuBarSnapshot: self.menuBarSnapshot != nil,
+                        isMenuBarRefreshInFlight: self.isLoadingMenuBar,
+                        isDashboardVisible: NSApp.windows.contains { window in
+                            window.identifier?.rawValue == "dashboard" && window.isVisible
+                        })
                 }
-                let dashboardVisible = await MainActor.run {
-                    NSApp.windows.contains { w in
-                        w.identifier?.rawValue == "dashboard" && w.isVisible
+                let blocks = decision.refreshMenuBar
+                    ? try? await db.pool.read { conn in
+                        try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
                     }
-                }
+                    : nil
                 await MainActor.run {
-                    self.refreshMenuBar(
-                        precomputedBlocks: blocks,
-                        trigger: "scan",
-                        parentOperation: op)
-                    if dashboardVisible {
+                    if decision.refreshMenuBar {
+                        self.refreshMenuBar(
+                            precomputedBlocks: blocks,
+                            trigger: "scan",
+                            parentOperation: op)
+                    }
+                    if decision.refreshDashboard {
                         self.refreshDashboard(trigger: "scan", parentOperation: op)
                     }
                 }
@@ -317,10 +327,27 @@ extension AppEnvironment {
             importedSessions: a.importedSessions + b.importedSessions,
             importedEvents: a.importedEvents + b.importedEvents,
             importedRateLimitSamples: a.importedRateLimitSamples + b.importedRateLimitSamples,
+            updatedSessionMetadata: a.updatedSessionMetadata + b.updatedSessionMetadata,
             incrementalFiles: a.incrementalFiles + b.incrementalFiles,
             sourceBytesRead: a.sourceBytesRead + b.sourceBytesRead,
             errors: a.errors + b.errors,
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
+    }
+
+    /// Pure post-scan refresh policy. A persisted read-model change always
+    /// refreshes the menu snapshot and refreshes the Dashboard only while it
+    /// is visible. A no-op scan does neither, unless it is the only remaining
+    /// opportunity to populate the first menu snapshot.
+    nonisolated static func scanRefreshDecision(
+        didChangeReadModel: Bool,
+        hasMenuBarSnapshot: Bool,
+        isMenuBarRefreshInFlight: Bool,
+        isDashboardVisible: Bool
+    ) -> ScanRefreshDecision {
+        ScanRefreshDecision(
+            refreshMenuBar: didChangeReadModel
+                || (!hasMenuBarSnapshot && !isMenuBarRefreshInFlight),
+            refreshDashboard: didChangeReadModel && isDashboardVisible)
     }
 
     /// Pure App Store scan-scope decisions, extracted so they can be unit-tested
