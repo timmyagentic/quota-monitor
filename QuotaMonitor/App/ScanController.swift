@@ -346,6 +346,7 @@ extension AppEnvironment {
     ) -> ScanRefreshDecision {
         let refreshWithoutImportChanges = trigger == "manual"
             || trigger == "popover"
+            || trigger == "qa"
         let shouldRefreshSummaries = didChangeReadModel
             || refreshWithoutImportChanges
         return ScanRefreshDecision(
