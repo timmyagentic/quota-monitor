@@ -181,6 +181,16 @@ struct MenuBarContentView: View {
             Text(Branding.appDisplayName)
                 .font(.headline)
             Spacer()
+            if !settings.needsProviderOnboarding {
+                Button {
+                    windowActions(env).openWhatsNew()
+                } label: {
+                    Image(systemName: "sparkles")
+                }
+                .buttonStyle(.plain)
+                .help(L10n.whatsNewMenuTooltip)
+                .accessibilityLabel(L10n.whatsNewMenuItem)
+            }
             if updater.updateAvailability.isVisible {
                 PersistentUpdateBadge()
             }

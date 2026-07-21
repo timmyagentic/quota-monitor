@@ -796,6 +796,43 @@ enum L10n {
         t(en: "Loading release notes\u{2026}", zh: "正在加载更新说明\u{2026}")
     }
 
+    // MARK: - What's New showcase
+
+    static var whatsNewWindowTitle: String {
+        t(en: "What's New", zh: "近期新功能")
+    }
+    static var whatsNewMenuItem: String {
+        t(en: "What's New…", zh: "近期新功能…")
+    }
+    static var whatsNewMenuTooltip: String {
+        t(en: "See recent product highlights.", zh: "查看近期的重要功能。")
+    }
+    static var whatsNewSettingsRow: String {
+        t(en: "Product highlights", zh: "功能亮点")
+    }
+    static var whatsNewOpen: String {
+        t(en: "View What's New…", zh: "查看近期新功能…")
+    }
+    static func whatsNewVersion(_ version: String) -> String {
+        t(en: "Version \(version)", zh: "版本 \(version)")
+    }
+    static var whatsNewPrevious: String { t(en: "Back", zh: "上一页") }
+    static var whatsNewNext: String { t(en: "Next", zh: "下一页") }
+    static var whatsNewDone: String { t(en: "Done", zh: "完成") }
+    static func whatsNewPage(_ current: Int, of total: Int) -> String {
+        t(en: "Page \(current) of \(total)", zh: "第 \(current) 页，共 \(total) 页")
+    }
+    static var whatsNewMediaUnavailable: String {
+        t(en: "This preview isn't available.", zh: "此预览暂时无法显示。")
+    }
+    static var whatsNewPlayVideo: String {
+        t(en: "Play video", zh: "播放视频")
+    }
+    static var whatsNewReducedMotion: String {
+        t(en: "Automatic playback is off because Reduce Motion is enabled.",
+          zh: "已开启“减少动态效果”，因此不会自动播放。")
+    }
+
     // language
     static var languagePickerLabel: String { t(en: "Display language", zh: "显示语言") }
     static var languagePickerHelp: String {

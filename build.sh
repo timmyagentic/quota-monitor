@@ -31,6 +31,7 @@ APP_BUNDLE=".build/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
 PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
 APP_PRIVACY_MANIFEST="${CONTENTS}/Resources/PrivacyInfo.xcprivacy"
+WHATS_NEW_RESOURCES="Resources/WhatsNew"
 ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
 if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
     ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
@@ -65,6 +66,13 @@ rm -rf "${APP_BUNDLE}"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 cp "${BIN_PATH}" "${CONTENTS}/MacOS/${APP_NAME}"
 cp Resources/Info.plist "${CONTENTS}/Info.plist"
+
+if [[ ! -f "${WHATS_NEW_RESOURCES}/catalog.json" ]]; then
+    echo "error: ${WHATS_NEW_RESOURCES}/catalog.json missing" >&2
+    exit 1
+fi
+echo "==> Embedding What's New media"
+cp -R "${WHATS_NEW_RESOURCES}" "${CONTENTS}/Resources/WhatsNew"
 
 echo "==> Verifying and embedding PrivacyInfo.xcprivacy"
 python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"

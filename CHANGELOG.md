@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Important product updates can now introduce themselves in a focused, replayable What's New window with images and short videos.
 - The menu-bar readout now avoids redrawing when refreshed data produces the same visible values.
 - Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
 - Incremental history refreshes now price only newly added or updated usage, keeping refresh work proportional to the latest change even in long sessions.
@@ -39,6 +40,10 @@ window copy.
 - Background history checks now leave Dashboard and menu-bar summaries alone when imported data has not changed, reducing recurring work while Quota Monitor sits in the menu bar.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
+
+### Added
+
+- **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and permanent reopen actions in the menu popover and Settings; fresh installs continue directly through onboarding without a second tour.
 
 ### Changed
 

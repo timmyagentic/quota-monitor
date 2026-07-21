@@ -5,7 +5,7 @@ import SwiftUI
 /// AppKit-owned window management. Replaces the SwiftUI `Window(id:)` scenes +
 /// the `quotamonitor://` URL-scheme router (`WindowRouter`). AppKit now
 /// authoritatively owns the whole shell — the status item, the popover, and
-/// these four windows — while the SwiftUI feature views are hosted unchanged
+/// these five windows — while the SwiftUI feature views are hosted unchanged
 /// via `NSHostingController`.
 ///
 /// Why this exists: the old design split window-opening across two worlds
@@ -23,6 +23,8 @@ final class WindowManager {
     /// `SPUUpdater`). Implicitly-unwrapped: Settings can't open before launch
     /// has finished configuring us.
     private var updater: UpdaterController!
+    private var whatsNewContent: WhatsNewContent?
+    private var onWhatsNewPresentationRequested: (@MainActor () -> Void)?
 
     /// Controllers keyed by window id. A controller is recreated on reopen when
     /// its window is not currently visible, so the hosted SwiftUI view remounts
@@ -32,8 +34,12 @@ final class WindowManager {
     /// while it is running `windowWillClose`.
     private var controllers: [String: AppWindowController] = [:]
 
-    func configure(updater: UpdaterController) {
+    func configure(updater: UpdaterController,
+                   whatsNewContent: WhatsNewContent?,
+                   onWhatsNewPresentationRequested: (@MainActor () -> Void)? = nil) {
         self.updater = updater
+        self.whatsNewContent = whatsNewContent
+        self.onWhatsNewPresentationRequested = onWhatsNewPresentationRequested
         // Arm the language-switch title refresh. Called exactly once at launch
         // (AppDelegate), before any window opens, so every later `set(_:)` is
         // observed (see `applyTitlesAndObserve`).
@@ -42,6 +48,9 @@ final class WindowManager {
 
     /// Open — or bring forward — the window for `id`.
     func show(_ id: String) {
+        if id == "whats-new" {
+            onWhatsNewPresentationRequested?()
+        }
         // policy → activate, BEFORE makeKeyAndOrderFront (correct order for an
         // `.accessory` app). `activateForWindow` already does policy+activate.
         AppEnvironment.shared.activateForWindow()
@@ -73,7 +82,7 @@ final class WindowManager {
     }
 
     /// Whether any app-owned window is currently on screen.
-    /// Covers the four `WindowManager` windows via this registry (replacing
+    /// Covers the five `WindowManager` windows via this registry (replacing
     /// `hasVisibleAppWindow`'s old `NSPanel`/classname heuristics) **plus** the
     /// Sparkle update window, which is app-owned but lives outside the registry
     /// (in `UpdateWindowController`). That window is a real titled window that
@@ -139,6 +148,7 @@ final class WindowManager {
         case "settings": return L10n.settingsWindowTitle
         case "onboarding": return L10n.onboardingWindowTitle
         case "menubar-help": return L10n.menuBarHelpWindowTitle
+        case "whats-new": return L10n.whatsNewWindowTitle
         default: return ""
         }
     }
@@ -218,6 +228,24 @@ final class WindowManager {
                 resizable: false,
                 initialContentSize: nil, minContentSize: nil,
                 autosaveName: nil, centerOnOpen: true)
+        case "whats-new":
+            settingsTabSelection = nil
+            if let whatsNewContent {
+                root = AnyView(HostedWindow(
+                    content: WhatsNewView(content: whatsNewContent))
+                    .environment(loc))
+            } else {
+                root = AnyView(HostedWindow(
+                    content: WhatsNewMediaUnavailableView()
+                        .frame(minWidth: 700, minHeight: 560))
+                    .environment(loc))
+            }
+            config = WindowConfig(
+                resizable: true,
+                initialContentSize: NSSize(width: 840, height: 680),
+                minContentSize: NSSize(width: 700, height: 560),
+                autosaveName: Self.frameAutosaveName(for: id),
+                centerOnOpen: true)
         default:
             settingsTabSelection = nil
             // Unknown id — should never happen. Build an empty window so a
@@ -272,7 +300,7 @@ final class WindowManager {
 
     static func frameAutosaveName(for id: String) -> String? {
         switch id {
-        case "dashboard", "settings":
+        case "dashboard", "settings", "whats-new":
             // Matches the previous SwiftUI `Window(id:)` frame keys
             // (`NSWindow Frame dashboard/settings`) so AppKit migration does
             // not reset window size and layout style for existing users.
