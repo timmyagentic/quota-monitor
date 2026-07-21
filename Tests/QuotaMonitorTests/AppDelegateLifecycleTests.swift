@@ -49,6 +49,18 @@ struct AppDelegateLifecycleTests {
         #expect(!source.contains("AnonymousVersionReportingDisclosure"))
     }
 
+    @Test("Launch requests a menu snapshot without loading a hidden Dashboard")
+    func launchDefersDashboardRefreshUntilVisible() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
+        let launch = String(try Self.sourceSlice(
+            source,
+            from: "func applicationDidFinishLaunching",
+            to: "private func closeStrayWindows"))
+
+        #expect(launch.contains("env.refreshMenuBar(trigger: \"launch\")"))
+        #expect(!launch.contains("env.refreshDashboard("))
+    }
+
     private static func offset(of needle: String, in source: String) throws -> String.Index {
         guard let range = source.range(of: needle) else {
             throw CocoaError(.formatting)
