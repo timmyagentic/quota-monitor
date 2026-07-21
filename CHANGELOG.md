@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
 - Incremental history refreshes now price only newly added or updated usage, keeping refresh work proportional to the latest change even in long sessions.
 - Menu bar usage totals now refresh with less local database work while keeping every displayed value unchanged.
 - Background history checks now leave Dashboard and menu-bar summaries alone when imported data has not changed, reducing recurring work while Quota Monitor sits in the menu bar.
@@ -40,6 +41,7 @@ window copy.
 
 ### Changed
 
+- **Responsive session search.** Rapid edits now cancel the pending search refresh and issue one database query after typing pauses instead of repeating the same full-session query for every keystroke.
 - **Focused incremental pricing.** Codex and Claude append imports now recalculate cost only for usage rows they insert or update, while full rebuilds and catalog-wide repricing retain complete coverage.
 - **Faster menu bar usage rollups.** Lifetime, 7-day, and 30-day provider totals now share one local history pass, reducing work during refreshes without changing their time windows or values.
 - **Quieter background refreshes.** Launch loads the menu-bar snapshot without preloading a hidden Dashboard, while frequent watcher scans skip summary work when imports are unchanged; opening the popover or choosing Refresh still updates time-dependent totals.
