@@ -33,6 +33,7 @@ window copy.
 #### Summary
 
 - Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
+- The menu-bar readout now avoids redrawing when refreshed data produces the same visible values.
 - Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
 - Incremental history refreshes now price only newly added or updated usage, keeping refresh work proportional to the latest change even in long sessions.
 - Menu bar usage totals now refresh with less local database work while keeping every displayed value unchanged.
@@ -46,6 +47,7 @@ window copy.
 
 ### Changed
 
+- **Quieter menu-bar updates.** Background state changes now rebuild and assign the native status-item title only when its visible rows, style, or language actually change.
 - **Responsive session search.** Rapid edits now cancel the pending search refresh and issue one database query after typing pauses instead of repeating the same full-session query for every keystroke.
 - **Focused incremental pricing.** Codex and Claude append imports now recalculate cost only for usage rows they insert or update, while full rebuilds and catalog-wide repricing retain complete coverage.
 - **Faster menu bar usage rollups.** Lifetime, 7-day, and 30-day provider totals now share one local history pass, reducing work during refreshes without changing their time windows or values.
