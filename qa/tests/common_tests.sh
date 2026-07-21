@@ -70,6 +70,19 @@ test_write_defaults() {
     [[ "$providers_done" == "1" ]] || fail "provider onboarding default was $providers_done"
 }
 
+test_write_defaults_can_enable_codex_attached_capsule() {
+    local home
+    home="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-codex-capsule.XXXXXX")"
+    local domain="dev.tjzhou.QuotaMonitor.QACapsule.$RANDOM.$$"
+    trap 'HOME="$home" defaults delete "$domain" >/dev/null 2>&1 || true; rm -rf "$home"' RETURN
+
+    QM_QA_CODEX_ATTACHED_CAPSULE=1 qm_write_defaults "$home" "$domain"
+
+    local enabled
+    enabled="$(HOME="$home" defaults read "$domain" settings.codexAttachedCapsuleEnabled)"
+    [[ "$enabled" == "1" ]] || fail "Codex attached capsule QA override was $enabled"
+}
+
 test_refuses_installed_app_defaults_suite() {
     local source_home target_home source_domain report cleanup
     source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-prod-guard.XXXXXX")"
@@ -1125,6 +1138,7 @@ test_rejects_live_pricing_refresh_events() {
 }
 
 test_write_defaults
+test_write_defaults_can_enable_codex_attached_capsule
 test_refuses_installed_app_defaults_suite
 test_accepts_custom_qa_defaults_suite
 test_write_real_data_defaults_copies_user_preferences_without_overrides

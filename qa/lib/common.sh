@@ -54,6 +54,9 @@ qm_write_defaults() {
     HOME="$home" defaults write "$domain" settings.developerModeEnabled -bool true
     HOME="$home" defaults write "$domain" settings.keychainPolicy -string fallback
     HOME="$home" defaults write "$domain" settings.showDockIconForWindows -bool true
+    if [[ "${QM_QA_CODEX_ATTACHED_CAPSULE:-0}" == "1" ]]; then
+        HOME="$home" defaults write "$domain" settings.codexAttachedCapsuleEnabled -bool true
+    fi
     HOME="$home" defaults write "$domain" settings.enabledProviders -array codex claude
     HOME="$home" defaults write "$domain" settings.menuBarIconProviders -array codex claude
 }

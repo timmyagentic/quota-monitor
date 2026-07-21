@@ -32,10 +32,13 @@ window copy.
 
 #### Summary
 
+- Codex can now show an opt-in weekly-quota capsule attached to its active window, with hover details for remaining usage and reset timing, without modifying the Codex app.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 
 ### Changed
+
+- **Quota at the point of work.** A new General setting attaches a non-activating weekly-quota capsule to the frontmost Codex window; it reuses Quota Monitor's existing live snapshot, follows the window, hides with Codex, expands on hover, and leaves the signed Codex application untouched.
 
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
