@@ -38,7 +38,7 @@ window copy.
 
 ### Changed
 
-- **Quieter background refreshes.** Launch loads the menu-bar snapshot without preloading a hidden Dashboard, and completed history scans recompute summaries only after their persisted data changes.
+- **Quieter background refreshes.** Launch loads the menu-bar snapshot without preloading a hidden Dashboard, while frequent watcher scans skip summary work when imports are unchanged; opening the popover or choosing Refresh still updates time-dependent totals.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
 

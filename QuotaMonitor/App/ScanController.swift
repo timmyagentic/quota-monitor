@@ -201,15 +201,15 @@ extension AppEnvironment {
                         "updated_session_metadata": .int(merged.updatedSessionMetadata),
                         "errors": .int(merged.errors.count)
                     ])
-                // A no-op file scan leaves every summary query's input
-                // unchanged, so avoid re-running those queries. The one
-                // exception is an environment that has never obtained its
-                // first menu snapshot and has no request in flight.
+                // Frequent watcher scans can skip summary queries when their
+                // importer made no read-model changes. Explicit refreshes
+                // still run them because rolling windows depend on wall time
+                // and sibling pollers can persist data outside ScanReport.
                 let decision = await MainActor.run {
                     Self.scanRefreshDecision(
                         didChangeReadModel: merged.didChangeReadModel,
+                        trigger: trigger,
                         hasMenuBarSnapshot: self.menuBarSnapshot != nil,
-                        isMenuBarRefreshInFlight: self.isLoadingMenuBar,
                         isDashboardVisible: NSApp.windows.contains { window in
                             window.identifier?.rawValue == "dashboard" && window.isVisible
                         })
@@ -334,20 +334,23 @@ extension AppEnvironment {
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
     }
 
-    /// Pure post-scan refresh policy. A persisted read-model change always
-    /// refreshes the menu snapshot and refreshes the Dashboard only while it
-    /// is visible. A no-op scan does neither, unless it is the only remaining
-    /// opportunity to populate the first menu snapshot.
+    /// Pure post-scan refresh policy. Persisted changes and explicit refreshes
+    /// update the menu snapshot plus a visible Dashboard. Background no-op
+    /// scans do neither, except that a missing first menu snapshot always
+    /// starts or queues a load.
     nonisolated static func scanRefreshDecision(
         didChangeReadModel: Bool,
+        trigger: String,
         hasMenuBarSnapshot: Bool,
-        isMenuBarRefreshInFlight: Bool,
         isDashboardVisible: Bool
     ) -> ScanRefreshDecision {
-        ScanRefreshDecision(
-            refreshMenuBar: didChangeReadModel
-                || (!hasMenuBarSnapshot && !isMenuBarRefreshInFlight),
-            refreshDashboard: didChangeReadModel && isDashboardVisible)
+        let refreshWithoutImportChanges = trigger == "manual"
+            || trigger == "popover"
+        let shouldRefreshSummaries = didChangeReadModel
+            || refreshWithoutImportChanges
+        return ScanRefreshDecision(
+            refreshMenuBar: shouldRefreshSummaries || !hasMenuBarSnapshot,
+            refreshDashboard: shouldRefreshSummaries && isDashboardVisible)
     }
 
     /// Pure App Store scan-scope decisions, extracted so they can be unit-tested

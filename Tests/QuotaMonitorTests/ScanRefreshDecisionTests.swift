@@ -4,12 +4,12 @@ import Testing
 @Suite("Post-scan refresh decisions")
 struct ScanRefreshDecisionTests {
 
-    @Test("No-op scan keeps populated summaries untouched")
-    func noOpScanSkipsSummaryRefreshes() {
+    @Test("Background no-op scan keeps populated summaries untouched")
+    func backgroundNoOpScanSkipsSummaryRefreshes() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: false,
+            trigger: "claude-file-watch",
             hasMenuBarSnapshot: true,
-            isMenuBarRefreshInFlight: false,
             isDashboardVisible: true)
 
         #expect(decision == ScanRefreshDecision(
@@ -21,8 +21,8 @@ struct ScanRefreshDecisionTests {
     func noOpScanFillsMissingMenuSnapshot() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: false,
+            trigger: "launch",
             hasMenuBarSnapshot: false,
-            isMenuBarRefreshInFlight: false,
             isDashboardVisible: false)
 
         #expect(decision == ScanRefreshDecision(
@@ -30,25 +30,40 @@ struct ScanRefreshDecisionTests {
             refreshDashboard: false))
     }
 
-    @Test("No-op scan does not duplicate an in-flight first snapshot")
-    func noOpScanDoesNotDuplicateInFlightSnapshot() {
+    @Test("No-op scan queues a retry while the first snapshot is in flight")
+    func noOpScanQueuesInFlightFirstSnapshotRetry() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: false,
+            trigger: "launch",
             hasMenuBarSnapshot: false,
-            isMenuBarRefreshInFlight: true,
             isDashboardVisible: false)
 
         #expect(decision == ScanRefreshDecision(
-            refreshMenuBar: false,
+            refreshMenuBar: true,
             refreshDashboard: false))
+    }
+
+    @Test("Explicit no-op refresh recomputes time-dependent summaries")
+    func explicitNoOpRefreshesSummaries() {
+        for trigger in ["manual", "popover"] {
+            let decision = AppEnvironment.scanRefreshDecision(
+                didChangeReadModel: false,
+                trigger: trigger,
+                hasMenuBarSnapshot: true,
+                isDashboardVisible: true)
+
+            #expect(decision == ScanRefreshDecision(
+                refreshMenuBar: true,
+                refreshDashboard: true))
+        }
     }
 
     @Test("Read-model changes refresh menu only while Dashboard is hidden")
     func changedScanSkipsHiddenDashboard() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: true,
+            trigger: "claude-file-watch",
             hasMenuBarSnapshot: true,
-            isMenuBarRefreshInFlight: false,
             isDashboardVisible: false)
 
         #expect(decision == ScanRefreshDecision(
@@ -60,8 +75,8 @@ struct ScanRefreshDecisionTests {
     func changedScanRefreshesVisibleDashboard() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: true,
+            trigger: "claude-file-watch",
             hasMenuBarSnapshot: true,
-            isMenuBarRefreshInFlight: false,
             isDashboardVisible: true)
 
         #expect(decision == ScanRefreshDecision(
