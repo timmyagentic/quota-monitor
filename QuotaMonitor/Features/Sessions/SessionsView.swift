@@ -11,6 +11,7 @@ struct SessionsView: View {
     @State private var loadingList = false
     @State private var loadingDetail = false
     @State private var errorMessage: String?
+    @State private var pendingSearchReload: Task<Void, Never>?
 
     var body: some View {
         NavigationSplitView {
@@ -25,13 +26,17 @@ struct SessionsView: View {
         .textSelection(.enabled)
         .task { await reloadList() }
         .onChange(of: search) { _, _ in
-            Task { await reloadList(debounceMs: 200) }
+            scheduleSearchReload()
         }
         .onChange(of: sort) { _, _ in
+            cancelPendingSearchReload()
             Task { await reloadList() }
         }
         .onChange(of: selection) { _, newValue in
             Task { await loadDetail(for: newValue) }
+        }
+        .onDisappear {
+            cancelPendingSearchReload()
         }
     }
 
@@ -113,10 +118,24 @@ struct SessionsView: View {
 
     // MARK: - Loading
 
-    private func reloadList(debounceMs: UInt64 = 0) async {
-        if debounceMs > 0 {
-            try? await Task.sleep(nanoseconds: debounceMs * 1_000_000)
+    private func scheduleSearchReload() {
+        cancelPendingSearchReload()
+        pendingSearchReload = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+            } catch {
+                return
+            }
+            await reloadList()
         }
+    }
+
+    private func cancelPendingSearchReload() {
+        pendingSearchReload?.cancel()
+        pendingSearchReload = nil
+    }
+
+    private func reloadList() async {
         let snapshotSearch = search
         let snapshotSort = sort
         loadingList = true
