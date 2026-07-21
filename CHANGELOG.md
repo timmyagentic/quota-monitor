@@ -32,11 +32,13 @@ window copy.
 
 #### Summary
 
+- Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 
 ### Changed
 
+- **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
 
