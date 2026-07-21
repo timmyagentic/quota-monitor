@@ -412,65 +412,38 @@ extension Aggregator {
     /// Per-provider stats in a single query — used by the menu bar so the two
     /// KPI rows are always populated, regardless of the active dashboard filter.
     static func fetchPerProviderStats(db: Database) throws -> [String: ProviderStats] {
+        // Anthropic has no weekly quota counter, so the 7-day spend is surfaced
+        // instead. The rolling 30-day window drives the headline KPI. Keep
+        // strftime's ISO8601 T/Z shape so lexical comparisons include boundary
+        // events written by the importer; datetime() emits a space instead.
         let rows = try Row.fetchAll(db, sql: """
             SELECT
               provider,
-              COALESCE(SUM(value_usd), 0)    AS total_value,
-              COALESCE(SUM(total_tokens), 0) AS total_tokens,
-              COUNT(*)                       AS total_events,
-              MAX(timestamp)                 AS last_at
+              COALESCE(SUM(value_usd), 0)            AS total_value,
+              COALESCE(SUM(total_tokens), 0)         AS total_tokens,
+              COUNT(*)                               AS total_events,
+              MAX(timestamp)                         AS last_at,
+              COALESCE(SUM(CASE
+                WHEN timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
+                THEN value_usd ELSE 0 END), 0)        AS w_value,
+              COALESCE(SUM(CASE
+                WHEN timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
+                THEN total_tokens ELSE 0 END), 0)     AS w_tokens,
+              COUNT(DISTINCT CASE
+                WHEN timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
+                THEN session_id END)                  AS w_sessions,
+              COALESCE(SUM(CASE
+                WHEN timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
+                THEN value_usd ELSE 0 END), 0)        AS m_value,
+              COALESCE(SUM(CASE
+                WHEN timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
+                THEN total_tokens ELSE 0 END), 0)     AS m_tokens,
+              COUNT(DISTINCT CASE
+                WHEN timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
+                THEN session_id END)                  AS m_sessions
             FROM usage_events
             GROUP BY provider
             """)
-        // Last 7 calendar days per provider — Anthropic doesn't expose a
-        // weekly quota counter, so we surface raw spend instead. Same query
-        // shape on both providers keeps the menu bar code symmetric.
-        // Includes distinct session count so the menu bar can swap to a
-        // 7-day headline window without the session-count chip going stale.
-        // strftime (not datetime) so the threshold uses ISO8601 format
-        // with `T` and `Z` — matches the format we wrote in the importer
-        // and lets SQLite's lex compare include boundary events correctly.
-        // datetime() returns "YYYY-MM-DD HH:MM:SS" which lex-compares
-        // wrongly against stored "YYYY-MM-DDTHH:MM:SS.SSSZ" timestamps.
-        let weekRows = try Row.fetchAll(db, sql: """
-            SELECT
-              provider,
-              COALESCE(SUM(value_usd), 0)            AS w_value,
-              COALESCE(SUM(total_tokens), 0)         AS w_tokens,
-              COUNT(DISTINCT session_id)             AS w_sessions
-            FROM usage_events
-            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-7 days')
-            GROUP BY provider
-            """)
-        var weekBy: [String: (Double, Int64, Int)] = [:]
-        for r in weekRows {
-            let p: String = r["provider"] ?? "codex"
-            weekBy[p] = (r["w_value"] ?? 0,
-                         r["w_tokens"] ?? 0,
-                         r["w_sessions"] ?? 0)
-        }
-        // Rolling 30-day spend per provider — drives the menu bar's
-        // headline KPI (lifetime totals grow forever and stop being a
-        // useful "how heavy is my usage right now" signal). Tokens +
-        // distinct session count pulled in the same pass so the menu
-        // bar's secondary KPI line shares the 30d window.
-        let monthRows = try Row.fetchAll(db, sql: """
-            SELECT
-              provider,
-              COALESCE(SUM(value_usd), 0)            AS m_value,
-              COALESCE(SUM(total_tokens), 0)         AS m_tokens,
-              COUNT(DISTINCT session_id)             AS m_sessions
-            FROM usage_events
-            WHERE timestamp >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-30 days')
-            GROUP BY provider
-            """)
-        var monthBy: [String: (Double, Int64, Int)] = [:]
-        for r in monthRows {
-            let p: String = r["provider"] ?? "codex"
-            monthBy[p] = (r["m_value"] ?? 0,
-                          r["m_tokens"] ?? 0,
-                          r["m_sessions"] ?? 0)
-        }
         let sessionRows = try Row.fetchAll(db, sql: """
             SELECT provider, COUNT(*) AS c
             FROM sessions
@@ -484,8 +457,6 @@ extension Aggregator {
         var out: [String: ProviderStats] = [:]
         for r in rows {
             let p: String = r["provider"] ?? "codex"
-            let week = weekBy[p] ?? (0, 0, 0)
-            let month = monthBy[p] ?? (0, 0, 0)
             out[p] = ProviderStats(
                 provider: p,
                 totalValueUSD: r["total_value"] ?? 0,
@@ -493,12 +464,12 @@ extension Aggregator {
                 eventCount: r["total_events"] ?? 0,
                 sessionCount: sessionsBy[p] ?? 0,
                 lastActivityAt: r["last_at"],
-                last7dValueUSD: week.0,
-                last7dTokens: week.1,
-                last7dSessionCount: week.2,
-                last30dValueUSD: month.0,
-                last30dTokens: month.1,
-                last30dSessionCount: month.2)
+                last7dValueUSD: r["w_value"] ?? 0,
+                last7dTokens: r["w_tokens"] ?? 0,
+                last7dSessionCount: r["w_sessions"] ?? 0,
+                last30dValueUSD: r["m_value"] ?? 0,
+                last30dTokens: r["m_tokens"] ?? 0,
+                last30dSessionCount: r["m_sessions"] ?? 0)
         }
         // Always emit zero-rows for known providers so the UI can render
         // "no data yet" rather than hiding the row entirely.
