@@ -59,8 +59,14 @@ struct ClaudeUsageSnapshot: Equatable, Sendable {
     /// Anthropic can omit the aggregate windows while still returning a
     /// valid model-scoped weekly allowance.
     var hasRenderableQuotaWindow: Bool {
-        fiveHour != nil || staleFiveHour != nil || sevenDay != nil
-            || !ClaudeScopedQuotaRows.visibleRows(for: self).isEmpty
+        fiveHour != nil || staleFiveHour != nil || hasRenderableWeeklyQuotaWindow
+    }
+
+    /// Whether the snapshot has a weekly row that the UI will actually show.
+    /// The menu popover uses this to retain the idle 5h slot for aggregate
+    /// and model-only weekly responses alike.
+    var hasRenderableWeeklyQuotaWindow: Bool {
+        sevenDay != nil || !ClaudeScopedQuotaRows.visibleRows(for: self).isEmpty
     }
 
     func preservingStaleFiveHour(from previous: ClaudeUsageSnapshot?) -> ClaudeUsageSnapshot {

@@ -46,6 +46,7 @@ struct ClaudeScopedQuotaRowsTests {
         let snap = snapshot(opus: 0.5, sonnet: 0.4)
 
         #expect(ClaudeScopedQuotaRows.visibleRows(for: snap).isEmpty)
+        #expect(!snap.hasRenderableWeeklyQuotaWindow)
         #expect(!snap.hasRenderableQuotaWindow)
     }
 
@@ -56,6 +57,9 @@ struct ClaudeScopedQuotaRowsTests {
             .init(key: "fable", window: window(0)),
         ])
 
+        #expect(legacy.hasRenderableWeeklyQuotaWindow)
+        #expect(structured.hasRenderableWeeklyQuotaWindow,
+                "a scoped-only response must retain the menu's idle 5h slot")
         #expect(legacy.hasRenderableQuotaWindow)
         #expect(structured.hasRenderableQuotaWindow)
     }

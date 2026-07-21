@@ -183,13 +183,13 @@ extension MenuBarContentView {
                 QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange)
             } else if let w = usage.staleFiveHour {
                 QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange)
-            } else if usage.sevenDay != nil {
+            } else if usage.hasRenderableWeeklyQuotaWindow {
                 // Anthropic's /api/oauth/usage drops `five_hour` entirely
                 // after the window resets if the user hasn't prompted
                 // Claude yet — not a zero value, the key is absent. If we
                 // also lack a previous 5h sample, show a quiet placeholder
                 // so the missing row doesn't read as a bug next to a healthy
-                // 7d row.
+                // aggregate or model-scoped weekly row.
                 claude5hIdleRow()
             }
             if let w = usage.sevenDay {
