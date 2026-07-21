@@ -32,11 +32,13 @@ window copy.
 
 #### Summary
 
+- Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 
 ### Changed
 
+- **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
 
