@@ -662,6 +662,8 @@ struct SessionTitleProjectMetadataTests {
         let secondReport = try await engine.performScan()
         #expect(secondReport.changedFiles == 0)
         #expect(secondReport.importedSessions == 0)
+        #expect(secondReport.updatedSessionMetadata == 1)
+        #expect(secondReport.didChangeReadModel)
 
         let after = try #require(try await db.pool.read { conn in
             try Row.fetchOne(conn, sql: """
