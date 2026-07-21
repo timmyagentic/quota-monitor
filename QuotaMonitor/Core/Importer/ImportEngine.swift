@@ -769,7 +769,7 @@ actor ImportEngine {
                         && Column("source_session_id") == parsed.sessionId)
                     .deleteAll(db)
             }
-            try Self.insertUsageEvents(
+            let insertedEventIds = try Self.insertUsageEvents(
                 parsed.usageDeltas,
                 sessionId: parsed.sessionId,
                 in: db)
@@ -780,10 +780,16 @@ actor ImportEngine {
 
             // 3. Derive prices before advancing the cursor. Any pricing or
             // checkpoint failure rolls the whole batch back together.
-            try PricingService.backfillValues(
-                in: db,
-                sessionId: parsed.sessionId,
-                provider: "codex")
+            if mode == .replace {
+                try PricingService.backfillValues(
+                    in: db,
+                    sessionId: parsed.sessionId,
+                    provider: "codex")
+            } else {
+                try PricingService.backfillValues(
+                    in: db,
+                    eventIds: insertedEventIds)
+            }
 
             // 4. Save the reducer state and cursor atomically. The session row
             // names one canonical source, so stale aliases are state only and
@@ -846,7 +852,9 @@ actor ImportEngine {
         _ deltas: [UsageDelta],
         sessionId: String,
         in db: Database
-    ) throws {
+    ) throws -> [Int64] {
+        var insertedIds: [Int64] = []
+        insertedIds.reserveCapacity(deltas.count)
         for delta in deltas {
             let event = UsageEventRecord(
                 id: nil,
@@ -866,7 +874,9 @@ actor ImportEngine {
                 codexTurnId: delta.turnId,
                 codexServiceTierPreference: delta.serviceTierPreference?.rawValue)
             try event.insert(db)
+            insertedIds.append(db.lastInsertedRowID)
         }
+        return insertedIds
     }
 
     private static func insertRateLimitSamples(
