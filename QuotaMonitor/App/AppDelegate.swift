@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
     private var dailyActiveReporter: DailyActiveReporter?
+    private var codexAttachedCapsuleController: CodexAttachedCapsuleController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
@@ -39,6 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.enforceClipFallback()
         }
         self.statusItemController = controller
+
+        let capsuleController = CodexAttachedCapsuleController(
+            environment: env,
+            settings: settings)
+        codexAttachedCapsuleController = capsuleController
+        capsuleController.start()
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
@@ -149,6 +156,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        codexAttachedCapsuleController?.stop()
+        codexAttachedCapsuleController = nil
         statusItemController?.stop()
         statusItemController = nil
     }

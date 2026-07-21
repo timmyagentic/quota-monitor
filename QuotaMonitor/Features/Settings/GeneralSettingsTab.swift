@@ -71,6 +71,16 @@ struct GeneralSettingsTab: View {
                 }
             }
 
+            Section(L10n.codexCapsuleSettingsSection) {
+                Toggle(
+                    L10n.codexCapsuleSettingsLabel,
+                    isOn: $settings.codexAttachedCapsuleEnabled)
+                Text(L10n.codexCapsuleSettingsHelp)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Section(L10n.sectionLanguage) {
                 LabeledContent(L10n.languagePickerLabel) {
                     Picker("", selection: Binding(

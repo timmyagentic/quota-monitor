@@ -61,6 +61,35 @@ enum L10n {
     static var claudeCode: String { "Claude Code" }      // proper noun
     static var claude: String { "Claude" }               // proper noun
 
+    // MARK: - Codex attached quota capsule
+
+    static var codexCapsuleSettingsSection: String {
+        t(en: "Codex integration", zh: "Codex 集成")
+    }
+    static var codexCapsuleSettingsLabel: String {
+        t(en: "Show weekly quota inside Codex", zh: "在 Codex 内显示每周额度")
+    }
+    static var codexCapsuleSettingsHelp: String {
+        t(en: "Attaches a small quota capsule to the frontmost Codex window. It uses Quota Monitor's existing snapshot and never modifies the Codex app.",
+          zh: "在前台 Codex 窗口上附着一个小型额度胶囊。它复用 Quota Monitor 已有快照，不会修改 Codex 应用。")
+    }
+    static var codexCapsuleWeekly: String { t(en: "weekly", zh: "每周") }
+    static var codexCapsuleTitle: String { t(en: "Codex weekly", zh: "Codex 每周额度") }
+    static func codexCapsuleRemaining(_ percent: Int) -> String {
+        t(en: "\(percent)% left", zh: "剩余 \(percent)%")
+    }
+    static func codexCapsuleUsed(_ percent: Int) -> String {
+        t(en: "\(percent)% used", zh: "已用 \(percent)%")
+    }
+    static var codexCapsuleResets: String { t(en: "Resets", zh: "重置于") }
+    static var codexCapsuleLive: String { t(en: "Live", zh: "实时") }
+    static var codexCapsuleStale: String { t(en: "Stale", zh: "已过期") }
+    static var codexCapsuleUnavailable: String { t(en: "Unavailable", zh: "暂不可用") }
+    static var codexCapsuleUnavailableHelp: String {
+        t(en: "Weekly quota is not available yet. Refresh Quota Monitor after signing in to Codex.",
+          zh: "暂未取得每周额度。登录 Codex 后刷新 Quota Monitor。")
+    }
+
     // MARK: - menu-bar label style
 
     static var menuBarStyleLabel: String { t(en: "Menu bar style", zh: "菜单栏样式") }

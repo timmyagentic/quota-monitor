@@ -83,6 +83,13 @@ final class SettingsStore {
         didSet { defaults.set(showDockIconForWindows,
                               forKey: Keys.showDockIconForWindows) }
     }
+    /// Shows the current Codex weekly quota in a small non-activating panel
+    /// attached to the frontmost Codex window. Default OFF: this is an
+    /// intentional cross-app surface and should only appear after opt-in.
+    var codexAttachedCapsuleEnabled: Bool {
+        didSet { defaults.set(codexAttachedCapsuleEnabled,
+                              forKey: Keys.codexAttachedCapsuleEnabled) }
+    }
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
     /// 7 days because most users want a "what did I do this week"
@@ -350,6 +357,8 @@ final class SettingsStore {
         // upgrading to this release (per the user-confirmed spec).
         self.showDockIconForWindows =
             defaults.bool(forKey: Keys.showDockIconForWindows)
+        self.codexAttachedCapsuleEnabled =
+            defaults.bool(forKey: Keys.codexAttachedCapsuleEnabled)
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.quotaDisplayMode = (defaults.string(forKey: Keys.quotaDisplayMode)
@@ -702,6 +711,7 @@ final class SettingsStore {
         static let mirrorClaudeKeychainToFile = "settings.mirrorClaudeKeychainToFile"
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
+        static let codexAttachedCapsuleEnabled = "settings.codexAttachedCapsuleEnabled"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"
