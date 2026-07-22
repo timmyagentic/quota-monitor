@@ -57,7 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Launch fan-out previously carried by the MenuBarExtra `.task`.
         env.startBackgroundPolling()
         env.refreshAll(throttle: false, trigger: "launch")
-        env.refreshDashboard()
+        // Keep one launch-time menu snapshot request even when the initial
+        // history scan is a no-op. DashboardView loads its heavier snapshot
+        // only if and when the Dashboard window is actually presented.
         env.refreshMenuBar(trigger: "launch")
 
         // Close the inert placeholder `Window` SwiftUI auto-opens at launch.
