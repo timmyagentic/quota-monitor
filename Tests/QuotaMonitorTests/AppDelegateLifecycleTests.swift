@@ -49,6 +49,21 @@ struct AppDelegateLifecycleTests {
         #expect(!source.contains("AnonymousVersionReportingDisclosure"))
     }
 
+    @Test("Lifecycle events share the six-hour background update check")
+    func lifecycleEventsRequestBackgroundUpdateChecks() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
+        let launch = String(try Self.sourceSlice(
+            source,
+            from: "func applicationDidFinishLaunching",
+            to: "private func closeStrayWindows"))
+
+        #expect(launch.contains("updater.checkInBackgroundIfNeeded()"))
+        #expect(launch.contains("NSWorkspace.didWakeNotification"))
+        #expect(source.contains("func applicationDidBecomeActive"))
+        #expect(source.contains("@objc private func workspaceDidWake"))
+        #expect(source.components(separatedBy: "updater?.checkInBackgroundIfNeeded()").count == 3)
+    }
+
     @Test("Launch requests a menu snapshot without loading a hidden Dashboard")
     func launchDefersDashboardRefreshUntilVisible() throws {
         let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
