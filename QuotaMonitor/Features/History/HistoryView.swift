@@ -287,7 +287,11 @@ private struct DayDetailView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let cacheHitRate = detail.cacheUsage.hitRate
+        let cacheHitRateText = cacheHitRate?.formatted(
+            .percent.precision(.fractionLength(1))) ?? "—"
+
+        return VStack(alignment: .leading, spacing: 6) {
             Text(detail.summary.date.formatted(
                 .dateTime.weekday(.wide).month(.wide).day().year()))
                 .font(.title2.bold())
@@ -299,6 +303,13 @@ private struct DayDetailView: View {
                 stat(L10n.kpiTokens,
                      detail.summary.tokens.formatted(.number.notation(.compactName).locale(settings.tokenFormatLocale)),
                      .blue)
+                stat(L10n.cacheHitRateTitle, cacheHitRateText, .teal)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.cacheHitRateTitle)
+                    .accessibilityValue(
+                        cacheHitRate == nil
+                            ? L10n.cacheHitRateUnavailable
+                            : cacheHitRateText)
                 stat(L10n.kpiSessions, "\(detail.summary.sessionCount)", .orange)
                 stat(L10n.kpiEvents, "\(detail.summary.eventCount)", .purple)
             }
@@ -308,7 +319,10 @@ private struct DayDetailView: View {
 
     private func stat(_ title: String, _ value: String, _ color: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             Text(value).font(.callout.monospacedDigit().weight(.semibold))
                 .foregroundStyle(color)
         }
