@@ -326,6 +326,96 @@ struct MigrationsTests {
         }
     }
 
+    @Test("import_state has a partial session lookup index")
+    func importStateSessionLookupIndexIsPartial() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-import-state-index")
+        let manager = try DatabaseManager(url: url)
+
+        try manager.pool.read { db in
+            let fetchedIndex = try Row.fetchOne(db, sql: """
+                SELECT name, partial
+                FROM pragma_index_list('import_state')
+                WHERE name = 'idx_import_state_session_id'
+                """)
+            let index = try #require(fetchedIndex)
+            #expect(index["name"] as String == "idx_import_state_session_id")
+            #expect(index["partial"] as Int == 1)
+
+            let columns = try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_index_info('idx_import_state_session_id')
+                ORDER BY seqno
+                """)
+            #expect(columns == ["session_id"])
+        }
+    }
+
+    @Test("v18 import_state session index can be reapplied safely")
+    func importStateSessionLookupIndexMigrationIsIdempotent() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-import-state-index-idempotence")
+        let queue = try DatabaseQueue(path: url.path)
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(queue)
+
+        let migrationId = "v18-import-state-session-index"
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO import_state
+                    (source_path, session_id, file_size, file_mtime_ms,
+                     last_imported_at, byte_offset)
+                VALUES
+                    ('/codex/old.jsonl', 'session-a', 100, 200,
+                     '2026-07-21T00:00:00Z', 100),
+                    ('/codex/unassigned.jsonl', NULL, 0, 0,
+                     '2026-07-21T00:00:00Z', 0)
+                """)
+            try db.execute(
+                sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+                arguments: [migrationId])
+        }
+
+        try migrator.migrate(queue)
+
+        try queue.read { db in
+            let indexCount = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*)
+                FROM pragma_index_list('import_state')
+                WHERE name = 'idx_import_state_session_id'
+                """)
+            let stateCount = try Int.fetchOne(
+                db, sql: "SELECT COUNT(*) FROM import_state")
+            let migrationCount = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*)
+                FROM grdb_migrations
+                WHERE identifier = ?
+                """, arguments: [migrationId])
+            #expect(indexCount == 1)
+            #expect(stateCount == 2)
+            #expect(migrationCount == 1)
+        }
+    }
+
+    @Test("importer relocation cleanup uses the import_state session index")
+    func importerRelocationCleanupUsesImportStateSessionIndex() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-import-state-index-plan")
+        let manager = try DatabaseManager(url: url)
+
+        let plan = try manager.pool.read { db in
+            try Row.fetchAll(db, sql: """
+                EXPLAIN QUERY PLAN
+                DELETE FROM import_state
+                WHERE session_id = ? AND source_path <> ?
+                """, arguments: ["session-a", "/codex/current.jsonl"])
+                .map { $0["detail"] as String }
+        }
+
+        #expect(plan.contains {
+            $0.contains("USING INDEX idx_import_state_session_id")
+        })
+        #expect(plan.allSatisfy { !$0.contains("SCAN import_state") })
+    }
+
     @Test(
         "Claude re-read migrations reset import_state so files are rebuilt once",
         arguments: [

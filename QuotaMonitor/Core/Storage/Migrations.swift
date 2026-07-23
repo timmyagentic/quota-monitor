@@ -407,5 +407,16 @@ enum Migrations {
                 WHERE byte_offset < 0
                 """)
         }
+
+        // v18: Codex source relocation consolidates stale import-state aliases
+        // by session ID. Index only populated session IDs so legacy rows that
+        // have not yet been associated with a session do not enlarge it.
+        migrator.registerMigration("v18-import-state-session-index") { db in
+            try db.execute(sql: """
+                CREATE INDEX IF NOT EXISTS idx_import_state_session_id
+                ON import_state(session_id)
+                WHERE session_id IS NOT NULL
+                """)
+        }
     }
 }

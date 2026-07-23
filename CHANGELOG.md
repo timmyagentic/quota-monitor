@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
 - Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
 - History now opens with the latest three weeks while older records continue loading one week at a time.
 - Sessions now opens with a focused first batch and keeps loading more matches as you deliberately scroll, so histories beyond the old 500-row ceiling remain reachable.
@@ -61,6 +62,7 @@ window copy.
 
 ### Changed
 
+- **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.
 - **Timelier background update checks.** Launching, waking, or returning to Quota Monitor now starts a silent update check when Sparkle has never checked or its last check is more than six hours old, while the existing daily schedule remains unchanged.
 - **Quieter menu-bar updates.** Background state changes now rebuild and assign the native status-item title only when its visible rows, style, or language actually change.
