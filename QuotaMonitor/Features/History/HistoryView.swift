@@ -280,6 +280,8 @@ private struct DayDetailView: View {
                 Divider()
                 breakdown
                 Divider()
+                cacheHitRateSection
+                Divider()
                 sessionsSection
             }
             .padding(20)
@@ -348,6 +350,45 @@ private struct DayDetailView: View {
                 )
             }
         }
+    }
+
+    private var cacheHitRateSection: some View {
+        let rate = detail.cacheUsage.hitRate
+        let rateText = rate?.formatted(
+            .percent.precision(.fractionLength(1))) ?? "—"
+        let cacheRead = detail.cacheUsage.readTokens.formatted(
+            .number.notation(.compactName).locale(settings.tokenFormatLocale))
+        let eligibleInput = detail.cacheUsage.eligibleInputTokens.formatted(
+            .number.notation(.compactName).locale(settings.tokenFormatLocale))
+        let tokenDetail = detail.cacheUsage.eligibleInputTokens > 0
+            ? L10n.cacheHitRateTokenDetail(
+                cacheRead: cacheRead, eligibleInput: eligibleInput)
+            : L10n.cacheHitRateUnavailable
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.cacheHitRateTitle).font(.headline)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(rateText)
+                    .font(.title3.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(rate == nil ? Color.secondary : Color.primary)
+                Text(tokenDetail)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                if let rate {
+                    ProgressView(value: rate)
+                        .tint(.accentColor)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.secondary.opacity(0.05))
+            )
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.cacheHitRateTitle)
+        .accessibilityValue(rate == nil ? tokenDetail : "\(rateText), \(tokenDetail)")
     }
 
     private var sessionsSection: some View {

@@ -42,6 +42,11 @@ window copy.
 - Background history checks now leave Dashboard and menu-bar summaries alone when imported data has not changed, reducing recurring work while Quota Monitor sits in the menu bar.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
+- History now shows the selected day's cache hit rate directly below its model usage breakdown.
+
+### Added
+
+- **Daily cache hit rate in History.** Selecting a day now shows its token-weighted cache hit rate directly below the model breakdown, together with cache-read and eligible-input totals.
 
 ### Added
 

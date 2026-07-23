@@ -675,6 +675,17 @@ enum L10n {
         t(en: "Select a day to inspect its calls",
           zh: "选择一天以查看其调用")
     }
+    static var cacheHitRateTitle: String {
+        t(en: "Cache hit rate", zh: "缓存命中率")
+    }
+    static func cacheHitRateTokenDetail(cacheRead: String, eligibleInput: String) -> String {
+        t(en: "\(cacheRead) cache read / \(eligibleInput) eligible input",
+          zh: "缓存读取 \(cacheRead) / 可缓存输入 \(eligibleInput)")
+    }
+    static var cacheHitRateUnavailable: String {
+        t(en: "No eligible input tokens",
+          zh: "暂无可计算的输入 Token")
+    }
     static func sessionsOnDay(_ n: Int) -> String {
         t(en: "Sessions on this day (\(n))", zh: "当日会话（\(n)）")
     }

@@ -4,6 +4,21 @@ import Testing
 
 @Suite("History view wiring")
 struct HistoryViewWiringTests {
+    @Test("Daily cache hit rate sits between model usage and sessions")
+    func dailyCacheHitRatePlacement() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Features/History/HistoryView.swift")
+        let dayDetail = Self.normalized(try Self.sourceSlice(
+            source,
+            from: "private struct DayDetailView: View",
+            to: "// MARK: - Expandable per-session row"))
+
+        #expect(dayDetail.contains(
+            "breakdown Divider() cacheHitRateSection Divider() sessionsSection"))
+        #expect(dayDetail.contains("Text(L10n.cacheHitRateTitle).font(.headline)"))
+        #expect(dayDetail.contains("detail.cacheUsage.hitRate"))
+    }
+
     @Test("History requests are reducer-driven cancellable page tasks")
     func requestsAreReducerDrivenPageTasks() throws {
         let source = try Self.source(
