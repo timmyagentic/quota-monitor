@@ -33,6 +33,7 @@ window copy.
 #### Summary
 
 - Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
+- Quota Monitor now quietly checks for updates after launch, wake, or returning to the foreground when its last check is more than six hours old.
 - The menu-bar readout now avoids redrawing when refreshed data produces the same visible values.
 - Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
 - Incremental history refreshes now price only newly added or updated usage, keeping refresh work proportional to the latest change even in long sessions.
@@ -47,6 +48,7 @@ window copy.
 
 ### Changed
 
+- **Timelier background update checks.** Launching, waking, or returning to Quota Monitor now starts a silent update check when Sparkle has never checked or its last check is more than six hours old, while the existing daily schedule remains unchanged.
 - **Quieter menu-bar updates.** Background state changes now rebuild and assign the native status-item title only when its visible rows, style, or language actually change.
 - **Responsive session search.** Rapid edits now cancel the pending search refresh and issue one database query after typing pauses instead of repeating the same full-session query for every keystroke.
 - **Focused incremental pricing.** Codex and Claude append imports now recalculate cost only for usage rows they insert or update, while full rebuilds and catalog-wide repricing retain complete coverage.
