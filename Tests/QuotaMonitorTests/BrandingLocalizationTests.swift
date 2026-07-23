@@ -93,23 +93,17 @@ struct BrandingLocalizationTests {
     func historyCacheHitRateCopy() {
         let en = LocalizationTestSupport.withLanguage(.english) {
             (L10n.cacheHitRateTitle,
-             L10n.cacheHitRateTokenDetail(
-                cacheRead: "20.5M", eligibleInput: "22.1M"),
              L10n.cacheHitRateUnavailable)
         }
         let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
             (L10n.cacheHitRateTitle,
-             L10n.cacheHitRateTokenDetail(
-                cacheRead: "2052万", eligibleInput: "2212万"),
              L10n.cacheHitRateUnavailable)
         }
 
         #expect(en.0 == "Cache hit rate")
-        #expect(en.1 == "20.5M cache read / 22.1M eligible input")
-        #expect(en.2 == "No eligible input tokens")
+        #expect(en.1 == "No eligible input tokens")
         #expect(zh.0 == "缓存命中率")
-        #expect(zh.1 == "缓存读取 2052万 / 可缓存输入 2212万")
-        #expect(zh.2 == "暂无可计算的输入 Token")
+        #expect(zh.1 == "暂无可计算的输入 Token")
     }
 
 }
