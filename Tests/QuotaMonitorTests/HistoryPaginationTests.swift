@@ -39,8 +39,14 @@ struct HistoryPaginationTests {
         timestamp: String,
         provider: String = "codex",
         tokens: Int64 = 10,
+        inputTokens: Int64? = nil,
+        cachedInputTokens: Int64 = 0,
+        cacheCreationTokens: Int64 = 0,
+        cacheCreation5mTokens: Int64 = 0,
+        cacheCreation1hTokens: Int64 = 0,
         valueUSD: Double = 1
     ) throws {
+        let storedInputTokens = inputTokens ?? tokens
         try database.pool.write { db in
             try db.execute(sql: """
                 INSERT OR IGNORE INTO sessions
@@ -59,10 +65,14 @@ struct HistoryPaginationTests {
                 (session_id, timestamp, model_id,
                  input_tokens, cached_input_tokens, output_tokens,
                  reasoning_output_tokens, total_tokens, value_usd,
-                 provider, cache_creation_tokens, model_inferred)
-                VALUES (?, ?, 'gpt-5', ?, 0, 0, 0, ?, ?, ?, 0, 0)
+                 provider, cache_creation_tokens,
+                 cache_creation_5m_tokens, cache_creation_1h_tokens,
+                 model_inferred)
+                VALUES (?, ?, 'gpt-5', ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 0)
                 """, arguments: [
-                    sessionId, timestamp, tokens, tokens, valueUSD, provider
+                    sessionId, timestamp, storedInputTokens, cachedInputTokens,
+                    tokens, valueUSD, provider, cacheCreationTokens,
+                    cacheCreation5mTokens, cacheCreation1hTokens
                 ])
         }
     }
@@ -302,6 +312,89 @@ struct HistoryPaginationTests {
         #expect(summary.eventCount == 3)
         #expect(summary.sessionCount == 2)
         #expect(detail.summary == summary)
+    }
+
+    @Test("cache hit rate is token-weighted and provider-aware")
+    func cacheHitRateIsTokenWeightedAndProviderAware() throws {
+        let calendar = utcCalendar()
+        let db = try makeDatabase()
+        try seed(
+            in: db, sessionId: "codex-large", timestamp: "2026-07-15T08:00:00Z",
+            provider: "codex", tokens: 110, inputTokens: 100,
+            cachedInputTokens: 80)
+        try seed(
+            in: db, sessionId: "codex-small", timestamp: "2026-07-15T09:00:00Z",
+            provider: "codex", tokens: 10, inputTokens: 10,
+            cachedInputTokens: 0)
+        try seed(
+            in: db, sessionId: "claude", timestamp: "2026-07-15T10:00:00Z",
+            provider: "claude", tokens: 100, inputTokens: 10,
+            cachedInputTokens: 80, cacheCreationTokens: 500,
+            cacheCreation5mTokens: 10)
+
+        let (allDetail, codexDetail, claudeDetail) = try db.pool.read { connection in
+            let all = try Aggregator.fetchDayDetail(
+                db: connection, day: "2026-07-15", calendar: calendar)
+            let codex = try Aggregator.fetchDayDetail(
+                db: connection, day: "2026-07-15", provider: .codex,
+                calendar: calendar)
+            let claude = try Aggregator.fetchDayDetail(
+                db: connection, day: "2026-07-15", provider: .claude,
+                calendar: calendar)
+            return (all, codex, claude)
+        }
+        let detail = try #require(allDetail)
+        let codex = try #require(codexDetail)
+        let claude = try #require(claudeDetail)
+
+        #expect(detail.cacheUsage.readTokens == 160)
+        #expect(detail.cacheUsage.eligibleInputTokens == 210)
+        #expect(abs((detail.cacheUsage.hitRate ?? 0) - (160.0 / 210.0)) < 0.000_001)
+        #expect(codex.cacheUsage.readTokens == 80)
+        #expect(codex.cacheUsage.eligibleInputTokens == 110)
+        #expect(abs((codex.cacheUsage.hitRate ?? 0) - (80.0 / 110.0)) < 0.000_001)
+        #expect(claude.cacheUsage.readTokens == 80)
+        #expect(claude.cacheUsage.eligibleInputTokens == 100)
+        #expect(claude.cacheUsage.hitRate == 0.8)
+    }
+
+    @Test("Claude legacy cache writes count as eligible input")
+    func claudeLegacyCacheWritesCountAsEligibleInput() throws {
+        let calendar = utcCalendar()
+        let db = try makeDatabase()
+        try seed(
+            in: db, sessionId: "legacy-claude", timestamp: "2026-07-15T08:00:00Z",
+            provider: "claude", tokens: 100, inputTokens: 10,
+            cachedInputTokens: 40, cacheCreationTokens: 50)
+
+        let optionalDetail = try db.pool.read {
+            try Aggregator.fetchDayDetail(
+                db: $0, day: "2026-07-15", calendar: calendar)
+        }
+        let detail = try #require(optionalDetail)
+
+        #expect(detail.cacheUsage.readTokens == 40)
+        #expect(detail.cacheUsage.eligibleInputTokens == 100)
+        #expect(detail.cacheUsage.hitRate == 0.4)
+    }
+
+    @Test("day with no eligible input has no cache hit rate")
+    func noEligibleInputHasNoCacheHitRate() throws {
+        let calendar = utcCalendar()
+        let db = try makeDatabase()
+        try seed(
+            in: db, sessionId: "output-only", timestamp: "2026-07-15T08:00:00Z",
+            tokens: 10, inputTokens: 0)
+
+        let optionalDetail = try db.pool.read {
+            try Aggregator.fetchDayDetail(
+                db: $0, day: "2026-07-15", calendar: calendar)
+        }
+        let detail = try #require(optionalDetail)
+
+        #expect(detail.cacheUsage.readTokens == 0)
+        #expect(detail.cacheUsage.eligibleInputTokens == 0)
+        #expect(detail.cacheUsage.hitRate == nil)
     }
 
     @Test("one page assigns all seven date buckets and aggregates each independently")

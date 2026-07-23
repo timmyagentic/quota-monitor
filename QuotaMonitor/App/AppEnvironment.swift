@@ -1322,36 +1322,39 @@ final class AppEnvironment {
     }
 
     /// Demote back to a menu-bar-only app once the last window closes.
-    /// Gates on the *current* policy rather than the setting: in the
-    /// normal flow (setting ON, we promoted on open) the policy is
-    /// `.regular` and we demote; in the mid-session-toggle-OFF flow
-    /// (`applyDockIconPolicy` deferred the demote to here) the policy
-    /// is also `.regular`, so this still fires. With the setting OFF
-    /// the whole time we never promoted, the policy is already
-    /// `.accessory`, and we no-op.
-    func demoteToAccessory(excludingWindowIDs: Set<String> = []) {
+    /// Gates on the *current* policy rather than the setting: when a window
+    /// promoted the app, the policy is `.regular` and we demote; when the app
+    /// was already menu-bar-only, the policy is `.accessory` and we no-op.
+    func demoteToAccessory() {
         guard Self.shouldDemoteToAccessory(
             currentlyRegular: NSApp.activationPolicy() == .regular,
             menuBarUnreachable: menuBarUnreachable,
-            hasVisibleAppWindow: Self.hasVisibleAppWindow(
-                excludingWindowIDs: excludingWindowIDs)) else { return }
-        DeveloperLog.eventRecord("window.demote_to_accessory", category: "ui")
-        NSApp.setActivationPolicy(.accessory)
+            hasVisibleAppWindow: Self.hasVisibleAppWindow()) else { return }
+        let accepted = NSApp.setActivationPolicy(.accessory)
+        let isAccessory = NSApp.activationPolicy() == .accessory
+        DeveloperLog.eventRecord(
+            "window.demote_to_accessory",
+            level: accepted && isAccessory ? .info : .error,
+            category: "ui",
+            result: accepted && isAccessory ? "success" : "failed",
+            fields: [
+                "accepted": .bool(accepted),
+                "is_accessory": .bool(isAccessory)
+            ])
     }
 
-    /// Whether any app-owned window is currently on screen, excluding the
-    /// given ids. AppKit now owns exactly the four `WindowManager` windows
-    /// (all plain `NSWindow`), so this defers to that registry — no more
-    /// scanning `NSApp.windows` and filtering out the popover / status-bar
-    /// host by `NSPanel` / classname heuristics.
-    static func hasVisibleAppWindow(excludingWindowIDs: Set<String> = []) -> Bool {
-        WindowManager.shared.hasVisibleWindow(excluding: excludingWindowIDs)
+    /// Whether any app-owned window is currently on screen. AppKit now owns
+    /// exactly the four `WindowManager` windows (all plain `NSWindow`), so this
+    /// defers to that registry — no more scanning `NSApp.windows` and filtering
+    /// out the popover / status-bar host by `NSPanel` / classname heuristics.
+    static func hasVisibleAppWindow() -> Bool {
+        WindowManager.shared.hasVisibleWindow()
     }
 
     /// Re-apply the activation policy based on the current setting.
-    /// Called from the Settings toggle's binding so a flip takes
-    /// effect immediately. Looks at `NSApp.windows` to decide whether
-    /// any app-owned window is currently on screen.
+    /// Called from the Settings toggle's binding so a flip takes effect
+    /// immediately. Consults `WindowManager` to decide whether any app-owned
+    /// window is currently on screen.
     ///
     /// Bidirectional now that Settings is a plain `Window(id:)` scene
     /// rather than `Settings { }`. The previous implementation only

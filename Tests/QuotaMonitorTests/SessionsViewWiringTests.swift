@@ -34,8 +34,9 @@ struct SessionsViewWiringTests {
         let invalidate = try #require(queryTask.range(
             of: "pagination.cancel(request)"))
         let debounce = try #require(queryTask.range(
-            of: "Task.sleep(nanoseconds: 200_000_000)"))
+            of: "Task.sleep(for: .milliseconds(200))"))
         #expect(invalidate.lowerBound < debounce.lowerBound)
+        #expect(!source.contains("pendingSearchReload"))
 
         let cancellationChecks = Self.ranges(
             of: "try Task.checkCancellation()",

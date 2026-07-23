@@ -470,6 +470,20 @@ struct DaySummary: Sendable, Identifiable, Equatable {
     let sessionCount: Int
 }
 
+struct CacheUsageSummary: Sendable, Equatable {
+    let readTokens: Int64
+    let eligibleInputTokens: Int64
+
+    /// Token-weighted share of prompt input served from cache. A day with no
+    /// eligible input has no meaningful hit rate, while malformed historical
+    /// rows are clamped to the displayable 0...100% range.
+    var hitRate: Double? {
+        guard eligibleInputTokens > 0 else { return nil }
+        let rawRate = Double(readTokens) / Double(eligibleInputTokens)
+        return min(max(rawRate, 0), 1)
+    }
+}
+
 enum HistoryPageLoadTrigger: String, Sendable, Equatable {
     case initial
     case viewportFill
@@ -486,6 +500,7 @@ struct HistoryPage: Sendable, Equatable {
 struct DayDetail: Sendable, Equatable {
     let summary: DaySummary
     let modelBreakdown: [ModelShare]
+    let cacheUsage: CacheUsageSummary
     let sessions: [SessionRow]      // sessions with at least one event on this day,
                                     // values restricted to events on that day
 }

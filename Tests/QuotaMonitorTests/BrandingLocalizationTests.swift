@@ -104,4 +104,21 @@ struct BrandingLocalizationTests {
         #expect(zh.1 == "加载更多会话失败。")
     }
 
+    @Test("History cache hit rate copy is bilingual")
+    func historyCacheHitRateCopy() {
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            (L10n.cacheHitRateTitle,
+             L10n.cacheHitRateUnavailable)
+        }
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (L10n.cacheHitRateTitle,
+             L10n.cacheHitRateUnavailable)
+        }
+
+        #expect(en.0 == "Cache hit rate")
+        #expect(en.1 == "No eligible input tokens")
+        #expect(zh.0 == "缓存命中率")
+        #expect(zh.1 == "暂无可计算的输入 Token")
+    }
+
 }

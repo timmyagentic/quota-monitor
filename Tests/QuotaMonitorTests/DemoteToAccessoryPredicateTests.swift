@@ -11,9 +11,11 @@ import Testing
 struct DemoteToAccessoryPredicateTests {
 
     @Test
-    func demotesWhenRegularAndReachable() {
+    func closingFinalVisibleWindowDemotesReachableRegularApp() {
         #expect(AppEnvironment.shouldDemoteToAccessory(
-            currentlyRegular: true, menuBarUnreachable: false) == true)
+            currentlyRegular: true,
+            menuBarUnreachable: false,
+            hasVisibleAppWindow: false) == true)
     }
 
     @Test

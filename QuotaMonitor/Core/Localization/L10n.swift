@@ -146,8 +146,12 @@ enum L10n {
 
     static var quotaCardTitle5h: String { t(en: "5-hour", zh: "5 小时") }
     static var quotaCardTitle7d: String { t(en: "7-day", zh: "7 天") }
+    static var quotaCardTitle7dFull: String { t(en: "7-day · Full", zh: "7 天 · Full") }
     static var quotaCardTitle7dOpus: String { t(en: "7-day · Opus", zh: "7 天 · Opus") }
     static var quotaCardTitle7dSonnet: String { t(en: "7-day · Sonnet", zh: "7 天 · Sonnet") }
+    static func quotaCardTitle7dModel(_ displayName: String) -> String {
+        t(en: "7-day · \(displayName)", zh: "7 天 · \(displayName)")
+    }
 
     static var codexSignInPrompt: String {
         t(en: "Sign in via codex CLI to see live quotas",
@@ -249,8 +253,8 @@ enum L10n {
     /// of the default-OFF behaviour so users don't think their
     /// windows are broken when they can't ⌘Tab back into them.
     static var showDockIconHelp: String {
-        t(en: "When off, \(Branding.appCodeName) stays in the menu bar only. The Dashboard and Settings windows will not appear in Cmd+Tab.",
-          zh: "关闭后 \(Branding.appCodeName) 完全只占菜单栏，但 Cmd+Tab 将切换不到 Dashboard 与设置窗口。")
+        t(en: "When off, \(Branding.appCodeName) stays in the menu bar only and its windows do not appear in Cmd+Tab. After the last window closes, macOS may keep a separate shortcut in the Dock's Recent Apps section; it is not the app's running Dock icon.",
+          zh: "关闭后 \(Branding.appCodeName) 仅驻留菜单栏，Cmd+Tab 不会显示其窗口。关闭最后一个窗口后，macOS 仍可能在程序坞的“最近使用的应用程序”区域保留单独的快捷项；它不代表应用仍有运行中的程序坞图标。")
     }
 
     static func headlineWindowLabel(_ window: HeadlineWindow) -> String {
@@ -676,6 +680,13 @@ enum L10n {
     static var selectDayPrompt: String {
         t(en: "Select a day to inspect its calls",
           zh: "选择一天以查看其调用")
+    }
+    static var cacheHitRateTitle: String {
+        t(en: "Cache hit rate", zh: "缓存命中率")
+    }
+    static var cacheHitRateUnavailable: String {
+        t(en: "No eligible input tokens",
+          zh: "暂无可计算的输入 Token")
     }
     static func sessionsOnDay(_ n: Int) -> String {
         t(en: "Sessions on this day (\(n))", zh: "当日会话（\(n)）")
