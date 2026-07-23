@@ -32,6 +32,8 @@ window copy.
 
 #### Summary
 
+- History now opens with the latest three weeks while older records continue loading one week at a time.
+- Sessions now opens with a focused first batch and keeps loading more matches as you deliberately scroll, so histories beyond the old 500-row ceiling remain reachable.
 - Fresh Claude quota windows no longer jump from about 1% usage to 100% in the menu popover or Dashboard.
 - Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
 - Quota Monitor now quietly checks for updates after launch, wake, or returning to the foreground when its last check is more than six hours old.
@@ -66,6 +68,8 @@ window copy.
 - **Quieter background refreshes.** Launch loads the menu-bar snapshot without preloading a hidden Dashboard, while frequent watcher scans skip summary work when imports are unchanged; opening the popover or choosing Refresh still updates time-dependent totals.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
+- **Broader initial History view.** History loads the latest 21 calendar days on first open, then keeps the existing seven-day incremental pages for viewport fill and deliberate downward scrolling.
+- **Progressive Sessions loading.** Sessions loads 50 globally searched and sorted rows at a time, preserves stable recency, cost, and token ordering, and continues past the former 500-session limit without rendering the entire history up front.
 
 ## [0.2.43] — 2026-07-20
 

@@ -588,6 +588,12 @@ enum L10n {
     static var sortValue: String { t(en: "Highest value", zh: "金额最高") }
     static var sortTokens: String { t(en: "Most tokens", zh: "Token 最多") }
     static var noMatchingSessions: String { t(en: "No matching sessions", zh: "没有匹配的会话") }
+    static var sessionsLoadingMore: String {
+        t(en: "Loading more sessions", zh: "正在加载更多会话")
+    }
+    static var sessionsLoadMoreFailed: String {
+        t(en: "Couldn't load more sessions.", zh: "加载更多会话失败。")
+    }
     static var selectSessionToInspect: String {
         t(en: "Select a session to inspect its events",
           zh: "选择一个会话以查看其事件")
@@ -661,8 +667,8 @@ enum L10n {
     static var historyTitle: String { t(en: "History", zh: "历史") }
     static var daysHeader: String { t(en: "Days", zh: "天数") }
     static var noUsageHistory: String { t(en: "No usage history yet", zh: "暂无使用历史") }
-    static var historyNoUsageLatestSevenDays: String {
-        t(en: "No usage in the latest 7 days", zh: "最近 7 天暂无使用记录")
+    static var historyNoUsageLatestTwentyOneDays: String {
+        t(en: "No usage in the latest 21 days", zh: "最近 21 天暂无使用记录")
     }
     static var historyLoadingOlder: String {
         t(en: "Loading older history", zh: "正在加载更早的历史记录")

@@ -7,31 +7,40 @@ extension AppEnvironment {
 
     // MARK: - Sessions queries (used by Sessions tab)
 
-    func fetchSessionsList(
+    func fetchSessionsPage(
         sort: SessionSort,
-        search: String
-    ) async throws -> [SessionRow] {
+        search: String,
+        limit: Int,
+        trigger: SessionPageLoadTrigger
+    ) async throws -> SessionPage {
         let filter = providerFilter
         let op = DeveloperLog.startOperation(
-            "query.sessions.list",
+            "query.sessions.page",
             category: "query",
-            trigger: "ui",
+            trigger: trigger.rawValue,
             fields: [
                 "sort": .string(String(describing: sort)),
                 "search_length": .int(search.count),
+                "limit": .int(limit),
                 "filter": .string(filter.rawValue)
             ])
         do {
             let (db, _) = try ensureServices()
-            let rows = try await db.pool.read { conn in
-                try Aggregator.fetchSessions(
-                    db: conn, sort: sort, search: search, provider: filter)
+            let page = try await db.pool.read { conn in
+                try Aggregator.fetchSessionsPage(
+                    db: conn,
+                    sort: sort,
+                    search: search,
+                    provider: filter,
+                    limit: limit)
             }
             DeveloperLog.finishOperation(op, fields: [
-                "rows": .int(rows.count),
+                "rows": .int(page.rows.count),
+                "has_more": .bool(page.hasMore),
+                "limit": .int(limit),
                 "filter": .string(filter.rawValue)
             ])
-            return rows
+            return page
         } catch {
             DeveloperLog.failOperation(op, error: error, fields: ["filter": .string(filter.rawValue)])
             throw error
