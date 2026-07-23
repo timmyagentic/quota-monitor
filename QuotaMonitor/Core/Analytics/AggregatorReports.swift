@@ -14,14 +14,14 @@ extension Aggregator {
         try await pool.read { db in
             let overview = try fetchOverview(
                 db: db, provider: provider, enabledProviders: enabledProviders)
-            let daily = try fetchDaily(
-                db: db, days: 14, provider: provider,
-                enabledProviders: enabledProviders)
             // One-year window powers the Token Monitor-inspired Trends
-            // page. The statline still reads only the trailing 60 days.
+            // page, including its daily cache hit-rate series. Derive the
+            // short overview from the same result so Dashboard refreshes do
+            // not scan the same recent rows twice.
             let dailyExtended = try fetchDaily(
                 db: db, days: 365, provider: provider,
                 enabledProviders: enabledProviders)
+            let daily = Array(dailyExtended.suffix(14))
             let dailyProviderExtended = try fetchDailyBreakdown(
                 db: db, days: 365, grouping: .provider, provider: provider,
                 enabledProviders: enabledProviders)
@@ -119,6 +119,8 @@ extension Aggregator {
         guard days > 0 else { return [] }
         let scope = ProviderScope(
             filter: provider, enabledProviders: enabledProviders)
+        let cacheRead = cacheReadTokensExpression(table: "usage_events")
+        let cacheEligibleInput = cacheEligibleInputExpression(table: "usage_events")
         // Lower bound = local start-of-day of the earliest bucket, serialized to
         // ISO8601 UTC for lexical comparison against stored T/Z timestamps.
         // Derived from the injected `now` (not SQL 'now') so the window is
@@ -130,7 +132,9 @@ extension Aggregator {
             byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))
         let lowerBound = ISO8601.fractional.string(from: earliestDay ?? .distantPast)
         let rows = try Row.fetchAll(db, sql: """
-            SELECT timestamp, value_usd, total_tokens
+            SELECT timestamp, value_usd, total_tokens,
+                   \(cacheRead) AS cache_read_tokens,
+                   \(cacheEligibleInput) AS cache_eligible_input_tokens
             FROM usage_events
             WHERE timestamp >= ?
             \(scope.clause(table: "usage_events"))
@@ -138,15 +142,22 @@ extension Aggregator {
 
         var dayValue: [Date: Double] = [:]
         var dayTokens: [Date: Int64] = [:]
+        var dayCacheUsage: [Date: CacheUsageSummary] = [:]
         for row in rows {
             let ts: String = row["timestamp"] ?? ""
             guard let date = parseTimestamp(ts) else { continue }
             let dayStart = calendar.startOfDay(for: date)
             dayValue[dayStart, default: 0] += row["value_usd"] ?? 0
             dayTokens[dayStart, default: 0] += row["total_tokens"] ?? 0
+            let current = dayCacheUsage[dayStart] ?? .zero
+            dayCacheUsage[dayStart] = CacheUsageSummary(
+                readTokens: current.readTokens + (row["cache_read_tokens"] ?? 0),
+                eligibleInputTokens: current.eligibleInputTokens
+                    + (row["cache_eligible_input_tokens"] ?? 0))
         }
         return dailySeries(dayTokens: dayTokens, dayValue: dayValue,
-                           days: days, now: now, calendar: calendar)
+                           days: days, now: now, calendar: calendar,
+                           dayCacheUsage: dayCacheUsage)
     }
 
     static func fetchDailyBreakdown(

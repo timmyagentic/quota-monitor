@@ -4,6 +4,7 @@ enum DashboardTheme {
     static let codex = Color(red: 0.29, green: 0.66, blue: 0.72)
     static let claude = Color(red: 0.80, green: 0.48, blue: 0.35)
     static let accentBlue = Color(red: 0.55, green: 0.78, blue: 0.95)
+    static let cache = Color(red: 0.55, green: 0.49, blue: 0.96)
     static let warning = Color(red: 0.94, green: 0.42, blue: 0.48)
 
     static func providerColor(_ provider: String) -> Color {

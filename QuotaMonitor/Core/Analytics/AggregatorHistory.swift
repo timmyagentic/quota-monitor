@@ -157,13 +157,14 @@ extension Aggregator {
         guard let range = Self.localDayRange(day, calendar: calendar) else { return nil }
         let lo = range.lo
         let hi = range.hi
+        let cacheRead = cacheReadTokensExpression(table: "usage_events")
         let cacheEligibleInput = cacheEligibleInputExpression(table: "usage_events")
 
         let summaryRow = try Row.fetchOne(db, sql: """
             SELECT
               SUM(value_usd) AS value_usd,
               SUM(total_tokens) AS tokens,
-              COALESCE(SUM(MAX(cached_input_tokens, 0)), 0) AS cache_read_tokens,
+              COALESCE(SUM(\(cacheRead)), 0) AS cache_read_tokens,
               COALESCE(SUM(\(cacheEligibleInput)), 0) AS cache_eligible_input_tokens,
               COUNT(*) AS events,
               COUNT(DISTINCT session_id) AS sessions
@@ -289,26 +290,6 @@ extension Aggregator {
     }
 
     // MARK: - local-day helpers
-
-    /// Provider-normalized input denominator used by History cache hit rates.
-    /// Codex stores the full prompt in `input_tokens`, with cached input as a
-    /// subset. Claude stores uncached input separately, so reads and writes are
-    /// added back; legacy unsplit writes remain a fallback for older rows.
-    private static func cacheEligibleInputExpression(table: String) -> String {
-        """
-        CASE WHEN \(table).provider = 'claude' THEN
-          MAX(\(table).input_tokens, 0)
-          + MAX(\(table).cached_input_tokens, 0)
-          + CASE
-              WHEN (MAX(\(table).cache_creation_5m_tokens, 0)
-                    + MAX(\(table).cache_creation_1h_tokens, 0)) > 0
-              THEN MAX(\(table).cache_creation_5m_tokens, 0)
-                   + MAX(\(table).cache_creation_1h_tokens, 0)
-              ELSE MAX(\(table).cache_creation_tokens, 0)
-            END
-        ELSE MAX(\(table).input_tokens, 0) END
-        """
-    }
 
     /// `yyyy-MM-dd` formatter bound to `calendar` (POSIX locale) — the canonical
     /// History "day" key, shared by the list + drilldowns so they always agree.

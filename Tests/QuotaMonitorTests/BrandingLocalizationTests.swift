@@ -108,17 +108,29 @@ struct BrandingLocalizationTests {
     func historyCacheHitRateCopy() {
         let en = LocalizationTestSupport.withLanguage(.english) {
             (L10n.cacheHitRateTitle,
-             L10n.cacheHitRateUnavailable)
+             L10n.cacheHitRateUnavailable,
+             L10n.dailyCacheHitRateTitle,
+             L10n.cacheHitRateWeightedWindow(period: "Last 30 days", rate: "72.4%"),
+             L10n.cacheHitRateTokenDetail(read: "12M", eligible: "16M"))
         }
         let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
             (L10n.cacheHitRateTitle,
-             L10n.cacheHitRateUnavailable)
+             L10n.cacheHitRateUnavailable,
+             L10n.dailyCacheHitRateTitle,
+             L10n.cacheHitRateWeightedWindow(period: "近 30 天", rate: "72.4%"),
+             L10n.cacheHitRateTokenDetail(read: "1200万", eligible: "1600万"))
         }
 
         #expect(en.0 == "Cache hit rate")
         #expect(en.1 == "No eligible input tokens")
+        #expect(en.2 == "Daily cache hit rate")
+        #expect(en.3 == "Last 30 days weighted · 72.4%")
+        #expect(en.4 == "12M cache-read / 16M eligible input tokens")
         #expect(zh.0 == "缓存命中率")
         #expect(zh.1 == "暂无可计算的输入 Token")
+        #expect(zh.2 == "每日缓存命中率")
+        #expect(zh.3 == "近 30 天加权 · 72.4%")
+        #expect(zh.4 == "缓存读取 1200万 / 可缓存输入 1600万 Token")
     }
 
 }
