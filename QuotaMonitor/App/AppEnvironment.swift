@@ -187,15 +187,29 @@ final class AppEnvironment {
     private var lastCodexResetCreditsRefreshAttemptAt: Date?
     let pricingSource = LiteLLMPricingSource()
 
+    convenience init(
+        appServer: AppServerClient = AppServerClient(),
+        codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
+        launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
+        startBackgroundTasks: Bool = true
+    ) {
+        self.init(
+            appServer: appServer,
+            codexAccountUsageClient: appServer,
+            codexResetCreditsClient: codexResetCreditsClient,
+            launchAtLoginController: launchAtLoginController,
+            startBackgroundTasks: startBackgroundTasks)
+    }
+
     init(
         appServer: AppServerClient = AppServerClient(),
-        codexAccountUsageClient: (any CodexAccountUsageFetching)? = nil,
+        codexAccountUsageClient: any CodexAccountUsageFetching,
         codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true
     ) {
         self.appServer = appServer
-        self.codexAccountUsageClient = codexAccountUsageClient ?? appServer
+        self.codexAccountUsageClient = codexAccountUsageClient
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
