@@ -307,7 +307,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
     /// { "rate_limit_tier": "max5x",
     ///   "five_hour":  {"utilization": 60.0, "resets_at": "2026-..."},
     ///   "seven_day":  {"utilization": 12.0, "resets_at": "..."},
-    ///   "seven_day_opus": {...}, "seven_day_sonnet": {...}
+    ///   "seven_day_opus": {...}, "seven_day_sonnet": {...},
+    ///   "limits": [{"kind": "weekly_scoped", "percent": 2.0,
+    ///                "scope": {"model": {"display_name": "Fable"}}}]
     /// }
     /// ```
     /// All keys are optional — Free plans in particular omit most.
@@ -321,12 +323,26 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             let seven_day: WindowWire?
             let seven_day_opus: WindowWire?
             let seven_day_sonnet: WindowWire?
+            let seven_day_fable: WindowWire?
+            let limits: [ScopedLimitWire]?
         }
         struct WindowWire: Decodable {
             let utilization: Double?
             let used_percent: Double?
             let resets_at: String?
             let reset_at: String?
+        }
+        struct ScopedLimitWire: Decodable {
+            let kind: String?
+            let percent: Double?
+            let resets_at: String?
+            let scope: ScopeWire?
+        }
+        struct ScopeWire: Decodable {
+            let model: ScopeModelWire?
+        }
+        struct ScopeModelWire: Decodable {
+            let display_name: String?
         }
 
         let wire: Wire
@@ -344,11 +360,16 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         // Anthropic's current `/api/oauth/usage` returns `utilization`
         // already in percent (e.g. 60.0 means 60%). Older CodexBar
         // captures showed `used_percent` as 0..100 too. Some very early
-        // beta captures used 0..1 ratios — we keep that compat by
-        // heuristic: a value <= 1.5 is treated as a 0..1 ratio (so 0.42
-        // → 42%), anything larger is already a percent.
+        // beta captures used 0..1 ratios. A modern `limits[]` array
+        // disambiguates the response: its accompanying top-level values are
+        // literal percentages. Only no-`limits` legacy responses keep the
+        // <=1.5 ratio heuristic (0.42 → 42%).
         // Tests in `ClaudeUsageDecoderTests` lock this with real fixtures.
-        func mkWindow(_ w: WindowWire?, duration: TimeInterval) -> ClaudeUsageSnapshot.Window? {
+        func mkWindow(
+            _ w: WindowWire?,
+            duration: TimeInterval,
+            allowsLegacyRatio: Bool = true
+        ) -> ClaudeUsageSnapshot.Window? {
             guard let w else { return nil }
             let resetStr = w.resets_at ?? w.reset_at
             guard let reset = parseDate(resetStr) else { return nil }
@@ -360,17 +381,85 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             } else {
                 return nil
             }
-            let pct = raw <= 1.5 ? raw * 100 : raw
+            let pct = allowsLegacyRatio && raw <= 1.5 ? raw * 100 : raw
             return .init(usedPercent: pct, resetAt: reset, windowDuration: duration)
+        }
+
+        // The modern `limits[].percent` field is explicitly 0...100. Do not
+        // send it through the legacy `<= 1.5` ratio heuristic above: a real
+        // Fable value of 1 means 1%, not 100%.
+        func mkLimitWindow(
+            _ w: ScopedLimitWire,
+            duration: TimeInterval
+        ) -> ClaudeUsageSnapshot.Window? {
+            guard let percent = w.percent,
+                  percent.isFinite,
+                  let reset = parseDate(w.resets_at) else { return nil }
+            return .init(
+                usedPercent: percent,
+                resetAt: reset,
+                windowDuration: duration)
+        }
+
+        let structuredLimits = wire.limits ?? []
+        let structuredFiveHour = structuredLimits
+            .first { $0.kind == "session" }
+            .flatMap { mkLimitWindow($0, duration: 5 * 3600) }
+        let structuredSevenDay = structuredLimits
+            .first { $0.kind == "weekly_all" }
+            .flatMap { mkLimitWindow($0, duration: 7 * 86400) }
+
+        // A short-lived top-level `seven_day_fable` variant is accepted as a
+        // fallback. Fable is a modern field whose utilization is always a
+        // literal percentage, even when `limits[]` is absent. The
+        // self-describing limits array is the source of truth and replaces
+        // the fallback when both are present.
+        var weeklyScoped: [ClaudeUsageSnapshot.WeeklyScopedLimit] = []
+        let allowsLegacyRatio = wire.limits == nil
+        if let window = mkWindow(
+            wire.seven_day_fable,
+            duration: 7 * 86400,
+            allowsLegacyRatio: false) {
+            weeklyScoped.append(.init(key: "fable", window: window))
+        }
+        for limit in structuredLimits where limit.kind == "weekly_scoped" {
+            guard let wireName = limit.scope?.model?.display_name,
+                  let key = ClaudeUsageSnapshot.WeeklyScopedLimit.canonicalKey(
+                    for: wireName),
+                  let window = mkLimitWindow(
+                    limit,
+                    duration: 7 * 86400) else { continue }
+            let decoded = ClaudeUsageSnapshot.WeeklyScopedLimit(
+                key: key,
+                displayName: wireName,
+                window: window)
+            if let index = weeklyScoped.firstIndex(where: { $0.key == key }) {
+                weeklyScoped[index] = decoded
+            } else {
+                weeklyScoped.append(decoded)
+            }
         }
 
         return .init(
             capturedAt: capturedAt,
             tier: wire.rate_limit_tier,
-            fiveHour:    mkWindow(wire.five_hour,        duration: 5 * 3600),
-            sevenDay:    mkWindow(wire.seven_day,        duration: 7 * 86400),
-            sevenDayOpus:   mkWindow(wire.seven_day_opus,   duration: 7 * 86400),
-            sevenDaySonnet: mkWindow(wire.seven_day_sonnet, duration: 7 * 86400))
+            fiveHour: structuredFiveHour ?? mkWindow(
+                wire.five_hour,
+                duration: 5 * 3600,
+                allowsLegacyRatio: allowsLegacyRatio),
+            sevenDay: structuredSevenDay ?? mkWindow(
+                wire.seven_day,
+                duration: 7 * 86400,
+                allowsLegacyRatio: allowsLegacyRatio),
+            sevenDayOpus: mkWindow(
+                wire.seven_day_opus,
+                duration: 7 * 86400,
+                allowsLegacyRatio: allowsLegacyRatio),
+            sevenDaySonnet: mkWindow(
+                wire.seven_day_sonnet,
+                duration: 7 * 86400,
+                allowsLegacyRatio: allowsLegacyRatio),
+            weeklyScoped: weeklyScoped)
     }
 
     // MARK: - Credential loading

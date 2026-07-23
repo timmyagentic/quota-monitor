@@ -152,12 +152,16 @@ struct ForecastSection: View {
         // upstream values ("prolite", "max5x") confuse users more than they
         // help, and the plan rarely changes for a single account.
         let tier: String? = nil
-        // Prefer the live `/usage` 5h window (matches what Anthropic itself
-        // shows). Fall back to the locally-derived billing block when the
-        // OAuth poll hasn't landed yet — that's the only signal we have.
-        let liveFiveHour = claudeUsage?.fiveHour
+        // Prefer the current `/usage` 5h window, then its preserved stale
+        // predecessor when a weekly-only response omits `five_hour`. Fall
+        // back to the locally-derived billing block only when OAuth has no
+        // displayable 5h row.
+        let displayedFiveHour = claudeUsage?.fiveHourForDisplay
         let liveSevenDay = claudeUsage?.sevenDay
-        let isFresh = liveFiveHour != nil || liveSevenDay != nil || block != nil
+        let scopedRows = claudeUsage.map {
+            ClaudeScopedQuotaRows.visibleRows(for: $0)
+        } ?? []
+        let isFresh = claudeUsage?.hasRenderableQuotaWindow == true || block != nil
 
         ProviderForecastCard(
             label: L10n.claude,
@@ -168,11 +172,11 @@ struct ForecastSection: View {
             emptyText: L10n.forecastNoClaudeQuota
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                if let live = liveFiveHour {
+                if let displayed = displayedFiveHour {
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle5h,
-                        usedPercent: live.usedPercent,
-                        resetsAt: live.resetAt,
+                        usedPercent: displayed.usedPercent,
+                        resetsAt: displayed.resetAt,
                         burn: nil)
                 } else if let block {
                     let pct = blockProgress(block)
@@ -186,9 +190,16 @@ struct ForecastSection: View {
                 }
                 if let week = liveSevenDay {
                     QuotaProgressRow(
-                        title: L10n.quotaCardTitle7d,
+                        title: L10n.quotaCardTitle7dFull,
                         usedPercent: week.usedPercent,
                         resetsAt: week.resetAt,
+                        burn: nil)
+                }
+                ForEach(scopedRows) { row in
+                    QuotaProgressRow(
+                        title: L10n.quotaCardTitle7dModel(row.displayName),
+                        usedPercent: row.window.usedPercent,
+                        resetsAt: row.window.resetAt,
                         burn: nil)
                 }
                 if let burn {

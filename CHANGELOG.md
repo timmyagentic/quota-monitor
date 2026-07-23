@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
 - Quota Monitor now quietly checks for updates after launch, wake, or returning to the foreground when its last check is more than six hours old.
 - The menu-bar readout now avoids redrawing when refreshed data produces the same visible values.
 - Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
@@ -40,6 +41,10 @@ window copy.
 - Background history checks now leave Dashboard and menu-bar summaries alone when imported data has not changed, reducing recurring work while Quota Monitor sits in the menu bar.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
+
+### Added
+
+- **Fable 5 weekly quota.** Quota Monitor reads Anthropic's new model-scoped weekly limits, keeps them available after relaunch, and labels the two weekly meters as Full and Fable 5.
 
 ### Changed
 

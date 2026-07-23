@@ -145,6 +145,24 @@ struct ClaudeUsageHydratorTests {
         #expect(abs((snap.sevenDaySonnet?.usedPercent ?? 0) - 20) < 0.0001)
     }
 
+    @Test("Fable-only named weekly row hydrates without aggregate windows")
+    func fableOnly_withoutAggregateWindows() async throws {
+        let db = try makeDatabase()
+        let captured = "2026-07-20T10:00:00Z"
+
+        try await insert(db, sampleAt: captured, bucket: "secondary",
+                         limitName: "fable", plan: "max20x",
+                         usedPercent: 62, resetAt: "2026-07-24T10:00:00Z")
+
+        let snap = try #require(try await ClaudeUsageHydrator.loadLatest(database: db))
+        #expect(snap.fiveHour == nil)
+        #expect(snap.sevenDay == nil)
+        #expect(snap.weeklyScoped.map(\.key) == ["fable"])
+        #expect(snap.weeklyScoped.first?.displayName == "Fable 5")
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 62) < 0.0001)
+        #expect(snap.hasRenderableQuotaWindow)
+    }
+
     // MARK: - empty DB
 
     @Test("empty DB returns nil, not an empty snapshot")
