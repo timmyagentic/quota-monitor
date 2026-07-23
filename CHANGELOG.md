@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Fresh Claude quota windows no longer jump from about 1% usage to 100% in the menu popover or Dashboard.
 - Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
 - Quota Monitor now quietly checks for updates after launch, wake, or returning to the foreground when its last check is more than six hours old.
 - The menu-bar readout now avoids redrawing when refreshed data produces the same visible values.
@@ -45,6 +46,10 @@ window copy.
 ### Added
 
 - **Fable 5 weekly quota.** Quota Monitor reads Anthropic's new model-scoped weekly limits, keeps them available after relaunch, and labels the two weekly meters as Full and Fable 5.
+
+### Fixed
+
+- **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 
 ### Changed
 

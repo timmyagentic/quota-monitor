@@ -357,18 +357,15 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             return ISO8601.parse(s)
         }
 
-        // Anthropic's current `/api/oauth/usage` returns `utilization`
-        // already in percent (e.g. 60.0 means 60%). Older CodexBar
-        // captures showed `used_percent` as 0..100 too. Some very early
-        // beta captures used 0..1 ratios. A modern `limits[]` array
-        // disambiguates the response: its accompanying top-level values are
-        // literal percentages. Only no-`limits` legacy responses keep the
-        // <=1.5 ratio heuristic (0.42 → 42%).
+        // Anthropic's `/api/oauth/usage` returns `utilization` as a literal
+        // percentage (e.g. 1.0 means 1%). Older `used_percent` captures use
+        // the same 0...100 scale. Magnitude cannot distinguish that scale
+        // from an obsolete ratio-shaped capture: multiplying values <= 1.5
+        // makes a fresh window jump from 1% to 100%.
         // Tests in `ClaudeUsageDecoderTests` lock this with real fixtures.
         func mkWindow(
             _ w: WindowWire?,
-            duration: TimeInterval,
-            allowsLegacyRatio: Bool = true
+            duration: TimeInterval
         ) -> ClaudeUsageSnapshot.Window? {
             guard let w else { return nil }
             let resetStr = w.resets_at ?? w.reset_at
@@ -381,13 +378,10 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             } else {
                 return nil
             }
-            let pct = allowsLegacyRatio && raw <= 1.5 ? raw * 100 : raw
-            return .init(usedPercent: pct, resetAt: reset, windowDuration: duration)
+            return .init(usedPercent: raw, resetAt: reset, windowDuration: duration)
         }
 
-        // The modern `limits[].percent` field is explicitly 0...100. Do not
-        // send it through the legacy `<= 1.5` ratio heuristic above: a real
-        // Fable value of 1 means 1%, not 100%.
+        // The modern `limits[].percent` field is explicitly 0...100 too.
         func mkLimitWindow(
             _ w: ScopedLimitWire,
             duration: TimeInterval
@@ -415,11 +409,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
         // self-describing limits array is the source of truth and replaces
         // the fallback when both are present.
         var weeklyScoped: [ClaudeUsageSnapshot.WeeklyScopedLimit] = []
-        let allowsLegacyRatio = wire.limits == nil
         if let window = mkWindow(
             wire.seven_day_fable,
-            duration: 7 * 86400,
-            allowsLegacyRatio: false) {
+            duration: 7 * 86400) {
             weeklyScoped.append(.init(key: "fable", window: window))
         }
         for limit in structuredLimits where limit.kind == "weekly_scoped" {
@@ -445,20 +437,16 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             tier: wire.rate_limit_tier,
             fiveHour: structuredFiveHour ?? mkWindow(
                 wire.five_hour,
-                duration: 5 * 3600,
-                allowsLegacyRatio: allowsLegacyRatio),
+                duration: 5 * 3600),
             sevenDay: structuredSevenDay ?? mkWindow(
                 wire.seven_day,
-                duration: 7 * 86400,
-                allowsLegacyRatio: allowsLegacyRatio),
+                duration: 7 * 86400),
             sevenDayOpus: mkWindow(
                 wire.seven_day_opus,
-                duration: 7 * 86400,
-                allowsLegacyRatio: allowsLegacyRatio),
+                duration: 7 * 86400),
             sevenDaySonnet: mkWindow(
                 wire.seven_day_sonnet,
-                duration: 7 * 86400,
-                allowsLegacyRatio: allowsLegacyRatio),
+                duration: 7 * 86400),
             weeklyScoped: weeklyScoped)
     }
 

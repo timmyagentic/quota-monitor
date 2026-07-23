@@ -216,18 +216,17 @@ struct ClaudeUsageDecoderTests {
         #expect(abs((snap.sevenDay?.usedPercent ?? 0) - 4.5) < 0.0001)
     }
 
-    /// If Anthropic ever ships utilization=0.42-style ratios again, the
-    /// `<=1.5 → percent` heuristic must still scale them up. Boundary
-    /// at exactly 1.5 is deliberately treated as a ratio (1.5 → 150%);
-    /// see fixture comment.
-    @Test("legacy 0..1 ratio: heuristic scales to percent")
-    func legacyRatio_scalesToPercent() throws {
-        let data = try loadFixture("legacy_ratio")
+    /// A fresh five-hour window can report exactly 1.0 before increasing to
+    /// 2.0 and 3.0. These are literal percentages, not 0...1 ratios.
+    @Test("low utilization values stay literal without limits metadata")
+    func lowUtilization_staysLiteral() throws {
+        let data = try loadFixture("literal_low_percent")
         let snap = try ClaudeUsageClient.decode(data: data, capturedAt: capturedAt)
 
-        #expect(abs((snap.fiveHour?.usedPercent ?? 0) - 42.0) < 0.0001,
-                "0.42 ratio must scale to 42%, not stay at 0.42 or balloon to 4200")
-        #expect(abs((snap.sevenDay?.usedPercent ?? 0) - 8.0) < 0.0001)
+        #expect(abs((snap.fiveHour?.usedPercent ?? -1) - 1.0) < 0.0001,
+                "1% must stay 1%, not jump to 100%")
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 0.42) < 0.0001)
+        #expect(abs((snap.sevenDayOpus?.usedPercent ?? -1) - 0.0) < 0.0001)
     }
 
     @Test("Free tier: only 5h, no per-model windows, no crash")
