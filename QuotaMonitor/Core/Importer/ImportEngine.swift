@@ -488,9 +488,12 @@ actor ImportEngine {
             }
             let completeBuffer = file.fileSize <= Int64(head.count)
             let lines = head.split(separator: 0x0A, omittingEmptySubsequences: false)
+            let eventDecoder = JSONDecoder()
             for (index, line) in lines.enumerated() {
                 if index == lines.count - 1, !completeBuffer { break }
-                guard let event = RolloutEvent.decode(line: Data(line)) else { continue }
+                guard let event = RolloutEvent.decode(
+                    line: Data(line),
+                    decoder: eventDecoder) else { continue }
                 if case .sessionMeta(let meta, _) = event,
                    let sessionId = meta.id,
                    !sessionId.isEmpty {
@@ -691,8 +694,11 @@ actor ImportEngine {
         defer { try? handle.close() }
 
         do {
+            let eventDecoder = JSONDecoder()
             for line in try LineReader(handle: handle) {
-                guard let event = RolloutEvent.decode(line: line) else { continue }
+                guard let event = RolloutEvent.decode(
+                    line: line,
+                    decoder: eventDecoder) else { continue }
                 if case .sessionMeta(let meta, _) = event,
                    let cwd = Self.nonEmpty(meta.cwd) {
                     return !(cwd as NSString).lastPathComponent.isEmpty
