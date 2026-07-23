@@ -1,0 +1,17 @@
+{
+  "_comment": "Synthetic account/usage/read payload. Values are deterministic and are not copied from a user account.",
+  "summary": {
+    "lifetimeTokens": 9876543210,
+    "peakDailyTokens": 456789012,
+    "longestRunningTurnSec": 9876,
+    "currentStreakDays": 17,
+    "longestStreakDays": 42
+  },
+  "dailyUsageBuckets": [
+    { "startDate": "2025-07-24", "tokens": 900 },
+    { "startDate": "2025-07-25", "tokens": 100 },
+    { "startDate": "2026-07-22", "tokens": 300 },
+    { "startDate": "2026-07-22", "tokens": 400 },
+    { "startDate": "2026-07-24", "tokens": 500 }
+  ]
+}

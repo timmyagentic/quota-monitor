@@ -24,6 +24,32 @@ final class AppEnvironment {
     static let shared = AppEnvironment()
 
     let appServer: AppServerClient
+    let codexAccountUsageClient: any CodexAccountUsageFetching
+
+    /// Session-only source selection for the Activity card. It intentionally
+    /// survives Dashboard remounts caused by Reload/provider changes, but is
+    /// not persisted as a global setting.
+    var activityDataScope: ActivityDataScope = .indexed {
+        didSet {
+            guard oldValue != activityDataScope else { return }
+            DeveloperLog.eventRecord(
+                "activity.scope.change",
+                category: "ui",
+                trigger: "user",
+                provider: "codex",
+                fields: [
+                    "old_value": .string(oldValue.rawValue),
+                    "new_value": .string(activityDataScope.rawValue)
+                ])
+            if activityDataScope == .account {
+                refreshCodexAccountUsage(minInterval: 60, trigger: "scope")
+            }
+        }
+    }
+    var codexAccountUsageState: CodexAccountUsageState = .idle
+    var isRefreshingCodexAccountUsage = false
+    var lastCodexAccountUsageRefreshAttemptAt: Date?
+    var codexAccountUsageRefreshGeneration = 0
 
     var latestRateLimits: RateLimitSnapshot?
     var latestCodexResetCredits: CodexResetCreditsSnapshot?
@@ -163,11 +189,13 @@ final class AppEnvironment {
 
     init(
         appServer: AppServerClient = AppServerClient(),
+        codexAccountUsageClient: (any CodexAccountUsageFetching)? = nil,
         codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true
     ) {
         self.appServer = appServer
+        self.codexAccountUsageClient = codexAccountUsageClient ?? appServer
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
@@ -429,6 +457,10 @@ final class AppEnvironment {
     /// associated UI state so the dashboard / menu bar can immediately
     /// reflect "we are no longer tracking this".
     private func stopCodexPoller() {
+        codexAccountUsageRefreshGeneration &+= 1
+        codexAccountUsageState = .idle
+        isRefreshingCodexAccountUsage = false
+        lastCodexAccountUsageRefreshAttemptAt = nil
         guard let p = poller else { return }
         DeveloperLog.eventRecord("poller.codex.stop", category: "poller", provider: "codex")
         self.poller = nil
@@ -708,6 +740,9 @@ final class AppEnvironment {
             refreshRateLimits(
                 minInterval: throttle ? 30 : nil,
                 trigger: trigger)
+            refreshCodexAccountUsage(
+                minInterval: throttle ? 300 : nil,
+                trigger: trigger)
             runScan(
                 minInterval: throttle ? 20 : nil,
                 trigger: trigger)
@@ -726,6 +761,10 @@ final class AppEnvironment {
             bypassMinimumGap: !throttle && trigger == "manual")
         refreshCodexResetCredits(
             minInterval: throttle ? 30 : nil,
+            trigger: trigger,
+            parentOperation: op)
+        refreshCodexAccountUsage(
+            minInterval: throttle ? 300 : nil,
             trigger: trigger,
             parentOperation: op)
         refreshClaudeUsage(trigger: trigger, parentOperation: op)

@@ -61,6 +61,9 @@ struct MainWindowView: View {
             // clicking is safe; no explicit disabled gate needed.
             ToolbarItem(placement: .primaryAction) {
                 Button {
+                    if tab == .dashboard {
+                        env.refreshCodexAccountUsage(trigger: "manual")
+                    }
                     reloadToken &+= 1
                 } label: {
                     Label(L10n.reload, systemImage: "arrow.clockwise")

@@ -36,6 +36,7 @@ window copy.
 - Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
 - History now opens with the latest three weeks while older records continue loading one week at a time.
 - Sessions now opens with a focused first batch and keeps loading more matches as you deliberately scroll, so histories beyond the old 500-row ceiling remain reachable.
+- Dashboard Activity can now switch between the existing indexed history and Codex account-wide totals without changing the rest of the Dashboard.
 - Fresh Claude quota windows no longer jump from about 1% usage to 100% in the menu popover or Dashboard.
 - Claude now shows Fable 5's dedicated weekly allowance alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
 - Quota Monitor now quietly checks for updates after launch, wake, or returning to the foreground when its last check is more than six hours old.
@@ -50,6 +51,7 @@ window copy.
 
 ### Added
 
+- **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
 
 ### Added
