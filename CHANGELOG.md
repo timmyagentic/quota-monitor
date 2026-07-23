@@ -47,9 +47,11 @@ window copy.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 - History now includes each selected day's cache hit rate in the top summary above its model usage.
+- Dashboard now shows weighted cache hit rates for the latest 7 and 30 local-calendar days, with a daily trend for the selected range.
 
 ### Added
 
+- **Dashboard cache hit-rate trends.** The headline now pairs fixed 7- and 30-day weighted summaries with a daily cache hit-rate line in Trends, and provider or date filters update both views together.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
 
 ### Added

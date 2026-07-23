@@ -31,7 +31,7 @@ struct DashboardView: View {
 
     private func overview(_ snapshot: DashboardSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            statline
+            statline(snapshot)
             ForecastSection(
                 snapshot: snapshot,
                 blocks: env.billingBlocks,
@@ -59,7 +59,21 @@ struct DashboardView: View {
 
     // MARK: - rolling-window statline
 
-    private var statline: some View {
+    private func statline(_ snapshot: DashboardSnapshot) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) {
+                usageHeadline
+                Spacer(minLength: 16)
+                cacheHitRateSummary(snapshot)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                usageHeadline
+                cacheHitRateSummary(snapshot)
+            }
+        }
+    }
+
+    private var usageHeadline: some View {
         let codex = env.menuBarSnapshot?.codex
         let claude = env.menuBarSnapshot?.claude
         let window = settings.menuBarHeadlineWindow
@@ -100,7 +114,7 @@ struct DashboardView: View {
         }
 
         let hasData = usdSum > 0 || tokensSum > 0 || sessionsSum > 0
-        return HStack {
+        return Group {
             if hasData {
                 Text(L10n.dashboardHeadlineStatline(
                     window: window,
@@ -110,14 +124,86 @@ struct DashboardView: View {
                     sessions: sessionsSum))
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                     .help(L10n.headlineApiEquivalentHelp)
             } else {
                 Text(L10n.dashboardHeadlineStatlineEmpty(window: window))
                     .font(.callout)
                     .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            Spacer()
         }
+    }
+
+    private func cacheHitRateSummary(_ snapshot: DashboardSnapshot) -> some View {
+        let last7Days = CacheUsageSummary.combined(
+            snapshot.dailyExtended.suffix(7).map(\.cacheUsage))
+        let last30Days = CacheUsageSummary.combined(
+            snapshot.dailyExtended.suffix(30).map(\.cacheUsage))
+
+        return HStack(spacing: 8) {
+            Circle()
+                .fill(DashboardTheme.cache)
+                .frame(width: 6, height: 6)
+            Text(L10n.cacheHitRateTitle)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            Divider()
+                .frame(height: 14)
+
+            cacheHitRateValue(L10n.last7Days, summary: last7Days)
+
+            Divider()
+                .frame(height: 14)
+
+            cacheHitRateValue(L10n.last30Days, summary: last30Days)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(DashboardTheme.cache.opacity(0.09))
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(DashboardTheme.cache.opacity(0.18), lineWidth: 0.6)
+        )
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func cacheHitRateValue(
+        _ period: String,
+        summary: CacheUsageSummary
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(period)
+                .foregroundStyle(.secondary)
+            Text(formatCacheHitRate(summary.hitRate))
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
+        }
+        .font(.caption.monospacedDigit())
+        .help(cacheHitRateHelp(summary))
+    }
+
+    private func formatCacheHitRate(_ rate: Double?) -> String {
+        rate?.formatted(.percent.precision(.fractionLength(1))) ?? "—"
+    }
+
+    private func cacheHitRateHelp(_ summary: CacheUsageSummary) -> String {
+        guard summary.eligibleInputTokens > 0 else {
+            return L10n.cacheHitRateUnavailable
+                + "\n" + L10n.cacheHitRateCalendarWindowHelp
+        }
+        return L10n.cacheHitRateTokenDetail(
+            read: compactTokens(summary.readTokens),
+            eligible: compactTokens(summary.eligibleInputTokens))
+            + "\n" + L10n.cacheHitRateWeightedHelp
+            + "\n" + L10n.cacheHitRateCalendarWindowHelp
     }
 
     private var visibleProviderCount: Int {
