@@ -35,6 +35,7 @@ struct HistoryPaginationStateTests {
             uuidString: "00000000-0000-0000-0000-000000000002")!)
         #expect(replacement.trigger == .initial)
         #expect(replacement.cursor == nil)
+        #expect(replacement.pageSize == 21)
         #expect(state.isLoadingInitial)
         #expect(!state.isLoadingNextPage)
         #expect(state.days.isEmpty)
@@ -82,6 +83,7 @@ struct HistoryPaginationStateTests {
         #expect(next.id == nextID)
         #expect(next.cursor == cursor)
         #expect(next.trigger == .scroll)
+        #expect(next.pageSize == 7)
         #expect(state.isLoadingNextPage)
         #expect(!state.isLoadingInitial)
         let blocked = state.beginNextPage(
@@ -101,6 +103,7 @@ struct HistoryPaginationStateTests {
         #expect(retry.id == retryID)
         #expect(retry.cursor == cursor)
         #expect(retry.trigger == .retry)
+        #expect(retry.pageSize == 7)
         #expect(state.paginationFailure == nil)
     }
 
@@ -237,7 +240,8 @@ struct HistoryPaginationStateTests {
         let other = HistoryPaginationState.Request(
             id: UUID(uuidString: "00000000-0000-0000-0000-000000000063")!,
             trigger: .scroll,
-            cursor: cursor)
+            cursor: cursor,
+            pageSize: HistoryPaginationState.incrementalPageSize)
 
         state.cancel(other)
         #expect(state.inFlightRequest == current)
@@ -311,6 +315,7 @@ struct HistoryPaginationStateTests {
             let requestValue = state.beginNextPage(trigger: .viewportFill)
             let request = try #require(requestValue)
             #expect(request.trigger == .viewportFill)
+            #expect(request.pageSize == 7)
             #expect(state.isLoadingNextPage)
             #expect(!state.canFillViewport)
 

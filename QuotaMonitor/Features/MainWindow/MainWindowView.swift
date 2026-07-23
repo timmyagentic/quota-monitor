@@ -7,7 +7,7 @@ struct MainWindowView: View {
     @State private var tab: Tab = .dashboard
     /// Bumped by the toolbar Reload button. Folded into the inner view's
     /// `.id(...)` so any tab the user is looking at gets re-mounted, which
-    /// in turn re-fires its `.task { refreshDashboard / reloadList }`.
+    /// in turn re-fires its Dashboard, History, or Sessions initial task.
     /// Without this the Reload button only refreshed the Dashboard tab —
     /// pressing it on History/Sessions did nothing.
     @State private var reloadToken: Int = 0
@@ -56,7 +56,7 @@ struct MainWindowView: View {
             // `.id(...)` changes, which re-mounts whatever tab the user
             // is on and re-fires its `.task`:
             //   - Dashboard → refreshDashboard()
-            //   - History / Sessions → their own reloadList()
+            //   - History / Sessions → reset their pagination state
             // SwiftUI cancels the prior `.task` on id change, so spam-
             // clicking is safe; no explicit disabled gate needed.
             ToolbarItem(placement: .primaryAction) {

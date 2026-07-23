@@ -68,25 +68,57 @@ struct BrandingLocalizationTests {
     @Test("History pagination copy is bilingual")
     func historyPaginationCopy() {
         let en = LocalizationTestSupport.withLanguage(.english) {
-            (L10n.historyNoUsageLatestSevenDays,
+            (L10n.historyNoUsageLatestTwentyOneDays,
              L10n.historyLoadingOlder,
              L10n.historyLoadOlderFailed,
              L10n.retry)
         }
         let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            (L10n.historyNoUsageLatestSevenDays,
+            (L10n.historyNoUsageLatestTwentyOneDays,
              L10n.historyLoadingOlder,
              L10n.historyLoadOlderFailed,
              L10n.retry)
         }
-        #expect(en.0 == "No usage in the latest 7 days")
+        #expect(en.0 == "No usage in the latest 21 days")
         #expect(en.1 == "Loading older history")
         #expect(en.2 == "Couldn't load older history.")
         #expect(en.3 == "Retry")
-        #expect(zh.0 == "最近 7 天暂无使用记录")
+        #expect(zh.0 == "最近 21 天暂无使用记录")
         #expect(zh.1 == "正在加载更早的历史记录")
         #expect(zh.2 == "加载更早的历史记录失败。")
         #expect(zh.3 == "重试")
+    }
+
+    @Test("Sessions pagination copy is bilingual")
+    func sessionsPaginationCopy() {
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            (L10n.sessionsLoadingMore, L10n.sessionsLoadMoreFailed)
+        }
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (L10n.sessionsLoadingMore, L10n.sessionsLoadMoreFailed)
+        }
+
+        #expect(en.0 == "Loading more sessions")
+        #expect(en.1 == "Couldn't load more sessions.")
+        #expect(zh.0 == "正在加载更多会话")
+        #expect(zh.1 == "加载更多会话失败。")
+    }
+
+    @Test("History cache hit rate copy is bilingual")
+    func historyCacheHitRateCopy() {
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            (L10n.cacheHitRateTitle,
+             L10n.cacheHitRateUnavailable)
+        }
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            (L10n.cacheHitRateTitle,
+             L10n.cacheHitRateUnavailable)
+        }
+
+        #expect(en.0 == "Cache hit rate")
+        #expect(en.1 == "No eligible input tokens")
+        #expect(zh.0 == "缓存命中率")
+        #expect(zh.1 == "暂无可计算的输入 Token")
     }
 
 }

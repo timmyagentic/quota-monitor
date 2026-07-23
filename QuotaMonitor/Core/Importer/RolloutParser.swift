@@ -427,9 +427,12 @@ enum RolloutParser {
         var deltas: [UsageDelta] = []
         var rateLimitSamples: [RateLimitSampleDraft] = []
         var endOffset = startOffset
+        let eventDecoder = JSONDecoder()
 
         while let record = try reader.next() {
-            if let event = RolloutEvent.decode(line: record.data) {
+            if let event = RolloutEvent.decode(
+                line: record.data,
+                decoder: eventDecoder) {
                 let effects = try reducer.consume(event)
                 if let delta = effects.usageDelta { deltas.append(delta) }
                 rateLimitSamples.append(contentsOf: effects.rateLimitSamples)

@@ -93,6 +93,118 @@ struct ClaudeUsageDecoderTests {
         #expect(abs((snap.sevenDaySonnet?.usedPercent ?? 0) - 9.8) < 0.0001)
     }
 
+    @Test("Fable 5: structured weekly limit decodes at its literal percent")
+    func fable5_structuredWeeklyLimitDecodes() throws {
+        let data = try loadFixture("live_fable5_weekly_scoped")
+        let snap = try ClaudeUsageClient.decode(data: data, capturedAt: capturedAt)
+
+        let scoped = try #require(snap.weeklyScoped.first)
+        #expect(scoped.key == "fable")
+        #expect(scoped.displayName == "Fable 5")
+        #expect(abs(scoped.window.usedPercent - 1.0) < 0.0001,
+                "limits[].percent is already 0...100; 1 must stay 1%, not become 100%")
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 1.0) < 0.0001,
+                "modern top-level utilization is also literal percent when limits[] is present")
+        #expect(snap.sevenDayFable == scoped.window)
+        #expect(snap.tier == "max20x")
+    }
+
+    @Test("structured Fable wins over a top-level compatibility fallback")
+    func fable5_structuredLimitWinsOverFallback() throws {
+        let json = """
+        {
+          "seven_day_fable": {
+            "utilization": 40.0,
+            "resets_at": "2026-07-05T10:00:00Z"
+          },
+          "limits": [{
+            "kind": "weekly_scoped",
+            "percent": 12.0,
+            "resets_at": "2026-07-06T10:00:00Z",
+            "scope": {"model": {"display_name": "Fable"}}
+          }]
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(snap.weeklyScoped.count == 1)
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 12.0) < 0.0001)
+    }
+
+    @Test("top-level Fable fallback decodes modern percent literally")
+    func fable5_topLevelFallbackStaysAtLiteralOnePercent() throws {
+        let json = """
+        {
+          "seven_day_fable": {
+            "utilization": 1.0,
+            "resets_at": "2026-07-05T10:00:00Z"
+          }
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 1.0) < 0.0001,
+                "seven_day_fable is a modern 0...100 field, even without limits[]")
+    }
+
+    @Test("limits-only response restores aggregate and model weekly windows")
+    func limitsOnlyResponseRestoresAllWindowKinds() throws {
+        let json = """
+        {
+          "limits": [
+            {
+              "kind": "session",
+              "percent": 14.0,
+              "resets_at": "2026-07-20T14:00:00Z",
+              "scope": null
+            },
+            {
+              "kind": "weekly_all",
+              "percent": 22.0,
+              "resets_at": "2026-07-25T10:00:00Z",
+              "scope": null
+            },
+            {
+              "kind": "weekly_scoped",
+              "percent": 33.0,
+              "resets_at": "2026-07-24T10:00:00Z",
+              "scope": {"model": {"display_name": "Fable"}}
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(abs((snap.fiveHour?.usedPercent ?? -1) - 14.0) < 0.0001)
+        #expect(abs((snap.fiveHour?.windowDuration ?? -1) - 5 * 3600) < 0.0001)
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 22.0) < 0.0001)
+        #expect(abs((snap.sevenDay?.windowDuration ?? -1) - 7 * 86400) < 0.0001)
+        #expect(abs((snap.sevenDayFable?.usedPercent ?? -1) - 33.0) < 0.0001)
+    }
+
+    @Test("structured aggregate wins and 1 percent stays 1 when both shapes exist")
+    func structuredAggregateWinsAtOnePercent() throws {
+        let json = """
+        {
+          "seven_day": {
+            "utilization": 1.0,
+            "resets_at": "2026-07-24T10:00:00Z"
+          },
+          "limits": [{
+            "kind": "weekly_all",
+            "percent": 1.0,
+            "resets_at": "2026-07-25T10:00:00Z",
+            "scope": null
+          }]
+        }
+        """.data(using: .utf8)!
+
+        let snap = try ClaudeUsageClient.decode(data: json, capturedAt: capturedAt)
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 1.0) < 0.0001)
+        #expect(snap.sevenDay?.resetAt == ISO8601.parse("2026-07-25T10:00:00Z"),
+                "structured weekly_all must win over the ambiguous top-level value")
+    }
+
     @Test("legacy `used_percent` + `reset_at` keys still decode")
     func legacyUsedPercent_andResetAt_stillDecode() throws {
         let data = try loadFixture("legacy_used_percent")
@@ -104,18 +216,17 @@ struct ClaudeUsageDecoderTests {
         #expect(abs((snap.sevenDay?.usedPercent ?? 0) - 4.5) < 0.0001)
     }
 
-    /// If Anthropic ever ships utilization=0.42-style ratios again, the
-    /// `<=1.5 → percent` heuristic must still scale them up. Boundary
-    /// at exactly 1.5 is deliberately treated as a ratio (1.5 → 150%);
-    /// see fixture comment.
-    @Test("legacy 0..1 ratio: heuristic scales to percent")
-    func legacyRatio_scalesToPercent() throws {
-        let data = try loadFixture("legacy_ratio")
+    /// A fresh five-hour window can report exactly 1.0 before increasing to
+    /// 2.0 and 3.0. These are literal percentages, not 0...1 ratios.
+    @Test("low utilization values stay literal without limits metadata")
+    func lowUtilization_staysLiteral() throws {
+        let data = try loadFixture("literal_low_percent")
         let snap = try ClaudeUsageClient.decode(data: data, capturedAt: capturedAt)
 
-        #expect(abs((snap.fiveHour?.usedPercent ?? 0) - 42.0) < 0.0001,
-                "0.42 ratio must scale to 42%, not stay at 0.42 or balloon to 4200")
-        #expect(abs((snap.sevenDay?.usedPercent ?? 0) - 8.0) < 0.0001)
+        #expect(abs((snap.fiveHour?.usedPercent ?? -1) - 1.0) < 0.0001,
+                "1% must stay 1%, not jump to 100%")
+        #expect(abs((snap.sevenDay?.usedPercent ?? -1) - 0.42) < 0.0001)
+        #expect(abs((snap.sevenDayOpus?.usedPercent ?? -1) - 0.0) < 0.0001)
     }
 
     @Test("Free tier: only 5h, no per-model windows, no crash")
