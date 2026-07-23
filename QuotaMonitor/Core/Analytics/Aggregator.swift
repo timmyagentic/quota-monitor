@@ -390,11 +390,25 @@ enum SessionSort: String, CaseIterable, Identifiable, Sendable {
 
     var orderClause: String {
         switch self {
-        case .recent: return "COALESCE(s.updated_at, s.started_at) DESC"
-        case .value:  return "total_value DESC"
-        case .tokens: return "total_tokens DESC"
+        case .recent:
+            return "COALESCE(s.updated_at, s.started_at) DESC, s.session_id ASC"
+        case .value:
+            return "total_value DESC, s.session_id ASC"
+        case .tokens:
+            return "total_tokens DESC, s.session_id ASC"
         }
     }
+}
+
+enum SessionPageLoadTrigger: String, Sendable, Equatable {
+    case initial
+    case scroll
+    case retry
+}
+
+struct SessionPage: Sendable, Equatable {
+    let rows: [SessionRow]
+    let hasMore: Bool
 }
 
 struct SessionDetail: Sendable, Equatable {
@@ -456,6 +470,20 @@ struct DaySummary: Sendable, Identifiable, Equatable {
     let sessionCount: Int
 }
 
+struct CacheUsageSummary: Sendable, Equatable {
+    let readTokens: Int64
+    let eligibleInputTokens: Int64
+
+    /// Token-weighted share of prompt input served from cache. A day with no
+    /// eligible input has no meaningful hit rate, while malformed historical
+    /// rows are clamped to the displayable 0...100% range.
+    var hitRate: Double? {
+        guard eligibleInputTokens > 0 else { return nil }
+        let rawRate = Double(readTokens) / Double(eligibleInputTokens)
+        return min(max(rawRate, 0), 1)
+    }
+}
+
 enum HistoryPageLoadTrigger: String, Sendable, Equatable {
     case initial
     case viewportFill
@@ -472,6 +500,7 @@ struct HistoryPage: Sendable, Equatable {
 struct DayDetail: Sendable, Equatable {
     let summary: DaySummary
     let modelBreakdown: [ModelShare]
+    let cacheUsage: CacheUsageSummary
     let sessions: [SessionRow]      // sessions with at least one event on this day,
                                     // values restricted to events on that day
 }

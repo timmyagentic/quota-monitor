@@ -28,6 +28,8 @@ import Combine
 @MainActor
 @Observable
 final class UpdaterController {
+    private static let backgroundCheckInterval = TimeInterval(6 * 60 * 60)
+
     struct RuntimeConfiguration {
         let updateAvailability: PersistentUpdateAvailability
         let sparkleEnabled: Bool
@@ -184,6 +186,29 @@ final class UpdaterController {
     /// Sparkle dedups internally.
     func checkNow() {
         updater?.checkForUpdates()
+    }
+
+    /// Lifecycle-triggered check that stays silent unless Sparkle discovers an
+    /// update. Sparkle's own 24-hour schedule remains unchanged; this only
+    /// catches long gaps while the app was asleep or inactive.
+    func checkInBackgroundIfNeeded(now: Date = Date()) {
+        guard let updater,
+              updater.automaticallyChecksForUpdates,
+              updater.canCheckForUpdates,
+              Self.shouldCheckInBackground(
+                lastUpdateCheckDate: updater.lastUpdateCheckDate,
+                now: now) else {
+            return
+        }
+        updater.checkForUpdatesInBackground()
+    }
+
+    static func shouldCheckInBackground(
+        lastUpdateCheckDate: Date?,
+        now: Date
+    ) -> Bool {
+        guard let lastUpdateCheckDate else { return true }
+        return now.timeIntervalSince(lastUpdateCheckDate) > backgroundCheckInterval
     }
 
     /// Primary action for the persistent update badge. If the Sparkle user

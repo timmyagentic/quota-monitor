@@ -1,0 +1,30 @@
+{
+  "_comment": "Sanitized /api/oauth/usage shape observed after Fable 5 introduced a model-scoped weekly allowance. `percent` is already 0..100 and `is_active` is not an existence flag.",
+  "rate_limit_tier": "max20x",
+  "five_hour": {"utilization": 9.0, "resets_at": "2026-07-02T02:09:59.400000+00:00"},
+  "seven_day": {"utilization": 1.0, "resets_at": "2026-07-04T13:59:59.400000+00:00"},
+  "seven_day_opus": null,
+  "seven_day_sonnet": null,
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "percent": 9.0,
+      "resets_at": "2026-07-02T02:09:59.400000+00:00",
+      "scope": null,
+      "is_active": true
+    },
+    {
+      "kind": "weekly_scoped",
+      "group": "weekly",
+      "percent": 1.0,
+      "severity": "normal",
+      "resets_at": "2026-07-04T14:00:00.400000+00:00",
+      "scope": {
+        "model": {"id": null, "display_name": "Fable"},
+        "surface": null
+      },
+      "is_active": false
+    }
+  ]
+}

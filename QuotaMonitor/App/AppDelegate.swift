@@ -32,6 +32,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AppEnvironment.shared.demoteToAccessory()
             })
         WindowManager.shared.configure(updater: updater)
+        updater.checkInBackgroundIfNeeded()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil)
 
         let controller = StatusItemController(
             env: env, localization: loc, settings: settings, updater: updater)
@@ -50,7 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Launch fan-out previously carried by the MenuBarExtra `.task`.
         env.startBackgroundPolling()
         env.refreshAll(throttle: false, trigger: "launch")
-        env.refreshDashboard()
+        // Keep one launch-time menu snapshot request even when the initial
+        // history scan is a no-op. DashboardView loads its heavier snapshot
+        // only if and when the Dashboard window is actually presented.
         env.refreshMenuBar(trigger: "launch")
 
         // Close the inert placeholder `Window` SwiftUI auto-opens at launch.
@@ -149,8 +158,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NSWorkspace.shared.notificationCenter.removeObserver(
+            self, name: NSWorkspace.didWakeNotification, object: nil)
         statusItemController?.stop()
         statusItemController = nil
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        updater?.checkInBackgroundIfNeeded()
+    }
+
+    @objc private func workspaceDidWake(_ notification: Notification) {
+        updater?.checkInBackgroundIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
