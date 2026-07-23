@@ -304,16 +304,21 @@ final class AppWindowController: NSWindowController, NSWindowDelegate {
     private let id: String
     private var settingsToolbarCoordinator: SettingsToolbarCoordinator?
     private let onWindowWillClose: @MainActor () -> Void
+    private let onDashboardDidRestore: @MainActor () -> Void
 
     init(
         window: NSWindow,
         id: String,
         onWindowWillClose: @escaping @MainActor () -> Void = {
             WindowManager.shared.handleWillClose()
+        },
+        onDashboardDidRestore: @escaping @MainActor () -> Void = {
+            AppEnvironment.shared.refreshDashboard(trigger: "window-restore")
         }
     ) {
         self.id = id
         self.onWindowWillClose = onWindowWillClose
+        self.onDashboardDidRestore = onDashboardDidRestore
         super.init(window: window)
     }
 
@@ -334,6 +339,11 @@ final class AppWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         onWindowWillClose()
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        guard id == "dashboard" else { return }
+        onDashboardDidRestore()
     }
 
     func configureSettingsToolbar(selection: SettingsTabSelection) {

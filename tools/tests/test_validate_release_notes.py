@@ -211,6 +211,42 @@ class ValidateReleaseNotesTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Chinese bullets must stay on one physical line", result.stderr)
 
+    def test_rejects_duplicate_detail_headings(self):
+        result = self.run_validator(
+            """
+            # Changelog
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - Dashboard summaries now stay current
+
+            ### Added
+            - **First addition.** The first feature is available.
+
+            ### Added
+            - **Second addition.** The second feature is available.
+            """,
+            """
+            # 更新日志
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - 仪表盘摘要现在会保持最新
+
+            ### 新增
+            - **第一项新增。** 第一项功能现在可以使用。
+
+            ### 新增
+            - **第二项新增。** 第二项功能现在可以使用。
+            """,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("CHANGELOG.md: duplicate heading 'Added'", result.stderr)
+        self.assertIn("CHANGELOG.zh-Hans.md: duplicate heading '新增'", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

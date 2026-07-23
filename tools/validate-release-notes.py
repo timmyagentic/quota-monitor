@@ -177,6 +177,7 @@ def validate_details(
 
     allowed = ALLOWED_HEADINGS[lang]
     current_heading: str | None = None
+    seen_headings: set[str] = set()
     detail_bullets = 0
     in_bullet = False
 
@@ -191,6 +192,9 @@ def validate_details(
             if heading not in allowed:
                 choices = ", ".join(sorted(allowed))
                 issues.append(f"{file_name}: unsupported heading '{heading}' (use one of: {choices})")
+            if heading in seen_headings:
+                issues.append(f"{file_name}: duplicate heading '{heading}'")
+            seen_headings.add(heading)
             current_heading = heading
             in_bullet = False
             continue

@@ -735,8 +735,8 @@ enum L10n {
           zh: "自动检查更新")
     }
     static var updatesAutoCheckHelp: String {
-        t(en: "Sparkle polls a signed appcast once a day and prompts you when a new version is available. Disabling skips the schedule but the button below still works.",
-          zh: "Sparkle 每天检查一次签名的 appcast，发现新版本会弹窗提示。关闭只是停掉自动检查，下面的按钮仍可手动触发。")
+        t(en: "Quota Monitor checks for signed updates automatically and prompts you when a new version is available. Turning this off stops automatic checks; Check Now still works.",
+          zh: "Quota Monitor 会自动检查经过签名的更新，并在发现新版本时提示。关闭后将停止自动检查，“立即检查”仍可使用。")
     }
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
