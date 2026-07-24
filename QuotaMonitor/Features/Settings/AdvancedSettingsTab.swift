@@ -66,10 +66,6 @@ struct AdvancedSettingsTab: View {
                            isOn: Binding(
                             get: { updater.automaticallyChecksForUpdates },
                             set: { updater.setAutomaticallyChecks($0) }))
-                    Text(L10n.updatesAutoCheckHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Button(L10n.updatesCheckNow) { updater.checkNow() }
                             .disabled(!updater.canCheckForUpdates)

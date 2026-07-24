@@ -47,6 +47,7 @@ window copy.
 - Restoring a minimized Dashboard now refreshes its charts and summaries before you continue.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - History now includes each selected day's cache hit rate in the top summary above its model usage.
+- Advanced settings now show the automatic update check toggle without an explanatory note beneath it.
 
 ### Added
 
@@ -71,6 +72,10 @@ window copy.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Broader initial History view.** History loads the latest 21 calendar days on first open, then keeps the existing seven-day incremental pages for viewport fill and deliberate downward scrolling.
 - **Progressive Sessions loading.** Sessions loads 50 globally searched and sorted rows at a time, preserves stable recency, cost, and token ordering, and continues past the former 500-session limit without rendering the entire history up front.
+
+### Removed
+
+- **Auto-update help text.** The caption under the automatic update check toggle in Advanced settings is gone; the toggle and the Check Now button behave exactly as before.
 
 ## [0.2.43] — 2026-07-20
 

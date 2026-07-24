@@ -734,10 +734,6 @@ enum L10n {
         t(en: "Check for updates automatically",
           zh: "自动检查更新")
     }
-    static var updatesAutoCheckHelp: String {
-        t(en: "Quota Monitor checks for signed updates automatically and prompts you when a new version is available. Turning this off stops automatic checks; Check Now still works.",
-          zh: "Quota Monitor 会自动检查经过签名的更新，并在发现新版本时提示。关闭后将停止自动检查，“立即检查”仍可使用。")
-    }
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }

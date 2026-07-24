@@ -120,22 +120,4 @@ struct BrandingLocalizationTests {
         #expect(zh.0 == "缓存命中率")
         #expect(zh.1 == "暂无可计算的输入 Token")
     }
-
-    @Test("Automatic update help avoids a fixed daily cadence")
-    func automaticUpdateHelpAvoidsFixedDailyCadence() {
-        let en = LocalizationTestSupport.withLanguage(.english) {
-            L10n.updatesAutoCheckHelp
-        }
-        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            L10n.updatesAutoCheckHelp
-        }
-
-        #expect(en == "Quota Monitor checks for signed updates automatically and prompts you when a new version is available. Turning this off stops automatic checks; Check Now still works.")
-        #expect(zh == "Quota Monitor 会自动检查经过签名的更新，并在发现新版本时提示。关闭后将停止自动检查，“立即检查”仍可使用。")
-        #expect(!en.localizedCaseInsensitiveContains("once a day"))
-        #expect(!en.localizedCaseInsensitiveContains("daily"))
-        #expect(!zh.contains("每天"))
-        #expect(!zh.contains("每日"))
-    }
-
 }
