@@ -140,6 +140,11 @@ General 适合普通用户日常调整：
 
 截图使用隔离 Local QA 预览，因此开关被禁用并明确标注不会发送数据。正式 Developer ID 版本中可以自行开启或关闭；点击 `Privacy details` 可查看完整的中英双语隐私说明。
 
+<!-- STALE SCREENSHOT: captured at c24c009, before #145/#143 removed the
+     "Check for updates automatically" caption text. This image still shows
+     that now-deleted line under the toggle. Retake against latest main
+     (Settings → Advanced, no caption under the toggle) and drop this
+     comment once replaced. See PR discussion for #145 / #143. -->
 ![Settings Advanced](assets/product-manual/c24c009/settings-advanced.png)
 
 Advanced 适合需要调整更新、轮询或诊断选项的用户：
