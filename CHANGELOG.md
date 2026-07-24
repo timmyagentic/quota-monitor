@@ -47,6 +47,7 @@ window copy.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - Visible interface changes now arrive with a verified result image directly in the delivery message, so they can be reviewed without opening separate attachments.
 - History now includes each selected day's cache hit rate in the top summary above its model usage.
+- Advanced settings now show the automatic update check toggle without an explanatory note beneath it.
 
 ### Added
 
@@ -74,6 +75,10 @@ window copy.
 - **Visual delivery evidence.** Contributor guidance now requires final handoffs for visible UI changes to embed an exact-build result screenshot, with compact comparisons preferred for supplied references or multiple entry points.
 - **Broader initial History view.** History loads the latest 21 calendar days on first open, then keeps the existing seven-day incremental pages for viewport fill and deliberate downward scrolling.
 - **Progressive Sessions loading.** Sessions loads 50 globally searched and sorted rows at a time, preserves stable recency, cost, and token ordering, and continues past the former 500-session limit without rendering the entire history up front.
+
+### Removed
+
+- **Auto-update help text.** The caption under the automatic update check toggle in Advanced settings is gone; the toggle and the Check Now button behave exactly as before.
 
 ## [0.2.43] — 2026-07-20
 
