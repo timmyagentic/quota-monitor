@@ -120,5 +120,4 @@ struct BrandingLocalizationTests {
         #expect(zh.0 == "缓存命中率")
         #expect(zh.1 == "暂无可计算的输入 Token")
     }
-
 }
