@@ -154,6 +154,28 @@ struct MainWindowLayoutTests {
         #expect(source.contains(".chartXScale(domain: xDomain)"))
         #expect(source.contains("TrendSeriesBuilder.collapsedModelSeries(raw)"))
         #expect(source.contains("static let otherKey = \"__other__\""))
+        #expect(source.contains("@State private var range: TrendRange = .last30d"))
+        #expect(!source.contains("private var cacheTrend: some View"))
+        #expect(source.contains("cacheRateYValue(point.rate)"))
+        #expect(source.contains("position: .leading"))
+        #expect(source.contains("chartTokenCeiling / 2.0"))
+        #expect(source.contains(".chartYScale(domain: 0.0...chartTokenCeiling)"))
+        #expect(source.contains(".accessibilityRepresentation"))
+        #expect(source.contains("accessibilityDescription(for: day)"))
+        #expect(source.contains("selectedDay = nil"))
+        #expect(source.components(separatedBy: ".chartXSelection(value: $selectedDay)").count == 2)
+    }
+
+    @Test("Dashboard headline shows fixed 7- and 30-day cache summaries")
+    func dashboardHeadlineShowsCacheWindows() throws {
+        let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
+
+        #expect(source.contains("ViewThatFits(in: .horizontal)"))
+        #expect(source.contains("cacheHitRateSummary(snapshot)"))
+        #expect(source.contains("snapshot.dailyExtended.suffix(7)"))
+        #expect(source.contains("snapshot.dailyExtended.suffix(30)"))
+        #expect(source.contains("L10n.last7Days"))
+        #expect(source.contains("L10n.last30Days"))
     }
 
     @Test("Dashboard trend domain includes the complete final day")

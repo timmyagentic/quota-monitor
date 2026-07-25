@@ -48,10 +48,12 @@ window copy.
 - Restoring a minimized Dashboard now refreshes its charts and summaries before you continue.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - History now includes each selected day's cache hit rate in the top summary above its model usage.
+- Dashboard now shows weighted cache hit rates for the latest 7 and 30 local-calendar days, with a daily trend for the selected range.
 - Advanced settings now show the automatic update check toggle without an explanatory note beneath it.
 
 ### Added
 
+- **Dashboard cache hit-rate trends.** The headline now pairs fixed 7- and 30-day weighted summaries with a cache hit-rate line integrated into the existing daily Token bars, and provider or date filters update both views together.
 - **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
 - **Fable 5 weekly quota.** When Anthropic provides the model-scoped weekly limit, Quota Monitor keeps it available after relaunch and labels the two weekly meters as Full and Fable 5.

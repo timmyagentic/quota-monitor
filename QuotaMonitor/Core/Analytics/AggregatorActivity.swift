@@ -168,7 +168,8 @@ extension Aggregator {
         dayValue: [Date: Double],
         days: Int,
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        dayCacheUsage: [Date: CacheUsageSummary] = [:]
     ) -> [DailyPoint] {
         guard days > 0 else { return [] }
         let today = calendar.startOfDay(for: now)
@@ -180,7 +181,8 @@ extension Aggregator {
             points.append(DailyPoint(
                 date: date,
                 valueUSD: dayValue[date] ?? 0,
-                tokens: dayTokens[date] ?? 0))
+                tokens: dayTokens[date] ?? 0,
+                cacheUsage: dayCacheUsage[date] ?? .zero))
         }
         return points
     }
