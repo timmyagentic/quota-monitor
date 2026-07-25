@@ -233,6 +233,59 @@ struct AggregatorTests {
                 "30d distinct sessions = 1 — without DISTINCT this would be 3")
     }
 
+    @Test("provider lifetime and rolling windows share one usage-events query")
+    func providerStats_aggregatesAllWindowsInOneQuery() throws {
+        let db = try makeDatabase()
+        try seedEvent(in: db, provider: "codex", sessionId: "codex-recent",
+                      daysAgo: 1, valueUSD: 1, tokens: 100)
+        try seedEvent(in: db, provider: "codex", sessionId: "codex-month",
+                      daysAgo: 10, valueUSD: 2, tokens: 200)
+        try seedEvent(in: db, provider: "codex", sessionId: "codex-old",
+                      daysAgo: 40, valueUSD: 4, tokens: 400)
+        try seedEvent(in: db, provider: "claude", sessionId: "claude-recent",
+                      daysAgo: 2, valueUSD: 8, tokens: 800)
+
+        let (stats, usageEventQueryCount) = try db.pool.read { conn in
+            var usageEventQueryCount = 0
+            conn.trace { event in
+                guard case .statement(let statement) = event else { return }
+                let sql = statement.sql.lowercased()
+                if sql.hasPrefix("select") && sql.contains("from usage_events") {
+                    usageEventQueryCount += 1
+                }
+            }
+            defer { conn.trace(options: []) }
+            let stats = try Aggregator.fetchPerProviderStats(db: conn)
+            return (stats, usageEventQueryCount)
+        }
+
+        #expect(usageEventQueryCount == 1)
+
+        let codex = try #require(stats["codex"])
+        #expect(codex.totalValueUSD == 7)
+        #expect(codex.totalTokens == 700)
+        #expect(codex.eventCount == 3)
+        #expect(codex.sessionCount == 3)
+        #expect(codex.last7dValueUSD == 1)
+        #expect(codex.last7dTokens == 100)
+        #expect(codex.last7dSessionCount == 1)
+        #expect(codex.last30dValueUSD == 3)
+        #expect(codex.last30dTokens == 300)
+        #expect(codex.last30dSessionCount == 2)
+
+        let claude = try #require(stats["claude"])
+        #expect(claude.totalValueUSD == 8)
+        #expect(claude.totalTokens == 800)
+        #expect(claude.eventCount == 1)
+        #expect(claude.sessionCount == 1)
+        #expect(claude.last7dValueUSD == 8)
+        #expect(claude.last7dTokens == 800)
+        #expect(claude.last7dSessionCount == 1)
+        #expect(claude.last30dValueUSD == 8)
+        #expect(claude.last30dTokens == 800)
+        #expect(claude.last30dSessionCount == 1)
+    }
+
     // MARK: - daily / monthly bucketing
 
     @Test("fetchDaily: zero-fills missing days, oldest first")

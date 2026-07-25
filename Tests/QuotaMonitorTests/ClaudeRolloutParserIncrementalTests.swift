@@ -454,14 +454,15 @@ struct ClaudeRolloutParserIncrementalTests {
         ])
     }
 
-    @Test("a newer usage snapshot arriving in a later scan updates the stored event")
-    func crossPassSnapshotUpdatesStoredEvent() async throws {
+    @Test("a newer usage snapshot reprices only its upserted event")
+    func crossPassSnapshotPricesOnlyUpsertedEvent() async throws {
         let db = try makeDatabase()
         let (root, project) = try makeProjectRoot()
 
         let sid = "snapshot-upsert"
         let main = project.appendingPathComponent("\(sid).jsonl")
-        try (assistantLine(sid: sid, msgId: "m1", output: 5) + "\n")
+        try (assistantLine(sid: sid, msgId: "m1", output: 5) + "\n"
+            + assistantLine(sid: sid, msgId: "m2", output: 10) + "\n")
             .write(to: main, atomically: true, encoding: .utf8)
 
         let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
@@ -470,11 +471,21 @@ struct ClaudeRolloutParserIncrementalTests {
             try Double.fetchOne(conn, sql: """
                 SELECT value_usd
                 FROM usage_events
-                WHERE session_id = ?
+                WHERE session_id = ? AND provider_message_id = 'm1'
                 """, arguments: [sid]) ?? 0
         }
         #expect(initialValue > 0,
                 "Claude importer must price new usage before advancing its offset")
+
+        // Make an unrelated row's value visibly different so a session-wide
+        // pricing UPDATE cannot pass merely by recomputing identical bits.
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE usage_events
+                SET value_usd = 42.125
+                WHERE session_id = ? AND provider_message_id = 'm2'
+                """, arguments: [sid])
+        }
 
         // The message keeps streaming after the first scan: its final
         // snapshot (complete output count) lands in a later append. The
@@ -486,16 +497,23 @@ struct ClaudeRolloutParserIncrementalTests {
 
         let rows = try await db.pool.read { conn in
             try Row.fetchAll(conn, sql: """
-                SELECT output_tokens, total_tokens, value_usd
+                SELECT provider_message_id, output_tokens, total_tokens, value_usd
                 FROM usage_events
-                """)
+                WHERE session_id = ?
+                ORDER BY provider_message_id
+                """, arguments: [sid])
         }
-        #expect(rows.count == 1)
-        #expect((rows.first?["output_tokens"] as Int64?) == 350)
-        #expect((rows.first?["total_tokens"] as Int64?) == 450)
-        let updatedValue = rows.first?["value_usd"] as Double? ?? 0
+        #expect(rows.count == 2)
+        guard rows.count == 2 else { return }
+        #expect((rows[0]["provider_message_id"] as String?) == "m1")
+        #expect((rows[0]["output_tokens"] as Int64?) == 350)
+        #expect((rows[0]["total_tokens"] as Int64?) == 450)
+        let updatedValue = rows[0]["value_usd"] as Double? ?? 0
         #expect(updatedValue > initialValue,
                 "updating a priced usage snapshot must update its value in the same scan")
+        #expect((rows[1]["provider_message_id"] as String?) == "m2")
+        #expect((rows[1]["value_usd"] as Double?) == 42.125,
+                "incremental pricing must not revisit an unrelated event")
 
         // Re-emitting an identical row (offset landing mid-message) must
         // stay a no-op: same snapshot again → nothing imported.
@@ -510,11 +528,36 @@ struct ClaudeRolloutParserIncrementalTests {
         let count = try await db.pool.read { conn in
             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM usage_events") ?? -1
         }
-        #expect(count == 1)
+        #expect(count == 2)
         let output = try await db.pool.read { conn in
-            try Int.fetchOne(conn, sql: "SELECT output_tokens FROM usage_events") ?? -1
+            try Int.fetchOne(conn, sql: """
+                SELECT output_tokens
+                FROM usage_events
+                WHERE provider_message_id = 'm1'
+                """) ?? -1
         }
         #expect(output == 350)
+        let untouchedValue = try await db.pool.read { conn in
+            try Double.fetchOne(conn, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE provider_message_id = 'm2'
+                """) ?? 0
+        }
+        #expect(untouchedValue == 42.125)
+
+        try await db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+        let fullBackfillValue = try await db.pool.read { conn in
+            try Double.fetchOne(conn, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE provider_message_id = 'm1'
+                """) ?? 0
+        }
+        #expect(fullBackfillValue.bitPattern == updatedValue.bitPattern,
+                "row-scoped and catalog-wide pricing must produce identical bits")
     }
 
     @Test("a newer usage snapshot on a later day does not rewrite the earlier day")

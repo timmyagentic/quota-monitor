@@ -1,5 +1,0 @@
-{
-  "_comment": "Earliest CodexBar capture where `utilization` was a 0..1 ratio (0.42 = 42%). The decoder's `<=1.5 -> percent*100` heuristic must keep this readable. If Anthropic ever ships a Pro account with utilization=1.0 meaning 100%, our heuristic still works (1.0*100 = 100). The boundary case at exactly 1.5 is treated as a ratio (1.5*100 = 150%, intentional — we'd rather show '150%' than silently treat it as '1.5%' for a saturated user).",
-  "five_hour": {"utilization": 0.42, "resets_at": "2026-04-29T15:00:00Z"},
-  "seven_day": {"utilization": 0.08, "resets_at": "2026-05-05T09:00:00Z"}
-}
