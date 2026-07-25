@@ -146,8 +146,12 @@ enum L10n {
 
     static var quotaCardTitle5h: String { t(en: "5-hour", zh: "5 小时") }
     static var quotaCardTitle7d: String { t(en: "7-day", zh: "7 天") }
+    static var quotaCardTitle7dFull: String { t(en: "7-day · Full", zh: "7 天 · Full") }
     static var quotaCardTitle7dOpus: String { t(en: "7-day · Opus", zh: "7 天 · Opus") }
     static var quotaCardTitle7dSonnet: String { t(en: "7-day · Sonnet", zh: "7 天 · Sonnet") }
+    static func quotaCardTitle7dModel(_ displayName: String) -> String {
+        t(en: "7-day · \(displayName)", zh: "7 天 · \(displayName)")
+    }
 
     static var codexSignInPrompt: String {
         t(en: "Sign in via codex CLI to see live quotas",
@@ -584,6 +588,12 @@ enum L10n {
     static var sortValue: String { t(en: "Highest value", zh: "金额最高") }
     static var sortTokens: String { t(en: "Most tokens", zh: "Token 最多") }
     static var noMatchingSessions: String { t(en: "No matching sessions", zh: "没有匹配的会话") }
+    static var sessionsLoadingMore: String {
+        t(en: "Loading more sessions", zh: "正在加载更多会话")
+    }
+    static var sessionsLoadMoreFailed: String {
+        t(en: "Couldn't load more sessions.", zh: "加载更多会话失败。")
+    }
     static var selectSessionToInspect: String {
         t(en: "Select a session to inspect its events",
           zh: "选择一个会话以查看其事件")
@@ -657,8 +667,8 @@ enum L10n {
     static var historyTitle: String { t(en: "History", zh: "历史") }
     static var daysHeader: String { t(en: "Days", zh: "天数") }
     static var noUsageHistory: String { t(en: "No usage history yet", zh: "暂无使用历史") }
-    static var historyNoUsageLatestSevenDays: String {
-        t(en: "No usage in the latest 7 days", zh: "最近 7 天暂无使用记录")
+    static var historyNoUsageLatestTwentyOneDays: String {
+        t(en: "No usage in the latest 21 days", zh: "最近 21 天暂无使用记录")
     }
     static var historyLoadingOlder: String {
         t(en: "Loading older history", zh: "正在加载更早的历史记录")
@@ -670,6 +680,13 @@ enum L10n {
     static var selectDayPrompt: String {
         t(en: "Select a day to inspect its calls",
           zh: "选择一天以查看其调用")
+    }
+    static var cacheHitRateTitle: String {
+        t(en: "Cache hit rate", zh: "缓存命中率")
+    }
+    static var cacheHitRateUnavailable: String {
+        t(en: "No eligible input tokens",
+          zh: "暂无可计算的输入 Token")
     }
     static func sessionsOnDay(_ n: Int) -> String {
         t(en: "Sessions on this day (\(n))", zh: "当日会话（\(n)）")
@@ -716,10 +733,6 @@ enum L10n {
     static var updatesAutoCheckLabel: String {
         t(en: "Check for updates automatically",
           zh: "自动检查更新")
-    }
-    static var updatesAutoCheckHelp: String {
-        t(en: "Sparkle polls a signed appcast once a day and prompts you when a new version is available. Disabling skips the schedule but the button below still works.",
-          zh: "Sparkle 每天检查一次签名的 appcast，发现新版本会弹窗提示。关闭只是停掉自动检查，下面的按钮仍可手动触发。")
     }
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }

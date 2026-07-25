@@ -5,6 +5,45 @@ import Testing
 @Suite("RolloutEvent decoder")
 struct RolloutEventDecoderTests {
 
+    @Test("one decoder can be reused across rollout lines")
+    func decoderCanBeReusedAcrossLines() throws {
+        let decoder = JSONDecoder()
+        let lines = [
+            Data(#"{"type":"turn_context","payload":{"model":"gpt-5"}}"#.utf8),
+            Data(#"{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}"#.utf8),
+            Data(#"{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-a"}}"#.utf8),
+        ]
+
+        let events = lines.compactMap {
+            RolloutEvent.decode(line: $0, decoder: decoder)
+        }
+
+        #expect(events.count == 3)
+        guard case .turnContext = events[0] else {
+            Issue.record("expected turn context")
+            return
+        }
+        guard case .taskStarted = events[1] else {
+            Issue.record("expected task started")
+            return
+        }
+        guard case .taskComplete = events[2] else {
+            Issue.record("expected task complete")
+            return
+        }
+    }
+
+    @Test("production rollout loops pass one local decoder")
+    func productionLoopsReuseLocalDecoder() throws {
+        let parser = try Self.source(named: "QuotaMonitor/Core/Importer/RolloutParser.swift")
+        let importer = try Self.source(named: "QuotaMonitor/Core/Importer/ImportEngine.swift")
+
+        #expect(parser.contains("let eventDecoder = JSONDecoder()"))
+        #expect(parser.contains("decoder: eventDecoder"))
+        #expect(importer.components(separatedBy: "let eventDecoder = JSONDecoder()").count - 1 == 2)
+        #expect(importer.components(separatedBy: "decoder: eventDecoder").count - 1 == 2)
+    }
+
     @Test("service tier rollout values normalize to preferences")
     func serviceTierPreferenceNormalization() {
         #expect(CodexServiceTierPreference(rolloutValue: "priority") == .priority)
@@ -131,5 +170,17 @@ struct RolloutEventDecoderTests {
         }
         #expect(type == "event_msg")
         #expect(timestamp == "2026-05-20T00:00:01.000Z")
+    }
+
+    private static func source(named relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while url.path != "/" {
+            let candidate = url.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            url.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }

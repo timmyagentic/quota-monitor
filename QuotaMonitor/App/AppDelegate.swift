@@ -57,6 +57,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onWhatsNewPresentationRequested: { [weak whatsNewCoordinator] in
                 whatsNewCoordinator?.recordPresentationRequested()
             })
+        updater.checkInBackgroundIfNeeded()
+
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(workspaceDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil)
 
         let controller = StatusItemController(
             env: env, localization: loc, settings: settings, updater: updater)
@@ -181,9 +188,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NSWorkspace.shared.notificationCenter.removeObserver(
+            self, name: NSWorkspace.didWakeNotification, object: nil)
         statusItemController?.stop()
         statusItemController = nil
         whatsNewCoordinator = nil
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        updater?.checkInBackgroundIfNeeded()
+    }
+
+    @objc private func workspaceDidWake(_ notification: Notification) {
+        updater?.checkInBackgroundIfNeeded()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

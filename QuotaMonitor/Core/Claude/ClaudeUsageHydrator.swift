@@ -6,8 +6,8 @@ import GRDB
 /// — even if the next live poll 429s or hasn't fired yet.
 ///
 /// Mirror of `ClaudeUsagePoller.persist` in reverse: we group rows by
-/// `sample_timestamp`, take the newest group, and rebuild the four
-/// `Window` slots from `bucket` + `limit_name`.
+/// `sample_timestamp`, take the newest group, and rebuild aggregate plus
+/// model-scoped windows from `bucket` + `limit_name`.
 enum ClaudeUsageHydrator {
     static func loadLatest(database: DatabaseManager) async throws -> ClaudeUsageSnapshot? {
         try await database.pool.read { db in
@@ -41,12 +41,24 @@ enum ClaudeUsageHydrator {
             var sevenDay: ClaudeUsageSnapshot.Window?
             var sevenDayOpus: ClaudeUsageSnapshot.Window?
             var sevenDaySonnet: ClaudeUsageSnapshot.Window?
+            var weeklyScoped: [ClaudeUsageSnapshot.WeeklyScopedLimit] = []
             var tier: String?
 
             for row in rows {
                 if tier == nil { tier = row["plan_type"] as String? }
                 let bucket: String? = row["bucket"]
                 let limitName: String? = row["limit_name"]
+                let structuredDisplayName = limitName.flatMap { name -> String? in
+                    guard name.hasPrefix(ClaudeScopedQuotaRows.structuredStoragePrefix) else {
+                        return nil
+                    }
+                    let displayName = String(
+                        name.dropFirst(ClaudeScopedQuotaRows.structuredStoragePrefix.count))
+                    return displayName.isEmpty ? nil : displayName
+                }
+                let normalizedLimitName = limitName.flatMap {
+                    ClaudeUsageSnapshot.WeeklyScopedLimit.canonicalKey(for: $0)
+                }
                 let usedPercent: Double = row["used_percent"] ?? 0
                 guard let resetAt = parseDate(row["resets_at"] as String?) else { continue }
 
@@ -56,11 +68,24 @@ enum ClaudeUsageHydrator {
                     resetAt: resetAt,
                     windowDuration: duration)
 
-                switch (bucket, limitName) {
+                if bucket == "secondary",
+                   let displayName = structuredDisplayName,
+                   let key = ClaudeUsageSnapshot.WeeklyScopedLimit.canonicalKey(
+                    for: displayName) {
+                    weeklyScoped.append(.init(
+                        key: key,
+                        displayName: displayName,
+                        window: window))
+                    continue
+                }
+
+                switch (bucket, normalizedLimitName) {
                 case ("primary", _):       fiveHour = window
                 case ("secondary", nil):   sevenDay = window
                 case ("secondary", "opus"):   sevenDayOpus = window
                 case ("secondary", "sonnet"): sevenDaySonnet = window
+                case ("secondary", let key?):
+                    weeklyScoped.append(.init(key: key, window: window))
                 default: continue
                 }
             }
@@ -75,7 +100,8 @@ enum ClaudeUsageHydrator {
 
             // Avoid "useless" rehydration if every window is empty.
             if fiveHour == nil && staleFiveHour == nil
-                && sevenDay == nil && sevenDayOpus == nil && sevenDaySonnet == nil {
+                && sevenDay == nil && sevenDayOpus == nil && sevenDaySonnet == nil
+                && weeklyScoped.isEmpty {
                 return nil
             }
 
@@ -86,7 +112,8 @@ enum ClaudeUsageHydrator {
                 staleFiveHour: staleFiveHour,
                 sevenDay: sevenDay,
                 sevenDayOpus: sevenDayOpus,
-                sevenDaySonnet: sevenDaySonnet)
+                sevenDaySonnet: sevenDaySonnet,
+                weeklyScoped: weeklyScoped)
         }
     }
 

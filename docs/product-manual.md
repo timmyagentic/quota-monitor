@@ -76,6 +76,8 @@ Dashboard 主要区域：
 - `Activity`：显示累计 tokens、峰值 tokens、连续活跃天数等使用活跃度。
 - `Composition`：显示最近 30 天模型或工具的费用占比，帮助判断主要消耗来自哪里。
 
+Dashboard 保持最小化时不会反复执行图表刷新；从 Dock 或应用入口恢复窗口时，会立即加载最新的摘要和图表。
+
 如果菜单栏图标被隐藏，Dashboard 顶部会出现提示。点击 `Show me how` 打开找回菜单栏图标的帮助窗口，点击 `Got it` 可关闭提示。
 
 ## History
@@ -138,12 +140,12 @@ General 适合普通用户日常调整：
 
 截图使用隔离 Local QA 预览，因此开关被禁用并明确标注不会发送数据。正式 Developer ID 版本中可以自行开启或关闭；点击 `Privacy details` 可查看完整的中英双语隐私说明。
 
-![Settings Advanced](assets/product-manual/b87bc89/settings-advanced.png)
+![Settings Advanced](assets/product-manual/c24c009/settings-advanced.png)
 
 Advanced 适合需要调整更新、轮询或诊断选项的用户：
 
 - `Update`：仅在有尚未处理的新版本时显示，点击后继续更新流程。
-- `Check for updates automatically`：控制是否每天自动检查新版本。
+- `Check for updates automatically`：控制是否自动检查新版本；关闭后仍可使用 `Check Now` 手动检查。
 - `Check Now`：立即检查更新。检查更新会访问更新源。
 - `Interval`：调整从本地 Codex 获取限额信息的间隔。
 - Claude 凭据恢复提示：只有此前保存的“仅文件”模式阻止自动凭据刷新时才会显示恢复按钮。
@@ -196,6 +198,17 @@ Advanced 适合需要调整更新、轮询或诊断选项的用户：
 5. 不把实现细节写进用户说明；实现、命令和 QA 证据只放在维护记录里。
 
 ## 更新记录
+
+### 2026-07-24 · Unreleased · c24c009
+
+从最小化状态恢复 Dashboard 时会刷新最新摘要和图表；Advanced 设置中的自动更新说明不再描述固定检查频率。
+
+维护记录：
+
+- 在 `c24c009` 上运行 `CONFIG=release ./qa/prepare-computer-use-fixture-smoke.sh`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`。
+- QA artifact 为 `.build/qa-artifacts/20260723T170505Z-computer-use-fixture-smoke`；fixture、隔离 HOME、独立 UserDefaults 和禁用 live external sources 的边界均有效。
+- 使用 Computer Use 验证 Advanced 设置的新英文说明完整显示、没有裁切，并实际执行 Dashboard 最小化与恢复；开发日志记录到一次成功的 `window-restore` 刷新。
+- 新截图位于 `docs/assets/product-manual/c24c009/settings-advanced.png`，来自该准确构建的 Settings 窗口。
 
 ### 2026-07-17 · 0.2.42（待验收） · b87bc89
 

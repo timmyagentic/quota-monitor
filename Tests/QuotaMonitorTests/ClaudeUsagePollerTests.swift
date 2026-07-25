@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import GRDB
 @testable import QuotaMonitor
 
 /// State-machine tests for `ClaudeUsagePoller`. We exercise the actor by
@@ -138,6 +139,74 @@ struct ClaudeUsagePollerTests {
 
         let calls = await mock.callCount
         #expect(calls == 2, "force must bypass the 60s spam gap")
+    }
+
+    @Test("structured Fable weekly limit persists with scoped provenance")
+    func fable5ScopedLimitPersists() async throws {
+        let resetAt = Date(timeIntervalSince1970: 1_777_600_000)
+        let window = ClaudeUsageSnapshot.Window(
+            usedPercent: 37,
+            resetAt: resetAt,
+            windowDuration: 7 * 86400)
+        let snapshot = ClaudeUsageSnapshot(
+            capturedAt: Date(timeIntervalSince1970: 1_777_000_000),
+            tier: "max20x",
+            fiveHour: nil,
+            sevenDay: nil,
+            sevenDayOpus: nil,
+            sevenDaySonnet: nil,
+            weeklyScoped: [.init(key: "fable", window: window)])
+        let mock = MockFetcher(script: [.success(snapshot)])
+        let db = try makeDatabase()
+        let poller = makePoller(fetcher: mock, db: db, results: ResultBox())
+
+        await poller.pollOnce()
+
+        let row = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT bucket, limit_name, plan_type, used_percent, resets_at
+                FROM rate_limit_samples
+                WHERE source_kind = 'claude_oauth'
+                  AND limit_name = 'scoped:Fable 5'
+                """)
+        })
+        #expect((row["bucket"] as String?) == "secondary")
+        #expect((row["limit_name"] as String?) == "scoped:Fable 5")
+        #expect((row["plan_type"] as String?) == "max20x")
+        #expect(abs((row["used_percent"] as Double? ?? -1) - 37) < 0.0001)
+        let resetString = try #require(row["resets_at"] as String?)
+        #expect(ISO8601.parse(resetString) == resetAt)
+    }
+
+    @Test("structured zero-percent Opus stays visible after persist and hydrate")
+    func structuredZeroOpusPersistsAndHydratesAsScoped() async throws {
+        let window = ClaudeUsageSnapshot.Window(
+            usedPercent: 0,
+            resetAt: Date(timeIntervalSince1970: 1_777_600_000),
+            windowDuration: 7 * 86400)
+        let snapshot = ClaudeUsageSnapshot(
+            capturedAt: Date(timeIntervalSince1970: 1_777_000_000),
+            tier: "max20x",
+            fiveHour: nil,
+            sevenDay: nil,
+            sevenDayOpus: nil,
+            sevenDaySonnet: nil,
+            weeklyScoped: [.init(key: "opus", window: window)])
+        let db = try makeDatabase()
+        let poller = makePoller(
+            fetcher: MockFetcher(script: [.success(snapshot)]),
+            db: db,
+            results: ResultBox())
+
+        await poller.pollOnce()
+
+        let hydrated = try #require(
+            try await ClaudeUsageHydrator.loadLatest(database: db))
+        #expect(hydrated.sevenDayOpus == nil)
+        #expect(hydrated.weeklyScoped.map(\.key) == ["opus"])
+        let row = try #require(ClaudeScopedQuotaRows.visibleRows(for: hydrated).first)
+        #expect(row.displayName == "Opus")
+        #expect(row.window.usedPercent == 0)
     }
 
     @Test("force still respects an active 429 cooldown")
