@@ -52,6 +52,7 @@ window copy.
 
 ### Added
 
+- **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and permanent reopen actions in the menu popover and Settings; fresh installs continue directly through onboarding without a second tour.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
 - **Fable 5 weekly quota.** When Anthropic provides the model-scoped weekly limit, Quota Monitor keeps it available after relaunch and labels the two weekly meters as Full and Fable 5.
 
@@ -59,10 +60,6 @@ window copy.
 
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 - **Fresh Dashboard after minimizing.** Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.
-
-### Added
-
-- **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and permanent reopen actions in the menu popover and Settings; fresh installs continue directly through onboarding without a second tour.
 
 ### Changed
 
