@@ -24,13 +24,17 @@ struct DashboardView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(DashboardBackground())
         .textSelection(.enabled)
-        .task { env.refreshDashboard() }
+        .task {
+            env.refreshDashboard()
+            env.refreshCodexAccountUsage(minInterval: 60, trigger: "dashboard")
+        }
     }
 
     // MARK: - pages
 
     private func overview(_ snapshot: DashboardSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        @Bindable var env = env
+        return VStack(alignment: .leading, spacing: 14) {
             statline
             ForecastSection(
                 snapshot: snapshot,
@@ -46,8 +50,11 @@ struct DashboardView: View {
                 modelBreakdown: snapshot.dailyModelExtended
                     .filter { providerIsVisible($0.provider) })
             ActivitySection(
-                activity: snapshot.activity,
-                metrics: activityMetrics(for: snapshot))
+                scope: $env.activityDataScope,
+                indexed: indexedActivityContent(for: snapshot),
+                account: accountActivityContent(for: snapshot),
+                accountState: env.codexAccountUsageState,
+                allowsAccountScope: env.providerFilter == .codex)
             CompositionSection(
                 modelShares30d: snapshot.modelShares30d,
                 modelSharesPrior30d: snapshot.modelSharesPrior30d,
@@ -138,6 +145,73 @@ struct DashboardView: View {
 
     // MARK: - activity metrics
 
+    private func indexedActivityContent(
+        for snapshot: DashboardSnapshot
+    ) -> ActivitySection.Content {
+        let activity = snapshot.activity
+        let dailyTokens = summedTokens(activity.daily)
+        let asOf = snapshot.overview.lastEventAt
+            .flatMap(Aggregator.parseTimestamp)
+            .map { L10n.activityUpdated(shortDate($0)) }
+        return ActivitySection.Content(
+            metrics: activityMetrics(for: snapshot),
+            daily: activity.daily,
+            hasDailySeries: true,
+            hasData: activity.hasData,
+            summary: L10n.activityIndexedSummary(
+                tokens: compactTokens(activity.lifetimeTokens)),
+            asOf: asOf,
+            heatmapScopeLabel: L10n.activityHeatmapScope(
+                scope: L10n.activityScopeIndexed),
+            heatmapAccessibilityLabel: L10n.activityHeatmapAccessibility(
+                scope: L10n.activityScopeIndexed,
+                activeDays: activity.daily.count { $0.tokens > 0 },
+                totalTokens: compactTokens(dailyTokens)))
+    }
+
+    private func accountActivityContent(
+        for localSnapshot: DashboardSnapshot
+    ) -> ActivitySection.Content? {
+        guard env.providerFilter == .codex,
+              let account = env.codexAccountUsageState.snapshot else { return nil }
+
+        let accountTokens = account.lifetimeTokens
+        let localTokens = localSnapshot.activity.lifetimeTokens
+        let localLastEvent = localSnapshot.overview.lastEventAt
+            .flatMap(Aggregator.parseTimestamp)
+        let totalsShareACutoff: Bool
+        if let accountCutoff = account.latestBucketDate,
+           let localLastEvent {
+            totalsShareACutoff = Calendar.current.startOfDay(for: localLastEvent)
+                <= Calendar.current.startOfDay(for: accountCutoff)
+        } else {
+            totalsShareACutoff = true
+        }
+        let coverage = totalsShareACutoff && !env.codexAccountUsageState.isStale
+            ? ActivityCoverage.percentage(indexed: localTokens, account: accountTokens)
+            : nil
+        let accountTotalLabel = accountTokens.map(compactTokens) ?? "—"
+        let heatmapTokens = summedTokens(account.daily)
+        let asOfDate = account.latestBucketDate ?? account.capturedAt
+
+        return ActivitySection.Content(
+            metrics: accountActivityMetrics(account),
+            daily: account.daily,
+            hasDailySeries: account.dailySeries.points != nil,
+            hasData: accountTokens.map { $0 > 0 } ?? account.daily.contains { $0.tokens > 0 },
+            summary: L10n.activityAccountSummary(
+                accountTokens: accountTotalLabel,
+                indexedTokens: compactTokens(localTokens),
+                coveragePercent: coverage),
+            asOf: L10n.activityAsOf(shortDate(asOfDate)),
+            heatmapScopeLabel: L10n.activityHeatmapScope(
+                scope: L10n.activityScopeAccount),
+            heatmapAccessibilityLabel: L10n.activityHeatmapAccessibility(
+                scope: L10n.activityScopeAccount,
+                activeDays: account.daily.count { $0.tokens > 0 },
+                totalTokens: compactTokens(heatmapTokens)))
+    }
+
     private func activityMetrics(for snapshot: DashboardSnapshot) -> [ActivitySection.Metric] {
         let activity = snapshot.activity
         let topModel = snapshot.modelShares30d.first?.displayName
@@ -146,7 +220,8 @@ struct DashboardView: View {
         return [
             ActivitySection.Metric(
                 value: compactTokens(activity.lifetimeTokens),
-                label: L10n.activityLifetimeTokens),
+                label: L10n.activityLifetimeTokens,
+                accessibilityValue: fullTokens(activity.lifetimeTokens)),
             ActivitySection.Metric(
                 value: compactUSD(snapshot.overview.totalValueUSD),
                 label: L10n.dashboardMetricTotalCost),
@@ -162,7 +237,9 @@ struct DashboardView: View {
                 label: L10n.activityLongestStreak),
             ActivitySection.Metric(
                 value: compactTokens(activity.peakDayTokens),
-                label: L10n.activityPeakTokens),
+                label: L10n.activityPeakTokens,
+                accessibilityValue: fullTokens(activity.peakDayTokens),
+                help: activity.peakDay.map(shortDate)),
             ActivitySection.Metric(
                 value: topModel,
                 label: L10n.dashboardMetricTopModel),
@@ -173,12 +250,68 @@ struct DashboardView: View {
         ]
     }
 
+    private func accountActivityMetrics(
+        _ account: CodexAccountUsageSnapshot
+    ) -> [ActivitySection.Metric] {
+        [
+            tokenMetric(
+                account.lifetimeTokens,
+                label: L10n.activityAccountLifetimeTokens),
+            tokenMetric(
+                account.peakDailyTokens,
+                label: L10n.activityAccountPeakTokens),
+            ActivitySection.Metric(
+                value: account.longestRunningTurnSeconds
+                    .map(L10n.activityDuration) ?? "—",
+                label: L10n.activityAccountLongestChat),
+            streakMetric(
+                account.currentStreakDays,
+                label: L10n.activityAccountCurrentStreak),
+            streakMetric(
+                account.longestStreakDays,
+                label: L10n.activityAccountLongestStreak)
+        ]
+    }
+
+    private func tokenMetric(_ value: Int64?, label: String) -> ActivitySection.Metric {
+        ActivitySection.Metric(
+            value: value.map(compactTokens) ?? "—",
+            label: label,
+            accessibilityValue: value.map(fullTokens))
+    }
+
+    private func streakMetric(_ value: Int64?, label: String) -> ActivitySection.Metric {
+        ActivitySection.Metric(
+            value: value.map { L10n.activityStreakDays(Int(clamping: $0)) } ?? "—",
+            label: label)
+    }
+
     private func compactTokens(_ tokens: Int64) -> String {
         tokens.formatted(
             .number
                 .notation(.compactName)
                 .precision(.fractionLength(0...1))
                 .locale(settings.tokenFormatLocale))
+    }
+
+    private func fullTokens(_ tokens: Int64) -> String {
+        L10n.tokensCount(tokens.formatted(
+            .number.locale(settings.tokenFormatLocale)))
+    }
+
+    private func summedTokens(_ daily: [DailyPoint]) -> Int64 {
+        daily.reduce(0) { total, point in
+            let (sum, overflow) = total.addingReportingOverflow(point.tokens)
+            return overflow ? Int64.max : sum
+        }
+    }
+
+    private func shortDate(_ date: Date) -> String {
+        let locale = LocalizationStore.activeLanguage == .simplifiedChinese
+            ? Locale(identifier: "zh_Hans")
+            : Locale(identifier: "en_US")
+        return date.formatted(
+            .dateTime.year().month(.abbreviated).day().locale(locale))
     }
 
     private func compactUSD(_ value: Double) -> String {

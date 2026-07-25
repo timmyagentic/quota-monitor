@@ -106,11 +106,33 @@ struct MainWindowLayoutTests {
         #expect(!overview.contains("private func trends"))
         #expect(!overview.contains("DashboardMetricStrip("))
         #expect(!overview.contains("showsStatStrip: false"))
-        #expect(overview.contains("metrics: activityMetrics(for: snapshot)"))
+        #expect(overview.contains("scope: $env.activityDataScope"))
+        #expect(overview.contains("indexed: indexedActivityContent(for: snapshot)"))
+        #expect(overview.contains("account: accountActivityContent(for: snapshot)"))
+        #expect(overview.contains("allowsAccountScope: env.providerFilter == .codex"))
         #expect(statline < forecast)
         #expect(forecast < trends)
         #expect(trends < activity)
         #expect(activity < composition)
+    }
+
+    @Test("Activity adds only an in-card Codex data source switch")
+    func activityKeepsMinimalInCardScopeSwitch() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Features/Dashboard/Sections/ActivitySection.swift")
+        let mainWindow = try Self.source(
+            named: "QuotaMonitor/Features/MainWindow/MainWindowView.swift")
+
+        #expect(source.contains("Picker(L10n.activityDataSourceLabel, selection: $scope)"))
+        #expect(source.contains(".pickerStyle(.segmented)"))
+        #expect(source.contains(".controlSize(.small)"))
+        #expect(source.contains("metricStrip(content.metrics)"))
+        #expect(source.contains("ActivityHeatmap("))
+        #expect(source.contains(".accessibilityHint(L10n.activityDataSourceHint)"))
+        #expect(source.contains("parts.append(L10n.activityRefreshingAccount)"))
+        #expect(!mainWindow.contains("$env.activityDataScope"))
+        #expect(mainWindow.contains(
+            "if tab == .dashboard {\n                        env.refreshCodexAccountUsage"))
     }
 
     @Test("Dashboard trends only exposes stacked bar mode")
