@@ -1,10 +1,11 @@
 # Performance review — 2026-07-19
 
-Baseline commit: `87b99f5`. This document anchors the dedicated performance-optimization PR:
+Baseline commit: `87b99f5`. This document anchors the performance-optimization work:
 it records every finding from a full four-track audit (import/scan plane, storage/analytics
 read side, background services, UI/main-actor), ranked by impact, each with file references,
-cost analysis, and a fix direction. Code changes land in follow-up commits on this branch and
-should check items off here. Line numbers are as of the baseline commit and will drift.
+cost analysis, and a fix direction. Follow-up fixes landed as independently reviewed PRs;
+the status snapshot below links the merged work back to each original finding. Line numbers
+in the detailed findings are as of the baseline commit and will drift.
 
 The recurring theme: several hot paths do work proportional to **total history size** where
 the work needed is proportional to **the delta since last time**. A months-old install pays
@@ -26,11 +27,36 @@ menu-bar open otherwise.
 
 ---
 
+## Delivery status — refreshed 2026-07-25
+
+Status was checked against `origin/main` at `801bac7`. “Delivered” means the
+referenced merge commit is an ancestor of that exact main head. “Partial” means a
+material part shipped, but the original cost described below still exists.
+
+| Finding | Status | Current evidence |
+| --- | --- | --- |
+| P0.1 full-history repricing | Delivered | PR #135 scopes incremental pricing to changed events. |
+| P0.2 repeated Dashboard scans | Open, partially mitigated | PR #132 consolidates menu-bar provider totals, and PR #129 reduces initial History/Sessions loading; `loadDashboard` still runs its independent daily, breakdown, monthly, share, and activity reads. |
+| P0.3 full Codex rollout reparsing | Delivered | PR #121 adds validated incremental checkpoints and tail parsing. |
+| P0.4 unconditional session-tree and metadata walks | Partial | PR #133 skips the heavy refresh path after no-op scans and gates tree reconciliation on imported sessions; metadata backfill and changed-scan reconciliation still traverse broad session state. |
+| P1.1 synchronous login-shell discovery | Partial | PR #124 prefers the CLI bundled with ChatGPT before shell probing, but the remaining fallback path is still synchronous. |
+| P1.2 per-file popover progress invalidation | Open | No dedicated fix has merged. |
+| P1.3 redundant status-item title renders | Delivered | PR #136 caches visible rows, style, and localization state before assigning the native title. |
+| P1.4 per-line rollout decoder allocation | Delivered | PR #137 reuses rollout JSON decoders. |
+| P1.5 repeated environment snapshots | Open | `LocalQAEnvironment` still defaults many calls to `ProcessInfo.processInfo.environment`. |
+| P2.1–P2.3 | Open | Keychain wait, Claude cross-day lookup batching, and bulk transaction batching remain follow-ups. |
+| P2.4 unindexed import-state session lookup | Delivered | PR #138 adds and tests the `import_state(session_id)` index. |
+| P2.5 catalog seeding on every Codex scan | Delivered | PR #121 removed scan-time seeding; catalog setup remains in database initialization and explicit pricing flows. |
+| P2.6 unbounded Sessions aggregation before limit | Partial | PR #129 adds request-driven 50-row pagination and PR #134 debounces search; the aggregate query still groups matching events before applying `LIMIT`. |
+| P2.7–P2.11 | Open | No dedicated fix has merged for the remaining render, formatter, model-share, and small read-path costs. |
+
+---
+
 ## P0 — cost scales with total history, hit constantly
 
 ### P0.1 `backfillAllValues()` re-prices the entire `usage_events` table on every changed-file scan
 
-- [ ] Fixed
+- [x] Fixed by PR #135.
 - **Where:** call `App/ScanController.swift:180-185`; SQL `Core/Pricing/PricingService.swift:544-603`.
 - **Problem:** whenever `merged.changedFiles > 0`, one `UPDATE usage_events SET value_usd = (…)`
   runs with **no predicate scoping it to the rows imported this scan**. Every row in history
@@ -69,7 +95,7 @@ menu-bar open otherwise.
 
 ### P0.3 Codex re-parses the whole rollout file for any grown file
 
-- [ ] Fixed
+- [x] Fixed by PR #121.
 - **Where:** change detection `Core/Importer/ImportEngine.swift:118-131`; parse loop `:147-178`;
   `persist` delete-all + re-insert `:322-432`; `byte_offset` hard-coded to 0 at `:409-416`.
 - **Problem:** the (size, mtime) skip correctly avoids unchanged files, but a changed file is
@@ -133,7 +159,7 @@ menu-bar open otherwise.
 
 ### P1.3 Menu-bar label rebuilds with no equality short-circuit, and over-subscribes to `dashboardSnapshot`
 
-- [ ] Fixed
+- [x] Fixed by PR #136.
 - **Where:** `App/StatusItemController.swift:92-132`. `renderLabel()` unconditionally rebuilds
   the `NSAttributedString` and assigns `button.attributedTitle` on every Observation change.
   It reads `env.dashboardSnapshot?.codexQuota` (`:110`) in the common path, registering a
@@ -148,7 +174,7 @@ menu-bar open otherwise.
 
 ### P1.4 `JSONDecoder` allocated per line in the Codex parse hot loop
 
-- [ ] Fixed
+- [x] Fixed by PR #137.
 - **Where:** `Core/Importer/RolloutEvent.swift:242` (allocated before the `switch`,
   unconditionally per line); `:343` allocates another for any escaped string literal.
 - **Impact:** the dominant `response_item` lines never touch the decoder — pure per-line
@@ -185,11 +211,11 @@ menu-bar open otherwise.
   `ImportEngine.swift:159`, `ClaudeImportEngine.swift:219`. Pathological on first import /
   forced-re-read migrations: thousands of tiny serialized transactions. Fix: batch N files per
   transaction on the bulk path.
-- [ ] **P2.4 `import_state` prune by `session_id` is unindexed.**
+- [x] **P2.4 `import_state` prune by `session_id` is unindexed.** Fixed by PR #138.
   `ImportEngine.swift:423-426`; table has only the `source_path` PK
   (`Core/Storage/Migrations.swift:46-52`). Full `import_state` scan per changed Codex file.
   Fix: add index on `import_state(session_id)`.
-- [ ] **P2.5 `seedCatalog` write transaction at the top of every Codex scan.**
+- [x] **P2.5 `seedCatalog` write transaction at the top of every Codex scan.** Fixed by PR #121.
   `ImportEngine.swift:64-68`, already seeded in `DatabaseManager` init. Small but an
   unnecessary write-lock acquisition per scan. Fix: seed once per launch.
 - [ ] **P2.6 `fetchSessions` aggregates all events before `LIMIT 500`.**
@@ -265,3 +291,14 @@ menu-bar open otherwise.
 Each fix should land with a measurement note (Instruments trace, `os_signpost`, or timed log
 delta) against a realistic fixture — several months of history, an active multi-hundred-MB
 rollout — so the win is demonstrated, not assumed.
+
+## Document verification — 2026-07-25
+
+- Synced the PR branch with `origin/main` at `801bac7`.
+- Confirmed the merge commits for PRs #121, #129, #132–#138 are ancestors of
+  that main head before assigning the statuses above.
+- Re-read the current implementation for every “Delivered” and “Partial” claim;
+  partial items remain unchecked in the detailed findings.
+- This PR changes documentation and changelog text only. Product runtime E2E is
+  therefore not applicable; the appropriate gate is rendered-document review,
+  link/status freshness, repository validation, and GitHub CI.
