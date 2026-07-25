@@ -29,14 +29,16 @@ menu-bar open otherwise.
 
 ## Delivery status — refreshed 2026-07-25
 
-Status was checked against `origin/main` at `801bac7`. “Delivered” means the
+Status was checked against `origin/main` at `90b48a3`. The original 20 findings
+are **not all complete**: **6 are delivered, 4 are partially delivered, and 10
+remain open**. “Delivered” means the
 referenced merge commit is an ancestor of that exact main head. “Partial” means a
 material part shipped, but the original cost described below still exists.
 
 | Finding | Status | Current evidence |
 | --- | --- | --- |
 | P0.1 full-history repricing | Delivered | PR #135 scopes incremental pricing to changed events. |
-| P0.2 repeated Dashboard scans | Open, partially mitigated | PR #132 consolidates menu-bar provider totals, and PR #129 reduces initial History/Sessions loading; `loadDashboard` still runs its independent daily, breakdown, monthly, share, and activity reads. |
+| P0.2 repeated Dashboard scans | Partial | PR #144 removes the redundant 14-day daily scan by deriving it from the 365-day result; PR #132 consolidates menu-bar provider totals and PR #129 reduces initial History/Sessions loading. The provider/model breakdowns, monthly totals, model shares, and unbounded activity read remain independent passes. |
 | P0.3 full Codex rollout reparsing | Delivered | PR #121 adds validated incremental checkpoints and tail parsing. |
 | P0.4 unconditional session-tree and metadata walks | Partial | PR #133 skips the heavy refresh path after no-op scans and gates tree reconciliation on imported sessions; metadata backfill and changed-scan reconciliation still traverse broad session state. |
 | P1.1 synchronous login-shell discovery | Partial | PR #124 prefers the CLI bundled with ChatGPT before shell probing, but the remaining fallback path is still synchronous. |
@@ -294,11 +296,12 @@ rollout — so the win is demonstrated, not assumed.
 
 ## Document verification — 2026-07-25
 
-- Synced the PR branch with `origin/main` at `801bac7`.
-- Confirmed the merge commits for PRs #121, #129, #132–#138 are ancestors of
+- Synced the PR branch with `origin/main` at `90b48a3`.
+- Confirmed the merge commits for PRs #121, #124, #129, #132–#138, and #144 are ancestors of
   that main head before assigning the statuses above.
-- Re-read the current implementation for every “Delivered” and “Partial” claim;
-  partial items remain unchecked in the detailed findings.
+- Re-read the current implementation for all 20 findings, including the
+  individual sub-items grouped under P2.11. Partial and open items remain
+  unchecked in the detailed findings.
 - This PR changes documentation and changelog text only. Product runtime E2E is
   therefore not applicable; the appropriate gate is rendered-document review,
   link/status freshness, repository validation, and GitHub CI.
