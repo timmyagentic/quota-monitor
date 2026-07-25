@@ -41,6 +41,35 @@ final result: passed
 
 ---
 
+# Codex Account Activity Scope Design QA
+
+## Reference and implementation
+
+- Selected Visualization: `/Users/timmy/.codex/visualizations/2026/07/21/019f8573-e295-7b53-b33e-9b5a72969a5c/quota-monitor-profile-minimal.html`.
+- Native implementation: `QuotaMonitor/Features/Dashboard/Sections/ActivitySection.swift` and `QuotaMonitor/Features/Dashboard/DashboardView.swift`.
+- Safe fixture screenshots: `docs/assets/pr/codex-account-activity/activity-local.jpg` and `docs/assets/pr/codex-account-activity/activity-account.jpg`.
+- Shareable two-state board: `docs/assets/pr/codex-account-activity/activity-scope-comparison.png`.
+- Focused reference-versus-implementation input: `.build/qa-artifacts/20260723T163024Z-computer-use-real-data/comparison/reference-vs-implementation.png`.
+- Viewport: app minimum size, 820 x 560 pt; Computer Use capture was 1024 x 691 px at the active display scale.
+
+The comparison input places both Visualization states beside the corresponding native Activity cards. The reference uses its browser-hosted surface while the implementation deliberately retains QuotaMonitor's existing SwiftUI card, typography, spacing, heatmap, and Dashboard order.
+
+## Findings and disposition
+
+- Final severity count: P0 0, P1 0, P2 0.
+- Visual scope: passed. The only new persistent control is the small native `本地 / 账户` segmented picker inside the existing Codex Activity header.
+- Local state: passed. The original eight metrics, heatmap geometry, legend, card size, and neighboring Composition section remain intact.
+- Account state: passed. Five Codex profile totals replace the metric strip in place, while the same card and heatmap treatment are reused without a layout jump.
+- Other providers: passed. All-providers and Claude filters render the prior Activity UI without the scope picker, source summary, or scope label.
+- Responsive layout: passed at the 820 x 560 pt minimum window. Source and as-of copy use a fitting layout and showed no clipping, overlap, or horizontal overflow.
+- Interaction: passed. Scope switching, Account selection through Reload, and the in-card state transition worked in the isolated QA app.
+- Accessibility: passed. The picker exposes a label and hint; every metric has a semantic label/value; the heatmap is summarized as one meaningful accessibility element.
+- Data boundary: passed. The fixture screenshots use deterministic synthetic data. A separate read-only shadow-data pass verified realistic density without modifying the source database or copying provider credentials.
+
+final result: passed
+
+---
+
 # Persistent Update Download Icon Design QA
 
 ## Source and target

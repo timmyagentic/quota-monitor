@@ -1,9 +1,10 @@
 import SwiftUI
 import Charts
+import Accessibility
 
-/// Trends panel: stacked token bars by provider/model plus a daily cache
-/// hit-rate rail on the same date range. The summary line still reports spend
-/// over today / 7d / 30d so the panel remains useful for both tokens and cost.
+/// Trends panel: stacked token bars by provider/model with a cache hit-rate
+/// line sharing the same dates. The summary line still reports spend over
+/// today / 7d / 30d so the panel remains useful for both tokens and cost.
 struct TrendsSection: View {
     @Environment(SettingsStore.self) private var settings
 
@@ -32,7 +33,6 @@ struct TrendsSection: View {
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else {
                 stackedBars
-                cacheTrend
                 trendLegend
                 statline
             }
@@ -52,6 +52,16 @@ struct TrendsSection: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 180)
+
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(DashboardTheme.cache)
+                    .frame(width: 6, height: 6)
+                Text(L10n.dailyCacheHitRateTitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
 
             Spacer(minLength: 8)
 
@@ -86,10 +96,51 @@ struct TrendsSection: View {
             ForEach(activeSeries) { point in
                 BarMark(
                     x: .value(L10n.chartAxisDay, point.date, unit: .day),
-                    y: .value(L10n.kpiTokens, point.tokens)
+                    y: .value(L10n.kpiTokens, Double(point.tokens))
                 )
                 .foregroundStyle(seriesColor(point))
                 .cornerRadius(3)
+            }
+
+            ForEach(cacheTrendPoints) { point in
+                LineMark(
+                    x: .value(L10n.chartAxisDay, point.date, unit: .day),
+                    y: .value(
+                        L10n.cacheHitRateTitle,
+                        cacheRateYValue(point.rate)),
+                    series: .value("Cache segment", point.segment)
+                )
+                .foregroundStyle(DashboardTheme.cache)
+                .lineStyle(StrokeStyle(
+                    lineWidth: 2,
+                    lineCap: .round,
+                    lineJoin: .round))
+            }
+
+            ForEach(singletonCacheTrendPoints) { point in
+                PointMark(
+                    x: .value(L10n.chartAxisDay, point.date, unit: .day),
+                    y: .value(
+                        L10n.cacheHitRateTitle,
+                        cacheRateYValue(point.rate))
+                )
+                .foregroundStyle(DashboardTheme.cache)
+                .symbolSize(18)
+            }
+
+            if let selectedCacheTrendPoint {
+                PointMark(
+                    x: .value(
+                        L10n.chartAxisDay,
+                        selectedCacheTrendPoint.date,
+                        unit: .day),
+                    y: .value(
+                        L10n.cacheHitRateTitle,
+                        cacheRateYValue(selectedCacheTrendPoint.rate))
+                )
+                .foregroundStyle(DashboardTheme.cache)
+                .symbolSize(34)
+                .accessibilityHidden(true)
             }
 
             if let selection = selectedTrendSelection {
@@ -106,6 +157,7 @@ struct TrendsSection: View {
             }
         }
         .chartXScale(domain: xDomain)
+        .chartYScale(domain: 0.0...chartTokenCeiling)
         .chartXAxis {
             AxisMarks(values: .stride(by: .day, count: range.axisStride)) { _ in
                 AxisGridLine()
@@ -114,13 +166,26 @@ struct TrendsSection: View {
             }
         }
         .chartYAxis {
-            AxisMarks { value in
+            AxisMarks(position: .trailing) { value in
                 AxisGridLine()
                 AxisValueLabel {
-                    if let v = value.as(Int64.self) {
-                        Text(compactTokens(v))
-                    } else if let d = value.as(Double.self) {
+                    if let d = value.as(Double.self) {
                         Text(compactNumber(d))
+                    }
+                }
+            }
+            AxisMarks(
+                position: .leading,
+                values: [0.0, chartTokenCeiling / 2.0, chartTokenCeiling]
+            ) { value in
+                AxisTick()
+                    .foregroundStyle(DashboardTheme.cache.opacity(0.45))
+                AxisValueLabel {
+                    if let scaledValue = value.as(Double.self) {
+                        let rate = scaledValue / chartTokenCeiling
+                        Text(rate.formatted(
+                            .percent.precision(.fractionLength(0))))
+                            .foregroundStyle(DashboardTheme.cache)
                     }
                 }
             }
@@ -128,95 +193,11 @@ struct TrendsSection: View {
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDay)
         .frame(height: 245)
-    }
-
-    private var cacheTrend: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Divider()
-
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Label {
-                    Text(L10n.dailyCacheHitRateTitle)
-                        .font(.caption.weight(.semibold))
-                } icon: {
-                    Circle()
-                        .fill(DashboardTheme.cache)
-                        .frame(width: 7, height: 7)
-                }
-                Spacer()
-                Text(L10n.cacheHitRateWeightedWindow(
-                    period: range.periodLabel,
-                    rate: formatCacheHitRate(windowCacheSummary.hitRate)))
-                    .font(.caption.monospacedDigit().weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .help(L10n.cacheHitRateWeightedHelp)
-            }
-
-            Chart {
-                ForEach(cacheTrendPoints) { point in
-                    LineMark(
-                        x: .value(L10n.chartAxisDay, point.date, unit: .day),
-                        y: .value(L10n.cacheHitRateTitle, point.rate),
-                        series: .value("Cache segment", point.segment)
-                    )
-                    .foregroundStyle(DashboardTheme.cache)
-                    .lineStyle(StrokeStyle(
-                        lineWidth: 2,
-                        lineCap: .round,
-                        lineJoin: .round))
-                }
-
-                ForEach(singletonCacheTrendPoints) { point in
-                    PointMark(
-                        x: .value(L10n.chartAxisDay, point.date, unit: .day),
-                        y: .value(L10n.cacheHitRateTitle, point.rate)
-                    )
-                    .foregroundStyle(DashboardTheme.cache)
-                    .symbolSize(18)
-                }
-
-                if let selectedDay {
-                    RuleMark(x: .value(L10n.chartAxisDay, selectedDay, unit: .day))
-                        .foregroundStyle(Color.primary.opacity(0.22))
-                }
-
-                if let selectedCacheTrendPoint {
-                    PointMark(
-                        x: .value(
-                            L10n.chartAxisDay,
-                            selectedCacheTrendPoint.date,
-                            unit: .day),
-                        y: .value(
-                            L10n.cacheHitRateTitle,
-                            selectedCacheTrendPoint.rate)
-                    )
-                    .foregroundStyle(DashboardTheme.cache)
-                    .symbolSize(34)
-                }
-            }
-            .chartXScale(domain: xDomain)
-            .chartYScale(domain: 0.0...1.0)
-            .chartXAxis(.hidden)
-            .chartYAxis {
-                AxisMarks(position: .trailing, values: [0.0, 0.5, 1.0]) { value in
-                    AxisGridLine()
-                    AxisValueLabel {
-                        if let rate = value.as(Double.self) {
-                            Text(rate.formatted(
-                                .percent.precision(.fractionLength(0))))
-                        }
-                    }
-                }
-            }
-            .chartLegend(.hidden)
-            .chartXSelection(value: $selectedDay)
-            .frame(height: 94)
-
-            Text(cacheTrendDetail)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
+        .accessibilityChartDescriptor(
+            TrendChartAccessibilityDescriptor(
+                daily: windowedDaily,
+                tokenCeiling: chartTokenCeiling,
+                tokenLocale: settings.tokenFormatLocale))
     }
 
     // MARK: - legend + tooltips
@@ -323,10 +304,6 @@ struct TrendsSection: View {
         Array(dailyExtended.suffix(range.days))
     }
 
-    private var windowCacheSummary: CacheUsageSummary {
-        CacheUsageSummary.combined(windowedDaily.map(\.cacheUsage))
-    }
-
     private var cacheTrendPoints: [CacheTrendPoint] {
         CacheTrendSeriesBuilder.points(from: windowedDaily)
     }
@@ -353,30 +330,13 @@ struct TrendsSection: View {
         }
     }
 
-    private var cacheTrendDetail: String {
-        let usage: CacheUsageSummary
-        let prefix: String?
-        if let selectedCacheDay {
-            usage = selectedCacheDay.cacheUsage
-            let date = selectedCacheDay.date.formatted(
-                .dateTime.month(.abbreviated).day())
-            prefix = "\(date) · \(formatCacheHitRate(usage.hitRate))"
-        } else {
-            usage = windowCacheSummary
-            prefix = nil
-        }
+    private var chartTokenCeiling: Double {
+        let maxTokens = windowedDaily.map(\.tokens).max() ?? 0
+        return max(Double(maxTokens) * 1.08, 1)
+    }
 
-        guard usage.eligibleInputTokens > 0 else {
-            return [prefix, L10n.cacheHitRateUnavailable]
-                .compactMap { $0 }
-                .joined(separator: " · ")
-        }
-        let detail = L10n.cacheHitRateTokenDetail(
-            read: compactTokens(usage.readTokens),
-            eligible: compactTokens(usage.eligibleInputTokens))
-        return [prefix, detail]
-            .compactMap { $0 }
-            .joined(separator: " · ")
+    private func cacheRateYValue(_ rate: Double) -> Double {
+        rate * chartTokenCeiling
     }
 
     private var activeSeries: [DailyBreakdownPoint] {
@@ -591,6 +551,69 @@ enum CacheTrendSeriesBuilder {
             previousDayHadRate = true
             return CacheTrendPoint(date: day.date, rate: rate, segment: segment)
         }
+    }
+}
+
+struct TrendChartAccessibilityDescriptor: AXChartDescriptorRepresentable {
+    let daily: [DailyPoint]
+    let tokenCeiling: Double
+    let tokenLocale: Locale
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let days = daily.map(dayLabel)
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: L10n.chartAxisDay,
+            categoryOrder: days)
+        let tokenAxis = AXNumericDataAxisDescriptor(
+            title: L10n.kpiTokens,
+            range: 0...tokenCeiling,
+            gridlinePositions: []
+        ) { value in
+            value.formatted(
+                .number
+                    .notation(.compactName)
+                    .precision(.fractionLength(0...1))
+                    .locale(tokenLocale))
+        }
+        let cacheAxis = AXNumericDataAxisDescriptor(
+            title: L10n.dailyCacheHitRateTitle,
+            range: 0...1,
+            gridlinePositions: [0, 0.5, 1]
+        ) { value in
+            value.formatted(.percent.precision(.fractionLength(1)))
+        }
+
+        let tokenSeries = AXDataSeriesDescriptor(
+            name: L10n.kpiTokens,
+            isContinuous: false,
+            dataPoints: daily.map { day in
+                AXDataPoint(
+                    x: dayLabel(day),
+                    y: Double(day.tokens))
+            })
+        let cacheSeries = AXDataSeriesDescriptor(
+            name: L10n.dailyCacheHitRateTitle,
+            isContinuous: true,
+            dataPoints: daily.compactMap { day in
+                guard let rate = day.cacheUsage.hitRate else { return nil }
+                return AXDataPoint(
+                    x: dayLabel(day),
+                    additionalValues: [.number(rate)],
+                    label: rate.formatted(
+                        .percent.precision(.fractionLength(1))))
+            })
+
+        return AXChartDescriptor(
+            title: L10n.trendsSectionTitle,
+            summary: nil,
+            xAxis: xAxis,
+            yAxis: tokenAxis,
+            additionalAxes: [cacheAxis],
+            series: [tokenSeries, cacheSeries])
+    }
+
+    private func dayLabel(_ day: DailyPoint) -> String {
+        day.date.formatted(.dateTime.month(.abbreviated).day())
     }
 }
 

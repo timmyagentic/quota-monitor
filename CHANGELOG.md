@@ -36,6 +36,7 @@ window copy.
 - Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
 - History now opens with the latest three weeks while older records continue loading one week at a time.
 - Sessions now opens with a focused first batch and keeps loading more matches as you deliberately scroll, so histories beyond the old 500-row ceiling remain reachable.
+- Dashboard Activity can now switch between the existing indexed history and Codex account-wide totals without changing the rest of the Dashboard.
 - Fresh Claude quota windows no longer jump from about 1% usage to 100% in the menu popover or Dashboard.
 - When Anthropic provides a Fable 5 allowance for the account, Claude now shows it alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
 - With automatic update checks enabled, Quota Monitor now quietly checks after launch, wake, or returning to the foreground when its last check is more than six hours old.
@@ -52,7 +53,8 @@ window copy.
 
 ### Added
 
-- **Dashboard cache hit-rate trends.** The headline now pairs fixed 7- and 30-day weighted summaries with a daily cache hit-rate line in Trends, and provider or date filters update both views together.
+- **Dashboard cache hit-rate trends.** The headline now pairs fixed 7- and 30-day weighted summaries with a cache hit-rate line integrated into the existing daily Token bars, and provider or date filters update both views together.
+- **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
 - **Fable 5 weekly quota.** When Anthropic provides the model-scoped weekly limit, Quota Monitor keeps it available after relaunch and labels the two weekly meters as Full and Fable 5.
 

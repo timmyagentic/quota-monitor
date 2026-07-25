@@ -164,7 +164,7 @@ the legacy database and preferences; the old
 
 | Provider | Live quota source | Local usage history |
 | --- | --- | --- |
-| Codex | `codex app-server` and `account/rateLimits/read` | `~/.codex/sessions` and `~/.codex/archived_sessions` |
+| Codex | `codex app-server` with `account/rateLimits/read` and on-demand `account/usage/read` | `~/.codex/sessions` and `~/.codex/archived_sessions` |
 | Claude Code | Anthropic's OAuth usage endpoint with local Claude Code credentials | `~/.claude/projects` and `~/.config/claude/projects` |
 
 Quota Monitor can use a standalone Codex or Claude Code CLI, the Codex binary
@@ -178,8 +178,9 @@ They are not provider invoices or subscription charges.
 ## Privacy
 
 Session history and usage events stay in Quota Monitor's local SQLite database.
-Only live quota refreshes contact the corresponding Codex or Claude Code
-provider service.
+Live quota refreshes and the Codex Dashboard's on-demand Account activity view
+contact the corresponding provider service. Account activity is read through
+the local Codex app-server and is not written into local history.
 
 Eligible Developer ID builds also send one anonymous daily active-installation
 check-in containing exactly six fields: schema version, UTC day, app version,
