@@ -132,5 +132,4 @@ struct BrandingLocalizationTests {
         #expect(zh.3 == "近 30 天加权 · 72.4%")
         #expect(zh.4 == "缓存读取 1200万 / 可缓存输入 1600万 Token")
     }
-
 }
