@@ -1,6 +1,5 @@
 import SwiftUI
 import Charts
-import Accessibility
 
 /// Trends panel: stacked token bars by provider/model with a cache hit-rate
 /// line sharing the same dates. The summary line still reports spend over
@@ -193,11 +192,13 @@ struct TrendsSection: View {
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDay)
         .frame(height: 245)
-        .accessibilityChartDescriptor(
-            TrendChartAccessibilityDescriptor(
-                daily: windowedDaily,
-                tokenCeiling: chartTokenCeiling,
-                tokenLocale: settings.tokenFormatLocale))
+        .accessibilityRepresentation {
+            VStack(alignment: .leading) {
+                ForEach(accessibleDailyPoints) { day in
+                    Text(accessibilityDescription(for: day))
+                }
+            }
+        }
     }
 
     // MARK: - legend + tooltips
@@ -337,6 +338,22 @@ struct TrendsSection: View {
 
     private func cacheRateYValue(_ rate: Double) -> Double {
         rate * chartTokenCeiling
+    }
+
+    private var accessibleDailyPoints: [DailyPoint] {
+        windowedDaily.filter {
+            $0.tokens > 0 || $0.cacheUsage.hitRate != nil
+        }
+    }
+
+    private func accessibilityDescription(for day: DailyPoint) -> String {
+        let date = day.date.formatted(.dateTime.month(.abbreviated).day())
+        return [
+            date,
+            "\(L10n.kpiTokens) \(compactTokens(day.tokens))",
+            "\(L10n.dailyCacheHitRateTitle) "
+                + formatCacheHitRate(day.cacheUsage.hitRate),
+        ].joined(separator: " · ")
     }
 
     private var activeSeries: [DailyBreakdownPoint] {
@@ -551,69 +568,6 @@ enum CacheTrendSeriesBuilder {
             previousDayHadRate = true
             return CacheTrendPoint(date: day.date, rate: rate, segment: segment)
         }
-    }
-}
-
-struct TrendChartAccessibilityDescriptor: AXChartDescriptorRepresentable {
-    let daily: [DailyPoint]
-    let tokenCeiling: Double
-    let tokenLocale: Locale
-
-    func makeChartDescriptor() -> AXChartDescriptor {
-        let days = daily.map(dayLabel)
-        let xAxis = AXCategoricalDataAxisDescriptor(
-            title: L10n.chartAxisDay,
-            categoryOrder: days)
-        let tokenAxis = AXNumericDataAxisDescriptor(
-            title: L10n.kpiTokens,
-            range: 0...tokenCeiling,
-            gridlinePositions: []
-        ) { value in
-            value.formatted(
-                .number
-                    .notation(.compactName)
-                    .precision(.fractionLength(0...1))
-                    .locale(tokenLocale))
-        }
-        let cacheAxis = AXNumericDataAxisDescriptor(
-            title: L10n.dailyCacheHitRateTitle,
-            range: 0...1,
-            gridlinePositions: [0, 0.5, 1]
-        ) { value in
-            value.formatted(.percent.precision(.fractionLength(1)))
-        }
-
-        let tokenSeries = AXDataSeriesDescriptor(
-            name: L10n.kpiTokens,
-            isContinuous: false,
-            dataPoints: daily.map { day in
-                AXDataPoint(
-                    x: dayLabel(day),
-                    y: Double(day.tokens))
-            })
-        let cacheSeries = AXDataSeriesDescriptor(
-            name: L10n.dailyCacheHitRateTitle,
-            isContinuous: true,
-            dataPoints: daily.compactMap { day in
-                guard let rate = day.cacheUsage.hitRate else { return nil }
-                return AXDataPoint(
-                    x: dayLabel(day),
-                    additionalValues: [.number(rate)],
-                    label: rate.formatted(
-                        .percent.precision(.fractionLength(1))))
-            })
-
-        return AXChartDescriptor(
-            title: L10n.trendsSectionTitle,
-            summary: nil,
-            xAxis: xAxis,
-            yAxis: tokenAxis,
-            additionalAxes: [cacheAxis],
-            series: [tokenSeries, cacheSeries])
-    }
-
-    private func dayLabel(_ day: DailyPoint) -> String {
-        day.date.formatted(.dateTime.month(.abbreviated).day())
     }
 }
 
