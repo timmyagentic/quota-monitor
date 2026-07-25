@@ -140,12 +140,7 @@ General 适合普通用户日常调整：
 
 截图使用隔离 Local QA 预览，因此开关被禁用并明确标注不会发送数据。正式 Developer ID 版本中可以自行开启或关闭；点击 `Privacy details` 可查看完整的中英双语隐私说明。
 
-<!-- STALE SCREENSHOT: captured at c24c009, before #145/#143 removed the
-     "Check for updates automatically" caption text. This image still shows
-     that now-deleted line under the toggle. Retake against latest main
-     (Settings → Advanced, no caption under the toggle) and drop this
-     comment once replaced. See PR discussion for #145 / #143. -->
-![Settings Advanced](assets/product-manual/c24c009/settings-advanced.png)
+![Settings Advanced](assets/product-manual/8a25241/settings-advanced.png)
 
 Advanced 适合需要调整更新、轮询或诊断选项的用户：
 
@@ -203,6 +198,17 @@ Advanced 适合需要调整更新、轮询或诊断选项的用户：
 5. 不把实现细节写进用户说明；实现、命令和 QA 证据只放在维护记录里。
 
 ## 更新记录
+
+### 2026-07-25 · Unreleased · 8a25241
+
+Advanced 设置截图已与当前界面同步；`Check for updates automatically` 下方不再显示已经删除的说明文字。
+
+维护记录：
+
+- 在 `8a25241` 上运行 `CONFIG=release QM_QA_LANGUAGE=en ./qa/prepare-computer-use-fixture-smoke.sh`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`。
+- 使用隔离 HOME、独立 UserDefaults 和禁用 live external sources 的 fixture 启动 App。
+- 使用 Computer Use 打开 Settings → Advanced，确认自动更新开关下方没有说明文字。
+- 新截图位于 `docs/assets/product-manual/8a25241/settings-advanced.png`，来自该精确构建的 Settings 窗口。
 
 ### 2026-07-24 · Unreleased · c24c009
 
