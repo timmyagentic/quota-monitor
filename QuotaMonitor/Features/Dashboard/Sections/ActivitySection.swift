@@ -1,23 +1,44 @@
 import SwiftUI
 
-/// Activity card: the lifetime / engagement profile a CodeX-style usage
-/// screen shows. A four-up stat strip (lifetime tokens, peak day, current
-/// + longest streak) over a contribution-style daily heatmap.
-///
-/// Reads `DashboardSnapshot.activity`, which `loadDashboard` already scopes
-/// to the active provider filter — so every number here follows the
-/// All / Codex / Claude picker in the toolbar.
+/// Activity card for either locally indexed history or the complete activity
+/// reported by the current Codex account. Both sources deliberately reuse the
+/// same metric strip and heatmap so switching scope does not redesign or move
+/// the rest of the Dashboard.
 struct ActivitySection: View {
-    struct Metric: Identifiable {
+    struct Metric: Identifiable, Equatable {
         let value: String
         let label: String
+        var accessibilityValue: String?
+        var help: String?
 
         var id: String { label }
     }
 
+    struct Content: Equatable {
+        let metrics: [Metric]
+        let daily: [DailyPoint]
+        let hasDailySeries: Bool
+        let hasData: Bool
+        let summary: String
+        let asOf: String?
+        let heatmapScopeLabel: String
+        let heatmapAccessibilityLabel: String
+    }
+
     @Environment(SettingsStore.self) private var settings
-    let activity: ActivitySnapshot
-    var metrics: [Metric] = []
+    @Binding var scope: ActivityDataScope
+    let indexed: Content
+    let account: Content?
+    let accountState: CodexAccountUsageState
+    let allowsAccountScope: Bool
+
+    private var effectiveScope: ActivityDataScope {
+        allowsAccountScope ? scope : .indexed
+    }
+
+    private var selectedContent: Content? {
+        effectiveScope == .account ? account : indexed
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -25,16 +46,123 @@ struct ActivitySection: View {
                 Text(L10n.activitySectionTitle)
                     .font(.headline)
                 Spacer()
+                if allowsAccountScope {
+                    Picker(L10n.activityDataSourceLabel, selection: $scope) {
+                        Text(L10n.activityScopeIndexed)
+                            .tag(ActivityDataScope.indexed)
+                        Text(L10n.activityScopeAccount)
+                            .tag(ActivityDataScope.account)
+                    }
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityLabel(L10n.activityDataSourceLabel)
+                    .accessibilityHint(L10n.activityDataSourceHint)
+                }
             }
 
-            if metrics.isEmpty {
-                statStrip
-            } else {
-                metricStrip(metrics)
+            if allowsAccountScope {
+                sourceSummary
             }
 
-            if activity.hasData {
-                chartCard
+            if let selectedContent {
+                content(selectedContent)
+                    .id(effectiveScope)
+            } else if effectiveScope == .account {
+                accountPlaceholder
+            }
+        }
+        .dashboardPanel(cornerRadius: 12, padding: 14)
+    }
+
+    // MARK: - source summary
+
+    private var sourceSummary: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                sourceIndicator
+                Text(sourceSummaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                accountRefreshIndicator
+                Spacer(minLength: 12)
+                if let asOf = selectedContent?.asOf {
+                    Text(asOf)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    sourceIndicator
+                    Text(sourceSummaryText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    accountRefreshIndicator
+                }
+                if let asOf = selectedContent?.asOf {
+                    Text(asOf)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(sourceAccessibilityLabel)
+    }
+
+    private var sourceIndicator: some View {
+        Circle()
+            .fill(DashboardTheme.accentBlue)
+            .frame(width: 7, height: 7)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var accountRefreshIndicator: some View {
+        if effectiveScope == .account && accountState.isRefreshing {
+            ProgressView()
+                .controlSize(.mini)
+                .accessibilityLabel(L10n.activityRefreshingAccount)
+        }
+    }
+
+    private var sourceSummaryText: String {
+        guard effectiveScope == .account else { return indexed.summary }
+        if accountState.isStale {
+            return "\(L10n.activityShowingCachedData) · \(account?.summary ?? "")"
+        }
+        return account?.summary ?? placeholderMessage
+    }
+
+    private var sourceAccessibilityLabel: String {
+        var parts = [sourceSummaryText, selectedContent?.asOf]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        if effectiveScope == .account && accountState.isRefreshing {
+            parts.append(L10n.activityRefreshingAccount)
+        }
+        return parts.joined(separator: ". ")
+    }
+
+    // MARK: - content
+
+    private func content(_ content: Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            metricStrip(content.metrics)
+
+            if !content.hasDailySeries {
+                Text(L10n.activityAccountDailyUnavailable)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if content.hasData {
+                chartCard(content)
             } else {
                 Text(L10n.activityNoData)
                     .font(.caption)
@@ -42,7 +170,33 @@ struct ActivitySection: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .dashboardPanel(cornerRadius: 12, padding: 14)
+    }
+
+    private var accountPlaceholder: some View {
+        VStack(spacing: 8) {
+            if case .loading = accountState {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(L10n.activityLoadingAccount)
+            }
+            Text(placeholderMessage)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, minHeight: 176)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var placeholderMessage: String {
+        switch accountState {
+        case .idle, .loading:
+            return L10n.activityLoadingAccount
+        case .unavailable:
+            return L10n.activityAccountUnavailable
+        case .loaded, .refreshing, .stale:
+            return L10n.activityAccountUnavailable
+        }
     }
 
     // MARK: - stat strip
@@ -50,42 +204,12 @@ struct ActivitySection: View {
     private func metricStrip(_ metrics: [Metric]) -> some View {
         HStack(spacing: 0) {
             ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
-                statCell(value: metric.value, label: metric.label)
+                statCell(metric)
 
                 if index < metrics.count - 1 {
                     cellDivider
                 }
             }
-        }
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.secondary.opacity(0.05))
-        )
-    }
-
-    private var statStrip: some View {
-        let locale = settings.tokenFormatLocale
-        return HStack(spacing: 0) {
-            statCell(
-                value: compactTokens(activity.lifetimeTokens, locale: locale),
-                label: L10n.activityLifetimeTokens)
-            cellDivider
-            statCell(
-                value: compactTokens(activity.peakDayTokens, locale: locale),
-                label: L10n.activityPeakTokens,
-                help: activity.peakDay.map {
-                    $0.formatted(.dateTime.year().month().day())
-                })
-            cellDivider
-            statCell(
-                value: L10n.activityStreakDays(activity.currentStreakDays),
-                label: L10n.activityCurrentStreak)
-            cellDivider
-            statCell(
-                value: L10n.activityStreakDays(activity.longestStreakDays),
-                label: L10n.activityLongestStreak)
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
@@ -101,46 +225,45 @@ struct ActivitySection: View {
             .frame(width: 1, height: 34)
     }
 
-    private func statCell(value: String, label: String, help: String? = nil) -> some View {
+    private func statCell(_ metric: Metric) -> some View {
         VStack(spacing: 3) {
-            Text(value)
+            Text(metric.value)
                 .font(.title3.monospacedDigit().weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-            Text(label)
+            Text(metric.label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
-        .modifier(StatCellHelp(help))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(metric.label)
+        .accessibilityValue(metric.accessibilityValue ?? metric.value)
+        .modifier(StatCellHelp(metric.help))
     }
 
     // MARK: - chart
 
-    private var chartCard: some View {
+    private func chartCard(_ content: Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(L10n.activityTokenActivity)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
+                if allowsAccountScope {
+                    Text(content.heatmapScopeLabel)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             ActivityHeatmap(
-                daily: activity.daily,
+                daily: content.daily,
                 tokenLocale: settings.tokenFormatLocale)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(content.heatmapAccessibilityLabel)
         }
-    }
-
-    // MARK: - formatting
-
-    private func compactTokens(_ tokens: Int64, locale: Locale) -> String {
-        guard tokens > 0 else { return "0" }
-        return tokens.formatted(
-            .number
-                .notation(.compactName)
-                .precision(.fractionLength(0...1))
-                .locale(locale))
     }
 }
 

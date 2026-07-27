@@ -29,6 +29,19 @@ struct DailyPoint: Sendable, Identifiable, Equatable {
     var id: Date { date }
     let valueUSD: Double
     let tokens: Int64
+    let cacheUsage: CacheUsageSummary
+
+    init(
+        date: Date,
+        valueUSD: Double,
+        tokens: Int64,
+        cacheUsage: CacheUsageSummary = .zero
+    ) {
+        self.date = date
+        self.valueUSD = valueUSD
+        self.tokens = tokens
+        self.cacheUsage = cacheUsage
+    }
 }
 
 enum TrendBreakdownGrouping: Sendable {
@@ -474,7 +487,19 @@ struct CacheUsageSummary: Sendable, Equatable {
     let readTokens: Int64
     let eligibleInputTokens: Int64
 
-    /// Token-weighted share of prompt input served from cache. A day with no
+    static let zero = CacheUsageSummary(readTokens: 0, eligibleInputTokens: 0)
+
+    static func combined<S: Sequence>(_ summaries: S) -> CacheUsageSummary
+    where S.Element == CacheUsageSummary {
+        summaries.reduce(.zero) { partial, summary in
+            CacheUsageSummary(
+                readTokens: partial.readTokens + summary.readTokens,
+                eligibleInputTokens: partial.eligibleInputTokens
+                    + summary.eligibleInputTokens)
+        }
+    }
+
+    /// Token-weighted share of prompt input served from cache. A period with no
     /// eligible input has no meaningful hit rate, while malformed historical
     /// rows are clamped to the displayable 0...100% range.
     var hitRate: Double? {
