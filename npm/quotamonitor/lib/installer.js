@@ -35,7 +35,7 @@ import {
   resolveInstallDirectory,
 } from "./platform.js";
 import { runCommand } from "./run-command.js";
-import { compareVersions } from "./version.js";
+import { compareBuildVersions, compareVersions } from "./version.js";
 
 function defaultProgress(message) {
   console.log(`→ ${message}`);
@@ -98,7 +98,16 @@ export async function installQuotaMonitor(
       const existing = await verifyBundle(destination, {
         runCommand: commandRunner,
       });
-      const versionComparison = compareVersions(existing.version, release.version);
+      const semanticComparison = compareVersions(
+        existing.version,
+        release.version,
+      );
+      const versionComparison = semanticComparison === 0
+        ? compareBuildVersions(
+          existing.buildVersion,
+          release.buildVersion ?? release.version,
+        )
+        : semanticComparison;
       if (versionComparison > 0) {
         throw new Error(
           `Installed version ${existing.version} is newer than delivered version ${release.version}; refusing to downgrade`,
@@ -167,6 +176,7 @@ export async function installQuotaMonitor(
     }
     await verifyBundle(sourceBundle, {
       expectedVersion: release.version,
+      expectedBuildVersion: release.buildVersion,
       expectedMinimumSystemVersion: release.minimumSystemVersion,
       runCommand: commandRunner,
     });

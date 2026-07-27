@@ -25,11 +25,14 @@ async function withFakeBundle(callback) {
   }
 }
 
-function bundleRunner({ teamID = "4356B4HF9R" } = {}) {
+function bundleRunner({
+  teamID = "4356B4HF9R",
+  buildVersion = "0.2.42",
+} = {}) {
   const values = new Map([
     ["CFBundleIdentifier", "dev.tjzhou.QuotaMonitor"],
     ["CFBundleShortVersionString", "0.2.42"],
-    ["CFBundleVersion", "0.2.42"],
+    ["CFBundleVersion", buildVersion],
     ["QMDistributionChannel", "developer-id"],
     ["LSMinimumSystemVersion", "14.0"],
   ]);
@@ -60,7 +63,11 @@ test("bundle verification pins metadata, Team ID, and Gatekeeper command", async
       expectedMinimumSystemVersion: "14.0",
       runCommand: runner,
     });
-    assert.deepEqual(result, { version: "0.2.42", minimumOS: "14.0" });
+    assert.deepEqual(result, {
+      version: "0.2.42",
+      buildVersion: "0.2.42",
+      minimumOS: "14.0",
+    });
     assert.ok(
       calls.some(
         ({ executable, args }) =>
@@ -77,6 +84,19 @@ test("bundle verification pins metadata, Team ID, and Gatekeeper command", async
           args.at(-1) === bundle,
       ),
     );
+  });
+});
+
+test("bundle verification accepts and pins a split Sparkle build version", async () => {
+  await withFakeBundle(async (bundle) => {
+    const { runner } = bundleRunner({ buildVersion: "20449000" });
+    const result = await verifyBundle(bundle, {
+      expectedVersion: "0.2.42",
+      expectedBuildVersion: "20449000",
+      runCommand: runner,
+    });
+    assert.equal(result.version, "0.2.42");
+    assert.equal(result.buildVersion, "20449000");
   });
 });
 

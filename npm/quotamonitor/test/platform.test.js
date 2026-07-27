@@ -5,7 +5,12 @@ import {
   assertAppleSilicon,
   assertSupportedPlatform,
 } from "../lib/platform.js";
-import { compareVersions, parseNumericVersion } from "../lib/version.js";
+import {
+  compareBuildVersions,
+  compareVersions,
+  parseBuildVersion,
+  parseNumericVersion,
+} from "../lib/version.js";
 
 test("platform checks reject root and non-macOS", () => {
   assert.throws(
@@ -40,4 +45,10 @@ test("numeric versions compare macOS and app releases without lexical mistakes",
   assert.equal(compareVersions("0.2.42", "0.2.42"), 0);
   assert.equal(compareVersions("0.2.9", "0.2.10"), -1);
   assert.throws(() => parseNumericVersion("14.beta"), /Invalid version/);
+});
+
+test("Sparkle build versions accept one numeric component", () => {
+  assert.deepEqual(parseBuildVersion("20449000"), [20449000]);
+  assert.equal(compareBuildVersions("20449000", "0.2.43"), 1);
+  assert.throws(() => parseBuildVersion("beta.1"), /Invalid build version/);
 });

@@ -9,7 +9,11 @@ import {
   APP_TEAM_ID,
 } from "./constants.js";
 import { pathExists } from "./platform.js";
-import { compareVersions } from "./version.js";
+import {
+  compareBuildVersions,
+  compareVersions,
+  parseBuildVersion,
+} from "./version.js";
 
 function escapePattern(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -36,6 +40,7 @@ export async function verifyBundle(
   bundlePath,
   {
     expectedVersion,
+    expectedBuildVersion,
     expectedMinimumSystemVersion,
     runCommand,
   },
@@ -53,12 +58,15 @@ export async function verifyBundle(
   if (bundleID !== APP_BUNDLE_ID) {
     throw new Error(`Unexpected bundle identifier at ${bundlePath}`);
   }
-  if (shortVersion !== buildVersion) {
-    throw new Error(`Bundle version fields disagree at ${bundlePath}`);
-  }
+  parseBuildVersion(buildVersion, "bundle build version");
   if (expectedVersion && shortVersion !== expectedVersion) {
     throw new Error(
       `Expected Quota Monitor ${expectedVersion}, found ${shortVersion}`,
+    );
+  }
+  if (expectedBuildVersion && buildVersion !== expectedBuildVersion) {
+    throw new Error(
+      `Expected Quota Monitor build ${expectedBuildVersion}, found ${buildVersion}`,
     );
   }
   if (
@@ -105,7 +113,7 @@ export async function verifyBundle(
     bundlePath,
   ]);
 
-  return { version: shortVersion, minimumOS };
+  return { version: shortVersion, buildVersion, minimumOS };
 }
 
 export async function verifyDMG(dmgPath, runCommand) {
@@ -182,7 +190,13 @@ export async function installAtomically({
         );
       }
       const existing = await verifyBundle(destination, { runCommand });
-      if (compareVersions(existing.version, release.version) >= 0) {
+      const releaseBuildVersion = release.buildVersion ?? release.version;
+      const versionOrder = compareVersions(existing.version, release.version);
+      const buildOrder = compareBuildVersions(
+        existing.buildVersion,
+        releaseBuildVersion,
+      );
+      if (versionOrder > 0 || (versionOrder === 0 && buildOrder >= 0)) {
         throw new Error(
           `Refusing to replace Quota Monitor ${existing.version} with ${release.version}`,
         );
@@ -201,6 +215,7 @@ export async function installAtomically({
     ]);
     await verifyBundle(staging, {
       expectedVersion: release.version,
+      expectedBuildVersion: release.buildVersion,
       expectedMinimumSystemVersion: release.minimumSystemVersion,
       runCommand,
     });
@@ -215,6 +230,7 @@ export async function installAtomically({
 
       await verifyBundle(destination, {
         expectedVersion: release.version,
+        expectedBuildVersion: release.buildVersion,
         expectedMinimumSystemVersion: release.minimumSystemVersion,
         runCommand,
       });
