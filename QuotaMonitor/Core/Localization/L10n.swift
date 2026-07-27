@@ -770,6 +770,9 @@ enum L10n {
         t(en: "This Mac is authorized for Private Beta updates.",
           zh: "此 Mac 已获私有 Beta 更新权限。")
     }
+    static var privateBetaLeave: String {
+        t(en: "Leave Private Beta", zh: "退出私有 Beta")
+    }
     static var privateBetaEnrollmentRequired: String {
         t(en: "Enter a valid one-time code before selecting Private Beta.",
           zh: "选择私有 Beta 前，请输入有效的一次性授权码。")

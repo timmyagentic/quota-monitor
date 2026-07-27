@@ -80,9 +80,17 @@ struct AdvancedSettingsTab: View {
                     .pickerStyle(.segmented)
 
                     if updater.privateBetaEnrolled {
-                        Label(L10n.privateBetaEnrolled, systemImage: "checkmark.shield.fill")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Label(
+                                L10n.privateBetaEnrolled,
+                                systemImage: "checkmark.shield.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(L10n.privateBetaLeave) {
+                                updater.leavePrivateBeta()
+                            }
+                        }
                     } else {
                         HStack(spacing: 8) {
                             TextField(
