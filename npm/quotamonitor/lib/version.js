@@ -32,6 +32,13 @@ export function compareBuildVersions(left, right) {
   return 0;
 }
 
+export function compareInstalledRelease(existing, release) {
+  return compareBuildVersions(
+    existing.buildVersion,
+    release.buildVersion ?? release.version,
+  );
+}
+
 export function compareVersions(left, right) {
   const leftParts = parseNumericVersion(left);
   const rightParts = parseNumericVersion(right);

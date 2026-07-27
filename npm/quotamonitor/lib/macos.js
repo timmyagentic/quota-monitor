@@ -10,8 +10,7 @@ import {
 } from "./constants.js";
 import { pathExists } from "./platform.js";
 import {
-  compareBuildVersions,
-  compareVersions,
+  compareInstalledRelease,
   parseBuildVersion,
 } from "./version.js";
 
@@ -190,13 +189,7 @@ export async function installAtomically({
         );
       }
       const existing = await verifyBundle(destination, { runCommand });
-      const releaseBuildVersion = release.buildVersion ?? release.version;
-      const versionOrder = compareVersions(existing.version, release.version);
-      const buildOrder = compareBuildVersions(
-        existing.buildVersion,
-        releaseBuildVersion,
-      );
-      if (versionOrder > 0 || (versionOrder === 0 && buildOrder >= 0)) {
+      if (compareInstalledRelease(existing, release) >= 0) {
         throw new Error(
           `Refusing to replace Quota Monitor ${existing.version} with ${release.version}`,
         );
