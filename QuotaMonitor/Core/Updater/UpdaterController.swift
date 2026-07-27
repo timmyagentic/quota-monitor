@@ -55,6 +55,7 @@ final class UpdaterController {
     var automaticallyChecksForUpdates: Bool = true
 
     var updateChannel: UpdateChannel
+    let privateBetaAvailable: Bool
     var privateBetaEnrolled: Bool
     var privateBetaStatusMessage: String?
 
@@ -103,21 +104,24 @@ final class UpdaterController {
                 forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
             localQARequested: LocalQAEnvironment.isQARequested())
         let resolvedCredentialStore = credentialStore ?? PrivateBetaCredentialStore()
-        let storedToken = runtime.sparkleEnabled
+        let configuredPrivateBetaFeedURL = bundle.object(
+            forInfoDictionaryKey: "QMPrivateBetaFeedURL") as? String
+        let privateBetaAvailable = Self.isPrivateBetaAvailable(
+            feedURL: configuredPrivateBetaFeedURL)
+        let storedToken = runtime.sparkleEnabled && privateBetaAvailable
             ? resolvedCredentialStore.loadToken()
             : nil
         var selectedChannel = runtime.sparkleEnabled
             ? UpdateChannel(defaults: resolvedDefaults)
             : .stable
-        if selectedChannel == .privateBeta && storedToken == nil {
+        if selectedChannel == .privateBeta
+            && (!privateBetaAvailable || storedToken == nil) {
             selectedChannel = .stable
             selectedChannel.persist(to: resolvedDefaults)
         }
         let stableFeedURL = bundle.object(
             forInfoDictionaryKey: "SUFeedURL") as? String ?? ""
-        let privateBetaFeedURL = bundle.object(
-            forInfoDictionaryKey: "QMPrivateBetaFeedURL") as? String
-            ?? "https://quota-monitor.timmyagentic.com/api/private-beta/appcast.xml"
+        let privateBetaFeedURL = configuredPrivateBetaFeedURL ?? ""
         let resolvedEnrollmentClient = enrollmentClient ?? PrivateBetaEnrollmentClient(
             endpoint: URL(string:
                 "https://quota-monitor.timmyagentic.com/api/private-beta/enroll")!)
@@ -126,6 +130,7 @@ final class UpdaterController {
         self.enrollmentClient = resolvedEnrollmentClient
         self.privateBetaToken = storedToken
         self.updateChannel = selectedChannel
+        self.privateBetaAvailable = privateBetaAvailable
         self.privateBetaEnrolled = storedToken != nil
         self.sparkleDelegate = SparkleUpdateDelegate(
             stableFeedURL: stableFeedURL,
@@ -205,6 +210,11 @@ final class UpdaterController {
                 currentInternalVersion: currentInternalVersion,
                 persistenceEnabled: !isAppStore),
             sparkleEnabled: !isAppStore && !localQARequested)
+    }
+
+    static func isPrivateBetaAvailable(feedURL: String?) -> Bool {
+        guard let feedURL else { return false }
+        return !feedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     static func makeDefaultRuntimeConfiguration(
@@ -294,6 +304,9 @@ final class UpdaterController {
     }
 
     func setUpdateChannel(_ channel: UpdateChannel, checkImmediately: Bool = true) {
+        if channel == .privateBeta && !privateBetaAvailable {
+            return
+        }
         if channel == .privateBeta && privateBetaToken == nil {
             privateBetaStatusMessage = L10n.privateBetaEnrollmentRequired
             return
@@ -312,6 +325,7 @@ final class UpdaterController {
     }
 
     func enrollPrivateBeta(code: String) async {
+        guard privateBetaAvailable else { return }
         let normalizedCode = code
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .uppercased()

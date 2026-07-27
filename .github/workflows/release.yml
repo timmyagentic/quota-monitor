@@ -383,6 +383,10 @@ jobs:
           sed -i '' \
             's#https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml#https://raw.githubusercontent.com/systemoutprintlnnnn/codex-monitor/main/appcast.xml#' \
             Resources/Info.plist
+          # CodexMonitor has its own stable feed but no matching private Beta
+          # artifacts. Omitting this key also removes the enrollment/channel UI.
+          /usr/libexec/PlistBuddy -c "Delete :QMPrivateBetaFeedURL" \
+            Resources/Info.plist
           echo "==> Branding after switch:"
           grep -E 'app(DisplayName|CodeName)' QuotaMonitor/Core/Branding.swift
           echo "==> Sparkle feed after switch:"

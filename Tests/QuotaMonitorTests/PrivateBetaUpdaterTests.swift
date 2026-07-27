@@ -34,6 +34,14 @@ struct PrivateBetaUpdaterTests {
         #expect(delegate.currentAllowedChannels == ["private-beta"])
     }
 
+    @Test("Private Beta is available only when the build provides a feed")
+    func privateBetaBuildAvailability() {
+        #expect(UpdaterController.isPrivateBetaAvailable(
+            feedURL: "https://example.test/private/appcast.xml"))
+        #expect(!UpdaterController.isPrivateBetaAvailable(feedURL: nil))
+        #expect(!UpdaterController.isPrivateBetaAvailable(feedURL: "  "))
+    }
+
     @Test("Only a 32-byte base64url device credential is accepted")
     func tokenValidation() {
         #expect(PrivateBetaEnrollmentClient.isValidToken(String(repeating: "A", count: 43)))
