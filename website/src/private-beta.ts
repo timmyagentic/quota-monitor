@@ -6,6 +6,9 @@ const bearerPattern = /^Bearer ([A-Za-z0-9_-]{43})$/;
 const resourcePrefix = "private-beta/";
 const maximumEnrollmentBodyBytes = 4_096;
 const enrollmentCodeLifetimeSeconds = 15 * 60;
+const publicationLockLifetimeSeconds = 30 * 60;
+const publicationLockKey = "private-beta/publication-lock.json";
+const publicationIDPattern = /^[A-Za-z0-9_-]{43}$/;
 
 type PrivateBetaBindings = Pick<
   Env,
@@ -24,6 +27,14 @@ interface EnrollmentBody {
 
 interface ActiveDevice {
   device_id: string;
+}
+
+interface PublicationLockBody {
+  publicationID: string;
+}
+
+interface PublicationLockRecord extends PublicationLockBody {
+  expiresAt: number;
 }
 
 const privateHeaders = {
@@ -131,6 +142,134 @@ async function parseEnrollmentBody(request: Request): Promise<EnrollmentBody | n
     return null;
   }
   return { code, deviceLabel: deviceLabel.trim() };
+}
+
+async function parsePublicationLockBody(
+  request: Request,
+): Promise<PublicationLockBody | null> {
+  const contentLength = request.headers.get("Content-Length");
+  if (
+    contentLength === null ||
+    !/^\d+$/.test(contentLength) ||
+    Number(contentLength) > maximumEnrollmentBodyBytes ||
+    request.headers.get("Content-Type")?.split(";", 1)[0] !== "application/json"
+  ) {
+    return null;
+  }
+
+  try {
+    const body: unknown = await request.json();
+    if (typeof body !== "object" || body === null) return null;
+    const publicationID = Reflect.get(body, "publicationID");
+    if (
+      typeof publicationID !== "string" ||
+      !publicationIDPattern.test(publicationID)
+    ) {
+      return null;
+    }
+    return { publicationID };
+  } catch {
+    return null;
+  }
+}
+
+function parsePublicationLockRecord(value: string): PublicationLockRecord | null {
+  try {
+    const record: unknown = JSON.parse(value);
+    if (typeof record !== "object" || record === null) return null;
+    const publicationID = Reflect.get(record, "publicationID");
+    const expiresAt = Reflect.get(record, "expiresAt");
+    if (
+      typeof publicationID !== "string" ||
+      !publicationIDPattern.test(publicationID) ||
+      typeof expiresAt !== "number" ||
+      !Number.isSafeInteger(expiresAt)
+    ) {
+      return null;
+    }
+    return { publicationID, expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+async function putPublicationLock(
+  bucket: R2Bucket,
+  record: PublicationLockRecord,
+  onlyIf: R2Conditional | Headers,
+): Promise<boolean> {
+  const result = await bucket.put(
+    publicationLockKey,
+    JSON.stringify(record),
+    {
+      onlyIf,
+      httpMetadata: {
+        contentType: "application/json; charset=utf-8",
+        cacheControl: "private, no-store",
+      },
+    },
+  );
+  return result !== null;
+}
+
+async function acquirePublicationLock(
+  request: Request,
+  env: PrivateBetaBindings,
+  now: number,
+): Promise<Response> {
+  const body = await parsePublicationLockBody(request);
+  if (body === null) return hiddenNotFound();
+
+  const existing = await env.PRIVATE_BETA_BUCKET.get(publicationLockKey);
+  let acquired: boolean;
+  if (existing === null) {
+    acquired = await putPublicationLock(
+      env.PRIVATE_BETA_BUCKET,
+      {
+        publicationID: body.publicationID,
+        expiresAt: now + publicationLockLifetimeSeconds * 1_000,
+      },
+      new Headers({ "If-None-Match": "*" }),
+    );
+  } else {
+    const record = parsePublicationLockRecord(await existing.text());
+    if (record === null || record.expiresAt > now) return hiddenNotFound();
+    acquired = await putPublicationLock(
+      env.PRIVATE_BETA_BUCKET,
+      {
+        publicationID: body.publicationID,
+        expiresAt: now + publicationLockLifetimeSeconds * 1_000,
+      },
+      { etagMatches: existing.etag },
+    );
+  }
+  if (!acquired) return hiddenNotFound();
+  return jsonResponse({
+    acquired: true,
+    expiresAt: new Date(
+      now + publicationLockLifetimeSeconds * 1_000,
+    ).toISOString(),
+  }, 201);
+}
+
+async function releasePublicationLock(
+  request: Request,
+  env: PrivateBetaBindings,
+): Promise<Response> {
+  const body = await parsePublicationLockBody(request);
+  if (body === null) return hiddenNotFound();
+
+  const existing = await env.PRIVATE_BETA_BUCKET.get(publicationLockKey);
+  if (existing === null) return hiddenNotFound();
+  const record = parsePublicationLockRecord(await existing.text());
+  if (record?.publicationID !== body.publicationID) return hiddenNotFound();
+  const released = await putPublicationLock(
+    env.PRIVATE_BETA_BUCKET,
+    { publicationID: body.publicationID, expiresAt: 0 },
+    { etagMatches: existing.etag },
+  );
+  if (!released) return hiddenNotFound();
+  return jsonResponse({ released: true });
 }
 
 async function authenticateDevice(
@@ -251,6 +390,13 @@ export async function handlePrivateBetaAdmin(
       code,
       expiresAt: new Date(now + enrollmentCodeLifetimeSeconds * 1_000).toISOString(),
     }, 201);
+  }
+
+  if (pathname === "/api/private-beta/admin/publication-lock/acquire") {
+    return acquirePublicationLock(request, env, now);
+  }
+  if (pathname === "/api/private-beta/admin/publication-lock/release") {
+    return releasePublicationLock(request, env);
   }
 
   const revokeMatch = pathname.match(

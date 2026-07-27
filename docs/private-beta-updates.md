@@ -81,12 +81,19 @@ python3 tools/private-beta-release.py --beta-sequence 1 --dry-run
 
 The real command runs the existing Developer ID packaging path, including
 notarization and stapling, signs the DMG with Sparkle EdDSA, writes a checksum,
+atomically acquires a 30-minute R2 publication lease through the admin route,
 refuses to replace an existing versioned object, uploads all versioned objects,
-and updates `private-beta/appcast.xml` last:
+and updates `private-beta/appcast.xml` last. The admin token is read from
+`PRIVATE_BETA_ADMIN_TOKEN` or, when unset, from a hidden prompt; it is never put
+in a URL or command-line argument:
 
 ```sh
 python3 tools/private-beta-release.py --beta-sequence 1
 ```
+
+Only one publisher can hold the lease. A failed or interrupted publisher leaves
+the lease in place until its expiry, so another run cannot interleave artifact
+and appcast writes. Successful publication releases the lease immediately.
 
 The internal build number is numeric and monotonic. For a given semantic
 version, Private Beta sequences occupy slots 1–8999 and the stable build uses

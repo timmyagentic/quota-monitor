@@ -33,9 +33,49 @@ class PrivateBetaReleaseTests(unittest.TestCase):
 
     def test_upload_plan_keeps_appcast_last(self):
         source = (Path(__file__).parents[1] / "private-beta-release.py").read_text()
+        lock = source.index('        "acquire",')
         immutable_loop = source.index("for key, path, content_type in immutable:")
         appcast_upload = source.index('"private-beta/appcast.xml"', immutable_loop)
+        unlock = source.index('                "release",', appcast_upload)
+        self.assertLess(lock, immutable_loop)
         self.assertGreater(appcast_upload, immutable_loop)
+        self.assertGreater(unlock, appcast_upload)
+
+    def test_admin_lock_request_keeps_the_secret_out_of_the_url(self):
+        requests = []
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def read(self):
+                return b'{"acquired": true}'
+
+        original = MODULE.urllib.request.urlopen
+        MODULE.urllib.request.urlopen = lambda request, timeout: (
+            requests.append((request, timeout)) or Response()
+        )
+        try:
+            payload = MODULE.admin_post(
+                "https://example.test/api/private-beta",
+                "acquire",
+                "A" * 43,
+                "secret-" + "x" * 32,
+            )
+        finally:
+            MODULE.urllib.request.urlopen = original
+
+        self.assertTrue(payload["acquired"])
+        request, timeout = requests[0]
+        self.assertEqual(timeout, 30)
+        self.assertNotIn("secret", request.full_url)
+        self.assertEqual(
+            request.full_url,
+            "https://example.test/api/private-beta/admin/publication-lock/acquire",
+        )
 
 
 if __name__ == "__main__":

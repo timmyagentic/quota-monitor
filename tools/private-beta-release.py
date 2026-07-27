@@ -8,15 +8,19 @@ appcast is uploaded only after every referenced object succeeds.
 from __future__ import annotations
 
 import argparse
+import base64
+import getpass
 import hashlib
 import html
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import subprocess
 import sys
 import tempfile
+import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 SIGNATURE_PATTERN = re.compile(
@@ -137,6 +141,30 @@ def upload(bucket: str, key: str, path: Path, content_type: str) -> None:
         "--cache-control", "private, no-store",
     ))
 
+def admin_post(
+    base_url: str,
+    action: str,
+    publication_id: str,
+    admin_token: str,
+) -> dict[str, object]:
+    body = json.dumps({"publicationID": publication_id}).encode()
+    credentials = base64.b64encode(f"admin:{admin_token}".encode()).decode()
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/admin/publication-lock/{action}",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        payload = json.loads(response.read())
+    if not isinstance(payload, dict):
+        raise RuntimeError("publication lock returned an invalid response")
+    return payload
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -176,6 +204,7 @@ def main() -> int:
         ],
         "githubRelease": False,
         "publicAppcast": False,
+        "atomicPublicationLock": True,
     }
     if args.dry_run:
         print(json.dumps(plan, indent=2))
@@ -223,16 +252,43 @@ def main() -> int:
         (f"private-beta/notes/{display_version}.zh-Hans.html", notes["zh-Hans"],
          "text/html; charset=utf-8"),
     ]
-    for key, _, _ in immutable:
-        assert_remote_object_absent(args.bucket, key)
-    for key, path, content_type in immutable:
-        upload(args.bucket, key, path, content_type)
-    upload(
-        args.bucket,
-        "private-beta/appcast.xml",
-        appcast,
-        "application/xml; charset=utf-8",
+    admin_token = os.environ.get("PRIVATE_BETA_ADMIN_TOKEN")
+    if admin_token is None:
+        admin_token = getpass.getpass("Private Beta admin token: ")
+    if len(admin_token) < 32:
+        raise RuntimeError("PRIVATE_BETA_ADMIN_TOKEN must be at least 32 characters")
+    publication_id = secrets.token_urlsafe(32)
+    acquired = admin_post(
+        args.worker_base_url,
+        "acquire",
+        publication_id,
+        admin_token,
     )
+    if acquired.get("acquired") is not True:
+        raise RuntimeError("failed to acquire the private Beta publication lock")
+    published = False
+    try:
+        for key, _, _ in immutable:
+            assert_remote_object_absent(args.bucket, key)
+        for key, path, content_type in immutable:
+            upload(args.bucket, key, path, content_type)
+        upload(
+            args.bucket,
+            "private-beta/appcast.xml",
+            appcast,
+            "application/xml; charset=utf-8",
+        )
+        published = True
+    finally:
+        if published:
+            released = admin_post(
+                args.worker_base_url,
+                "release",
+                publication_id,
+                admin_token,
+            )
+            if released.get("released") is not True:
+                raise RuntimeError("failed to release the private Beta publication lock")
     print(json.dumps(plan, indent=2))
     return 0
 

@@ -87,6 +87,59 @@ function objectBody(
   } as unknown as R2ObjectBody;
 }
 
+function lockObject(value: string, etag: string): R2ObjectBody {
+  const response = new Response(value);
+  return {
+    key: "private-beta/publication-lock.json",
+    version: etag,
+    size: value.length,
+    etag,
+    httpEtag: `"${etag}"`,
+    checksums: {},
+    uploaded: new Date(0),
+    storageClass: "Standard",
+    body: response.body!,
+    bodyUsed: false,
+    text: () => response.text(),
+    writeHttpMetadata(): void {},
+  } as unknown as R2ObjectBody;
+}
+
+function publicationLockBucket(): R2Bucket {
+  let stored: { value: string; etag: string } | null = null;
+  let revision = 0;
+  return {
+    async get(): Promise<R2ObjectBody | null> {
+      return stored === null ? null : lockObject(stored.value, stored.etag);
+    },
+    async put(
+      _key: string,
+      value: ReadableStream | ArrayBuffer | ArrayBufferView | string | null | Blob,
+      options?: R2PutOptions,
+    ): Promise<R2Object | null> {
+      const condition = options?.onlyIf;
+      if (
+        condition instanceof Headers &&
+        condition.get("If-None-Match") === "*" &&
+        stored !== null
+      ) {
+        return null;
+      }
+      if (
+        condition !== undefined &&
+        !(condition instanceof Headers) &&
+        condition.etagMatches !== undefined &&
+        condition.etagMatches !== stored?.etag
+      ) {
+        return null;
+      }
+      revision += 1;
+      stored = { value: String(value), etag: `etag-${revision}` };
+      return lockObject(stored.value, stored.etag);
+    },
+  } as unknown as R2Bucket;
+}
+
 function environment(
   database = new Database(),
   bucketGet: R2ObjectBody | null = objectBody(new Uint8Array([1, 2, 3])),
@@ -118,6 +171,12 @@ function jsonRequest(path: string, body: unknown): Request {
     },
     body: serialized,
   });
+}
+
+function adminJSONRequest(path: string, body: unknown): Request {
+  const request = jsonRequest(path, body);
+  request.headers.set("Authorization", basic(adminSecret));
+  return request;
 }
 
 function basic(secret: string): string {
@@ -252,6 +311,55 @@ describe("private Beta administration", () => {
       path,
     );
     expect(response.status).toBe(404);
+  });
+
+  it("atomically serializes publication leases and requires the holder to release", async () => {
+    const env = environment();
+    env.PRIVATE_BETA_BUCKET = publicationLockBucket();
+    const acquirePath = "/api/private-beta/admin/publication-lock/acquire";
+    const releasePath = "/api/private-beta/admin/publication-lock/release";
+    const firstID = "A".repeat(43);
+    const secondID = "B".repeat(43);
+
+    const [first, competing] = await Promise.all([
+      handlePrivateBetaAdmin(
+        adminJSONRequest(acquirePath, { publicationID: firstID }),
+        env,
+        acquirePath,
+        10_000,
+      ),
+      handlePrivateBetaAdmin(
+        adminJSONRequest(acquirePath, { publicationID: secondID }),
+        env,
+        acquirePath,
+        10_000,
+      ),
+    ]);
+    expect([first.status, competing.status].sort()).toEqual([201, 404]);
+
+    const wrongRelease = await handlePrivateBetaAdmin(
+      adminJSONRequest(releasePath, { publicationID: secondID }),
+      env,
+      releasePath,
+      20_000,
+    );
+    expect(wrongRelease.status).toBe(404);
+
+    const release = await handlePrivateBetaAdmin(
+      adminJSONRequest(releasePath, { publicationID: firstID }),
+      env,
+      releasePath,
+      20_000,
+    );
+    expect(release.status).toBe(200);
+
+    const next = await handlePrivateBetaAdmin(
+      adminJSONRequest(acquirePath, { publicationID: secondID }),
+      env,
+      acquirePath,
+      20_000,
+    );
+    expect(next.status).toBe(201);
   });
 });
 
