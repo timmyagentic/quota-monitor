@@ -96,23 +96,34 @@ if [[ -z "${VERSION}" ]]; then
     echo "error: Resources/VERSION is empty" >&2
     exit 1
 fi
-# Both CFBundleShortVersionString AND CFBundleVersion get set to
-# VERSION (the dotted semver). Sparkle uses CFBundleVersion as the
-# "is this newer?" key and compares it against the appcast's
-# `sparkle:version` element — if the two don't match exactly, every
-# launch shows a spurious "update available" prompt to users who
-# already have the latest. We used to stuff the git short SHA into
-# CFBundleVersion for traceability, but Sparkle's version comparator
-# can't make sense of a hex string vs a dotted version and ends up
-# claiming the same release is newer than itself.
+QM_RELEASE_CHANNEL="${QM_RELEASE_CHANNEL:-stable}"
+if [[ "${QM_RELEASE_CHANNEL}" == "private-beta" ]]; then
+    if [[ -z "${QM_BETA_SEQUENCE:-}" ]]; then
+        echo "error: QM_BETA_SEQUENCE is required for private-beta builds" >&2
+        exit 1
+    fi
+    BUILD_NUMBER="$(python3 tools/build-number.py "${VERSION}" \
+        --channel private-beta --beta-sequence "${QM_BETA_SEQUENCE}")"
+    DISPLAY_VERSION="${VERSION}-beta.${QM_BETA_SEQUENCE}"
+elif [[ "${QM_RELEASE_CHANNEL}" == "stable" ]]; then
+    BUILD_NUMBER="$(python3 tools/build-number.py "${VERSION}" --channel stable)"
+    DISPLAY_VERSION="${VERSION}"
+else
+    echo "error: QM_RELEASE_CHANNEL must be stable or private-beta" >&2
+    exit 1
+fi
+# CFBundleShortVersionString remains the user-facing semantic version.
+# CFBundleVersion is an independent numeric Sparkle ordering key computed by
+# tools/build-number.py. A stable build reserves offset 9000, so it always
+# supersedes every Private Beta (1...8999) for the same semantic version.
 #
 # Git SHA traceability is preserved separately under the custom key
 # `BuildCommit` (see below) — readable via `defaults read` or
 # PlistBuddy without leaking into Sparkle's comparison path.
 BUILD_TAG="$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" \
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${DISPLAY_VERSION}" \
     "${CONTENTS}/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" \
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER}" \
     "${CONTENTS}/Info.plist"
 # Add or overwrite the BuildCommit key. `Add` errors out if the key
 # already exists (e.g. when re-running build.sh against the same
@@ -121,7 +132,7 @@ BUILD_TAG="$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)
     "${CONTENTS}/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :BuildCommit ${BUILD_TAG}" \
     "${CONTENTS}/Info.plist"
-echo "    version=${VERSION} commit=${BUILD_TAG}"
+echo "    version=${DISPLAY_VERSION} build=${BUILD_NUMBER} commit=${BUILD_TAG}"
 
 /usr/libexec/PlistBuddy -c "Add :QMDistributionChannel string ${QM_DISTRIBUTION}" \
     "${CONTENTS}/Info.plist" 2>/dev/null \

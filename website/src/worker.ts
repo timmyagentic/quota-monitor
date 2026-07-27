@@ -5,6 +5,11 @@ import {
   aggregateClosedDays,
   handleVersionDistribution,
 } from "./version-distribution";
+import {
+  handlePrivateBetaAdmin,
+  handlePrivateBetaEnrollment,
+  handlePrivateBetaResource,
+} from "./private-beta";
 
 type ReleaseLoader = () => Promise<ReleaseInfo>;
 
@@ -203,7 +208,7 @@ export async function handleDownload(
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, context?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (
@@ -237,6 +242,15 @@ export default {
         env.ADMIN_VERSION_STATS_RATE_LIMITER,
       );
       return withSecurityHeaders(response, dashboardSecurityHeaders);
+    }
+    if (url.pathname === "/api/private-beta/enroll") {
+      return handlePrivateBetaEnrollment(request, env);
+    }
+    if (url.pathname.startsWith("/api/private-beta/admin/")) {
+      return handlePrivateBetaAdmin(request, env, url.pathname);
+    }
+    if (url.pathname.startsWith("/api/private-beta/")) {
+      return handlePrivateBetaResource(request, env, url.pathname, context);
     }
     if (url.pathname === "/api/release") {
       if (request.method !== "GET") {

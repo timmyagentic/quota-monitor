@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Authorized Macs can now opt into private Beta updates directly inside Quota Monitor without exposing Beta downloads on GitHub.
 - Important product updates can now introduce themselves in a focused, replayable What's New window with images and short videos.
 - Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
 - Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
@@ -54,6 +55,7 @@ window copy.
 
 ### Added
 
+- **Private Beta update channel.** Authorized Macs can enroll with a one-time code, switch between Stable and Private Beta in Advanced settings, and receive authenticated Sparkle updates while Beta files remain outside public GitHub releases and feeds.
 - **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and permanent reopen actions in the menu popover and Settings; fresh installs continue directly through onboarding without a second tour.
 - **Dashboard cache hit-rate trends.** The headline now pairs fixed 7- and 30-day weighted summaries with a cache hit-rate line integrated into the existing daily Token bars, and provider or date filters update both views together.
 - **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.

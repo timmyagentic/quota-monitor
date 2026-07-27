@@ -153,7 +153,18 @@ describe("public product content", () => {
         binding: "VERSION_STATS_DB",
         database_name: "quota-monitor-version-stats",
         database_id: "d4001c95-442b-4ad0-80ee-0c06747637d9",
-        migrations_dir: "migrations",
+        migrations_dir: "migrations/version-stats",
+      },
+      {
+        binding: "PRIVATE_BETA_DB",
+        database_name: "quota-monitor-private-beta",
+        migrations_dir: "migrations/private-beta",
+      },
+    ]);
+    expect(config.r2_buckets).toEqual([
+      {
+        binding: "PRIVATE_BETA_BUCKET",
+        bucket_name: "quota-monitor-private-beta",
       },
     ]);
     expect(config.ratelimits).toEqual([
@@ -172,6 +183,21 @@ describe("public product content", () => {
         namespace_id: "2026071603",
         simple: { limit: 30, period: 60 },
       },
+      {
+        name: "PRIVATE_BETA_ENROLL_RATE_LIMITER",
+        namespace_id: "2026072801",
+        simple: { limit: 10, period: 60 },
+      },
+      {
+        name: "PRIVATE_BETA_RESOURCE_RATE_LIMITER",
+        namespace_id: "2026072802",
+        simple: { limit: 240, period: 60 },
+      },
+      {
+        name: "PRIVATE_BETA_ADMIN_RATE_LIMITER",
+        namespace_id: "2026072803",
+        simple: { limit: 30, period: 60 },
+      },
     ]);
     expect(config).not.toHaveProperty("durable_objects");
     expect(config.triggers).toEqual({ crons: ["15 * * * *"] });
@@ -180,7 +206,7 @@ describe("public product content", () => {
       custom_domain: true,
     });
     expect(config.secrets).toEqual({
-      required: ["VERSION_STATS_ADMIN_TOKEN"],
+      required: ["VERSION_STATS_ADMIN_TOKEN", "PRIVATE_BETA_ADMIN_TOKEN"],
     });
     expect(config.logpush).toBe(false);
     expect(config.tail_consumers).toEqual([]);

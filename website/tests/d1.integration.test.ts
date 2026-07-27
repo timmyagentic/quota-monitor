@@ -127,3 +127,35 @@ describe("real D1 closed-day aggregation", () => {
     ]);
   });
 });
+
+describe("real private Beta D1 enrollment", () => {
+  it("atomically consumes a valid code once and preserves only digests", async () => {
+    const database = env.PRIVATE_BETA_DB;
+    const codeDigest = "a".repeat(64);
+    await database.prepare(
+      `INSERT INTO private_beta_enrollment_codes
+         (code_digest, created_at, expires_at, used_at)
+       VALUES (?1, 100, 300, NULL)`,
+    ).bind(codeDigest).run();
+
+    const first = await database.prepare(
+      `UPDATE private_beta_enrollment_codes
+          SET used_at = ?1
+        WHERE code_digest = ?2
+          AND used_at IS NULL
+          AND expires_at >= ?1
+        RETURNING code_digest`,
+    ).bind(200, codeDigest).first<{ code_digest: string }>();
+    const second = await database.prepare(
+      `UPDATE private_beta_enrollment_codes
+          SET used_at = ?1
+        WHERE code_digest = ?2
+          AND used_at IS NULL
+          AND expires_at >= ?1
+        RETURNING code_digest`,
+    ).bind(201, codeDigest).first<{ code_digest: string }>();
+
+    expect(first).toEqual({ code_digest: codeDigest });
+    expect(second).toBeNull();
+  });
+});

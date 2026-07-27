@@ -23,6 +23,9 @@ from dataclasses import asdict, dataclass
 SPARKLE_VERSION_TAG = (
     "{http://www.andymatuschak.org/xml-namespaces/sparkle}version"
 )
+SPARKLE_SHORT_VERSION_TAG = (
+    "{http://www.andymatuschak.org/xml-namespaces/sparkle}shortVersionString"
+)
 SPARKLE_SIGNATURE_ATTRIBUTE = (
     "{http://www.andymatuschak.org/xml-namespaces/sparkle}edSignature"
 )
@@ -221,7 +224,18 @@ def parse_top_appcast_item(payload: bytes) -> AppcastItem:
     version_element = first_item.find("./" + SPARKLE_VERSION_TAG)
     if version_element is None:
         raise FeedHealthError("Appcast first direct item has no Sparkle version")
-    version = normalize_version(version_element.text or "", "Appcast first item version")
+    internal_version = normalize_version(
+        version_element.text or "", "Appcast first item version"
+    )
+    short_version_element = first_item.find("./" + SPARKLE_SHORT_VERSION_TAG)
+    version = (
+        normalize_version(
+            short_version_element.text or "",
+            "Appcast first item short version",
+        )
+        if short_version_element is not None
+        else internal_version
+    )
 
     enclosure = first_item.find("./enclosure")
     if enclosure is None:
