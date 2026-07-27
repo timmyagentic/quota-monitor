@@ -170,25 +170,47 @@ export async function handlePrivateBetaEnrollment(
 
     const body = await parseEnrollmentBody(request);
     if (body === null) return hiddenNotFound();
-    const codeDigest = await sha256Hex(body.code);
-    const claimed = await env.PRIVATE_BETA_DB.prepare(
-      `UPDATE private_beta_enrollment_codes
-          SET used_at = ?
-        WHERE code_digest = ?
-          AND used_at IS NULL
-          AND expires_at >= ?
-        RETURNING code_digest`,
-    ).bind(now, codeDigest, now).first<{ code_digest: string }>();
-    if (claimed === null) return hiddenNotFound();
-
     const token = randomToken();
     const tokenDigest = await sha256Hex(decodeBase64URL(token));
     const deviceID = crypto.randomUUID();
-    await env.PRIVATE_BETA_DB.prepare(
-      `INSERT INTO private_beta_devices(
-          device_id, token_digest, device_label, enrolled_at, last_seen_at, revoked_at
-       ) VALUES (?, ?, ?, ?, ?, NULL)`,
-    ).bind(deviceID, tokenDigest, body.deviceLabel, now, now).run();
+    const codeDigest = await sha256Hex(body.code);
+    const enrollmentResults = await env.PRIVATE_BETA_DB.batch([
+      env.PRIVATE_BETA_DB.prepare(
+        `INSERT INTO private_beta_devices(
+            device_id, token_digest, device_label, enrolled_at, last_seen_at, revoked_at
+         )
+         SELECT ?, ?, ?, ?, ?, NULL
+           FROM private_beta_enrollment_codes
+          WHERE code_digest = ?
+            AND used_at IS NULL
+            AND expires_at >= ?`,
+      ).bind(
+        deviceID,
+        tokenDigest,
+        body.deviceLabel,
+        now,
+        now,
+        codeDigest,
+        now,
+      ),
+      env.PRIVATE_BETA_DB.prepare(
+        `UPDATE private_beta_enrollment_codes
+            SET used_at = ?
+          WHERE code_digest = ?
+            AND used_at IS NULL
+            AND expires_at >= ?`,
+      ).bind(now, codeDigest, now),
+    ]);
+    const deviceInsert = enrollmentResults[0];
+    const codeClaim = enrollmentResults[1];
+    if (
+      deviceInsert === undefined ||
+      codeClaim === undefined ||
+      (deviceInsert.meta.changes ?? 0) !== 1 ||
+      (codeClaim.meta.changes ?? 0) !== 1
+    ) {
+      return hiddenNotFound();
+    }
 
     return jsonResponse({ deviceID, token }, 201);
   } catch {

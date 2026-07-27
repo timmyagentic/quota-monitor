@@ -49,6 +49,12 @@ class Database {
     this.statements.push(statement);
     return statement as unknown as D1PreparedStatement;
   }
+
+  async batch<T = unknown>(
+    statements: D1PreparedStatement[],
+  ): Promise<D1Result<T>[]> {
+    return Promise.all(statements.map((statement) => statement.run<T>()));
+  }
 }
 
 function limiter(success = true): RateLimit {
@@ -137,7 +143,7 @@ beforeEach(() => {
 describe("private Beta enrollment", () => {
   it("consumes a one-time code and stores only the device token digest", async () => {
     const database = new Database();
-    database.firstResults = [{ code_digest: "claimed" }];
+    database.changes = [1, 1];
     const response = await handlePrivateBetaEnrollment(
       jsonRequest("/api/private-beta/enroll", {
         code: "ABCD-EFGH-JKLM-NPQR",
@@ -150,10 +156,25 @@ describe("private Beta enrollment", () => {
 
     expect(response.status).toBe(201);
     expect(payload.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
-    expect(database.statements[0]?.query).toContain("UPDATE private_beta_enrollment_codes");
-    expect(database.statements[1]?.query).toContain("INSERT INTO private_beta_devices");
-    expect(database.statements[1]?.bindings).not.toContain(payload.token);
-    expect(database.statements[1]?.bindings[1]).toMatch(/^[0-9a-f]{64}$/);
+    expect(database.statements[0]?.query).toContain("INSERT INTO private_beta_devices");
+    expect(database.statements[1]?.query).toContain("UPDATE private_beta_enrollment_codes");
+    expect(database.statements[0]?.bindings).not.toContain(payload.token);
+    expect(database.statements[0]?.bindings[1]).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("does not create a device when a code cannot be claimed", async () => {
+    const database = new Database();
+    database.changes = [0, 0];
+    const response = await handlePrivateBetaEnrollment(
+      jsonRequest("/api/private-beta/enroll", {
+        code: "ABCD-EFGH-JKLM-NPQR",
+        deviceLabel: "Timmy Mac",
+      }),
+      environment(database),
+      1_000,
+    );
+    expect(response.status).toBe(404);
+    expect(database.statements).toHaveLength(2);
   });
 
   it.each([

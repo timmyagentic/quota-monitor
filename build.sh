@@ -97,6 +97,11 @@ if [[ -z "${VERSION}" ]]; then
     exit 1
 fi
 QM_RELEASE_CHANNEL="${QM_RELEASE_CHANNEL:-stable}"
+if [[ "${QM_DISTRIBUTION}" == "app-store" \
+      && "${QM_RELEASE_CHANNEL}" != "stable" ]]; then
+    echo "error: App Store builds support only the stable release channel" >&2
+    exit 1
+fi
 if [[ "${QM_RELEASE_CHANNEL}" == "private-beta" ]]; then
     if [[ -z "${QM_BETA_SEQUENCE:-}" ]]; then
         echo "error: QM_BETA_SEQUENCE is required for private-beta builds" >&2
@@ -112,10 +117,17 @@ else
     echo "error: QM_RELEASE_CHANNEL must be stable or private-beta" >&2
     exit 1
 fi
+if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
+    # Apple's first CFBundleVersion component is limited to four digits.
+    # The App Store owns update ordering, so retain the existing conforming
+    # dotted semantic build number instead of Sparkle's single integer.
+    BUILD_NUMBER="${VERSION}"
+fi
 # CFBundleShortVersionString remains the user-facing semantic version.
 # CFBundleVersion is an independent numeric Sparkle ordering key computed by
-# tools/build-number.py. A stable build reserves offset 9000, so it always
-# supersedes every Private Beta (1...8999) for the same semantic version.
+# tools/build-number.py for Developer ID builds. A stable build reserves offset
+# 9000, so it always supersedes every Private Beta (1...8999) for the same
+# semantic version. App Store builds retain a conforming dotted value.
 #
 # Git SHA traceability is preserved separately under the custom key
 # `BuildCommit` (see below) — readable via `defaults read` or

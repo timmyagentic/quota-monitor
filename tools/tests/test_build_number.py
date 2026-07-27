@@ -13,6 +13,17 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BuildNumberTests(unittest.TestCase):
+    def test_app_store_builds_retain_a_conforming_dotted_bundle_version(self):
+        build_script = (
+            Path(__file__).resolve().parents[2] / "build.sh"
+        ).read_text()
+        self.assertIn('if [[ "${QM_DISTRIBUTION}" == "app-store" ]]', build_script)
+        self.assertIn('BUILD_NUMBER="${VERSION}"', build_script)
+        self.assertIn(
+            "App Store builds support only the stable release channel",
+            build_script,
+        )
+
     def test_stable_supersedes_every_beta_for_the_same_version(self):
         stable = MODULE.build_number("0.2.44", "stable")
         self.assertGreater(
