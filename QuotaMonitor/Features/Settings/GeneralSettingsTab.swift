@@ -175,6 +175,12 @@ struct GeneralSettingsTab: View {
                         WindowManager.shared.show("menubar-help")
                     }
                 }
+
+                LabeledContent(L10n.whatsNewSettingsRow) {
+                    Button(L10n.whatsNewOpen) {
+                        WindowManager.shared.show("whats-new")
+                    }
+                }
             }
 
             // Tracked tools — let users hide a CLI they don't have

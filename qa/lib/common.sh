@@ -501,6 +501,7 @@ qm_write_computer_qa_brief() {
         printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
         printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'
         printf '%s\n' '- Menu-bar help: verify the help window is visible, readable, and can be closed without quitting the app.'
+        printf '%s\n' "- What's New: verify image and video pages, Back / Next / Done, page count, silent playback, window resizing, and the Settings/menu-popover reopen entries. With Reduce Motion enabled, verify the poster appears instead of autoplay."
         printf '%s\n\n' '- Visual pass: note any clipped text, overlapping controls, blank charts, missing icons, or disabled controls that should be usable.'
         printf '## Report Format\n\n'
         printf '%s\n' '- Commands run'
@@ -552,6 +553,7 @@ qm_write_real_data_computer_qa_brief() {
         printf '%s\n' '- Sessions: search real session titles/models, switch sort modes, open details, and inspect token/cost/event rows.'
         printf '%s\n' '- History: select populated days and inspect rollups plus per-session details.'
         printf '%s\n' '- Settings: inspect General and Advanced controls, but do not run uninstall, export, reveal, updater, or pricing sync actions.'
+        printf '%s\n' "- What's New: manually reopen the showcase, verify image/video pages and silent playback, then close it and confirm the real-data preferences remain unchanged."
         printf '%s\n' '- Visual pass: note clipped text, overlapping controls, blank charts, missing icons, and mixed-language formatting.'
     } >"$brief_path"
 }
@@ -868,6 +870,12 @@ qm_assert_artifact_contract() {
         echo "error: settings window was not captured in QA state" >&2
         return 1
     }
+    if qm_steps_include "$qa_steps" "open-whats-new"; then
+        grep -Eq '"identifier"[[:space:]]*:[[:space:]]*"whats-new"' "$state" || {
+            echo "error: What's New window was not captured in QA state" >&2
+            return 1
+        }
+    fi
 
     qm_assert_plutil_equals "$state" "settings.language" "$expected_language"
     qm_assert_plutil_equals "$state" "settings.menuBarLabelStyle" "emphasis"

@@ -663,6 +663,8 @@ test_computer_qa_brief_includes_exact_app_target() {
         || fail "Computer Use brief must use the exact QA app path"
     grep -q 'cleanup-computer-use.sh' "$brief" \
         || fail "Computer Use cleanup command missing from target brief"
+    grep -q "What's New: verify image and video pages" "$brief" \
+        || fail "Computer Use brief missing What's New walkthrough"
 }
 
 test_real_data_computer_qa_brief_includes_exact_app_target() {
@@ -777,7 +779,7 @@ test_assert_artifact_contract_accepts_visual_fixture_steps() {
     "codexTokens": 290
   },
   "pid": 123,
-  "qaSteps": ["open-settings", "show-popover", "snapshot"],
+  "qaSteps": ["open-settings", "open-whats-new", "show-popover", "snapshot"],
   "settings": {
     "developerModeEnabled": true,
     "enabledProviders": ["claude", "codex"],
@@ -791,6 +793,7 @@ test_assert_artifact_contract_accepts_visual_fixture_steps() {
   "statusItemVisibility": "visible",
   "windows": [
     {"identifier": "dashboard", "isKeyWindow": false, "isVisible": true, "title": "Quota Monitor"},
+    {"identifier": "whats-new", "isKeyWindow": false, "isVisible": true, "title": "近期新功能"},
     {"identifier": "settings", "isKeyWindow": true, "isVisible": true, "title": "设置"}
   ]
 }
@@ -820,7 +823,21 @@ TEXT
         "/tmp/qm/.codex" \
         "/tmp/qm/Library/Application Support/QuotaMonitor/QAArtifacts"
 
-    qm_assert_artifact_contract "$dir" "zh-Hans" "open-settings,show-popover,snapshot"
+    qm_assert_artifact_contract \
+        "$dir" \
+        "zh-Hans" \
+        "open-settings,open-whats-new,show-popover,snapshot"
+
+    grep -v '"identifier": "whats-new"' "$dir/app-state.json" \
+        >"$dir/app-state-without-whats-new.json"
+    mv "$dir/app-state-without-whats-new.json" "$dir/app-state.json"
+    if qm_assert_artifact_contract \
+        "$dir" \
+        "zh-Hans" \
+        "open-settings,open-whats-new,show-popover,snapshot" \
+        >/dev/null 2>&1; then
+        fail "artifact contract accepted a missing requested What's New window"
+    fi
 }
 
 test_assert_artifact_contract_allows_incomplete_ax_with_warning() {

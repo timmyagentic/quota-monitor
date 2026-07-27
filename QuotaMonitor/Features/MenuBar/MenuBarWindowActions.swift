@@ -34,4 +34,9 @@ struct MenuBarWindowActions {
     func openOnboarding() {
         requestWindow("onboarding")
     }
+
+    @MainActor
+    func openWhatsNew() {
+        requestWindow("whats-new")
+    }
 }
