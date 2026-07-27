@@ -15,6 +15,7 @@ vi.mock("../src/release", async (importOriginal) => ({
 
 const RELEASE: ReleaseInfo = {
   version: "0.2.40",
+  buildVersion: "20409000",
   filename: "QuotaMonitor-0.2.40.dmg",
   size: 6_992_960,
   upstreamUrl:
