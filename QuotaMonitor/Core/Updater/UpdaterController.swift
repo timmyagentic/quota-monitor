@@ -277,9 +277,9 @@ final class UpdaterController {
     }
 
     /// Primary action for the persistent update badge. If the Sparkle user
-    /// driver still has an active install reply, use it immediately; otherwise
-    /// ask Sparkle to re-check, which re-opens the update window for the known
-    /// available version.
+    /// driver still has an active discovery reply, begin downloading
+    /// immediately. After an app relaunch, silently rediscover the persisted
+    /// version first, then auto-accept it without reopening release notes.
     func installAvailableUpdate() {
         guard updateAvailability.isVisible else {
             checkNow()
@@ -288,7 +288,8 @@ final class UpdaterController {
         if userDriver?.installAvailableUpdateIfPossible() == true {
             return
         }
-        checkNow()
+        userDriver?.prepareDirectInstallRediscovery()
+        updater?.checkForUpdates()
     }
 
     /// Persist the user's automatic-check preference. Writes through

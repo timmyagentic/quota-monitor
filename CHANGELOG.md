@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
 - Codex can now show an opt-in weekly-quota capsule attached to its active window, with hover details for remaining usage and reset timing, without modifying the Codex app.
 - Private Beta updates can now be published reliably through the production service.
 - Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
@@ -73,6 +74,7 @@ window copy.
 
 ### Changed
 
+- **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
 - **Quota at the point of work.** A new General setting attaches a non-activating weekly-quota capsule to the frontmost Codex window; it reuses Quota Monitor's existing live snapshot, follows the window, hides with Codex, expands on hover, and leaves the signed Codex application untouched.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.

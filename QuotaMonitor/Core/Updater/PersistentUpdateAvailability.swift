@@ -68,6 +68,14 @@ struct PendingUpdateSnapshot: Codable, Equatable, Sendable {
 @MainActor
 @Observable
 final class PersistentUpdateAvailability {
+    enum Activity: Equatable {
+        case idle
+        case checking
+        case downloading
+        case extracting
+        case installing
+    }
+
     enum PrimaryAction: Equatable {
         case install
         case installAndRelaunch
@@ -85,6 +93,7 @@ final class PersistentUpdateAvailability {
 
     private(set) var snapshot: PendingUpdateSnapshot?
     private(set) var primaryAction: PrimaryAction?
+    private(set) var activity: Activity = .idle
 
     var version: String? {
         snapshot?.displayVersion
@@ -92,6 +101,10 @@ final class PersistentUpdateAvailability {
 
     var isVisible: Bool {
         snapshot != nil || primaryAction != nil
+    }
+
+    var isBusy: Bool {
+        activity != .idle
     }
 
     /// Existing call sites remain deliberately ephemeral until the updater
@@ -214,6 +227,27 @@ final class PersistentUpdateAvailability {
             persistSnapshot()
         }
         primaryAction = .installAndRelaunch
+        activity = .idle
+    }
+
+    func markCheckingForInstall() {
+        activity = .checking
+    }
+
+    func markDownloading() {
+        activity = .downloading
+    }
+
+    func markExtracting() {
+        activity = .extracting
+    }
+
+    func markInstalling() {
+        activity = .installing
+    }
+
+    func clearActivity() {
+        activity = .idle
     }
 
     func markDismissed() {
@@ -234,6 +268,7 @@ final class PersistentUpdateAvailability {
     func clear() {
         snapshot = nil
         primaryAction = nil
+        activity = .idle
         guard persistenceEnabled else { return }
         defaults.removeObject(forKey: Self.storageKey)
     }
