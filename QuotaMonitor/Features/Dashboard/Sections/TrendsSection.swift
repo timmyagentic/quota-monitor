@@ -551,22 +551,13 @@ struct CacheTrendPoint: Identifiable, Equatable {
 }
 
 enum CacheTrendSeriesBuilder {
-    /// Omits days without an eligible-input denominator and assigns a new
-    /// series key after every omission. Swift Charts therefore renders a true
-    /// gap instead of connecting across missing data or implying a 0% rate.
+    /// Omits days without an eligible-input denominator while keeping the
+    /// observed points in one series. Swift Charts connects adjacent observed
+    /// values without inventing a value (especially 0%) for an unavailable day.
     static func points(from daily: [DailyPoint]) -> [CacheTrendPoint] {
-        var segment = 0
-        var previousDayHadRate = false
         return daily.compactMap { day in
-            guard let rate = day.cacheUsage.hitRate else {
-                previousDayHadRate = false
-                return nil
-            }
-            if !previousDayHadRate {
-                segment += 1
-            }
-            previousDayHadRate = true
-            return CacheTrendPoint(date: day.date, rate: rate, segment: segment)
+            guard let rate = day.cacheUsage.hitRate else { return nil }
+            return CacheTrendPoint(date: day.date, rate: rate, segment: 1)
         }
     }
 }
