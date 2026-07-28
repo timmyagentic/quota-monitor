@@ -44,6 +44,43 @@ struct StatusItemControllerTests {
         #expect(!source.contains("updateAvailability.version"))
     }
 
+    @Test("Unchanged label inputs skip native status-item reassignment")
+    func unchangedLabelInputsShortCircuitRendering() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
+        let render = try Self.sourceSlice(
+            source,
+            from: "private func renderLabel()",
+            to: "private static let gaugeImage")
+
+        let equalityGuard = try #require(render.range(of: "guard rows != lastRenderedRows"))
+        let titleBuild = try #require(render.range(of: "MenuBarTitleBuilder.make"))
+        let titleAssignment = try #require(render.range(of: "button.attributedTitle = baseTitle"))
+        let cacheUpdate = try #require(render.range(of: "lastRenderedRows = rows"))
+
+        #expect(equalityGuard.lowerBound < titleBuild.lowerBound)
+        #expect(titleBuild.lowerBound < titleAssignment.lowerBound)
+        #expect(titleAssignment.lowerBound < cacheUpdate.lowerBound)
+        #expect(render.contains("style != lastRenderedStyle"))
+        #expect(render.contains("localizationTick != lastRenderedLocalizationTick"))
+    }
+
+    @Test("Dashboard quota is observed only while live Codex limits are unavailable")
+    func dashboardQuotaIsFallbackOnly() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")
+        let render = try Self.sourceSlice(
+            source,
+            from: "private func renderLabel()",
+            to: "private static let gaugeImage")
+
+        #expect(render.contains("let rateLimits = env.latestRateLimits"))
+        #expect(render.contains(
+            "let codexQuota = rateLimits == nil ? env.dashboardSnapshot?.codexQuota : nil"))
+        #expect(render.contains("rateLimits: rateLimits"))
+        #expect(render.contains("codexQuota: codexQuota"))
+        #expect(!render.contains("rateLimits: env.latestRateLimits"))
+        #expect(!render.contains("codexQuota: env.dashboardSnapshot?.codexQuota"))
+    }
+
     @Test("Teardown avoids experimental isolated deinit syntax")
     func teardownIsSwift61Compatible() throws {
         let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")

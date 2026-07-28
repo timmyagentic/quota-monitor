@@ -1,6 +1,8 @@
 import Foundation
 
 struct HistoryPaginationState {
+    static let initialPageSize = 21
+    static let incrementalPageSize = 7
     static let maximumViewportFillPageCount = 3
 
     enum Failure: Equatable {
@@ -12,6 +14,7 @@ struct HistoryPaginationState {
         let id: UUID
         let trigger: HistoryPageLoadTrigger
         let cursor: Date?
+        let pageSize: Int
     }
 
     private(set) var days: [DaySummary] = []
@@ -37,7 +40,11 @@ struct HistoryPaginationState {
 
     @discardableResult
     mutating func reset(requestID: UUID = UUID()) -> Request {
-        let request = Request(id: requestID, trigger: .initial, cursor: nil)
+        let request = Request(
+            id: requestID,
+            trigger: .initial,
+            cursor: nil,
+            pageSize: Self.initialPageSize)
         days = []
         nextCursor = nil
         hasMore = false
@@ -64,7 +71,8 @@ struct HistoryPaginationState {
         let request = Request(
             id: requestID,
             trigger: trigger,
-            cursor: nextCursor)
+            cursor: nextCursor,
+            pageSize: Self.incrementalPageSize)
         inFlightRequest = request
         return request
     }

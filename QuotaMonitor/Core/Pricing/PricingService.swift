@@ -576,14 +576,13 @@ enum PricingService {
     ) throws {
         try backfillValues(
             in: db,
-            scope: nil,
+            scope: .all,
             codexFastModeBilling: codexFastModeBilling)
     }
 
-    /// Recalculate values for one imported session without walking every
-    /// historical event. This intentionally shares the exact SQL expression
-    /// used by `backfillAllValues` so incremental imports cannot drift from a
-    /// later catalog-wide reprice.
+    /// Recalculate values for one rebuilt session without walking every other
+    /// session. This intentionally shares the exact SQL expression used by
+    /// row-targeted incremental imports and `backfillAllValues`.
     static func backfillValues(
         in db: Database,
         sessionId: String,
@@ -592,13 +591,39 @@ enum PricingService {
     ) throws {
         try backfillValues(
             in: db,
-            scope: (sessionId: sessionId, provider: provider),
+            scope: .session(sessionId: sessionId, provider: provider),
             codexFastModeBilling: codexFastModeBilling)
+    }
+
+    /// Recalculate only the rows inserted or updated by an incremental import.
+    /// Batching keeps the statement below SQLite's bound-parameter limit while
+    /// preserving the same pricing expression used by session and full scopes.
+    static func backfillValues(
+        in db: Database,
+        eventIds: [Int64],
+        codexFastModeBilling: Bool = false
+    ) throws {
+        var seen: Set<Int64> = []
+        let uniqueIds = eventIds.filter { seen.insert($0).inserted }
+        let batchSize = 500
+        for start in stride(from: 0, to: uniqueIds.count, by: batchSize) {
+            let end = min(start + batchSize, uniqueIds.count)
+            try backfillValues(
+                in: db,
+                scope: .eventIds(Array(uniqueIds[start..<end])),
+                codexFastModeBilling: codexFastModeBilling)
+        }
+    }
+
+    private enum BackfillScope {
+        case all
+        case session(sessionId: String, provider: String)
+        case eventIds([Int64])
     }
 
     private static func backfillValues(
         in db: Database,
-        scope: (sessionId: String, provider: String)?,
+        scope: BackfillScope,
         codexFastModeBilling: Bool
     ) throws {
         // Keep the argument for source compatibility with callers and older
@@ -609,23 +634,41 @@ enum PricingService {
             multiplier: CodexLongContextPricing.inputMultiplier)
         let outputMultiplierExpr = longContextMultiplierSQL(
             multiplier: CodexLongContextPricing.outputMultiplier)
-        let scopeClause = scope == nil
-            ? ""
-            : """
+        let scopeClause: String
+        let updateTarget: String
+        let arguments: StatementArguments
+        switch scope {
+        case .all:
+            scopeClause = ""
+            updateTarget = "UPDATE usage_events"
+            arguments = StatementArguments()
+        case .session(let sessionId, let provider):
+            scopeClause = """
               AND usage_events.session_id = ?
               AND usage_events.provider = ?
               """
+            updateTarget = """
+              UPDATE usage_events
+              INDEXED BY index_usage_events_on_session_id_timestamp
+              """
+            arguments = StatementArguments([sessionId, provider])
+        case .eventIds(let eventIds):
+            guard !eventIds.isEmpty else { return }
+            let placeholders = Array(
+                repeating: "?",
+                count: eventIds.count
+            ).joined(separator: ",")
+            scopeClause = "AND usage_events.id IN (\(placeholders))"
+            updateTarget = "UPDATE usage_events"
+            let values: [(any DatabaseValueConvertible)?] = eventIds.map { $0 }
+            arguments = StatementArguments(values)
+        }
         // SQLite can otherwise prefer the provider/history covering index for
         // this correlated UPDATE and rescan most historical rows once per
         // imported session. The existing session/timestamp index makes scoped
         // pricing proportional to that session's rows. Catalog-wide repricing
-        // deliberately keeps the planner's normal choice.
-        let updateTarget = scope == nil
-            ? "UPDATE usage_events"
-            : """
-              UPDATE usage_events
-              INDEXED BY index_usage_events_on_session_id_timestamp
-              """
+        // deliberately keeps the planner's normal choice. Row-id pricing uses
+        // the table's integer primary key directly.
         let sql = """
             \(updateTarget)
             SET value_usd = (
@@ -674,13 +717,7 @@ enum PricingService {
             )
             \(scopeClause)
             """
-        if let scope {
-            try db.execute(
-                sql: sql,
-                arguments: [scope.sessionId, scope.provider])
-        } else {
-            try db.execute(sql: sql)
-        }
+        try db.execute(sql: sql, arguments: arguments)
     }
 
     /// SQL expression that resolves to the catalog `model_id` we should

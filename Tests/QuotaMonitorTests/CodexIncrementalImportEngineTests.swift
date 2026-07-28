@@ -161,14 +161,25 @@ struct CodexIncrementalImportEngineTests {
         #expect(firstReport.importedEvents == 1)
         #expect(firstReport.errors.isEmpty)
 
-        let before = try await usageRows(in: harness.database)
+        let initiallyImported = try await usageRows(in: harness.database)
         let beforeState = try await importState(
             at: harness.rollout.path,
             in: harness.database)
-        #expect(before.count == 1)
-        #expect(before[0].valueUsd > 0)
+        #expect(initiallyImported.count == 1)
+        #expect(initiallyImported[0].valueUsd > 0)
         #expect(beforeState.byteOffset > 0)
         #expect(beforeState.parserCheckpoint != nil)
+
+        // A sentinel makes a session-wide pricing UPDATE observable even when
+        // recalculating an old row would otherwise produce the same value.
+        let oldRowId = try #require(initiallyImported.first?.id)
+        try await harness.database.pool.write { db in
+            try db.execute(
+                sql: "UPDATE usage_events SET value_usd = ? WHERE id = ?",
+                arguments: [42.125, oldRowId])
+        }
+        let before = try await usageRows(in: harness.database)
+        #expect(before[0].valueUsd == 42.125)
 
         let tail = tokenLine(
             timestamp: "2026-07-19T00:00:04.000Z",
@@ -195,7 +206,8 @@ struct CodexIncrementalImportEngineTests {
 
         // gpt-5.4 standard pricing: uncached input $2.50/M,
         // cached input $0.25/M, and output $15/M.
-        #expect(abs(after[0].valueUsd - 0.000355) < 1e-15)
+        #expect(after[0].valueUsd == 42.125,
+                "incremental pricing must not revisit an existing event")
         #expect(abs(after[1].valueUsd - 0.00025875) < 1e-15)
     }
 

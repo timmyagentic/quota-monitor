@@ -56,18 +56,13 @@ enum CodexWindowSelector {
     static let minimumSize = CGSize(width: 520, height: 400)
 
     static func bestWindow(in windows: [CodexWindowInfo]) -> CodexWindowInfo? {
-        windows
-            .filter {
-                $0.layer == 0
-                    && $0.alpha > 0.01
-                    && $0.isOnscreen
-                    && $0.bounds.width >= minimumSize.width
-                    && $0.bounds.height >= minimumSize.height
-            }
-            .max { lhs, rhs in
-                lhs.bounds.width * lhs.bounds.height
-                    < rhs.bounds.width * rhs.bounds.height
-            }
+        windows.first {
+            $0.layer == 0
+                && $0.alpha > 0.01
+                && $0.isOnscreen
+                && $0.bounds.width >= minimumSize.width
+                && $0.bounds.height >= minimumSize.height
+        }
     }
 }
 

@@ -62,6 +62,11 @@ actor ImportEngine {
         let importedSessions: Int
         let importedEvents: Int
         let importedRateLimitSamples: Int
+        /// Existing Codex sessions whose title/project metadata changed even
+        /// though their rollout file itself did not. These are part of the UI
+        /// read model and therefore need the same post-scan refresh as a newly
+        /// imported session.
+        let updatedSessionMetadata: Int
         let incrementalFiles: Int
         let sourceBytesRead: Int64
         let errors: [String]
@@ -76,6 +81,7 @@ actor ImportEngine {
             importedSessions: Int,
             importedEvents: Int,
             importedRateLimitSamples: Int,
+            updatedSessionMetadata: Int = 0,
             incrementalFiles: Int = 0,
             sourceBytesRead: Int64 = 0,
             errors: [String],
@@ -86,10 +92,20 @@ actor ImportEngine {
             self.importedSessions = importedSessions
             self.importedEvents = importedEvents
             self.importedRateLimitSamples = importedRateLimitSamples
+            self.updatedSessionMetadata = updatedSessionMetadata
             self.incrementalFiles = incrementalFiles
             self.sourceBytesRead = sourceBytesRead
             self.errors = errors
             self.scopeUnavailable = scopeUnavailable
+        }
+
+        /// Whether this scan changed data consumed by the menu-bar or
+        /// Dashboard aggregators. File/checkpoint churn alone does not count.
+        var didChangeReadModel: Bool {
+            importedSessions > 0
+                || importedEvents > 0
+                || importedRateLimitSamples > 0
+                || updatedSessionMetadata > 0
         }
 
         static let empty = ScanReport(
@@ -144,7 +160,7 @@ actor ImportEngine {
         } catch {
             codexMetadata = [:]
         }
-        try await backfillCodexSessionMetadata(codexMetadata)
+        let updatedSessionMetadata = try await backfillCodexSessionMetadata(codexMetadata)
 
         // Source paths of Codex sessions still missing project metadata —
         // re-parse them so the split metadata columns can be backfilled
@@ -343,6 +359,7 @@ actor ImportEngine {
             importedSessions: importedSessions,
             importedEvents: importedEvents,
             importedRateLimitSamples: importedSamples,
+            updatedSessionMetadata: updatedSessionMetadata,
             incrementalFiles: incrementalFiles,
             sourceBytesRead: sourceBytesRead,
             errors: errors)
@@ -358,6 +375,7 @@ actor ImportEngine {
                 "imported_sessions": .int(report.importedSessions),
                 "imported_events": .int(report.importedEvents),
                 "imported_rate_limit_samples": .int(report.importedRateLimitSamples),
+                "updated_session_metadata": .int(report.updatedSessionMetadata),
                 "incremental_files": .int(report.incrementalFiles),
                 "source_bytes_read": .int(Int(report.sourceBytesRead)),
                 "errors": .int(report.errors.count)
@@ -470,9 +488,12 @@ actor ImportEngine {
             }
             let completeBuffer = file.fileSize <= Int64(head.count)
             let lines = head.split(separator: 0x0A, omittingEmptySubsequences: false)
+            let eventDecoder = JSONDecoder()
             for (index, line) in lines.enumerated() {
                 if index == lines.count - 1, !completeBuffer { break }
-                guard let event = RolloutEvent.decode(line: Data(line)) else { continue }
+                guard let event = RolloutEvent.decode(
+                    line: Data(line),
+                    decoder: eventDecoder) else { continue }
                 if case .sessionMeta(let meta, _) = event,
                    let sessionId = meta.id,
                    !sessionId.isEmpty {
@@ -595,16 +616,17 @@ actor ImportEngine {
 
     private func backfillCodexSessionMetadata(
         _ metadataBySessionId: [String: CodexSessionMetadata]
-    ) async throws {
-        guard !metadataBySessionId.isEmpty else { return }
+    ) async throws -> Int {
+        guard !metadataBySessionId.isEmpty else { return 0 }
         let now = ISO8601.fractional.string(from: Date())
 
-        try await database.pool.write { db in
+        return try await database.pool.write { db in
             let rows = try Row.fetchAll(db, sql: """
                 SELECT session_id, title, project_name, cwd
                 FROM sessions
                 WHERE provider = 'codex'
                 """)
+            var updateCount = 0
 
             for row in rows {
                 guard let sessionId: String = row["session_id"],
@@ -634,7 +656,9 @@ actor ImportEngine {
                         now,
                         sessionId
                     ])
+                updateCount += 1
             }
+            return updateCount
         }
     }
 
@@ -670,8 +694,11 @@ actor ImportEngine {
         defer { try? handle.close() }
 
         do {
+            let eventDecoder = JSONDecoder()
             for line in try LineReader(handle: handle) {
-                guard let event = RolloutEvent.decode(line: line) else { continue }
+                guard let event = RolloutEvent.decode(
+                    line: line,
+                    decoder: eventDecoder) else { continue }
                 if case .sessionMeta(let meta, _) = event,
                    let cwd = Self.nonEmpty(meta.cwd) {
                     return !(cwd as NSString).lastPathComponent.isEmpty
@@ -769,7 +796,7 @@ actor ImportEngine {
                         && Column("source_session_id") == parsed.sessionId)
                     .deleteAll(db)
             }
-            try Self.insertUsageEvents(
+            let insertedEventIds = try Self.insertUsageEvents(
                 parsed.usageDeltas,
                 sessionId: parsed.sessionId,
                 in: db)
@@ -780,10 +807,16 @@ actor ImportEngine {
 
             // 3. Derive prices before advancing the cursor. Any pricing or
             // checkpoint failure rolls the whole batch back together.
-            try PricingService.backfillValues(
-                in: db,
-                sessionId: parsed.sessionId,
-                provider: "codex")
+            if mode == .replace {
+                try PricingService.backfillValues(
+                    in: db,
+                    sessionId: parsed.sessionId,
+                    provider: "codex")
+            } else {
+                try PricingService.backfillValues(
+                    in: db,
+                    eventIds: insertedEventIds)
+            }
 
             // 4. Save the reducer state and cursor atomically. The session row
             // names one canonical source, so stale aliases are state only and
@@ -846,7 +879,9 @@ actor ImportEngine {
         _ deltas: [UsageDelta],
         sessionId: String,
         in db: Database
-    ) throws {
+    ) throws -> [Int64] {
+        var insertedIds: [Int64] = []
+        insertedIds.reserveCapacity(deltas.count)
         for delta in deltas {
             let event = UsageEventRecord(
                 id: nil,
@@ -866,7 +901,9 @@ actor ImportEngine {
                 codexTurnId: delta.turnId,
                 codexServiceTierPreference: delta.serviceTierPreference?.rawValue)
             try event.insert(db)
+            insertedIds.append(db.lastInsertedRowID)
         }
+        return insertedIds
     }
 
     private static func insertRateLimitSamples(

@@ -157,11 +157,15 @@ extension Aggregator {
         guard let range = Self.localDayRange(day, calendar: calendar) else { return nil }
         let lo = range.lo
         let hi = range.hi
+        let cacheRead = cacheReadTokensExpression(table: "usage_events")
+        let cacheEligibleInput = cacheEligibleInputExpression(table: "usage_events")
 
         let summaryRow = try Row.fetchOne(db, sql: """
             SELECT
               SUM(value_usd) AS value_usd,
               SUM(total_tokens) AS tokens,
+              COALESCE(SUM(\(cacheRead)), 0) AS cache_read_tokens,
+              COALESCE(SUM(\(cacheEligibleInput)), 0) AS cache_eligible_input_tokens,
               COUNT(*) AS events,
               COUNT(DISTINCT session_id) AS sessions
             FROM usage_events
@@ -177,6 +181,9 @@ extension Aggregator {
             tokens: summaryRow["tokens"] ?? 0,
             eventCount: summaryRow["events"] ?? 0,
             sessionCount: summaryRow["sessions"] ?? 0)
+        let cacheUsage = CacheUsageSummary(
+            readTokens: summaryRow["cache_read_tokens"] ?? 0,
+            eligibleInputTokens: summaryRow["cache_eligible_input_tokens"] ?? 0)
 
         let breakdown = try Row.fetchAll(db, sql: """
             SELECT
@@ -241,7 +248,11 @@ extension Aggregator {
                 hasInferredModel: row["has_inferred_model"] ?? false)
         }
 
-        return DayDetail(summary: summary, modelBreakdown: breakdown, sessions: sessions)
+        return DayDetail(
+            summary: summary,
+            modelBreakdown: breakdown,
+            cacheUsage: cacheUsage,
+            sessions: sessions)
     }
 
     /// Events for a given session restricted to a single local-calendar day.

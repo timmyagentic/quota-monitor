@@ -26,10 +26,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let localization: LocalizationStore
     private let settings: SettingsStore
     private var isStopped = false
+    private var lastRenderedRows: [MenuBarLabelModel.Row]?
+    private var lastRenderedStyle: SettingsStore.MenuBarLabelStyle?
+    private var lastRenderedLocalizationTick: Int?
 
     /// Invoked when the display configuration changes (external monitor,
     /// resolution, notch) so the owner can re-run the clip check.
     var onScreenChange: (() -> Void)?
+    /// Returns true when the user's click was consumed by a pending What's New
+    /// campaign. Programmatic first-run popover presentation intentionally
+    /// bypasses this hook.
+    var onUserRequestedPopover: (() -> Bool)?
 
     init(env: AppEnvironment,
          localization: LocalizationStore,
@@ -78,6 +85,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         guard !isStopped else { return }
         isStopped = true
         onScreenChange = nil
+        onUserRequestedPopover = nil
         NotificationCenter.default.removeObserver(self)
         statusItem.button?.target = nil
         statusItem.button?.action = nil
@@ -101,15 +109,22 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func renderLabel() {
         guard !isStopped else { return }
         guard let button = statusItem.button else { return }
-        _ = localization.tickForceRedraw
+        let localizationTick = localization.tickForceRedraw
+        let rateLimits = env.latestRateLimits
+        let codexQuota = rateLimits == nil ? env.dashboardSnapshot?.codexQuota : nil
         let rows = MenuBarLabelModel.rows(
             iconProviders: settings.menuBarIconProviders,
             enabledProviders: settings.enabledProviders,
-            rateLimits: env.latestRateLimits,
+            rateLimits: rateLimits,
             claudeUsage: env.latestClaudeUsage,
-            codexQuota: env.dashboardSnapshot?.codexQuota,
+            codexQuota: codexQuota,
             displayMode: settings.quotaDisplayMode)
         let style = settings.menuBarLabelStyle
+        guard rows != lastRenderedRows
+                || style != lastRenderedStyle
+                || localizationTick != lastRenderedLocalizationTick else {
+            return
+        }
         let baseTitle: NSAttributedString
 
         button.toolTip = nil
@@ -129,6 +144,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.attributedTitle = baseTitle
         button.setAccessibilityLabel(
             baseTitle.string.isEmpty ? Branding.appDisplayName : baseTitle.string)
+        lastRenderedRows = rows
+        lastRenderedStyle = style
+        lastRenderedLocalizationTick = localizationTick
     }
 
     private static let gaugeImage: NSImage? = {
@@ -144,6 +162,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            if onUserRequestedPopover?() == true { return }
             showPopover()
         }
     }

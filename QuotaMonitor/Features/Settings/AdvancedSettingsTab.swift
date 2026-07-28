@@ -25,6 +25,9 @@ struct AdvancedSettingsTab: View {
     @State private var pricingErrorMessage: String?
     @State private var showingUninstallConfirm = false
     @State private var showingPricingSheet = false
+    @State private var privateBetaCode = ""
+    @State private var enrollingPrivateBeta = false
+    @State private var privateBetaEnrollmentRevealed = false
     /// Bumped on every history-folder grant/clear so all picker rows re-evaluate
     /// their state (e.g. the primary Claude row drops its "Required" note once
     /// the interchangeable alternate is granted).
@@ -66,12 +69,75 @@ struct AdvancedSettingsTab: View {
                            isOn: Binding(
                             get: { updater.automaticallyChecksForUpdates },
                             set: { updater.setAutomaticallyChecks($0) }))
-                    Text(L10n.updatesAutoCheckHelp)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    if PrivateBetaSettingsPresentation.showsControls(
+                        privateBetaAvailable: updater.privateBetaAvailable,
+                        privateBetaEnrolled: updater.privateBetaEnrolled,
+                        enrollmentRevealed: privateBetaEnrollmentRevealed
+                    ) {
+                        if updater.privateBetaEnrolled {
+                            Picker(
+                                L10n.updateChannelLabel,
+                                selection: Binding(
+                                    get: { updater.updateChannel },
+                                    set: { updater.setUpdateChannel($0) })
+                            ) {
+                                Text(L10n.updateChannelStable)
+                                    .tag(UpdateChannel.stable)
+                                Text(L10n.updateChannelPrivateBeta)
+                                    .tag(UpdateChannel.privateBeta)
+                            }
+                            .pickerStyle(.segmented)
+
+                            HStack(spacing: 8) {
+                                Label(
+                                    L10n.privateBetaEnrolled,
+                                    systemImage: "checkmark.shield.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(L10n.privateBetaLeave) {
+                                    updater.leavePrivateBeta()
+                                }
+                            }
+                        } else {
+                            HStack(spacing: 8) {
+                                TextField(
+                                    L10n.privateBetaEnrollmentCode,
+                                    text: $privateBetaCode)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.body.monospaced())
+                                    .disabled(enrollingPrivateBeta)
+                                Button(
+                                    enrollingPrivateBeta
+                                        ? L10n.privateBetaEnrolling
+                                        : L10n.privateBetaEnroll
+                                ) {
+                                    enrollingPrivateBeta = true
+                                    Task {
+                                        await updater.enrollPrivateBeta(
+                                            code: privateBetaCode)
+                                        if updater.privateBetaEnrolled {
+                                            privateBetaCode = ""
+                                        }
+                                        enrollingPrivateBeta = false
+                                    }
+                                }
+                                .disabled(enrollingPrivateBeta || privateBetaCode.isEmpty)
+                            }
+                        }
+                        if let message = updater.privateBetaStatusMessage {
+                            Text(message)
+                                .font(.caption)
+                                .foregroundStyle(
+                                    updater.privateBetaEnrolled
+                                        ? Color.secondary
+                                        : Color.red)
+                        }
+                    }
                     HStack(spacing: 8) {
-                        Button(L10n.updatesCheckNow) { updater.checkNow() }
+                        Button(L10n.updatesCheckNow) {
+                            handleCheckForUpdates()
+                        }
                             .disabled(!updater.canCheckForUpdates)
                         Spacer()
                         LabeledContent(L10n.updatesLastCheckedLabel) {
@@ -258,6 +324,19 @@ struct AdvancedSettingsTab: View {
         formatter.locale = LocalizationStore.activeLanguage.locale
         formatter.unitsStyle = .short
         return L10n.lastRefreshed(formatter.localizedString(for: date, relativeTo: Date()))
+    }
+
+    private func handleCheckForUpdates() {
+        let intent = PrivateBetaSettingsPresentation.checkIntent(
+            privateBetaAvailable: updater.privateBetaAvailable,
+            privateBetaEnrolled: updater.privateBetaEnrolled,
+            optionPressed: NSEvent.modifierFlags.contains(.option))
+        switch intent {
+        case .checkForUpdates:
+            updater.checkNow()
+        case .revealEnrollment:
+            privateBetaEnrollmentRevealed = true
+        }
     }
 
     private var lastCheckedLabel: String {

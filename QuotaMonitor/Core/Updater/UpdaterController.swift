@@ -28,6 +28,8 @@ import Combine
 @MainActor
 @Observable
 final class UpdaterController {
+    private static let backgroundCheckInterval = TimeInterval(6 * 60 * 60)
+
     struct RuntimeConfiguration {
         let updateAvailability: PersistentUpdateAvailability
         let sparkleEnabled: Bool
@@ -52,6 +54,11 @@ final class UpdaterController {
     /// Bound to a `Toggle` in Advanced settings.
     var automaticallyChecksForUpdates: Bool = true
 
+    var updateChannel: UpdateChannel
+    let privateBetaAvailable: Bool
+    var privateBetaEnrolled: Bool
+    var privateBetaStatusMessage: String?
+
     let updateAvailability: PersistentUpdateAvailability
 
     @ObservationIgnored
@@ -61,19 +68,74 @@ final class UpdaterController {
     private let userDriver: CustomUserDriver?
 
     @ObservationIgnored
+    private let defaults: UserDefaults
+
+    @ObservationIgnored
+    private let credentialStore: PrivateBetaCredentialStoring
+
+    @ObservationIgnored
+    private let enrollmentClient: PrivateBetaEnrollmentClient
+
+    @ObservationIgnored
+    private let sparkleDelegate: SparkleUpdateDelegate
+
+    @ObservationIgnored
+    private var privateBetaToken: String?
+
+    @ObservationIgnored
     private var cancellables: Set<AnyCancellable> = []
 
     init(
         runtimeConfiguration: RuntimeConfiguration? = nil,
+        defaults: UserDefaults? = nil,
+        credentialStore: PrivateBetaCredentialStoring? = nil,
+        enrollmentClient: PrivateBetaEnrollmentClient? = nil,
         onUpdateWindowClosed: @escaping @MainActor () -> Void = {}
     ) {
+        let bundle = Bundle.main
+        let resolvedDefaults = defaults
+            ?? LocalQAEnvironment.userDefaults()
+            ?? .standard
         let runtime = runtimeConfiguration ?? Self.makeDefaultRuntimeConfiguration(
             distribution: .current,
-            defaults: LocalQAEnvironment.userDefaults(),
+            defaults: defaults ?? LocalQAEnvironment.userDefaults(),
             standardDefaults: .standard,
             currentInternalVersion: Bundle.main.object(
                 forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0",
             localQARequested: LocalQAEnvironment.isQARequested())
+        let resolvedCredentialStore = credentialStore ?? PrivateBetaCredentialStore()
+        let configuredPrivateBetaFeedURL = bundle.object(
+            forInfoDictionaryKey: "QMPrivateBetaFeedURL") as? String
+        let privateBetaAvailable = Self.isPrivateBetaAvailable(
+            feedURL: configuredPrivateBetaFeedURL)
+        let storedToken = runtime.sparkleEnabled && privateBetaAvailable
+            ? resolvedCredentialStore.loadToken()
+            : nil
+        var selectedChannel = runtime.sparkleEnabled
+            ? UpdateChannel(defaults: resolvedDefaults)
+            : .stable
+        if selectedChannel == .privateBeta
+            && (!privateBetaAvailable || storedToken == nil) {
+            selectedChannel = .stable
+            selectedChannel.persist(to: resolvedDefaults)
+        }
+        let stableFeedURL = bundle.object(
+            forInfoDictionaryKey: "SUFeedURL") as? String ?? ""
+        let privateBetaFeedURL = configuredPrivateBetaFeedURL ?? ""
+        let resolvedEnrollmentClient = enrollmentClient ?? PrivateBetaEnrollmentClient(
+            endpoint: URL(string:
+                "https://quota-monitor.timmyagentic.com/api/private-beta/enroll")!)
+        self.defaults = resolvedDefaults
+        self.credentialStore = resolvedCredentialStore
+        self.enrollmentClient = resolvedEnrollmentClient
+        self.privateBetaToken = storedToken
+        self.updateChannel = selectedChannel
+        self.privateBetaAvailable = privateBetaAvailable
+        self.privateBetaEnrolled = storedToken != nil
+        self.sparkleDelegate = SparkleUpdateDelegate(
+            stableFeedURL: stableFeedURL,
+            privateBetaFeedURL: privateBetaFeedURL,
+            channel: selectedChannel)
         self.updateAvailability = runtime.updateAvailability
 
         guard runtime.sparkleEnabled else {
@@ -91,12 +153,11 @@ final class UpdaterController {
             onUpdateWindowClosed: onUpdateWindowClosed)
         self.userDriver = driver
 
-        let bundle = Bundle.main
         self.updater = SPUUpdater(
             hostBundle: bundle,
             applicationBundle: bundle,
             userDriver: driver,
-            delegate: nil)
+            delegate: sparkleDelegate)
 
         // Seed @Observable mirrors from current state so the first
         // render after init doesn't briefly show the default-init
@@ -105,6 +166,7 @@ final class UpdaterController {
         canCheckForUpdates = updater.canCheckForUpdates
         lastUpdateCheckDate = updater.lastUpdateCheckDate
         automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
+        applyUpdateChannelConfiguration(to: updater)
 
         // Bridge KVO → @Observable. Sparkle fires these on the main
         // queue already, so the `.receive(on:)` hop is defensive
@@ -150,6 +212,11 @@ final class UpdaterController {
             sparkleEnabled: !isAppStore && !localQARequested)
     }
 
+    static func isPrivateBetaAvailable(feedURL: String?) -> Bool {
+        guard let feedURL else { return false }
+        return !feedURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     static func makeDefaultRuntimeConfiguration(
         distribution: DistributionChannel,
         defaults: UserDefaults?,
@@ -186,6 +253,29 @@ final class UpdaterController {
         updater?.checkForUpdates()
     }
 
+    /// Lifecycle-triggered check that stays silent unless Sparkle discovers an
+    /// update. Sparkle's own 24-hour schedule remains unchanged; this only
+    /// catches long gaps while the app was asleep or inactive.
+    func checkInBackgroundIfNeeded(now: Date = Date()) {
+        guard let updater,
+              updater.automaticallyChecksForUpdates,
+              updater.canCheckForUpdates,
+              Self.shouldCheckInBackground(
+                lastUpdateCheckDate: updater.lastUpdateCheckDate,
+                now: now) else {
+            return
+        }
+        updater.checkForUpdatesInBackground()
+    }
+
+    static func shouldCheckInBackground(
+        lastUpdateCheckDate: Date?,
+        now: Date
+    ) -> Bool {
+        guard let lastUpdateCheckDate else { return true }
+        return now.timeIntervalSince(lastUpdateCheckDate) > backgroundCheckInterval
+    }
+
     /// Primary action for the persistent update badge. If the Sparkle user
     /// driver still has an active install reply, use it immediately; otherwise
     /// ask Sparkle to re-check, which re-opens the update window for the known
@@ -211,5 +301,69 @@ final class UpdaterController {
             return
         }
         updater.automaticallyChecksForUpdates = enabled
+    }
+
+    func setUpdateChannel(_ channel: UpdateChannel, checkImmediately: Bool = true) {
+        if channel == .privateBeta && !privateBetaAvailable {
+            return
+        }
+        if channel == .privateBeta && privateBetaToken == nil {
+            privateBetaStatusMessage = L10n.privateBetaEnrollmentRequired
+            return
+        }
+        updateChannel = channel
+        channel.persist(to: defaults)
+        sparkleDelegate.channel = channel
+        if let updater {
+            applyUpdateChannelConfiguration(to: updater)
+            updater.resetUpdateCycle()
+            if checkImmediately && updater.canCheckForUpdates {
+                updater.checkForUpdates()
+            }
+        }
+        privateBetaStatusMessage = nil
+    }
+
+    func enrollPrivateBeta(code: String) async {
+        guard privateBetaAvailable else { return }
+        let normalizedCode = code
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        guard !normalizedCode.isEmpty else {
+            privateBetaStatusMessage = L10n.privateBetaEnrollmentRequired
+            return
+        }
+        do {
+            let enrollment = try await enrollmentClient.enroll(
+                code: normalizedCode,
+                deviceLabel: Host.current().localizedName ?? "Mac")
+            try credentialStore.saveToken(enrollment.token)
+            privateBetaToken = enrollment.token
+            privateBetaEnrolled = true
+            setUpdateChannel(.privateBeta)
+            privateBetaStatusMessage = L10n.privateBetaEnrollmentSucceeded
+        } catch {
+            privateBetaStatusMessage = error.localizedDescription
+        }
+    }
+
+    func leavePrivateBeta() {
+        setUpdateChannel(.stable)
+        do {
+            try credentialStore.deleteToken()
+            privateBetaToken = nil
+            privateBetaEnrolled = false
+            privateBetaStatusMessage = nil
+        } catch {
+            privateBetaStatusMessage = error.localizedDescription
+        }
+    }
+
+    private func applyUpdateChannelConfiguration(to updater: SPUUpdater) {
+        if updateChannel == .privateBeta, let privateBetaToken {
+            updater.httpHeaders = ["Authorization": "Bearer \(privateBetaToken)"]
+        } else {
+            updater.httpHeaders = nil
+        }
     }
 }

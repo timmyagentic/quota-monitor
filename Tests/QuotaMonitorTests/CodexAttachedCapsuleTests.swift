@@ -107,8 +107,8 @@ struct CodexAttachedCapsuleTests {
         #expect(expanded.maxX <= target.maxX - 8)
     }
 
-    @Test("window selection ignores overlays and chooses the largest usable window")
-    func choosesLargestUsableWindow() {
+    @Test("window selection ignores overlays and keeps front-to-back order")
+    func choosesFrontmostUsableWindow() {
         let windows = [
             CodexWindowInfo(id: 1, bounds: CGRect(x: 0, y: 0, width: 300, height: 200),
                             layer: 0, alpha: 1, isOnscreen: true),
@@ -120,7 +120,7 @@ struct CodexAttachedCapsuleTests {
                             layer: 0, alpha: 1, isOnscreen: true)
         ]
 
-        #expect(CodexWindowSelector.bestWindow(in: windows)?.id == 4)
+        #expect(CodexWindowSelector.bestWindow(in: windows)?.id == 3)
     }
 
     @Test("unified ChatGPT desktop bundle is recognized as Codex")

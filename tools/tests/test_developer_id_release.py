@@ -176,6 +176,15 @@ class DeveloperIDReleaseTests(unittest.TestCase):
             "release-codex-monitor",
         )
         codex_job = self.workflow_job(workflow, "release-codex-monitor")
+        branding_step = self.workflow_step(
+            codex_job,
+            "Switch branding to CodexMonitor",
+            "Run release pipeline",
+        )
+        self.assertIn(
+            '/usr/libexec/PlistBuddy -c "Delete :QMPrivateBetaFeedURL"',
+            branding_step,
+        )
         self.assertIn("    needs: test", quota_job)
         self.assertIn("    needs: test", codex_job)
 

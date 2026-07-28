@@ -5,8 +5,11 @@ import {
 import { defineConfig } from "vitest/config";
 
 export default defineConfig(async () => {
-  const migrations = await readD1Migrations(
-    `${import.meta.dirname}/migrations`,
+  const versionStatsMigrations = await readD1Migrations(
+    `${import.meta.dirname}/migrations/version-stats`,
+  );
+  const privateBetaMigrations = await readD1Migrations(
+    `${import.meta.dirname}/migrations/private-beta`,
   );
 
   return {
@@ -16,8 +19,11 @@ export default defineConfig(async () => {
         miniflare: {
           compatibilityDate: "2026-07-15",
           compatibilityFlags: ["nodejs_compat"],
-          d1Databases: ["VERSION_STATS_DB"],
-          bindings: { TEST_MIGRATIONS: migrations },
+          d1Databases: ["VERSION_STATS_DB", "PRIVATE_BETA_DB"],
+          bindings: {
+            VERSION_STATS_TEST_MIGRATIONS: versionStatsMigrations,
+            PRIVATE_BETA_TEST_MIGRATIONS: privateBetaMigrations,
+          },
         },
       }),
     ],

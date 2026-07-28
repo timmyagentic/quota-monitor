@@ -2,7 +2,12 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MAX_DMG_BYTES } from "./constants.js";
-import { compareVersions, parseNumericVersion } from "./version.js";
+import {
+  compareBuildVersions,
+  compareVersions,
+  parseBuildVersion,
+  parseNumericVersion,
+} from "./version.js";
 
 function decodeXml(value) {
   return value.replace(
@@ -76,30 +81,25 @@ function parseItem(item) {
     "sparkle:minimumSystemVersion",
   );
 
-  parseNumericVersion(version, "appcast version");
+  parseBuildVersion(version, "appcast build version");
   parseNumericVersion(shortVersion, "appcast short version");
   parseNumericVersion(minimumSystemVersion, "minimum macOS version");
-  if (version !== shortVersion) {
-    throw new Error(
-      `Appcast version mismatch: ${version} != ${shortVersion}`,
-    );
-  }
 
   const enclosure = readEnclosure(item);
   const expectedURL =
     `https://github.com/timmyagentic/quota-monitor/releases/download/` +
-    `v${version}/QuotaMonitor-${version}.dmg`;
+    `v${shortVersion}/QuotaMonitor-${shortVersion}.dmg`;
   if (enclosure.get("url") !== expectedURL) {
-    throw new Error(`Unexpected release URL for ${version}`);
+    throw new Error(`Unexpected release URL for ${shortVersion}`);
   }
 
   const lengthText = enclosure.get("length");
   if (!/^\d+$/.test(lengthText)) {
-    throw new Error(`Invalid enclosure length for ${version}`);
+    throw new Error(`Invalid enclosure length for ${shortVersion}`);
   }
   const length = Number.parseInt(lengthText, 10);
   if (!Number.isSafeInteger(length) || length <= 0 || length > MAX_DMG_BYTES) {
-    throw new Error(`Unsafe enclosure length for ${version}`);
+    throw new Error(`Unsafe enclosure length for ${shortVersion}`);
   }
 
   const signature = enclosure.get("sparkle:edSignature");
@@ -108,15 +108,16 @@ function parseItem(item) {
     signatureBytes.length !== 64 ||
     signatureBytes.toString("base64") !== signature
   ) {
-    throw new Error(`Invalid Sparkle signature for ${version}`);
+    throw new Error(`Invalid Sparkle signature for ${shortVersion}`);
   }
 
   return {
-    version,
+    version: shortVersion,
+    buildVersion: version,
     minimumSystemVersion,
     url: expectedURL,
     checksumURL: `${expectedURL}.sha256`,
-    filename: `QuotaMonitor-${version}.dmg`,
+    filename: `QuotaMonitor-${shortVersion}.dmg`,
     length,
     signature,
   };
@@ -146,7 +147,15 @@ export function parseValidatedItems(serializedItems, macOSVersion) {
       (release) =>
         compareVersions(release.minimumSystemVersion, macOSVersion) <= 0,
     )
-    .sort((left, right) => compareVersions(right.version, left.version));
+    .sort((left, right) => {
+      const buildOrder = compareBuildVersions(
+        right.buildVersion,
+        left.buildVersion,
+      );
+      return buildOrder !== 0
+        ? buildOrder
+        : compareVersions(right.version, left.version);
+    });
 
   if (compatible.length === 0) {
     throw new Error(`No Quota Monitor release supports macOS ${macOSVersion}`);

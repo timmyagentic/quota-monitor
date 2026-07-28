@@ -233,13 +233,15 @@ struct EmbeddedRateLimits: Decodable {
 extension RolloutEvent {
     /// Decode one jsonl line. Returns nil if the line is empty or unparseable;
     /// returns `.other` for unknown discriminators.
-    static func decode(line: Data) -> RolloutEvent? {
+    static func decode(
+        line: Data,
+        decoder: JSONDecoder = JSONDecoder()
+    ) -> RolloutEvent? {
         guard !line.isEmpty else { return nil }
         guard let type = RolloutLineScanner.stringValue(forKey: "type", in: line) else {
             return nil
         }
         let timestamp = RolloutLineScanner.stringValue(forKey: "timestamp", in: line)
-        let decoder = JSONDecoder()
 
         switch type {
         case "session_meta":

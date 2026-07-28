@@ -498,12 +498,13 @@ qm_write_computer_qa_brief() {
         printf '2. Read `app-state.json` to identify currently open windows and the QA settings snapshot.\n'
         printf '3. Use Computer Use only for local UI reading/clicking. Ask before destructive UI actions such as uninstall, deleting files, changing system settings, or transmitting credentials.\n\n'
         printf '## Walkthrough\n\n'
-        printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data and no empty primary panels.'
+        printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data; when the selected window is populated, confirm the fixed 7/30-day cache summaries and daily cache trend are readable.'
         printf '%s\n' '- Sessions: switch to Sessions, search "Show Codex reset cards" to see real session titles, then search "billing-api" to see the project-name fallback row without an "Untitled session" label.'
         printf '%s\n' '- History: switch to History, select a populated day, and verify rollups plus per-session details are readable.'
         printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
         printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'
         printf '%s\n' '- Menu-bar help: verify the help window is visible, readable, and can be closed without quitting the app.'
+        printf '%s\n' "- What's New: verify image and video pages, Back / Next / Done, page count, silent playback, window resizing, and the Settings/menu-popover reopen entries. With Reduce Motion enabled, verify the poster appears instead of autoplay."
         printf '%s\n\n' '- Visual pass: note any clipped text, overlapping controls, blank charts, missing icons, or disabled controls that should be usable.'
         printf '## Report Format\n\n'
         printf '%s\n' '- Commands run'
@@ -551,10 +552,11 @@ qm_write_real_data_computer_qa_brief() {
         printf '%s\n' '- Live external sources are disabled in Local QA, so the app should not request real Claude credentials.'
         printf '%s\n\n' '- After QA, verify the source DB fingerprint did not change.'
         printf '## Walkthrough\n\n'
-        printf '%s\n' '- Dashboard: verify real-data Forecast, Trends, Activity, and Composition render without blank primary panels.'
+        printf '%s\n' '- Dashboard: verify real-data Forecast, Trends, Activity, and Composition render without blank primary panels; confirm the fixed 7/30-day cache summaries and daily cache trend respond to the date and Provider filters.'
         printf '%s\n' '- Sessions: search real session titles/models, switch sort modes, open details, and inspect token/cost/event rows.'
         printf '%s\n' '- History: select populated days and inspect rollups plus per-session details.'
         printf '%s\n' '- Settings: inspect General and Advanced controls, but do not run uninstall, export, reveal, updater, or pricing sync actions.'
+        printf '%s\n' "- What's New: manually reopen the showcase, verify image/video pages and silent playback, then close it and confirm the real-data preferences remain unchanged."
         printf '%s\n' '- Visual pass: note clipped text, overlapping controls, blank charts, missing icons, and mixed-language formatting.'
     } >"$brief_path"
 }
@@ -871,6 +873,12 @@ qm_assert_artifact_contract() {
         echo "error: settings window was not captured in QA state" >&2
         return 1
     }
+    if qm_steps_include "$qa_steps" "open-whats-new"; then
+        grep -Eq '"identifier"[[:space:]]*:[[:space:]]*"whats-new"' "$state" || {
+            echo "error: What's New window was not captured in QA state" >&2
+            return 1
+        }
+    fi
 
     qm_assert_plutil_equals "$state" "settings.language" "$expected_language"
     qm_assert_plutil_equals "$state" "settings.menuBarLabelStyle" "emphasis"

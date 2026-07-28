@@ -45,6 +45,10 @@ import GRDB
 //      across 126 real files on the dev machine).
 
 actor ClaudeImportEngine {
+    private enum PersistenceError: Error {
+        case missingUpsertedUsageEvent(sessionId: String, messageId: String)
+    }
+
     private let database: DatabaseManager
     private let claudeRoots: [URL]
     private let securityScopedAccess: any SecurityScopedResourceAccessing
@@ -455,7 +459,7 @@ actor ClaudeImportEngine {
             // still update the original row; cross-day snapshots become a
             // later-day delta row so Dashboard history never rewrites the
             // previous local day.
-            func upsert(_ evt: ClaudeUsageEvent) throws -> Int {
+            func upsert(_ evt: ClaudeUsageEvent) throws -> Int64? {
                 let total = evt.tokenCounts.total
                 try db.execute(literal: """
                     INSERT INTO usage_events (
@@ -495,10 +499,27 @@ actor ClaudeImportEngine {
                        OR usage_events.cache_creation_5m_tokens != excluded.cache_creation_5m_tokens
                        OR usage_events.cache_creation_1h_tokens != excluded.cache_creation_1h_tokens
                     """)
-                return db.changesCount
+                guard db.changesCount > 0 else { return nil }
+                guard let messageId = evt.messageId else {
+                    // A NULL dedup key cannot conflict, so this statement was
+                    // necessarily an insert and owns lastInsertedRowID.
+                    return db.lastInsertedRowID
+                }
+                guard let eventId = try Int64.fetchOne(db, sql: """
+                    SELECT id
+                    FROM usage_events
+                    WHERE session_id = ? AND provider_message_id = ?
+                    """, arguments: [parsed.sessionId, messageId])
+                else {
+                    throw PersistenceError.missingUpsertedUsageEvent(
+                        sessionId: parsed.sessionId,
+                        messageId: messageId)
+                }
+                return eventId
             }
 
-            var inserted = 0
+            var touchedEventIds: [Int64] = []
+            touchedEventIds.reserveCapacity(parsed.events.count)
             for evt in parsed.events {
                 switch try Self.crossDaySnapshotResolution(
                     db: db,
@@ -507,10 +528,12 @@ actor ClaudeImportEngine {
                     resetSession: resetSession
                 ) {
                 case .normalUpsert(let event):
-                    inserted += try upsert(event)
+                    if let eventId = try upsert(event) {
+                        touchedEventIds.append(eventId)
+                    }
                 case .deltaUpsert(let delta):
-                    if let delta {
-                        inserted += try upsert(delta)
+                    if let delta, let eventId = try upsert(delta) {
+                        touchedEventIds.append(eventId)
                     }
                 }
             }
@@ -519,10 +542,16 @@ actor ClaudeImportEngine {
             // the usage upsert, derived value, and checkpoint in one GRDB
             // write transaction means a failure cannot leave committed rows
             // at $0 that a later unchanged-file scan would skip.
-            try PricingService.backfillValues(
-                in: db,
-                sessionId: parsed.sessionId,
-                provider: "claude")
+            if resetSession {
+                try PricingService.backfillValues(
+                    in: db,
+                    sessionId: parsed.sessionId,
+                    provider: "claude")
+            } else {
+                try PricingService.backfillValues(
+                    in: db,
+                    eventIds: touchedEventIds)
+            }
 
             let state = ImportStateRecord(
                 sourcePath: file.path,
@@ -533,7 +562,7 @@ actor ClaudeImportEngine {
                 byteOffset: byteOffset)
             try state.save(db)
 
-            return inserted
+            return touchedEventIds.count
         }
     }
 

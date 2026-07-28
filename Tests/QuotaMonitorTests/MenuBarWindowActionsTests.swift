@@ -43,4 +43,16 @@ struct MenuBarWindowActionsTests {
 
         #expect(events == ["request:onboarding"])
     }
+
+    @Test
+    func whatsNewUsesExplicitRequest() {
+        var events: [String] = []
+        let actions = MenuBarWindowActions(
+            requestWindow: { events.append("request:\($0)") },
+            refreshDashboard: { events.append("refresh") })
+
+        actions.openWhatsNew()
+
+        #expect(events == ["request:whats-new"])
+    }
 }
