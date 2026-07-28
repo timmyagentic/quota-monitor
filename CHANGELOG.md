@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Private Beta updates can now be published reliably through the production service.
 - Authorized Macs can now opt into private Beta updates directly inside Quota Monitor without exposing Beta downloads on GitHub.
 - Important product updates can now introduce themselves in a focused, replayable What's New window with images and short videos.
 - Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
@@ -64,6 +65,7 @@ window copy.
 
 ### Fixed
 
+- **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 - **Fresh Dashboard after minimizing.** Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.
 
