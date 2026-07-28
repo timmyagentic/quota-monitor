@@ -22,6 +22,7 @@
     {
       "binding": "PRIVATE_BETA_DB",
       "database_name": "quota-monitor-private-beta",
+      "database_id": "d581f170-7634-4ad8-8b2d-fdab986b1cb8",
       "migrations_dir": "migrations/private-beta"
     }
   ],

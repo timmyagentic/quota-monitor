@@ -272,6 +272,33 @@ async function releasePublicationLock(
   return jsonResponse({ released: true });
 }
 
+async function renewPublicationLock(
+  request: Request,
+  env: PrivateBetaBindings,
+  now: number,
+): Promise<Response> {
+  const body = await parsePublicationLockBody(request);
+  if (body === null) return hiddenNotFound();
+
+  const existing = await env.PRIVATE_BETA_BUCKET.get(publicationLockKey);
+  if (existing === null) return hiddenNotFound();
+  const record = parsePublicationLockRecord(await existing.text());
+  if (record?.publicationID !== body.publicationID || record.expiresAt <= now) {
+    return hiddenNotFound();
+  }
+  const expiresAt = now + publicationLockLifetimeSeconds * 1_000;
+  const renewed = await putPublicationLock(
+    env.PRIVATE_BETA_BUCKET,
+    { publicationID: body.publicationID, expiresAt },
+    { etagMatches: existing.etag },
+  );
+  if (!renewed) return hiddenNotFound();
+  return jsonResponse({
+    renewed: true,
+    expiresAt: new Date(expiresAt).toISOString(),
+  });
+}
+
 async function authenticateDevice(
   request: Request,
   env: PrivateBetaBindings,
@@ -394,6 +421,9 @@ export async function handlePrivateBetaAdmin(
 
   if (pathname === "/api/private-beta/admin/publication-lock/acquire") {
     return acquirePublicationLock(request, env, now);
+  }
+  if (pathname === "/api/private-beta/admin/publication-lock/renew") {
+    return renewPublicationLock(request, env, now);
   }
   if (pathname === "/api/private-beta/admin/publication-lock/release") {
     return releasePublicationLock(request, env);

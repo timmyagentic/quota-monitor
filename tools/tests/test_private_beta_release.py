@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import subprocess
 import unittest
 
 
@@ -13,6 +14,51 @@ SPEC.loader.exec_module(MODULE)
 
 
 class PrivateBetaReleaseTests(unittest.TestCase):
+    def test_worker_base_url_requires_a_clean_https_origin(self):
+        self.assertEqual(
+            MODULE.validate_worker_base_url(
+                "https://example.test/api/private-beta/"
+            ),
+            "https://example.test/api/private-beta",
+        )
+        for value in [
+            "http://example.test/api/private-beta",
+            "https://user:secret@example.test/api/private-beta",
+            "https://example.test/api/private-beta?token=secret",
+            "https://example.test/api/private-beta#fragment",
+        ]:
+            with self.subTest(value=value):
+                with self.assertRaises(RuntimeError):
+                    MODULE.validate_worker_base_url(value)
+
+    def test_admin_requests_refuse_redirects(self):
+        handler = MODULE.RefuseRedirects()
+        self.assertIsNone(handler.redirect_request(
+            None,
+            None,
+            302,
+            "Found",
+            {},
+            "https://other.example.test/admin",
+        ))
+
+    def test_external_commands_are_bounded_below_the_lease_lifetime(self):
+        calls = []
+        original = MODULE.subprocess.run
+        MODULE.subprocess.run = lambda *args, **kwargs: (
+            calls.append(kwargs) or subprocess.CompletedProcess(args[0], 0, "ok")
+        )
+        try:
+            MODULE.run(["example"])
+        finally:
+            MODULE.subprocess.run = original
+
+        self.assertEqual(calls[0]["timeout"], MODULE.COMMAND_TIMEOUT_SECONDS)
+        self.assertLess(
+            MODULE.COMMAND_TIMEOUT_SECONDS,
+            MODULE.PUBLICATION_LEASE_LIFETIME_SECONDS,
+        )
+
     def test_appcast_uses_private_routes_and_numeric_build(self):
         appcast = MODULE.appcast_xml(
             version="0.2.44-beta.7",
@@ -34,10 +80,12 @@ class PrivateBetaReleaseTests(unittest.TestCase):
     def test_upload_plan_keeps_appcast_last(self):
         source = (Path(__file__).parents[1] / "private-beta-release.py").read_text()
         lock = source.index('        "acquire",')
+        renewal = source.index('                "renew",', lock)
         immutable_loop = source.index("for key, path, content_type in immutable:")
         appcast_upload = source.index('"private-beta/appcast.xml"', immutable_loop)
         unlock = source.index('                "release",', appcast_upload)
         self.assertLess(lock, immutable_loop)
+        self.assertLess(renewal, appcast_upload)
         self.assertGreater(appcast_upload, immutable_loop)
         self.assertGreater(unlock, appcast_upload)
 
@@ -54,10 +102,13 @@ class PrivateBetaReleaseTests(unittest.TestCase):
             def read(self):
                 return b'{"acquired": true}'
 
-        original = MODULE.urllib.request.urlopen
-        MODULE.urllib.request.urlopen = lambda request, timeout: (
-            requests.append((request, timeout)) or Response()
-        )
+        class Opener:
+            def open(self, request, timeout):
+                requests.append((request, timeout))
+                return Response()
+
+        original = MODULE.admin_opener
+        MODULE.admin_opener = lambda: Opener()
         try:
             payload = MODULE.admin_post(
                 "https://example.test/api/private-beta",
@@ -66,7 +117,7 @@ class PrivateBetaReleaseTests(unittest.TestCase):
                 "secret-" + "x" * 32,
             )
         finally:
-            MODULE.urllib.request.urlopen = original
+            MODULE.admin_opener = original
 
         self.assertTrue(payload["acquired"])
         request, timeout = requests[0]

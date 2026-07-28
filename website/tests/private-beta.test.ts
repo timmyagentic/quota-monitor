@@ -361,6 +361,51 @@ describe("private Beta administration", () => {
     );
     expect(next.status).toBe(201);
   });
+
+  it("renews a publication lease only for its current holder", async () => {
+    const env = environment();
+    env.PRIVATE_BETA_BUCKET = publicationLockBucket();
+    const acquirePath = "/api/private-beta/admin/publication-lock/acquire";
+    const renewPath = "/api/private-beta/admin/publication-lock/renew";
+    const firstID = "A".repeat(43);
+    const secondID = "B".repeat(43);
+
+    const acquired = await handlePrivateBetaAdmin(
+      adminJSONRequest(acquirePath, { publicationID: firstID }),
+      env,
+      acquirePath,
+      10_000,
+    );
+    expect(acquired.status).toBe(201);
+
+    const wrongHolder = await handlePrivateBetaAdmin(
+      adminJSONRequest(renewPath, { publicationID: secondID }),
+      env,
+      renewPath,
+      20_000,
+    );
+    expect(wrongHolder.status).toBe(404);
+
+    const renewed = await handlePrivateBetaAdmin(
+      adminJSONRequest(renewPath, { publicationID: firstID }),
+      env,
+      renewPath,
+      20_000,
+    );
+    expect(renewed.status).toBe(200);
+    expect(await renewed.json()).toEqual({
+      renewed: true,
+      expiresAt: new Date(20_000 + 30 * 60 * 1_000).toISOString(),
+    });
+
+    const competing = await handlePrivateBetaAdmin(
+      adminJSONRequest(acquirePath, { publicationID: secondID }),
+      env,
+      acquirePath,
+      10_000 + 30 * 60 * 1_000 + 1,
+    );
+    expect(competing.status).toBe(404);
+  });
 });
 
 describe("private Beta resources", () => {

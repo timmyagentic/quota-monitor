@@ -20,9 +20,12 @@ import secrets
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+PUBLICATION_LEASE_LIFETIME_SECONDS = 30 * 60
+COMMAND_TIMEOUT_SECONDS = 10 * 60
 SIGNATURE_PATTERN = re.compile(
     r'sparkle:edSignature="([^"]+)"\s+length="(\d+)"'
 )
@@ -36,6 +39,7 @@ def run(command: list[str], *, env: dict[str, str] | None = None) -> str:
         check=True,
         text=True,
         stdout=subprocess.PIPE,
+        timeout=COMMAND_TIMEOUT_SECONDS,
     )
     return completed.stdout
 
@@ -129,6 +133,7 @@ def assert_remote_object_absent(bucket: str, key: str) -> None:
             cwd=ROOT,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            timeout=COMMAND_TIMEOUT_SECONDS,
         )
         if result.returncode == 0:
             raise RuntimeError(f"immutable R2 object already exists: {key}")
@@ -140,6 +145,49 @@ def upload(bucket: str, key: str, path: Path, content_type: str) -> None:
         "--remote", "--file", str(path), "--content-type", content_type,
         "--cache-control", "private, no-store",
     ))
+
+
+class RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        request,
+        file_pointer,
+        code,
+        message,
+        headers,
+        new_url,
+    ):
+        return None
+
+
+def admin_opener() -> urllib.request.OpenerDirector:
+    return urllib.request.build_opener(RefuseRedirects())
+
+
+def validate_worker_base_url(value: str) -> str:
+    try:
+        parsed = urllib.parse.urlsplit(value)
+    except ValueError as error:
+        raise RuntimeError("worker base URL is invalid") from error
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError(
+            "worker base URL must be HTTPS and contain no credentials, query, or fragment"
+        )
+    return urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path.rstrip("/"),
+        "",
+        "",
+    ))
+
 
 def admin_post(
     base_url: str,
@@ -159,7 +207,7 @@ def admin_post(
             "Content-Length": str(len(body)),
         },
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with admin_opener().open(request, timeout=30) as response:
         payload = json.loads(response.read())
     if not isinstance(payload, dict):
         raise RuntimeError("publication lock returned an invalid response")
@@ -179,6 +227,7 @@ def main() -> int:
     parser.add_argument("--skip-package", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    args.worker_base_url = validate_worker_base_url(args.worker_base_url)
 
     version = (ROOT / "Resources/VERSION").read_text().strip()
     display_version = f"{version}-beta.{args.beta_sequence}"
@@ -269,9 +318,33 @@ def main() -> int:
     published = False
     try:
         for key, _, _ in immutable:
+            renewed = admin_post(
+                args.worker_base_url,
+                "renew",
+                publication_id,
+                admin_token,
+            )
+            if renewed.get("renewed") is not True:
+                raise RuntimeError("lost the private Beta publication lock")
             assert_remote_object_absent(args.bucket, key)
         for key, path, content_type in immutable:
+            renewed = admin_post(
+                args.worker_base_url,
+                "renew",
+                publication_id,
+                admin_token,
+            )
+            if renewed.get("renewed") is not True:
+                raise RuntimeError("lost the private Beta publication lock")
             upload(args.bucket, key, path, content_type)
+        renewed = admin_post(
+            args.worker_base_url,
+            "renew",
+            publication_id,
+            admin_token,
+        )
+        if renewed.get("renewed") is not True:
+            raise RuntimeError("lost the private Beta publication lock")
         upload(
             args.bucket,
             "private-beta/appcast.xml",
