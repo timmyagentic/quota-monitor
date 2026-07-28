@@ -145,6 +145,7 @@ struct DashboardView: View {
     }
 
     private func cacheHitRateSummary(_ snapshot: DashboardSnapshot) -> some View {
+        let today = snapshot.dailyExtended.last?.cacheUsage ?? .zero
         let last7Days = CacheUsageSummary.combined(
             snapshot.dailyExtended.suffix(7).map(\.cacheUsage))
         let last30Days = CacheUsageSummary.combined(
@@ -157,6 +158,11 @@ struct DashboardView: View {
             Text(L10n.cacheHitRateTitle)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+
+            Divider()
+                .frame(height: 14)
+
+            cacheHitRateValue(L10n.cacheHitRateToday, summary: today)
 
             Divider()
                 .frame(height: 14)

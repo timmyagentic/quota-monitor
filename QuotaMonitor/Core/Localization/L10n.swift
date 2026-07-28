@@ -522,6 +522,9 @@ enum L10n {
     static var dailyCacheHitRateTitle: String {
         t(en: "Daily cache hit rate", zh: "每日缓存命中率")
     }
+    static var cacheHitRateToday: String {
+        t(en: "Today", zh: "今日")
+    }
     static func cacheHitRateWeightedWindow(period: String, rate: String) -> String {
         t(en: "\(period) weighted · \(rate)",
           zh: "\(period)加权 · \(rate)")
@@ -535,8 +538,8 @@ enum L10n {
           zh: "按缓存读取 Token 总量除以可缓存输入 Token 总量计算，不是每日百分比的平均值。")
     }
     static var cacheHitRateCalendarWindowHelp: String {
-        t(en: "The 7- and 30-day periods include today and the previous 6 or 29 local calendar days. Today is partial up to now.",
-          zh: "近 7 天和近 30 天包含今天及此前 6 天或 29 个本地自然日；今天统计截至当前时刻。")
+        t(en: "Today covers the current local calendar day up to now. The 7- and 30-day periods include today and the previous 6 or 29 local calendar days.",
+          zh: "今日统计覆盖当前本地自然日截至此刻；近 7 天和近 30 天包含今天及此前 6 天或 29 个本地自然日。")
     }
     static func trendsTodayShort(_ usd: String) -> String {
         t(en: "Today \(usd)", zh: "今日 \(usd)")

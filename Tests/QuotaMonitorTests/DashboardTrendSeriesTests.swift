@@ -70,8 +70,8 @@ struct DashboardTrendSeriesTests {
                 == raw.reduce(Int64(0)) { $0 + $1.tokens })
     }
 
-    @Test("cache trend leaves gaps for unavailable days but preserves zero percent")
-    func cacheTrendPreservesGapsAndZeroPercent() {
+    @Test("cache trend connects observations without inventing zero percent")
+    func cacheTrendConnectsObservationsAndPreservesZeroPercent() {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let daily = [
             DailyPoint(
@@ -101,7 +101,7 @@ struct DashboardTrendSeriesTests {
         let points = CacheTrendSeriesBuilder.points(from: daily)
 
         #expect(points.count == 3)
-        #expect(points.map(\.segment) == [1, 2, 2])
+        #expect(points.map(\.segment) == [1, 1, 1])
         #expect(points.map(\.rate) == [0.5, 0, 0.8])
     }
 }

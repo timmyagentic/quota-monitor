@@ -166,14 +166,16 @@ struct MainWindowLayoutTests {
         #expect(source.components(separatedBy: ".chartXSelection(value: $selectedDay)").count == 2)
     }
 
-    @Test("Dashboard headline shows fixed 7- and 30-day cache summaries")
+    @Test("Dashboard headline shows today, 7-day, and 30-day cache summaries")
     func dashboardHeadlineShowsCacheWindows() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
 
         #expect(source.contains("ViewThatFits(in: .horizontal)"))
         #expect(source.contains("cacheHitRateSummary(snapshot)"))
+        #expect(source.contains("snapshot.dailyExtended.last?.cacheUsage"))
         #expect(source.contains("snapshot.dailyExtended.suffix(7)"))
         #expect(source.contains("snapshot.dailyExtended.suffix(30)"))
+        #expect(source.contains("L10n.cacheHitRateToday"))
         #expect(source.contains("L10n.last7Days"))
         #expect(source.contains("L10n.last30Days"))
     }
