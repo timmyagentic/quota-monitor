@@ -266,7 +266,7 @@ async function releasePublicationLock(
   const released = await putPublicationLock(
     env.PRIVATE_BETA_BUCKET,
     { publicationID: body.publicationID, expiresAt: 0 },
-    { etagMatches: existing.etag },
+    new Headers({ "If-Match": existing.httpEtag }),
   );
   if (!released) return hiddenNotFound();
   return jsonResponse({ released: true });
@@ -290,7 +290,7 @@ async function renewPublicationLock(
   const renewed = await putPublicationLock(
     env.PRIVATE_BETA_BUCKET,
     { publicationID: body.publicationID, expiresAt },
-    { etagMatches: existing.etag },
+    new Headers({ "If-Match": existing.httpEtag }),
   );
   if (!renewed) return hiddenNotFound();
   return jsonResponse({
