@@ -37,6 +37,7 @@ if [[ ! -x "${SIGN_UPDATE_BIN}" ]]; then
 fi
 
 VERSION="$(tr -d '[:space:]' < Resources/VERSION)"
+BUILD_NUMBER="$(python3 tools/build-number.py "${VERSION}" --channel stable)"
 
 # Branding — read from the single source of truth in Branding.swift.
 BRAND_CODE="$(grep 'appCodeName = "' QuotaMonitor/Core/Branding.swift \
@@ -170,7 +171,7 @@ ITEM_BLOCK="$(cat <<APPCAST_ITEM
         <item>
             <title>${BRAND_CODE} ${VERSION}</title>
             <pubDate>${PUBDATE}</pubDate>
-            <sparkle:version>${VERSION}</sparkle:version>
+            <sparkle:version>${BUILD_NUMBER}</sparkle:version>
             <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>${MIN_OS}</sparkle:minimumSystemVersion>
             <sparkle:releaseNotesLink xml:lang="en">${EN_NOTES_LINK}</sparkle:releaseNotesLink>

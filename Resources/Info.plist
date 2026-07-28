@@ -59,6 +59,8 @@
     -->
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/appcast.xml</string>
+    <key>QMPrivateBetaFeedURL</key>
+    <string>https://quota-monitor.timmyagentic.com/api/private-beta/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>QzgtY6kPCCK/S98RMT5u03HVx8PTd+cahlHQti+Fmak=</string>
     <key>SUEnableAutomaticChecks</key>

@@ -10,14 +10,20 @@ const releaseUrl = (version: string): string =>
 
 function releaseItem(
   version: string,
-  options: { attributes?: string; length?: number | null; url?: string } = {},
+  options: {
+    attributes?: string;
+    buildVersion?: string;
+    length?: number | null;
+    url?: string;
+  } = {},
 ): string {
   const attributes = options.attributes ?? "";
   const length = options.length === null ? "" : ` length="${options.length ?? 6_992_960}"`;
   const url = options.url ?? releaseUrl(version);
 
   return `<item${attributes}>
-    <sparkle:version>${version}</sparkle:version>
+    <sparkle:version>${options.buildVersion ?? version}</sparkle:version>
+    <sparkle:shortVersionString>${version}</sparkle:shortVersionString>
     <enclosure url="${url}"${length} />
   </item>`;
 }
@@ -34,9 +40,24 @@ describe("parseLatestRelease", () => {
   it("returns public metadata for the highest valid release", () => {
     expect(parseLatestRelease(APPCAST)).toEqual({
       version: "0.2.40",
+      buildVersion: "0.2.40",
       filename: "QuotaMonitor-0.2.40.dmg",
       size: 6_992_960,
       upstreamUrl: releaseUrl("0.2.40"),
+    });
+  });
+
+  it("uses the internal build for ordering and the short version for assets", () => {
+    const release = parseLatestRelease(appcast(
+      releaseItem("0.2.44", { buildVersion: "20449000" }),
+      releaseItem("0.2.43", { buildVersion: "20439000" }),
+    ));
+
+    expect(release).toMatchObject({
+      version: "0.2.44",
+      buildVersion: "20449000",
+      filename: "QuotaMonitor-0.2.44.dmg",
+      upstreamUrl: releaseUrl("0.2.44"),
     });
   });
 

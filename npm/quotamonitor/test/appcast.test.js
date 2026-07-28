@@ -15,6 +15,7 @@ const signature = Buffer.alloc(64, 7).toString("base64");
 function item(
   version,
   {
+    buildVersion = version,
     minimum = "14.0",
     url = `https://github.com/timmyagentic/quota-monitor/releases/download/v${version}/QuotaMonitor-${version}.dmg`,
     length = "7119537",
@@ -22,7 +23,7 @@ function item(
   } = {},
 ) {
   return `<item>
-    <sparkle:version>${version}</sparkle:version>
+    <sparkle:version>${buildVersion}</sparkle:version>
     <sparkle:shortVersionString>${version}</sparkle:shortVersionString>
     <sparkle:minimumSystemVersion>${minimum}</sparkle:minimumSystemVersion>
     <enclosure url="${url}" length="${length}" sparkle:edSignature="${signature}" ${extraAttributes}/>
@@ -37,6 +38,27 @@ test("selects the highest compatible release instead of trusting item order", ()
   assert.equal(release.version, "0.2.42");
   assert.equal(release.filename, "QuotaMonitor-0.2.42.dmg");
   assert.equal(release.length, 7119537);
+});
+
+test("accepts split Sparkle build and marketing versions", () => {
+  const release = parseValidatedItems(
+    item("0.2.44", { buildVersion: "20449000" }),
+    "14.0",
+  );
+  assert.equal(release.version, "0.2.44");
+  assert.equal(release.buildVersion, "20449000");
+  assert.equal(release.filename, "QuotaMonitor-0.2.44.dmg");
+  assert.match(release.url, /\/v0\.2\.44\/QuotaMonitor-0\.2\.44\.dmg$/);
+});
+
+test("orders releases by the Sparkle build version", () => {
+  const release = parseValidatedItems(
+    `${item("0.2.44", { buildVersion: "20449000" })}` +
+      `${item("0.2.43", { buildVersion: "20439000" })}`,
+    "14.0",
+  );
+  assert.equal(release.version, "0.2.44");
+  assert.equal(release.buildVersion, "20449000");
 });
 
 test("refuses a release URL outside the exact official tag and filename", () => {

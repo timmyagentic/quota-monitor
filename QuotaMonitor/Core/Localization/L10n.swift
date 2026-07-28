@@ -756,6 +756,39 @@ enum L10n {
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
+    static var updateChannelLabel: String { t(en: "Update channel", zh: "更新渠道") }
+    static var updateChannelStable: String { t(en: "Stable", zh: "稳定版") }
+    static var updateChannelPrivateBeta: String {
+        t(en: "Private Beta", zh: "私有 Beta")
+    }
+    static var privateBetaEnrollmentCode: String {
+        t(en: "One-time enrollment code", zh: "一次性授权码")
+    }
+    static var privateBetaEnroll: String { t(en: "Enroll This Mac", zh: "授权此 Mac") }
+    static var privateBetaEnrolling: String { t(en: "Enrolling…", zh: "正在授权…") }
+    static var privateBetaEnrolled: String {
+        t(en: "This Mac is authorized for Private Beta updates.",
+          zh: "此 Mac 已获私有 Beta 更新权限。")
+    }
+    static var privateBetaLeave: String {
+        t(en: "Leave Private Beta", zh: "退出私有 Beta")
+    }
+    static var privateBetaEnrollmentRequired: String {
+        t(en: "Enter a valid one-time code before selecting Private Beta.",
+          zh: "选择私有 Beta 前，请输入有效的一次性授权码。")
+    }
+    static var privateBetaEnrollmentRejected: String {
+        t(en: "The enrollment code is invalid, expired, or already used.",
+          zh: "授权码无效、已过期或已经使用。")
+    }
+    static var privateBetaEnrollmentFailed: String {
+        t(en: "Private Beta enrollment returned an invalid response.",
+          zh: "私有 Beta 授权返回了无效响应。")
+    }
+    static var privateBetaEnrollmentSucceeded: String {
+        t(en: "Private Beta enabled. Checking for updates now.",
+          zh: "私有 Beta 已启用，正在检查更新。")
+    }
     static func updateBadgeTitle(_ version: String?) -> String {
         if let version, !version.isEmpty {
             return t(en: "Update to \(version)", zh: "更新到 \(version)")

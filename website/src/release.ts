@@ -3,6 +3,7 @@ export const APPCAST_URL =
 
 export interface ReleaseInfo {
   version: string;
+  buildVersion: string;
   filename: string;
   size: number;
   upstreamUrl: string;
@@ -21,12 +22,25 @@ const decodeXML = (value: string): string =>
     .replaceAll("&gt;", ">");
 
 function parseReleaseCandidate(item: string): ReleaseInfo | undefined {
-  const version = item.match(/<sparkle:version>([^<]+)<\/sparkle:version>/)?.[1]?.trim();
+  const buildVersion =
+    item.match(/<sparkle:version>([^<]+)<\/sparkle:version>/)?.[1]?.trim();
+  const shortVersion =
+    item.match(
+      /<sparkle:shortVersionString>([^<]+)<\/sparkle:shortVersionString>/,
+    )?.[1]?.trim();
+  const version = shortVersion ?? buildVersion;
   const enclosure = item.match(/<enclosure\b([^>]+?)\/?\s*>/)?.[1];
   const encodedUrl = enclosure?.match(/\burl="([^"]+)"/)?.[1];
   const encodedLength = enclosure?.match(/\blength="(\d+)"/)?.[1];
 
-  if (!version || !/^\d+(?:\.\d+)+$/.test(version) || !encodedUrl || !encodedLength) {
+  if (
+    !buildVersion ||
+    !/^\d+(?:\.\d+){0,3}$/.test(buildVersion) ||
+    !version ||
+    !/^\d+(?:\.\d+){1,3}$/.test(version) ||
+    !encodedUrl ||
+    !encodedLength
+  ) {
     return undefined;
   }
 
@@ -59,7 +73,7 @@ function parseReleaseCandidate(item: string): ReleaseInfo | undefined {
     return undefined;
   }
 
-  return { version, filename, size, upstreamUrl };
+  return { version, buildVersion, filename, size, upstreamUrl };
 }
 
 function compareNumericVersions(left: string, right: string): number {
@@ -92,7 +106,9 @@ export function parseLatestRelease(xml: string): ReleaseInfo {
   }
 
   return candidates.reduce((latest, candidate) =>
-    compareNumericVersions(candidate.version, latest.version) > 0 ? candidate : latest,
+    compareNumericVersions(candidate.buildVersion, latest.buildVersion) > 0
+      ? candidate
+      : latest,
   );
 }
 

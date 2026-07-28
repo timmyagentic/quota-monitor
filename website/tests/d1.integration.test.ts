@@ -127,3 +127,60 @@ describe("real D1 closed-day aggregation", () => {
     ]);
   });
 });
+
+describe("real private Beta D1 enrollment", () => {
+  it("atomically consumes a valid code once and preserves only digests", async () => {
+    const database = env.PRIVATE_BETA_DB;
+    const codeDigest = "a".repeat(64);
+    const tokenDigest = "b".repeat(64);
+    await database.prepare(
+      `INSERT INTO private_beta_enrollment_codes
+         (code_digest, created_at, expires_at, used_at)
+       VALUES (?1, 100, 300, NULL)`,
+    ).bind(codeDigest).run();
+
+    const [deviceInsert, codeClaim] = await database.batch([
+      database.prepare(
+        `INSERT INTO private_beta_devices(
+            device_id, token_digest, device_label, enrolled_at, last_seen_at, revoked_at
+         )
+         SELECT ?1, ?2, 'Test Mac', 200, 200, NULL
+           FROM private_beta_enrollment_codes
+          WHERE code_digest = ?3
+            AND used_at IS NULL
+            AND expires_at >= 200`,
+      ).bind("device-1", tokenDigest, codeDigest),
+      database.prepare(
+        `UPDATE private_beta_enrollment_codes
+            SET used_at = 200
+          WHERE code_digest = ?1
+            AND used_at IS NULL
+            AND expires_at >= 200`,
+      ).bind(codeDigest),
+    ]);
+    const [secondDevice, secondClaim] = await database.batch([
+      database.prepare(
+        `INSERT INTO private_beta_devices(
+            device_id, token_digest, device_label, enrolled_at, last_seen_at, revoked_at
+         )
+         SELECT ?1, ?2, 'Second Mac', 201, 201, NULL
+           FROM private_beta_enrollment_codes
+          WHERE code_digest = ?3
+            AND used_at IS NULL
+            AND expires_at >= 201`,
+      ).bind("device-2", "c".repeat(64), codeDigest),
+      database.prepare(
+        `UPDATE private_beta_enrollment_codes
+            SET used_at = 201
+          WHERE code_digest = ?1
+            AND used_at IS NULL
+            AND expires_at >= 201`,
+      ).bind(codeDigest),
+    ]);
+
+    expect(deviceInsert?.meta.changes).toBe(1);
+    expect(codeClaim?.meta.changes).toBe(1);
+    expect(secondDevice?.meta.changes).toBe(0);
+    expect(secondClaim?.meta.changes).toBe(0);
+  });
+});

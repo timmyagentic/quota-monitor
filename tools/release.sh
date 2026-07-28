@@ -57,6 +57,19 @@ if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
     echo "error: Resources/VERSION value '${VERSION}' is not a valid semver" >&2
     exit 1
 fi
+RELEASE_CHANNEL="${QM_RELEASE_CHANNEL:-stable}"
+if [[ "${RELEASE_CHANNEL}" == "private-beta" ]]; then
+    if [[ -z "${QM_BETA_SEQUENCE:-}" ]]; then
+        echo "error: QM_BETA_SEQUENCE is required for private-beta releases" >&2
+        exit 2
+    fi
+    DISPLAY_VERSION="${VERSION}-beta.${QM_BETA_SEQUENCE}"
+elif [[ "${RELEASE_CHANNEL}" == "stable" ]]; then
+    DISPLAY_VERSION="${VERSION}"
+else
+    echo "error: QM_RELEASE_CHANNEL must be stable or private-beta" >&2
+    exit 2
+fi
 
 # Branding — read from the single source of truth in Branding.swift.
 BRAND_DISPLAY="$(grep 'appDisplayName = "' QuotaMonitor/Core/Branding.swift \
@@ -68,7 +81,7 @@ if [[ -z "${BRAND_DISPLAY}" || -z "${BRAND_CODE}" ]]; then
     exit 1
 fi
 
-DMG_PATH="dist/${BRAND_CODE}-${VERSION}.dmg"
+DMG_PATH="dist/${BRAND_CODE}-${DISPLAY_VERSION}.dmg"
 SHA_PATH="${DMG_PATH}.sha256"
 
 if [[ -f "${DMG_PATH}" && "${FORCE}" -eq 0 ]]; then
@@ -77,7 +90,7 @@ if [[ -f "${DMG_PATH}" && "${FORCE}" -eq 0 ]]; then
     exit 1
 fi
 
-echo "==> Releasing ${BRAND_CODE} v${VERSION}"
+echo "==> Releasing ${BRAND_CODE} ${DISPLAY_VERSION} (${RELEASE_CHANNEL})"
 
 # -------- signing mode ------------------------------------------------------
 
@@ -112,8 +125,11 @@ swift test --disable-keychain
 
 # -------- build (release) ---------------------------------------------------
 
-echo "==> CONFIG=release QM_DISTRIBUTION=developer-id ./build.sh"
-CONFIG=release QM_DISTRIBUTION=developer-id ./build.sh
+echo "==> CONFIG=release QM_DISTRIBUTION=developer-id QM_RELEASE_CHANNEL=${RELEASE_CHANNEL} ./build.sh"
+CONFIG=release \
+    QM_RELEASE_CHANNEL="${RELEASE_CHANNEL}" \
+    QM_BETA_SEQUENCE="${QM_BETA_SEQUENCE:-}" \
+    QM_DISTRIBUTION=developer-id ./build.sh
 
 APP_BUNDLE=".build/QuotaMonitor.app"
 PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
@@ -131,8 +147,8 @@ codesign --verify --strict --verbose=2 "${APP_BUNDLE}"
 # a regression in build.sh's PlistBuddy injection).
 INSIDE_VERSION="$(defaults read "$PWD/${APP_BUNDLE}/Contents/Info" \
     CFBundleShortVersionString 2>/dev/null || echo "")"
-if [[ "${INSIDE_VERSION}" != "${VERSION}" ]]; then
-    echo "error: Info.plist version '${INSIDE_VERSION}' != Resources/VERSION '${VERSION}'" >&2
+if [[ "${INSIDE_VERSION}" != "${DISPLAY_VERSION}" ]]; then
+    echo "error: Info.plist version '${INSIDE_VERSION}' != expected '${DISPLAY_VERSION}'" >&2
     exit 1
 fi
 echo "    Info.plist CFBundleShortVersionString = ${INSIDE_VERSION}  OK"
@@ -149,7 +165,11 @@ fi
 echo "==> tools/make-dmg.sh"
 # Package the verified bundle. In Developer ID mode this is important:
 # rebuilding here would throw away the stapled app we just produced.
-CONFIG=release QM_DISTRIBUTION=developer-id VER="${VERSION}" QM_MAKE_DMG_SKIP_BUILD=1 tools/make-dmg.sh
+CONFIG=release \
+    QM_DISTRIBUTION=developer-id \
+    VER="${DISPLAY_VERSION}" \
+    QM_MAKE_DMG_SKIP_BUILD=1 \
+    tools/make-dmg.sh
 
 if [[ ! -f "${DMG_PATH}" ]]; then
     echo "error: expected ${DMG_PATH} after make-dmg.sh, not found" >&2
@@ -164,7 +184,7 @@ fi
 # -------- SHA-256 -----------------------------------------------------------
 
 echo "==> shasum -a 256 ${DMG_PATH}"
-( cd dist && shasum -a 256 "${BRAND_CODE}-${VERSION}.dmg" > "${BRAND_CODE}-${VERSION}.dmg.sha256" )
+( cd dist && shasum -a 256 "${BRAND_CODE}-${DISPLAY_VERSION}.dmg" > "${BRAND_CODE}-${DISPLAY_VERSION}.dmg.sha256" )
 echo "    $(cat "${SHA_PATH}")"
 
 # -------- self-check: mount + verify ---------------------------------------
@@ -220,19 +240,15 @@ DMG_SIZE="$(du -h "${DMG_PATH}" | cut -f1 | tr -d '[:space:]')"
 cat <<EOF
 
 ===========================================
- Release v${VERSION} ready
+ Release ${DISPLAY_VERSION} ready
 ===========================================
 DMG:    ${DMG_PATH}  (${DMG_SIZE})
 SHA256: ${SHA_PATH}
 Signing: ${RELEASE_SIGNING}
 
-Next steps (manual):
-  1. Land the release commit through a PR to main.
-  2. git switch main && git pull
-  3. git tag v${VERSION} && git push origin v${VERSION}
-  4. Let release.yml publish the GitHub Release and open the appcast PR.
-
-Do not run gh release create locally unless the workflow is unavailable;
-the appcast signature must be computed over the exact DMG users download.
+Next step:
+  $([[ "${RELEASE_CHANNEL}" == "stable" ]] \
+      && printf '%s' "Land the release PR, tag v${VERSION}, and let release.yml publish." \
+      || printf '%s' "Continue with tools/private-beta-release.py; do not create a tag or GitHub Release.")
 ===========================================
 EOF
