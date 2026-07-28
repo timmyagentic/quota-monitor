@@ -32,7 +32,7 @@ window copy.
 
 #### Summary
 
-- Authorized Macs can now opt into private Beta updates directly inside Quota Monitor without exposing Beta downloads on GitHub.
+- Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
 - Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
 - Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
 - Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
@@ -55,7 +55,7 @@ window copy.
 
 ### Added
 
-- **Private Beta update channel.** Authorized Macs can enroll with a one-time code, switch between Stable and Private Beta in Advanced settings, and receive authenticated Sparkle updates while Beta files remain outside public GitHub releases and feeds.
+- **Private Beta update channel.** Holding Option while clicking Check Now reveals one-time-code enrollment only for an invited Mac; after authorization it can switch between Stable and Private Beta and receive authenticated Sparkle updates while everyone else sees only the normal update controls and Beta files remain outside public GitHub releases and feeds.
 - **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and a permanent reopen action in Settings; fresh installs continue directly through onboarding without a second tour.
 - **Dashboard cache hit-rate trends.** The headline now pairs today's result with fixed 7- and 30-day weighted summaries, and the cache hit-rate line connects adjacent observations across unavailable days without treating them as 0%; provider and date filters update both views together.
 - **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.
