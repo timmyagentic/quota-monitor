@@ -173,8 +173,11 @@ struct MainWindowLayoutTests {
             named: "QuotaMonitor/Features/Dashboard/DashboardCacheUsageWindows.swift")
 
         #expect(source.contains("ViewThatFits(in: .horizontal)"))
-        #expect(source.contains("cacheHitRateSummary(snapshot)"))
-        #expect(source.contains("DashboardCacheUsageWindows(daily: snapshot.dailyExtended)"))
+        #expect(source.contains("TimelineView(.periodic(from: .now, by: 60))"))
+        #expect(source.contains("cacheHitRateSummary(snapshot, now: context.date)"))
+        #expect(source.contains("DashboardCacheUsageWindows("))
+        #expect(source.contains("daily: snapshot.dailyExtended"))
+        #expect(source.contains("now: now"))
         #expect(windows.contains("calendar.isDate(point.date, inSameDayAs: todayStart)"))
         #expect(windows.contains("value: -6, to: todayStart"))
         #expect(windows.contains("value: -29, to: todayStart"))

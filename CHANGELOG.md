@@ -66,7 +66,7 @@ window copy.
 
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 - **Fresh Dashboard after minimizing.** Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.
-- **Accurate cache windows after midnight.** An open Dashboard now derives Today, 7-day, and 30-day cache hit rates from the current local calendar date, so yesterday's value is never relabeled as today's after midnight.
+- **Accurate cache windows after midnight.** An open Dashboard now refreshes its Today, 7-day, and 30-day cache hit-rate windows as the local date changes, so yesterday's value is never relabeled as today's after midnight.
 
 ### Changed
 

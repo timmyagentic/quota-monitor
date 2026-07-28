@@ -67,15 +67,17 @@ struct DashboardView: View {
     // MARK: - rolling-window statline
 
     private func statline(_ snapshot: DashboardSnapshot) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                usageHeadline
-                Spacer(minLength: 16)
-                cacheHitRateSummary(snapshot)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                usageHeadline
-                cacheHitRateSummary(snapshot)
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    usageHeadline
+                    Spacer(minLength: 16)
+                    cacheHitRateSummary(snapshot, now: context.date)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    usageHeadline
+                    cacheHitRateSummary(snapshot, now: context.date)
+                }
             }
         }
     }
@@ -144,8 +146,13 @@ struct DashboardView: View {
         }
     }
 
-    private func cacheHitRateSummary(_ snapshot: DashboardSnapshot) -> some View {
-        let windows = DashboardCacheUsageWindows(daily: snapshot.dailyExtended)
+    private func cacheHitRateSummary(
+        _ snapshot: DashboardSnapshot,
+        now: Date
+    ) -> some View {
+        let windows = DashboardCacheUsageWindows(
+            daily: snapshot.dailyExtended,
+            now: now)
 
         return HStack(spacing: 8) {
             Circle()
