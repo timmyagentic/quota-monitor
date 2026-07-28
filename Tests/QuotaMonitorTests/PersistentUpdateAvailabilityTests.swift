@@ -39,6 +39,7 @@ struct PersistentUpdateAvailabilityTests {
         #expect(restored.snapshot?.isDeferred == false)
         #expect(restored.version == "0.2.41")
         #expect(restored.primaryAction == .install)
+        #expect(restored.activity == .idle)
     }
 
     @Test
@@ -348,6 +349,32 @@ struct PersistentUpdateAvailabilityTests {
         #expect(availability.isVisible == true)
         #expect(availability.version == "0.2.36")
         #expect(availability.primaryAction == .installAndRelaunch)
+    }
+
+    @Test
+    func directInstallActivityTracksCompactProgressAndClearsWhenReady() {
+        let availability = PersistentUpdateAvailability()
+        availability.markAvailable(version: "0.2.36")
+
+        availability.markCheckingForInstall()
+        #expect(availability.activity == .checking)
+        #expect(availability.isBusy)
+
+        availability.markDownloading()
+        #expect(availability.activity == .downloading)
+
+        availability.markExtracting()
+        #expect(availability.activity == .extracting)
+
+        availability.markReadyToInstall()
+        #expect(availability.activity == .idle)
+        #expect(!availability.isBusy)
+
+        availability.markInstalling()
+        #expect(availability.activity == .installing)
+
+        availability.clearActivity()
+        #expect(availability.activity == .idle)
     }
 
     @Test
