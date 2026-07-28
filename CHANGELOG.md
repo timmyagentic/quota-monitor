@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Codex can now show an opt-in weekly-quota capsule attached to its active window, with hover details for remaining usage and reset timing, without modifying the Codex app.
 - Private Beta updates can now be published reliably through the production service.
 - Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
 - Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
@@ -72,6 +73,7 @@ window copy.
 
 ### Changed
 
+- **Quota at the point of work.** A new General setting attaches a non-activating weekly-quota capsule to the frontmost Codex window; it reuses Quota Monitor's existing live snapshot, follows the window, hides with Codex, expands on hover, and leaves the signed Codex application untouched.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.
 - **Timelier background update checks.** With automatic checks enabled, launching, waking, or returning to Quota Monitor now starts a silent update check when no prior check exists or the last one is more than six hours old; Check Now remains available when automatic checks are off.
