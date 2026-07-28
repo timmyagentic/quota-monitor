@@ -3,7 +3,10 @@ import CoreGraphics
 
 @MainActor
 final class CodexWindowLocator {
-    nonisolated static let supportedBundleIdentifiers: Set<String> = ["com.openai.codex"]
+    nonisolated static let supportedBundleIdentifiers: Set<String> = [
+        "com.openai.chat",
+        "com.openai.codex"
+    ]
 
     private let workspace: NSWorkspace
 

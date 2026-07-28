@@ -123,9 +123,12 @@ struct CodexAttachedCapsuleTests {
         #expect(CodexWindowSelector.bestWindow(in: windows)?.id == 3)
     }
 
-    @Test("unified ChatGPT desktop bundle is recognized as Codex")
-    func recognizesUnifiedDesktopBundle() {
-        #expect(CodexWindowLocator.supportedBundleIdentifiers == ["com.openai.codex"])
+    @Test("legacy and unified ChatGPT desktop bundles are recognized as Codex")
+    func recognizesSupportedDesktopBundles() {
+        #expect(CodexWindowLocator.supportedBundleIdentifiers == [
+            "com.openai.chat",
+            "com.openai.codex"
+        ])
     }
 
     @MainActor
