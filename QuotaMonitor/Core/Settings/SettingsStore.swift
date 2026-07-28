@@ -83,12 +83,12 @@ final class SettingsStore {
         didSet { defaults.set(showDockIconForWindows,
                               forKey: Keys.showDockIconForWindows) }
     }
-    /// Shows the current Codex weekly quota in a small non-activating panel
-    /// attached to the frontmost Codex window. Default OFF: this is an
-    /// intentional cross-app surface and should only appear after opt-in.
-    var codexAttachedCapsuleEnabled: Bool {
-        didSet { defaults.set(codexAttachedCapsuleEnabled,
-                              forKey: Keys.codexAttachedCapsuleEnabled) }
+    /// Injects a native-looking quota capsule into the validated Codex sidebar
+    /// through Chromium's loopback DevTools protocol. Default OFF: this is an
+    /// intentional cross-app integration and requires an explicit new opt-in.
+    var codexSidebarQuotaEnabled: Bool {
+        didSet { defaults.set(codexSidebarQuotaEnabled,
+                              forKey: Keys.codexSidebarQuotaEnabled) }
     }
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
@@ -357,8 +357,8 @@ final class SettingsStore {
         // upgrading to this release (per the user-confirmed spec).
         self.showDockIconForWindows =
             defaults.bool(forKey: Keys.showDockIconForWindows)
-        self.codexAttachedCapsuleEnabled =
-            defaults.bool(forKey: Keys.codexAttachedCapsuleEnabled)
+        self.codexSidebarQuotaEnabled =
+            defaults.bool(forKey: Keys.codexSidebarQuotaEnabled)
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.quotaDisplayMode = (defaults.string(forKey: Keys.quotaDisplayMode)
@@ -711,7 +711,7 @@ final class SettingsStore {
         static let mirrorClaudeKeychainToFile = "settings.mirrorClaudeKeychainToFile"
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
-        static let codexAttachedCapsuleEnabled = "settings.codexAttachedCapsuleEnabled"
+        static let codexSidebarQuotaEnabled = "settings.codexSidebarQuotaEnabled"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"

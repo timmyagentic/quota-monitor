@@ -32,6 +32,8 @@ CONTENTS="${APP_BUNDLE}/Contents"
 PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
 APP_PRIVACY_MANIFEST="${CONTENTS}/Resources/PrivacyInfo.xcprivacy"
 WHATS_NEW_RESOURCES="Resources/WhatsNew"
+THIRD_PARTY_NOTICES="THIRD_PARTY_NOTICES.md"
+OPSAIL_LICENSE="LICENSES/Opsail-Apache-2.0.txt"
 ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
 if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
     ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
@@ -73,6 +75,15 @@ if [[ ! -f "${WHATS_NEW_RESOURCES}/catalog.json" ]]; then
 fi
 echo "==> Embedding What's New media"
 cp -R "${WHATS_NEW_RESOURCES}" "${CONTENTS}/Resources/WhatsNew"
+
+if [[ ! -f "${THIRD_PARTY_NOTICES}" || ! -f "${OPSAIL_LICENSE}" ]]; then
+    echo "error: third-party notices or Opsail license missing" >&2
+    exit 1
+fi
+echo "==> Embedding third-party notices"
+mkdir -p "${CONTENTS}/Resources/Licenses"
+cp "${THIRD_PARTY_NOTICES}" "${CONTENTS}/Resources/THIRD_PARTY_NOTICES.md"
+cp "${OPSAIL_LICENSE}" "${CONTENTS}/Resources/Licenses/Opsail-Apache-2.0.txt"
 
 echo "==> Verifying and embedding PrivacyInfo.xcprivacy"
 python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"

@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
     private var dailyActiveReporter: DailyActiveReporter?
-    private var codexAttachedCapsuleController: CodexAttachedCapsuleController?
+    private var codexSidebarQuotaController: CodexSidebarQuotaController?
     private var whatsNewCoordinator: WhatsNewCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -76,11 +76,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.statusItemController = controller
 
-        let capsuleController = CodexAttachedCapsuleController(
-            environment: env,
-            settings: settings)
-        codexAttachedCapsuleController = capsuleController
-        capsuleController.start()
+        if DistributionChannel.current != .appStore {
+            let sidebarQuotaController = CodexSidebarQuotaController(settings: settings)
+            codexSidebarQuotaController = sidebarQuotaController
+            sidebarQuotaController.start()
+        }
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
@@ -195,8 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        codexAttachedCapsuleController?.stop()
-        codexAttachedCapsuleController = nil
+        codexSidebarQuotaController?.stop()
+        codexSidebarQuotaController = nil
         NSWorkspace.shared.notificationCenter.removeObserver(
             self, name: NSWorkspace.didWakeNotification, object: nil)
         statusItemController?.stop()
