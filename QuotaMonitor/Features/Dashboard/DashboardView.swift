@@ -145,11 +145,7 @@ struct DashboardView: View {
     }
 
     private func cacheHitRateSummary(_ snapshot: DashboardSnapshot) -> some View {
-        let today = snapshot.dailyExtended.last?.cacheUsage ?? .zero
-        let last7Days = CacheUsageSummary.combined(
-            snapshot.dailyExtended.suffix(7).map(\.cacheUsage))
-        let last30Days = CacheUsageSummary.combined(
-            snapshot.dailyExtended.suffix(30).map(\.cacheUsage))
+        let windows = DashboardCacheUsageWindows(daily: snapshot.dailyExtended)
 
         return HStack(spacing: 8) {
             Circle()
@@ -162,17 +158,17 @@ struct DashboardView: View {
             Divider()
                 .frame(height: 14)
 
-            cacheHitRateValue(L10n.cacheHitRateToday, summary: today)
+            cacheHitRateValue(L10n.cacheHitRateToday, summary: windows.today)
 
             Divider()
                 .frame(height: 14)
 
-            cacheHitRateValue(L10n.last7Days, summary: last7Days)
+            cacheHitRateValue(L10n.last7Days, summary: windows.last7Days)
 
             Divider()
                 .frame(height: 14)
 
-            cacheHitRateValue(L10n.last30Days, summary: last30Days)
+            cacheHitRateValue(L10n.last30Days, summary: windows.last30Days)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

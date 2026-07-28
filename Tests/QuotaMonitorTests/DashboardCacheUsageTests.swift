@@ -177,4 +177,41 @@ struct DashboardCacheUsageTests {
             readTokens: 20, eligibleInputTokens: 60))
         #expect(abs((daily[2].cacheUsage.hitRate ?? 0) - (1.0 / 3.0)) < 0.000_001)
     }
+
+    @Test("headline windows do not label yesterday as today after midnight")
+    func headlineWindowsAdvanceAcrossMidnight() throws {
+        let calendar = utcCalendar()
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 7, day: 25, hour: 0, minute: 1)))
+        let today = calendar.startOfDay(for: now)
+        let yesterday = try #require(calendar.date(
+            byAdding: .day, value: -1, to: today))
+        let sevenDaysAgo = try #require(calendar.date(
+            byAdding: .day, value: -7, to: today))
+        let staleDaily = [
+            DailyPoint(
+                date: sevenDaysAgo,
+                valueUSD: 0,
+                tokens: 10,
+                cacheUsage: CacheUsageSummary(
+                    readTokens: 1, eligibleInputTokens: 10)),
+            DailyPoint(
+                date: yesterday,
+                valueUSD: 0,
+                tokens: 100,
+                cacheUsage: CacheUsageSummary(
+                    readTokens: 80, eligibleInputTokens: 100))
+        ]
+
+        let windows = DashboardCacheUsageWindows(
+            daily: staleDaily,
+            now: now,
+            calendar: calendar)
+
+        #expect(windows.today == .zero)
+        #expect(windows.last7Days == CacheUsageSummary(
+            readTokens: 80, eligibleInputTokens: 100))
+        #expect(windows.last30Days == CacheUsageSummary(
+            readTokens: 81, eligibleInputTokens: 110))
+    }
 }

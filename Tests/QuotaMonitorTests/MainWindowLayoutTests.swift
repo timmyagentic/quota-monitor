@@ -169,12 +169,15 @@ struct MainWindowLayoutTests {
     @Test("Dashboard headline shows today, 7-day, and 30-day cache summaries")
     func dashboardHeadlineShowsCacheWindows() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
+        let windows = try Self.source(
+            named: "QuotaMonitor/Features/Dashboard/DashboardCacheUsageWindows.swift")
 
         #expect(source.contains("ViewThatFits(in: .horizontal)"))
         #expect(source.contains("cacheHitRateSummary(snapshot)"))
-        #expect(source.contains("snapshot.dailyExtended.last?.cacheUsage"))
-        #expect(source.contains("snapshot.dailyExtended.suffix(7)"))
-        #expect(source.contains("snapshot.dailyExtended.suffix(30)"))
+        #expect(source.contains("DashboardCacheUsageWindows(daily: snapshot.dailyExtended)"))
+        #expect(windows.contains("calendar.isDate(point.date, inSameDayAs: todayStart)"))
+        #expect(windows.contains("value: -6, to: todayStart"))
+        #expect(windows.contains("value: -29, to: todayStart"))
         #expect(source.contains("L10n.cacheHitRateToday"))
         #expect(source.contains("L10n.last7Days"))
         #expect(source.contains("L10n.last30Days"))
