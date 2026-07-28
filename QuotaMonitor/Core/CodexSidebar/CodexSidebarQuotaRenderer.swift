@@ -6,11 +6,15 @@ import Foundation
 /// Opsail is Apache-2.0 licensed. See THIRD_PARTY_NOTICES.md for attribution.
 enum CodexSidebarQuotaRenderer {
     static func evaluateRequest(id: Int) -> [String: Any] {
+        evaluateRequest(id: id, expression: source)
+    }
+
+    static func evaluateRequest(id: Int, expression: String) -> [String: Any] {
         [
             "id": id,
             "method": "Runtime.evaluate",
             "params": [
-                "expression": source,
+                "expression": expression,
                 "awaitPromise": true,
                 "returnByValue": true,
                 "userGesture": false
@@ -22,6 +26,15 @@ enum CodexSidebarQuotaRenderer {
     (() => {
       window.__quotaMonitorCodexSidebarQuota?.cleanup?.();
       return true;
+    })()
+    """
+
+    static let probeExpression = """
+    (() => {
+      const integration = window.__quotaMonitorCodexSidebarQuota;
+      if (!integration?.renewLease) return { installed: false };
+      integration.renewLease();
+      return integration.diagnostics();
     })()
     """
 
@@ -39,6 +52,8 @@ enum CodexSidebarQuotaRenderer {
       const SHELL_SELECTOR = "main.main-surface";
       const REQUEST_PREFIX = "quota-monitor-rate-limits";
       const REFRESH_MS = 15 * 60 * 1000;
+      const LEASE_MS = 45 * 1000;
+      const LEASE_CHECK_MS = 5 * 1000;
 
       window[STATE_KEY]?.cleanup?.();
 
@@ -167,6 +182,8 @@ enum CodexSidebarQuotaRenderer {
         mutationObserver: null,
         resizeObserver: null,
         refreshTimer: null,
+        leaseTimer: null,
+        leaseExpiresAt: Date.now() + LEASE_MS,
         layoutFrame: null,
         closeTimer: null,
         disposed: false,
@@ -531,6 +548,7 @@ enum CodexSidebarQuotaRenderer {
         if (state.disposed) return true;
         state.disposed = true;
         clearInterval(state.refreshTimer);
+        clearInterval(state.leaseTimer);
         clearTimeout(state.closeTimer);
         if (state.layoutFrame !== null) cancelAnimationFrame(state.layoutFrame);
         state.mutationObserver?.disconnect();
@@ -559,8 +577,15 @@ enum CodexSidebarQuotaRenderer {
       state.refreshTimer = setInterval(() => {
         if (document.visibilityState !== "hidden") sendRead();
       }, REFRESH_MS);
+      state.leaseTimer = setInterval(() => {
+        if (Date.now() >= state.leaseExpiresAt) cleanup();
+      }, LEASE_CHECK_MS);
       window[STATE_KEY] = {
         cleanup,
+        renewLease: () => {
+          state.leaseExpiresAt = Date.now() + LEASE_MS;
+          return true;
+        },
         diagnostics: () => ({
           installed: true,
           visible: Boolean(state.host?.isConnected && !state.host.hidden),

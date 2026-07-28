@@ -84,7 +84,18 @@ struct CodexSidebarQuotaRendererTests {
         #expect(source.contains("--color-token-side-bar-background"))
         #expect(source.contains("MutationObserver"))
         #expect(source.contains("ResizeObserver"))
+        #expect(source.contains("leaseExpiresAt"))
+        #expect(source.contains("renewLease"))
         #expect(source.contains("cleanup"))
+    }
+
+    @Test("probe renews the renderer lease and reports whether injection survived navigation")
+    func probeContract() {
+        let probe = CodexSidebarQuotaRenderer.probeExpression
+
+        #expect(probe.contains("renewLease"))
+        #expect(probe.contains("installed: false"))
+        #expect(probe.contains("diagnostics"))
     }
 
     @Test("payload is wrapped as a CDP Runtime.evaluate expression")
@@ -96,6 +107,43 @@ struct CodexSidebarQuotaRendererTests {
         #expect(json.contains("\"id\":42"))
         #expect(json.contains("Runtime.evaluate"))
         #expect(json.contains("returnByValue"))
+    }
+}
+
+@Suite("Codex sidebar quota CDP responses")
+struct CodexSidebarQuotaCDPResponseTests {
+    @Test("accepts a matching successful Runtime.evaluate result")
+    func acceptsResult() throws {
+        let data = Data(#"""
+        {"id":7,"result":{"result":{"type":"object","value":{"installed":true}}}}
+        """#.utf8)
+
+        let result = try CodexSidebarQuotaCDPResponse.parse(data, expectedID: 7)
+        #expect(result?.boolValue(named: "installed") == true)
+    }
+
+    @Test("ignores unrelated protocol events and response IDs")
+    func ignoresUnrelatedMessages() throws {
+        let event = Data(#"{"method":"Runtime.executionContextCreated"}"#.utf8)
+        let other = Data(#"{"id":8,"result":{"result":{"value":true}}}"#.utf8)
+
+        #expect(try CodexSidebarQuotaCDPResponse.parse(event, expectedID: 7) == nil)
+        #expect(try CodexSidebarQuotaCDPResponse.parse(other, expectedID: 7) == nil)
+    }
+
+    @Test("rejects protocol errors and Runtime.evaluate exception details")
+    func rejectsEvaluationFailures() {
+        let protocolError = Data(#"{"id":7,"error":{"message":"closed"}}"#.utf8)
+        let exception = Data(#"""
+        {"id":7,"result":{"exceptionDetails":{"text":"boom"},"result":{"type":"object"}}}
+        """#.utf8)
+
+        #expect(throws: CodexSidebarQuotaCDPResponse.Error.self) {
+            try CodexSidebarQuotaCDPResponse.parse(protocolError, expectedID: 7)
+        }
+        #expect(throws: CodexSidebarQuotaCDPResponse.Error.self) {
+            try CodexSidebarQuotaCDPResponse.parse(exception, expectedID: 7)
+        }
     }
 }
 

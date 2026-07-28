@@ -16,6 +16,7 @@ final class CodexSidebarQuotaController {
     ]
     private static let debuggingPort = 55_321
     private static let retryNanoseconds: UInt64 = 2_000_000_000
+    private static let probeNanoseconds: UInt64 = 15_000_000_000
 
     private let settings: SettingsStore
     private let workspace: NSWorkspace
@@ -24,6 +25,7 @@ final class CodexSidebarQuotaController {
     private var activeSocket: URLSessionWebSocketTask?
     private var enabled = false
     private var launchedForCurrentOptIn = false
+    private var nextRequestID = 0
 
     init(
         settings: SettingsStore = .shared,
@@ -127,24 +129,52 @@ final class CodexSidebarQuotaController {
             }
         }
 
-        let requestID = 1
-        let request = CodexSidebarQuotaRenderer.evaluateRequest(id: requestID)
-        let data = try JSONSerialization.data(withJSONObject: request)
-        try await socket.send(.string(String(decoding: data, as: UTF8.self)))
-        try await waitForResponse(id: requestID, on: socket)
+        try await install(on: socket)
         Log.ui.info("Codex sidebar quota installed in validated renderer")
 
-        // Keep the CDP connection alive. A renderer navigation closes it, which
-        // returns control to the retry loop and causes a clean reinjection.
+        // A CDP page-target socket can survive renderer navigation even though
+        // the JavaScript context is gone. Probe on a short cadence: a surviving
+        // integration renews its self-cleanup lease, while a new context reports
+        // `installed: false` and receives the full payload again.
         while enabled, !Task.isCancelled {
-            _ = try await socket.receive()
+            try await Task.sleep(nanoseconds: Self.probeNanoseconds)
+            let probe = try await evaluate(
+                CodexSidebarQuotaRenderer.probeExpression,
+                on: socket)
+            if probe.boolValue(named: "installed") != true {
+                try await install(on: socket)
+                Log.ui.info("Codex sidebar quota reinstalled after renderer navigation")
+            }
         }
+    }
+
+    private func install(on socket: URLSessionWebSocketTask) async throws {
+        let result = try await evaluate(
+            CodexSidebarQuotaRenderer.source,
+            on: socket)
+        guard result.boolValue(named: "installed") == true else {
+            throw IntegrationError.evaluationFailed
+        }
+    }
+
+    private func evaluate(
+        _ expression: String,
+        on socket: URLSessionWebSocketTask
+    ) async throws -> CodexSidebarQuotaCDPResponse.Value {
+        nextRequestID += 1
+        let requestID = nextRequestID
+        let request = CodexSidebarQuotaRenderer.evaluateRequest(
+            id: requestID,
+            expression: expression)
+        let data = try JSONSerialization.data(withJSONObject: request)
+        try await socket.send(.string(String(decoding: data, as: UTF8.self)))
+        return try await waitForResponse(id: requestID, on: socket)
     }
 
     private func waitForResponse(
         id: Int,
         on socket: URLSessionWebSocketTask
-    ) async throws {
+    ) async throws -> CodexSidebarQuotaCDPResponse.Value {
         while !Task.isCancelled {
             let message = try await socket.receive()
             let data: Data
@@ -156,14 +186,15 @@ final class CodexSidebarQuotaController {
             @unknown default:
                 continue
             }
-            guard let object = try? JSONSerialization.jsonObject(with: data)
-                    as? [String: Any],
-                  object["id"] as? Int == id
-            else { continue }
-            if object["error"] != nil {
+            do {
+                if let result = try CodexSidebarQuotaCDPResponse.parse(
+                    data,
+                    expectedID: id) {
+                    return result
+                }
+            } catch {
                 throw IntegrationError.evaluationFailed
             }
-            return
         }
         throw CancellationError()
     }
@@ -176,14 +207,7 @@ final class CodexSidebarQuotaController {
             let socket = session.webSocketTask(with: socketURL)
             socket.resume()
             defer { socket.cancel(with: .normalClosure, reason: nil) }
-            let request: [String: Any] = [
-                "id": 2,
-                "method": "Runtime.evaluate",
-                "params": ["expression": expression, "awaitPromise": true]
-            ]
-            let data = try JSONSerialization.data(withJSONObject: request)
-            try await socket.send(.string(String(decoding: data, as: UTF8.self)))
-            try await waitForResponse(id: 2, on: socket)
+            _ = try await evaluate(expression, on: socket)
         } catch {
             Log.ui.debug(
                 "Codex sidebar quota cleanup skipped: \(error.localizedDescription, privacy: .public)")
