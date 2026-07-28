@@ -33,8 +33,8 @@ window copy.
 #### Summary
 
 - Private Beta updates can now be published reliably through the production service.
-- Authorized Macs can now opt into private Beta updates directly inside Quota Monitor without exposing Beta downloads on GitHub.
-- Important product updates can now introduce themselves in a focused, replayable What's New window with images and short videos.
+- Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
+- Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
 - Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
 - Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
 - History now opens with the latest three weeks while older records continue loading one week at a time.
@@ -51,14 +51,14 @@ window copy.
 - Restoring a minimized Dashboard now refreshes its charts and summaries before you continue.
 - Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
 - History now includes each selected day's cache hit rate in the top summary above its model usage.
-- Dashboard now shows weighted cache hit rates for the latest 7 and 30 local-calendar days, with a daily trend for the selected range.
+- Dashboard now shows today's cache hit rate alongside weighted 7- and 30-day rates, while the trend line stays continuous across days without a calculable rate.
 - Advanced settings now show the automatic update check toggle without an explanatory note beneath it.
 
 ### Added
 
-- **Private Beta update channel.** Authorized Macs can enroll with a one-time code, switch between Stable and Private Beta in Advanced settings, and receive authenticated Sparkle updates while Beta files remain outside public GitHub releases and feeds.
-- **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and permanent reopen actions in the menu popover and Settings; fresh installs continue directly through onboarding without a second tour.
-- **Dashboard cache hit-rate trends.** The headline now pairs fixed 7- and 30-day weighted summaries with a cache hit-rate line integrated into the existing daily Token bars, and provider or date filters update both views together.
+- **Private Beta update channel.** Holding Option while clicking Check Now reveals one-time-code enrollment only for an invited Mac; after authorization it can switch between Stable and Private Beta and receive authenticated Sparkle updates while everyone else sees only the normal update controls and Beta files remain outside public GitHub releases and feeds.
+- **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and a permanent reopen action in Settings; fresh installs continue directly through onboarding without a second tour.
+- **Dashboard cache hit-rate trends.** The headline now pairs today's result with fixed 7- and 30-day weighted summaries, and the cache hit-rate line connects adjacent observations across unavailable days without treating them as 0%; provider and date filters update both views together.
 - **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
 - **Fable 5 weekly quota.** When Anthropic provides the model-scoped weekly limit, Quota Monitor keeps it available after relaunch and labels the two weekly meters as Full and Fable 5.
@@ -68,6 +68,7 @@ window copy.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 - **Fresh Dashboard after minimizing.** Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.
+- **Accurate cache windows after midnight.** An open Dashboard now refreshes its Today, 7-day, and 30-day cache hit-rate windows as the local date changes, so yesterday's value is never relabeled as today's after midnight.
 
 ### Changed
 

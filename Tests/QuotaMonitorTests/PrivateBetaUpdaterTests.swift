@@ -42,6 +42,46 @@ struct PrivateBetaUpdaterTests {
         #expect(!UpdaterController.isPrivateBetaAvailable(feedURL: "  "))
     }
 
+    @Test("Private Beta controls stay hidden until invited or enrolled")
+    func privateBetaControlsVisibility() {
+        #expect(!PrivateBetaSettingsPresentation.showsControls(
+            privateBetaAvailable: true,
+            privateBetaEnrolled: false,
+            enrollmentRevealed: false))
+        #expect(PrivateBetaSettingsPresentation.showsControls(
+            privateBetaAvailable: true,
+            privateBetaEnrolled: false,
+            enrollmentRevealed: true))
+        #expect(PrivateBetaSettingsPresentation.showsControls(
+            privateBetaAvailable: true,
+            privateBetaEnrolled: true,
+            enrollmentRevealed: false))
+        #expect(!PrivateBetaSettingsPresentation.showsControls(
+            privateBetaAvailable: false,
+            privateBetaEnrolled: true,
+            enrollmentRevealed: true))
+    }
+
+    @Test("Option-click reveals enrollment only on an eligible unenrolled build")
+    func optionClickIntent() {
+        #expect(PrivateBetaSettingsPresentation.checkIntent(
+            privateBetaAvailable: true,
+            privateBetaEnrolled: false,
+            optionPressed: true) == .revealEnrollment)
+        #expect(PrivateBetaSettingsPresentation.checkIntent(
+            privateBetaAvailable: true,
+            privateBetaEnrolled: false,
+            optionPressed: false) == .checkForUpdates)
+        #expect(PrivateBetaSettingsPresentation.checkIntent(
+            privateBetaAvailable: true,
+            privateBetaEnrolled: true,
+            optionPressed: true) == .checkForUpdates)
+        #expect(PrivateBetaSettingsPresentation.checkIntent(
+            privateBetaAvailable: false,
+            privateBetaEnrolled: false,
+            optionPressed: true) == .checkForUpdates)
+    }
+
     @Test("Only a 32-byte base64url device credential is accepted")
     func tokenValidation() {
         #expect(PrivateBetaEnrollmentClient.isValidToken(String(repeating: "A", count: 43)))

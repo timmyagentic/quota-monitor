@@ -67,15 +67,17 @@ struct DashboardView: View {
     // MARK: - rolling-window statline
 
     private func statline(_ snapshot: DashboardSnapshot) -> some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) {
-                usageHeadline
-                Spacer(minLength: 16)
-                cacheHitRateSummary(snapshot)
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                usageHeadline
-                cacheHitRateSummary(snapshot)
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 14) {
+                    usageHeadline
+                    Spacer(minLength: 16)
+                    cacheHitRateSummary(snapshot, now: context.date)
+                }
+                VStack(alignment: .leading, spacing: 8) {
+                    usageHeadline
+                    cacheHitRateSummary(snapshot, now: context.date)
+                }
             }
         }
     }
@@ -144,11 +146,13 @@ struct DashboardView: View {
         }
     }
 
-    private func cacheHitRateSummary(_ snapshot: DashboardSnapshot) -> some View {
-        let last7Days = CacheUsageSummary.combined(
-            snapshot.dailyExtended.suffix(7).map(\.cacheUsage))
-        let last30Days = CacheUsageSummary.combined(
-            snapshot.dailyExtended.suffix(30).map(\.cacheUsage))
+    private func cacheHitRateSummary(
+        _ snapshot: DashboardSnapshot,
+        now: Date
+    ) -> some View {
+        let windows = DashboardCacheUsageWindows(
+            daily: snapshot.dailyExtended,
+            now: now)
 
         return HStack(spacing: 8) {
             Circle()
@@ -161,12 +165,17 @@ struct DashboardView: View {
             Divider()
                 .frame(height: 14)
 
-            cacheHitRateValue(L10n.last7Days, summary: last7Days)
+            cacheHitRateValue(L10n.cacheHitRateToday, summary: windows.today)
 
             Divider()
                 .frame(height: 14)
 
-            cacheHitRateValue(L10n.last30Days, summary: last30Days)
+            cacheHitRateValue(L10n.last7Days, summary: windows.last7Days)
+
+            Divider()
+                .frame(height: 14)
+
+            cacheHitRateValue(L10n.last30Days, summary: windows.last30Days)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

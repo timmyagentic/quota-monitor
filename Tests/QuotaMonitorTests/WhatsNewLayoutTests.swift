@@ -34,14 +34,14 @@ struct WhatsNewLayoutTests {
         #expect(source.contains("isWhatsNewWindow(notification.object)"))
     }
 
-    @Test("Permanent reopen entries exist in the menu and Settings")
+    @Test("What's New stays in Settings without a persistent popover button")
     func manualReopenIsWired() throws {
         let menu = try Self.source(
             named: "QuotaMonitor/Features/MenuBar/MenuBarContentView.swift")
         let settings = try Self.source(
             named: "QuotaMonitor/Features/Settings/GeneralSettingsTab.swift")
-        #expect(menu.contains("windowActions(env).openWhatsNew()"))
-        #expect(menu.contains(".accessibilityLabel(L10n.whatsNewMenuItem)"))
+        #expect(!menu.contains("windowActions(env).openWhatsNew()"))
+        #expect(!menu.contains(".accessibilityLabel(L10n.whatsNewMenuItem)"))
         #expect(settings.contains("LabeledContent(L10n.whatsNewSettingsRow)"))
         #expect(settings.contains("WindowManager.shared.show(\"whats-new\")"))
     }
