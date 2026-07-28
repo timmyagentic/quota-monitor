@@ -205,6 +205,7 @@ def admin_post(
             "Authorization": f"Basic {credentials}",
             "Content-Type": "application/json",
             "Content-Length": str(len(body)),
+            "User-Agent": "QuotaMonitor-Private-Beta-Publisher/1.0",
         },
     )
     with admin_opener().open(request, timeout=30) as response:

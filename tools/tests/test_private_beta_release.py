@@ -127,6 +127,10 @@ class PrivateBetaReleaseTests(unittest.TestCase):
             request.full_url,
             "https://example.test/api/private-beta/admin/publication-lock/acquire",
         )
+        self.assertEqual(
+            request.get_header("User-agent"),
+            "QuotaMonitor-Private-Beta-Publisher/1.0",
+        )
 
 
 if __name__ == "__main__":

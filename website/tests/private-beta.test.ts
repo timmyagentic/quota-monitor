@@ -126,6 +126,13 @@ function publicationLockBucket(): R2Bucket {
         return null;
       }
       if (
+        condition instanceof Headers &&
+        condition.has("If-Match") &&
+        condition.get("If-Match") !== `"${stored?.etag}"`
+      ) {
+        return null;
+      }
+      if (
         condition !== undefined &&
         !(condition instanceof Headers) &&
         condition.etagMatches !== undefined &&
