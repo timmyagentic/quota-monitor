@@ -228,9 +228,19 @@ final class CodexSidebarQuotaController {
         ]
         configuration.activates = true
         do {
-            _ = try await workspace.openApplication(
-                at: appURL,
-                configuration: configuration)
+            try await withCheckedThrowingContinuation {
+                (continuation: CheckedContinuation<Void, Error>) in
+                workspace.openApplication(
+                    at: appURL,
+                    configuration: configuration
+                ) { _, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            }
             Log.ui.info("Reopened Codex with loopback DevTools for sidebar quota")
         } catch {
             launchedForCurrentOptIn = false
