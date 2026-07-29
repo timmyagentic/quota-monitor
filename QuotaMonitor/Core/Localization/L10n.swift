@@ -61,17 +61,22 @@ enum L10n {
     static var claudeCode: String { "Claude Code" }      // proper noun
     static var claude: String { "Claude" }               // proper noun
 
-    // MARK: - Codex attached quota capsule
+    // MARK: - Codex sidebar quota capsule
 
     static var codexCapsuleSettingsSection: String {
-        t(en: "Codex integration", zh: "Codex 集成")
+        t(en: "Codex sidebar", zh: "Codex 侧栏")
     }
     static var codexCapsuleSettingsLabel: String {
-        t(en: "Show weekly quota inside Codex", zh: "在 Codex 内显示每周额度")
+        t(en: "Show native quota capsule", zh: "显示原生额度挂件")
     }
     static var codexCapsuleSettingsHelp: String {
-        t(en: "Attaches a small quota capsule to the frontmost Codex window. It uses Quota Monitor's existing snapshot and never modifies the Codex app.",
-          zh: "在前台 Codex 窗口上附着一个小型额度胶囊。它复用 Quota Monitor 已有快照，不会修改 Codex 应用。")
+        t(
+            en: "Adds 5-hour and weekly limits inside the Codex account row. "
+                + "After enabling, quit Codex once; \(Branding.appDisplayName) will reopen it with a "
+                + "loopback-only debugging port. Hover or focus the capsule for details.",
+            zh: "在 Codex 账户行内显示 5 小时和每周额度。开启后请退出一次 Codex，"
+                + "\(Branding.appDisplayName) 会用仅限本机的调试端口重新打开；"
+                + "悬停或聚焦挂件可查看详情。")
     }
     static var codexCapsuleWeekly: String { t(en: "weekly", zh: "每周") }
     static var codexCapsuleTitle: String { t(en: "Codex weekly", zh: "Codex 每周额度") }
