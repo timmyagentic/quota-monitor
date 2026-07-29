@@ -89,6 +89,15 @@ struct OpsailCodexRefitTests {
         #expect(OpsailCleanupPolicy.didComplete(status: 0))
         #expect(!OpsailCleanupPolicy.didComplete(status: 1))
         #expect(!OpsailCleanupPolicy.didComplete(status: -1))
+        #expect(OpsailCleanupPolicy.canStartManager(
+            disableInvocationPending: false,
+            disableProcessPresent: false))
+        #expect(!OpsailCleanupPolicy.canStartManager(
+            disableInvocationPending: true,
+            disableProcessPresent: false))
+        #expect(!OpsailCleanupPolicy.canStartManager(
+            disableInvocationPending: false,
+            disableProcessPresent: true))
     }
 
     @Test("Codex sidebar help follows the configured brand")

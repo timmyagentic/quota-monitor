@@ -72,6 +72,13 @@ enum OpsailCleanupPolicy {
     static func didComplete(status: Int32) -> Bool {
         status == 0
     }
+
+    static func canStartManager(
+        disableInvocationPending: Bool,
+        disableProcessPresent: Bool
+    ) -> Bool {
+        !disableInvocationPending && !disableProcessPresent
+    }
 }
 
 /// Owns only the QuotaMonitor-to-Opsail process boundary.
@@ -154,6 +161,14 @@ final class OpsailCodexRefitController: NSObject {
         }
 
         guard shouldCleanup else { return }
+        let manager = enableProcess
+        enableInvocationID = nil
+        enableProcess = nil
+        if manager?.isRunning == true {
+            manager?.terminate()
+        }
+        waitForExit(manager, timeout: 1)
+
         let cleanup = disableProcess ?? launchProcess(
             arguments: OpsailCodexRefitCommand.disable,
             termination: nil)
@@ -161,12 +176,6 @@ final class OpsailCodexRefitController: NSObject {
         waitForExit(cleanup, timeout: Self.shutdownTimeout)
         disableProcess = nil
 
-        if enableProcess?.isRunning == true {
-            enableProcess?.terminate()
-        }
-        waitForExit(enableProcess, timeout: 1)
-        enableProcess = nil
-        enableInvocationID = nil
         disableInvocationID = nil
         managedSessionRequested = false
     }
@@ -216,7 +225,11 @@ final class OpsailCodexRefitController: NSObject {
 
     private func startManagedSession(allowLaunch: Bool) {
         guard enabled, !stopping else { return }
-        guard enableProcess?.isRunning != true, disableProcess?.isRunning != true else {
+        guard enableProcess?.isRunning != true,
+              OpsailCleanupPolicy.canStartManager(
+                disableInvocationPending: disableInvocationID != nil,
+                disableProcessPresent: disableProcess != nil)
+        else {
             return
         }
         guard fileManager.isExecutableFile(atPath: helperURL.path) else {
