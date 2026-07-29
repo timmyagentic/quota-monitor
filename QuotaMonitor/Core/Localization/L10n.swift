@@ -414,6 +414,9 @@ enum L10n {
     static var scanIndexingTitle: String {
         t(en: "Scanning local history", zh: "正在扫描本地记录")
     }
+    static var scanUpdatingFiles: String {
+        t(en: "Updating changed files", zh: "正在更新变更文件")
+    }
     static func scanProgressSummary(completed: Int, total: Int) -> String {
         if total > 0 {
             return t(en: "\(completed)/\(total) files processed",

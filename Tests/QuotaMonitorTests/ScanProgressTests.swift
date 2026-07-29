@@ -44,4 +44,17 @@ struct ScanProgressTests {
         #expect(progress.currentFile == nil)
         #expect(progress.fraction == nil)
     }
+
+    @Test("only launch and onboarding scans use the detailed progress row")
+    func detailedProgressIsReservedForInitialScans() {
+        #expect(AppEnvironment.scanPresentation(forTrigger: "launch") == .detailedProgress)
+        #expect(AppEnvironment.scanPresentation(forTrigger: "onboarding") == .detailedProgress)
+
+        for trigger in ["manual", "popover", "claude-file-watch",
+                        "claude-file-watch-trailing", "history-root-change"] {
+            #expect(
+                AppEnvironment.scanPresentation(forTrigger: trigger) == .compactActivity,
+                "Expected \(trigger) to use compact scan feedback")
+        }
+    }
 }

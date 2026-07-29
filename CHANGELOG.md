@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
 - The Codex sidebar widget now follows a clear, user-owned launch flow: quit Codex yourself when required, then explicitly open it with the widget from Settings.
 - Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
@@ -77,6 +78,7 @@ window copy.
 
 ### Changed
 
+- **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
 - **Explicit Codex widget launch.** The native quota widget now attaches quietly when possible, otherwise asks you to quit Codex yourself and waits for a separate “Open Codex and enable widget” action; Quota Monitor never quits or reopens Codex automatically.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
 - **Reliable Codex sidebar quota.** The opt-in integration uses Opsail's established Codex refit lifecycle to keep 5-hour and weekly limits in the account row, follow Codex theme tokens, refresh from its live rate-limit bridge, recover from renderer changes while Codex remains open, and cleanly remove the widget when disabled.
