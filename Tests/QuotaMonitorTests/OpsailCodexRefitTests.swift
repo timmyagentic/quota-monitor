@@ -6,10 +6,10 @@ import Testing
 struct OpsailCodexRefitTests {
     @Test("managed mode delegates the complete lifecycle to Opsail")
     func managedCommand() {
-        #expect(OpsailCodexRefitCommand.managedEnableLaunching == [
+        #expect(OpsailCodexRefitCommand.managedEnable(allowLaunch: true) == [
             "refit", "codex", "enable", "usage", "--launch", "--foreground"
         ])
-        #expect(OpsailCodexRefitCommand.managedEnableAttachOnly == [
+        #expect(OpsailCodexRefitCommand.managedEnable(allowLaunch: false) == [
             "refit", "codex", "enable", "usage", "--foreground"
         ])
         #expect(OpsailCodexRefitCommand.disable == [

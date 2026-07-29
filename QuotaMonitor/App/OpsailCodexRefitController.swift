@@ -3,15 +3,19 @@ import Foundation
 import Observation
 
 enum OpsailCodexRefitCommand {
-    static let managedEnableLaunching = [
+    private static let managedEnableLaunching = [
         "refit", "codex", "enable", "usage", "--launch", "--foreground"
     ]
-    static let managedEnableAttachOnly = [
+    private static let managedEnableAttachOnly = [
         "refit", "codex", "enable", "usage", "--foreground"
     ]
     static let disable = [
         "refit", "codex", "disable", "usage"
     ]
+
+    static func managedEnable(allowLaunch: Bool) -> [String] {
+        allowLaunch ? managedEnableLaunching : managedEnableAttachOnly
+    }
 }
 
 enum OpsailHelperLocator {
@@ -179,7 +183,10 @@ final class OpsailCodexRefitController: NSObject {
                 OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
                     isInitialObservation: isInitialObservation,
                     codexIsRunning: codexIsRunning)
-            startManagedSession(allowLaunch: !isInitialObservation)
+            // Opsail's --launch starts only a stopped, validated app. Keeping
+            // it here restores a persisted opt-in after login without
+            // reopening a running app or arming the one-time quit handler.
+            startManagedSession(allowLaunch: true)
         } else {
             awaitingInitialCodexRestart = false
             disableManagedSession()
@@ -203,9 +210,8 @@ final class OpsailCodexRefitController: NSObject {
         let invocationID = UUID()
         enableInvocationID = invocationID
         let process = launchProcess(
-            arguments: allowLaunch
-                ? OpsailCodexRefitCommand.managedEnableLaunching
-                : OpsailCodexRefitCommand.managedEnableAttachOnly
+            arguments: OpsailCodexRefitCommand.managedEnable(
+                allowLaunch: allowLaunch)
         ) { [weak self] status in
             guard let self else { return }
             guard self.enableInvocationID == invocationID else { return }
