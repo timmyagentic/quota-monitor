@@ -3,8 +3,11 @@ import Foundation
 import Observation
 
 enum OpsailCodexRefitCommand {
-    static let managedEnable = [
+    static let managedEnableLaunching = [
         "refit", "codex", "enable", "usage", "--launch", "--foreground"
+    ]
+    static let managedEnableAttachOnly = [
+        "refit", "codex", "enable", "usage", "--foreground"
     ]
     static let disable = [
         "refit", "codex", "disable", "usage"
@@ -45,6 +48,13 @@ enum OpsailCodexRelaunchPolicy {
             && awaitingInitialRestart
             && isSupported(bundleIdentifier: bundleIdentifier)
     }
+
+    static func shouldArmInitialRestart(
+        isInitialObservation: Bool,
+        codexIsRunning: Bool
+    ) -> Bool {
+        !isInitialObservation && codexIsRunning
+    }
 }
 
 /// Owns only the QuotaMonitor-to-Opsail process boundary.
@@ -54,6 +64,7 @@ enum OpsailCodexRelaunchPolicy {
 @MainActor
 final class OpsailCodexRefitController: NSObject {
     private static let relaunchDelayNanoseconds: UInt64 = 700_000_000
+    private static let managerRetryDelayNanoseconds: UInt64 = 2_000_000_000
     private static let shutdownTimeout: TimeInterval = 5
 
     private let settings: SettingsStore
@@ -66,9 +77,11 @@ final class OpsailCodexRefitController: NSObject {
     private var enableInvocationID: UUID?
     private var disableInvocationID: UUID?
     private var relaunchTask: Task<Void, Never>?
+    private var managerRetryTask: Task<Void, Never>?
     private var enabled = false
     private var managedSessionRequested = false
     private var awaitingInitialCodexRestart = false
+    private var hasObservedInitialSetting = false
     private var observingWorkspace = false
     private var stopping = false
 
@@ -109,6 +122,8 @@ final class OpsailCodexRefitController: NSObject {
         awaitingInitialCodexRestart = false
         relaunchTask?.cancel()
         relaunchTask = nil
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
         if observingWorkspace {
             workspace.notificationCenter.removeObserver(
                 self,
@@ -146,24 +161,32 @@ final class OpsailCodexRefitController: NSObject {
     }
 
     private func apply(enabled nextEnabled: Bool) {
+        let isInitialObservation = !hasObservedInitialSetting
+        hasObservedInitialSetting = true
         guard nextEnabled != enabled else { return }
         enabled = nextEnabled
         relaunchTask?.cancel()
         relaunchTask = nil
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
 
         if nextEnabled {
-            awaitingInitialCodexRestart = workspace.runningApplications.contains {
+            let codexIsRunning = workspace.runningApplications.contains {
                 OpsailCodexRelaunchPolicy.isSupported(
                     bundleIdentifier: $0.bundleIdentifier)
             }
-            startManagedSession()
+            awaitingInitialCodexRestart =
+                OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+                    isInitialObservation: isInitialObservation,
+                    codexIsRunning: codexIsRunning)
+            startManagedSession(allowLaunch: !isInitialObservation)
         } else {
             awaitingInitialCodexRestart = false
             disableManagedSession()
         }
     }
 
-    private func startManagedSession() {
+    private func startManagedSession(allowLaunch: Bool) {
         guard enabled, !stopping else { return }
         guard enableProcess?.isRunning != true, disableProcess?.isRunning != true else {
             return
@@ -174,25 +197,45 @@ final class OpsailCodexRefitController: NSObject {
             return
         }
 
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
         managedSessionRequested = true
         let invocationID = UUID()
         enableInvocationID = invocationID
         let process = launchProcess(
-            arguments: OpsailCodexRefitCommand.managedEnable
+            arguments: allowLaunch
+                ? OpsailCodexRefitCommand.managedEnableLaunching
+                : OpsailCodexRefitCommand.managedEnableAttachOnly
         ) { [weak self] status in
             guard let self else { return }
-            if self.enableInvocationID == invocationID {
-                self.enableInvocationID = nil
-                self.enableProcess = nil
-            }
+            guard self.enableInvocationID == invocationID else { return }
+            self.enableInvocationID = nil
+            self.enableProcess = nil
             guard self.enabled, !self.stopping else { return }
             Log.ui.info(
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
+            self.scheduleManagerRetry()
         }
         enableProcess = process
         if process == nil, enableInvocationID == invocationID {
             enableInvocationID = nil
             managedSessionRequested = false
+            scheduleManagerRetry()
+        }
+    }
+
+    private func scheduleManagerRetry() {
+        guard enabled, !stopping, managerRetryTask == nil else { return }
+        managerRetryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(
+                    nanoseconds: Self.managerRetryDelayNanoseconds)
+            } catch {
+                return
+            }
+            guard let self, self.enabled, !self.stopping else { return }
+            self.managerRetryTask = nil
+            self.startManagedSession(allowLaunch: false)
         }
     }
 
@@ -224,7 +267,7 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Opsail Codex cleanup exited with status \(status, privacy: .public)")
             if self.enabled, !self.stopping {
-                self.startManagedSession()
+                self.startManagedSession(allowLaunch: true)
             }
         }
         disableProcess = process
@@ -283,6 +326,8 @@ final class OpsailCodexRefitController: NSObject {
 
         awaitingInitialCodexRestart = false
         relaunchTask?.cancel()
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
         relaunchTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: Self.relaunchDelayNanoseconds)
@@ -294,7 +339,7 @@ final class OpsailCodexRefitController: NSObject {
                 self.enableProcess?.terminate()
                 self.enableProcess = nil
             }
-            self.startManagedSession()
+            self.startManagedSession(allowLaunch: true)
         }
     }
 }

@@ -6,8 +6,11 @@ import Testing
 struct OpsailCodexRefitTests {
     @Test("managed mode delegates the complete lifecycle to Opsail")
     func managedCommand() {
-        #expect(OpsailCodexRefitCommand.managedEnable == [
+        #expect(OpsailCodexRefitCommand.managedEnableLaunching == [
             "refit", "codex", "enable", "usage", "--launch", "--foreground"
+        ])
+        #expect(OpsailCodexRefitCommand.managedEnableAttachOnly == [
+            "refit", "codex", "enable", "usage", "--foreground"
         ])
         #expect(OpsailCodexRefitCommand.disable == [
             "refit", "codex", "disable", "usage"
@@ -36,6 +39,15 @@ struct OpsailCodexRefitTests {
 
     @Test("only the initial opt-in quit relaunches Codex")
     func initialOptInRelaunchPolicy() {
+        #expect(!OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+            isInitialObservation: true,
+            codexIsRunning: true))
+        #expect(OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+            isInitialObservation: false,
+            codexIsRunning: true))
+        #expect(!OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+            isInitialObservation: false,
+            codexIsRunning: false))
         #expect(OpsailCodexRelaunchPolicy.shouldRelaunch(
             enabled: true,
             stopping: false,
