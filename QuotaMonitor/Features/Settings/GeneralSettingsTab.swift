@@ -73,9 +73,8 @@ struct GeneralSettingsTab: View {
 
             if DistributionChannel.current != .appStore {
                 Section(L10n.codexCapsuleSettingsSection) {
-                    Toggle(
-                        L10n.codexCapsuleSettingsLabel,
-                        isOn: $settings.codexSidebarQuotaEnabled)
+                    Text(L10n.codexCapsuleSettingsLabel)
+                        .font(.body.weight(.medium))
                     Text(L10n.codexCapsuleSettingsHelp)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -92,6 +91,12 @@ struct GeneralSettingsTab: View {
                             .background(
                                 codexSidebarStatusColor.opacity(0.1),
                                 in: RoundedRectangle(cornerRadius: 8))
+                        codexSidebarActions
+                    } else {
+                        Button(L10n.codexCapsuleEnableButton) {
+                            OpsailCodexRefitActions.requestExplicitLaunch()
+                        }
+                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -239,10 +244,12 @@ struct GeneralSettingsTab: View {
             L10n.codexCapsuleUnavailableStatus
         case .attaching:
             L10n.codexCapsuleAttachingStatus
-        case .waitingForManualQuit:
-            L10n.codexCapsuleWaitingForQuitStatus
-        case .relaunching:
-            L10n.codexCapsuleRelaunchingStatus
+        case .needsCodexQuit:
+            L10n.codexCapsuleNeedsQuitStatus
+        case .readyToLaunch:
+            L10n.codexCapsuleReadyToLaunchStatus
+        case .launching:
+            L10n.codexCapsuleLaunchingStatus
         case .active:
             L10n.codexCapsuleActiveStatus
         }
@@ -250,10 +257,12 @@ struct GeneralSettingsTab: View {
 
     private var codexSidebarStatusIcon: String {
         switch settings.codexSidebarQuotaStatus {
-        case .attaching, .relaunching:
+        case .attaching, .launching:
             "arrow.triangle.2.circlepath"
-        case .waitingForManualQuit:
+        case .needsCodexQuit:
             "hand.raised.fill"
+        case .readyToLaunch:
+            "play.circle.fill"
         case .active:
             "checkmark.circle.fill"
         case .disabled, .unavailable:
@@ -265,12 +274,50 @@ struct GeneralSettingsTab: View {
         switch settings.codexSidebarQuotaStatus {
         case .active:
             .green
-        case .waitingForManualQuit:
+        case .needsCodexQuit:
             .orange
+        case .readyToLaunch:
+            .accentColor
         case .disabled, .unavailable:
             .secondary
-        case .attaching, .relaunching:
+        case .attaching, .launching:
             .accentColor
+        }
+    }
+
+    @ViewBuilder
+    private var codexSidebarActions: some View {
+        switch settings.codexSidebarQuotaStatus {
+        case .readyToLaunch:
+            HStack {
+                Button(L10n.codexCapsuleLaunchButton) {
+                    OpsailCodexRefitActions.requestExplicitLaunch()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleCancelButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .unavailable:
+            HStack {
+                Button(L10n.codexCapsuleRetryButton) {
+                    OpsailCodexRefitActions.requestExplicitLaunch()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleDisableButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .needsCodexQuit, .attaching, .launching:
+            Button(L10n.codexCapsuleCancelButton) {
+                settings.codexSidebarQuotaEnabled = false
+            }
+        case .active:
+            Button(L10n.codexCapsuleDisableButton) {
+                settings.codexSidebarQuotaEnabled = false
+            }
+        case .disabled:
+            EmptyView()
         }
     }
 

@@ -23,8 +23,9 @@ extension Notification.Name {
 enum CodexSidebarQuotaStatus: Equatable {
     case disabled
     case attaching
-    case waitingForManualQuit
-    case relaunching
+    case needsCodexQuit
+    case readyToLaunch
+    case launching
     case active
     case unavailable
 }

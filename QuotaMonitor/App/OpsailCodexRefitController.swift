@@ -31,7 +31,7 @@ enum OpsailHelperLocator {
     }
 }
 
-enum OpsailCodexRelaunchPolicy {
+enum OpsailCodexApplicationPolicy {
     private static let supportedBundleIdentifiers: Set<String> = [
         "com.openai.chat",
         "com.openai.codex"
@@ -40,48 +40,29 @@ enum OpsailCodexRelaunchPolicy {
     static func isSupported(bundleIdentifier: String?) -> Bool {
         bundleIdentifier.map(supportedBundleIdentifiers.contains) ?? false
     }
-
-    static func shouldRelaunch(
-        enabled: Bool,
-        stopping: Bool,
-        awaitingInitialRestart: Bool,
-        bundleIdentifier: String?
-    ) -> Bool {
-        enabled
-            && !stopping
-            && awaitingInitialRestart
-            && isSupported(bundleIdentifier: bundleIdentifier)
-    }
-
-    static func shouldOfferManualRestart(
-        isInitialObservation: Bool,
-        codexIsRunning: Bool
-    ) -> Bool {
-        !isInitialObservation && codexIsRunning
-    }
 }
 
 enum OpsailCodexActivationPolicy {
-    private static let attachUnavailableMarker =
-        "[opsail-refit-codex:session-unavailable]"
+    private static let attachUnavailableMarkers = [
+        "[opsail-refit-codex:session-unavailable]",
+        "[opsail-refit-codex:restart-required]"
+    ]
 
-    static func allowLaunch(
-        isInitialObservation: Bool,
+    static func allowLaunchForExplicitRequest(
         codexIsRunning: Bool
     ) -> Bool {
-        !isInitialObservation && !codexIsRunning
+        !codexIsRunning
     }
 
-    static func shouldPromptForManualQuit(
-        manualRestartEligible: Bool,
-        promptAlreadyShown: Bool,
+    static func actionableStatus(
         status: Int32,
-        diagnostic: String
-    ) -> Bool {
-        status != 0
-            && diagnostic.contains(attachUnavailableMarker)
-            && manualRestartEligible
-            && !promptAlreadyShown
+        diagnostic: String,
+        codexIsRunning: Bool
+    ) -> CodexSidebarQuotaStatus? {
+        guard status != 0,
+              attachUnavailableMarkers.contains(where: diagnostic.contains)
+        else { return nil }
+        return codexIsRunning ? .needsCodexQuit : .readyToLaunch
     }
 
     static func preserveLaunchIntent(
@@ -91,23 +72,19 @@ enum OpsailCodexActivationPolicy {
         pendingAllowLaunch || requestedAllowLaunch
     }
 
-    static func shouldLaunchAfterConfirmation(
-        codexIsRunning: Bool
-    ) -> Bool {
-        !codexIsRunning
-    }
+}
+
+extension Notification.Name {
+    static let quotaMonitorCodexSidebarLaunchRequested =
+        Notification.Name("dev.tjzhou.QuotaMonitor.codexSidebarLaunchRequested")
 }
 
 @MainActor
-enum OpsailCodexManualQuitPrompt {
-    static func makeAlert() -> NSAlert {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = L10n.codexCapsuleManualQuitTitle
-        alert.informativeText = L10n.codexCapsuleManualQuitMessage
-        alert.addButton(withTitle: L10n.codexCapsuleManualQuitConfirm)
-        alert.addButton(withTitle: L10n.codexCapsuleManualQuitCancel)
-        return alert
+enum OpsailCodexRefitActions {
+    static func requestExplicitLaunch() {
+        NotificationCenter.default.post(
+            name: .quotaMonitorCodexSidebarLaunchRequested,
+            object: nil)
     }
 }
 
@@ -137,7 +114,6 @@ enum OpsailCleanupPolicy {
 /// bridge reads, DOM placement, health checks, reconnection, and cleanup.
 @MainActor
 final class OpsailCodexRefitController: NSObject {
-    private static let relaunchDelayNanoseconds: UInt64 = 700_000_000
     private static let shutdownTimeout: TimeInterval = 5
 
     private let settings: SettingsStore
@@ -149,19 +125,15 @@ final class OpsailCodexRefitController: NSObject {
     private var disableProcess: Process?
     private var enableInvocationID: UUID?
     private var disableInvocationID: UUID?
-    private var relaunchTask: Task<Void, Never>?
     private var managerRetryTask: Task<Void, Never>?
     private var cleanupRetryTask: Task<Void, Never>?
     private var managerRetryAttempt = 0
     private var cleanupRetryAttempt = 0
     private var enabled = false
     private var managedSessionRequested = false
-    private var manualRestartPromptEligible = false
-    private var awaitingInitialCodexRestart = false
-    private var manualRestartPromptShown = false
     private var pendingManagerAllowLaunch = false
-    private var hasObservedInitialSetting = false
     private var observingWorkspace = false
+    private var observingLaunchRequests = false
     private var stopping = false
 
     init(
@@ -185,7 +157,20 @@ final class OpsailCodexRefitController: NSObject {
                 selector: #selector(codexDidTerminate),
                 name: NSWorkspace.didTerminateApplicationNotification,
                 object: nil)
+            workspace.notificationCenter.addObserver(
+                self,
+                selector: #selector(codexDidLaunch),
+                name: NSWorkspace.didLaunchApplicationNotification,
+                object: nil)
             observingWorkspace = true
+        }
+        if !observingLaunchRequests {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(explicitLaunchRequested),
+                name: .quotaMonitorCodexSidebarLaunchRequested,
+                object: nil)
+            observingLaunchRequests = true
         }
         observeSetting()
     }
@@ -198,10 +183,6 @@ final class OpsailCodexRefitController: NSObject {
             || disableProcess != nil
         stopping = true
         enabled = false
-        manualRestartPromptEligible = false
-        awaitingInitialCodexRestart = false
-        relaunchTask?.cancel()
-        relaunchTask = nil
         managerRetryTask?.cancel()
         managerRetryTask = nil
         cleanupRetryTask?.cancel()
@@ -211,7 +192,18 @@ final class OpsailCodexRefitController: NSObject {
                 self,
                 name: NSWorkspace.didTerminateApplicationNotification,
                 object: nil)
+            workspace.notificationCenter.removeObserver(
+                self,
+                name: NSWorkspace.didLaunchApplicationNotification,
+                object: nil)
             observingWorkspace = false
+        }
+        if observingLaunchRequests {
+            NotificationCenter.default.removeObserver(
+                self,
+                name: .quotaMonitorCodexSidebarLaunchRequested,
+                object: nil)
+            observingLaunchRequests = false
         }
 
         guard shouldCleanup else { return }
@@ -246,12 +238,8 @@ final class OpsailCodexRefitController: NSObject {
     }
 
     private func apply(enabled nextEnabled: Bool) {
-        let isInitialObservation = !hasObservedInitialSetting
-        hasObservedInitialSetting = true
         guard nextEnabled != enabled else { return }
         enabled = nextEnabled
-        relaunchTask?.cancel()
-        relaunchTask = nil
         managerRetryTask?.cancel()
         managerRetryTask = nil
         cleanupRetryTask?.cancel()
@@ -259,27 +247,10 @@ final class OpsailCodexRefitController: NSObject {
 
         if nextEnabled {
             managerRetryAttempt = 0
-            manualRestartPromptShown = false
-            let codexIsRunning = workspace.runningApplications.contains {
-                OpsailCodexRelaunchPolicy.isSupported(
-                    bundleIdentifier: $0.bundleIdentifier)
-            }
-            manualRestartPromptEligible =
-                OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
-                    isInitialObservation: isInitialObservation,
-                    codexIsRunning: codexIsRunning)
-            awaitingInitialCodexRestart = false
-            let allowLaunch = OpsailCodexActivationPolicy.allowLaunch(
-                isInitialObservation: isInitialObservation,
-                codexIsRunning: codexIsRunning)
-            settings.codexSidebarQuotaStatus =
-                allowLaunch ? .relaunching : .attaching
-            startManagedSession(allowLaunch: allowLaunch)
+            settings.codexSidebarQuotaStatus = .attaching
+            startManagedSession(allowLaunch: false)
         } else {
             cleanupRetryAttempt = 0
-            manualRestartPromptEligible = false
-            awaitingInitialCodexRestart = false
-            manualRestartPromptShown = false
             pendingManagerAllowLaunch = false
             settings.codexSidebarQuotaStatus = .disabled
             disableManagedSession()
@@ -334,19 +305,16 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
             if status == 0 {
-                self.manualRestartPromptEligible = false
-                self.awaitingInitialCodexRestart = false
                 self.managerRetryAttempt = 0
                 self.settings.codexSidebarQuotaStatus = .active
                 return
             }
-            if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-                manualRestartEligible: self.manualRestartPromptEligible,
-                promptAlreadyShown: self.manualRestartPromptShown,
+            if let actionableStatus = OpsailCodexActivationPolicy.actionableStatus(
                 status: status,
-                diagnostic: diagnostic)
+                diagnostic: diagnostic,
+                codexIsRunning: self.codexIsRunning())
             {
-                self.presentManualQuitPrompt()
+                self.settings.codexSidebarQuotaStatus = actionableStatus
                 return
             }
             self.settings.codexSidebarQuotaStatus = .unavailable
@@ -362,34 +330,6 @@ final class OpsailCodexRefitController: NSObject {
                     requestedAllowLaunch: effectiveAllowLaunch)
             settings.codexSidebarQuotaStatus = .unavailable
             scheduleManagerRetry()
-        }
-    }
-
-    private func presentManualQuitPrompt() {
-        manualRestartPromptShown = true
-        settings.codexSidebarQuotaStatus = .waitingForManualQuit
-
-        let alert = OpsailCodexManualQuitPrompt.makeAlert()
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
-            let codexIsRunning = workspace.runningApplications.contains {
-                OpsailCodexRelaunchPolicy.isSupported(
-                    bundleIdentifier: $0.bundleIdentifier)
-            }
-            manualRestartPromptEligible = false
-            if OpsailCodexActivationPolicy.shouldLaunchAfterConfirmation(
-                codexIsRunning: codexIsRunning)
-            {
-                awaitingInitialCodexRestart = false
-                settings.codexSidebarQuotaStatus = .relaunching
-                startManagedSession(allowLaunch: true)
-            } else {
-                awaitingInitialCodexRestart = true
-            }
-        } else {
-            manualRestartPromptEligible = false
-            awaitingInitialCodexRestart = false
-            settings.codexSidebarQuotaEnabled = false
         }
     }
 
@@ -541,46 +481,60 @@ final class OpsailCodexRefitController: NSObject {
         }
     }
 
+    private func codexIsRunning() -> Bool {
+        workspace.runningApplications.contains {
+            OpsailCodexApplicationPolicy.isSupported(
+                bundleIdentifier: $0.bundleIdentifier)
+        }
+    }
+
+    @objc private func explicitLaunchRequested() {
+        guard !stopping else { return }
+        let codexIsRunning = codexIsRunning()
+        let allowLaunch =
+            OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
+                codexIsRunning: codexIsRunning)
+        if !enabled {
+            enabled = true
+            settings.codexSidebarQuotaEnabled = true
+        }
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
+        managerRetryAttempt = 0
+        settings.codexSidebarQuotaStatus =
+            allowLaunch ? .launching : .attaching
+        startManagedSession(allowLaunch: allowLaunch)
+    }
+
     @objc private func codexDidTerminate(_ notification: Notification) {
         guard let application =
                 notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                 as? NSRunningApplication,
               enabled,
               !stopping,
-              OpsailCodexRelaunchPolicy.isSupported(
+              OpsailCodexApplicationPolicy.isSupported(
                 bundleIdentifier: application.bundleIdentifier)
         else { return }
 
-        guard OpsailCodexRelaunchPolicy.shouldRelaunch(
-            enabled: enabled,
-            stopping: stopping,
-            awaitingInitialRestart: awaitingInitialCodexRestart,
-            bundleIdentifier: application.bundleIdentifier)
-        else {
-            manualRestartPromptEligible = false
-            settings.codexSidebarQuotaStatus = .unavailable
-            scheduleManagerRetry()
-            return
-        }
-
-        awaitingInitialCodexRestart = false
-        managerRetryAttempt = 0
-        settings.codexSidebarQuotaStatus = .relaunching
-        relaunchTask?.cancel()
         managerRetryTask?.cancel()
         managerRetryTask = nil
-        relaunchTask = Task { [weak self] in
-            do {
-                try await Task.sleep(nanoseconds: Self.relaunchDelayNanoseconds)
-            } catch {
-                return
-            }
-            guard let self, self.enabled, !self.stopping else { return }
-            if self.enableProcess?.isRunning == true {
-                self.enableProcess?.terminate()
-                self.enableProcess = nil
-            }
-            self.startManagedSession(allowLaunch: true)
-        }
+        settings.codexSidebarQuotaStatus = .readyToLaunch
+    }
+
+    @objc private func codexDidLaunch(_ notification: Notification) {
+        guard let application =
+                notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication,
+              enabled,
+              !stopping,
+              OpsailCodexApplicationPolicy.isSupported(
+                bundleIdentifier: application.bundleIdentifier)
+        else { return }
+
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
+        managerRetryAttempt = 0
+        settings.codexSidebarQuotaStatus = .attaching
+        startManagedSession(allowLaunch: false)
     }
 }
