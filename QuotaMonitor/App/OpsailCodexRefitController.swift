@@ -4,10 +4,10 @@ import Observation
 
 enum OpsailCodexRefitCommand {
     private static let managedEnableLaunching = [
-        "refit", "codex", "enable", "usage", "--launch", "--foreground"
+        "refit", "codex", "enable", "usage", "--launch"
     ]
     private static let managedEnableAttachOnly = [
-        "refit", "codex", "enable", "usage", "--foreground"
+        "refit", "codex", "enable", "usage"
     ]
     static let disable = [
         "refit", "codex", "disable", "usage"
@@ -61,6 +61,35 @@ enum OpsailCodexRelaunchPolicy {
     }
 }
 
+enum OpsailCodexActivationPolicy {
+    static func allowLaunch(
+        isInitialObservation: Bool,
+        codexIsRunning: Bool
+    ) -> Bool {
+        !isInitialObservation && !codexIsRunning
+    }
+
+    static func shouldPromptForManualQuit(
+        awaitingInitialRestart: Bool,
+        promptAlreadyShown: Bool
+    ) -> Bool {
+        awaitingInitialRestart && !promptAlreadyShown
+    }
+}
+
+@MainActor
+enum OpsailCodexManualQuitPrompt {
+    static func makeAlert() -> NSAlert {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = L10n.codexCapsuleManualQuitTitle
+        alert.informativeText = L10n.codexCapsuleManualQuitMessage
+        alert.addButton(withTitle: L10n.codexCapsuleManualQuitConfirm)
+        alert.addButton(withTitle: L10n.codexCapsuleManualQuitCancel)
+        return alert
+    }
+}
+
 enum OpsailRetryPolicy {
     static func delayNanoseconds(attempt: Int) -> UInt64 {
         guard attempt < 5 else { return 60_000_000_000 }
@@ -107,6 +136,7 @@ final class OpsailCodexRefitController: NSObject {
     private var enabled = false
     private var managedSessionRequested = false
     private var awaitingInitialCodexRestart = false
+    private var manualRestartPromptShown = false
     private var hasObservedInitialSetting = false
     private var observingWorkspace = false
     private var stopping = false
@@ -178,6 +208,7 @@ final class OpsailCodexRefitController: NSObject {
 
         disableInvocationID = nil
         managedSessionRequested = false
+        settings.codexSidebarQuotaStatus = .disabled
     }
 
     private func observeSetting() {
@@ -204,6 +235,7 @@ final class OpsailCodexRefitController: NSObject {
 
         if nextEnabled {
             managerRetryAttempt = 0
+            manualRestartPromptShown = false
             let codexIsRunning = workspace.runningApplications.contains {
                 OpsailCodexRelaunchPolicy.isSupported(
                     bundleIdentifier: $0.bundleIdentifier)
@@ -212,13 +244,17 @@ final class OpsailCodexRefitController: NSObject {
                 OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
                     isInitialObservation: isInitialObservation,
                     codexIsRunning: codexIsRunning)
-            // Opsail's --launch starts only a stopped, validated app. Keeping
-            // it here restores a persisted opt-in after login without
-            // reopening a running app or arming the one-time quit handler.
-            startManagedSession(allowLaunch: true)
+            settings.codexSidebarQuotaStatus =
+                codexIsRunning ? .attaching : .relaunching
+            startManagedSession(allowLaunch:
+                OpsailCodexActivationPolicy.allowLaunch(
+                    isInitialObservation: isInitialObservation,
+                    codexIsRunning: codexIsRunning))
         } else {
             cleanupRetryAttempt = 0
             awaitingInitialCodexRestart = false
+            manualRestartPromptShown = false
+            settings.codexSidebarQuotaStatus = .disabled
             disableManagedSession()
         }
     }
@@ -233,6 +269,7 @@ final class OpsailCodexRefitController: NSObject {
             return
         }
         guard fileManager.isExecutableFile(atPath: helperURL.path) else {
+            settings.codexSidebarQuotaStatus = .unavailable
             Log.ui.error(
                 "Opsail helper unavailable at \(self.helperURL.path, privacy: .public)")
             return
@@ -254,13 +291,47 @@ final class OpsailCodexRefitController: NSObject {
             guard self.enabled, !self.stopping else { return }
             Log.ui.info(
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
+            if status == 0 {
+                self.awaitingInitialCodexRestart = false
+                self.managerRetryAttempt = 0
+                self.settings.codexSidebarQuotaStatus = .active
+                return
+            }
+            if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+                awaitingInitialRestart: self.awaitingInitialCodexRestart,
+                promptAlreadyShown: self.manualRestartPromptShown)
+            {
+                self.presentManualQuitPrompt()
+                return
+            }
+            self.settings.codexSidebarQuotaStatus = .unavailable
             self.scheduleManagerRetry()
         }
         enableProcess = process
         if process == nil, enableInvocationID == invocationID {
             enableInvocationID = nil
             managedSessionRequested = false
+            if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+                awaitingInitialRestart: awaitingInitialCodexRestart,
+                promptAlreadyShown: manualRestartPromptShown)
+            {
+                presentManualQuitPrompt()
+                return
+            }
+            settings.codexSidebarQuotaStatus = .unavailable
             scheduleManagerRetry()
+        }
+    }
+
+    private func presentManualQuitPrompt() {
+        manualRestartPromptShown = true
+        settings.codexSidebarQuotaStatus = .waitingForManualQuit
+
+        let alert = OpsailCodexManualQuitPrompt.makeAlert()
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() != .alertFirstButtonReturn {
+            awaitingInitialCodexRestart = false
+            settings.codexSidebarQuotaEnabled = false
         }
     }
 
@@ -277,6 +348,7 @@ final class OpsailCodexRefitController: NSObject {
             }
             guard let self, self.enabled, !self.stopping else { return }
             self.managerRetryTask = nil
+            self.settings.codexSidebarQuotaStatus = .attaching
             self.startManagedSession(allowLaunch: false)
         }
     }
@@ -307,7 +379,7 @@ final class OpsailCodexRefitController: NSObject {
                 Log.ui.error(
                     "Opsail Codex cleanup failed with status \(status, privacy: .public)")
                 if self.enabled, !self.stopping {
-                    self.startManagedSession(allowLaunch: true)
+                    self.startManagedSession(allowLaunch: false)
                 } else {
                     self.scheduleCleanupRetry()
                 }
@@ -318,7 +390,7 @@ final class OpsailCodexRefitController: NSObject {
             self.managedSessionRequested = false
             Log.ui.info("Opsail Codex cleanup completed")
             if self.enabled, !self.stopping {
-                self.startManagedSession(allowLaunch: true)
+                self.startManagedSession(allowLaunch: false)
             }
         }
         disableProcess = process
@@ -388,15 +460,26 @@ final class OpsailCodexRefitController: NSObject {
         guard let application =
                 notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                 as? NSRunningApplication,
-              OpsailCodexRelaunchPolicy.shouldRelaunch(
-                enabled: enabled,
-                stopping: stopping,
-                awaitingInitialRestart: awaitingInitialCodexRestart,
+              enabled,
+              !stopping,
+              OpsailCodexRelaunchPolicy.isSupported(
                 bundleIdentifier: application.bundleIdentifier)
         else { return }
 
+        guard OpsailCodexRelaunchPolicy.shouldRelaunch(
+            enabled: enabled,
+            stopping: stopping,
+            awaitingInitialRestart: awaitingInitialCodexRestart,
+            bundleIdentifier: application.bundleIdentifier)
+        else {
+            settings.codexSidebarQuotaStatus = .unavailable
+            scheduleManagerRetry()
+            return
+        }
+
         awaitingInitialCodexRestart = false
         managerRetryAttempt = 0
+        settings.codexSidebarQuotaStatus = .relaunching
         relaunchTask?.cancel()
         managerRetryTask?.cancel()
         managerRetryTask = nil

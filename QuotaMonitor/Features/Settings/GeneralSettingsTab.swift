@@ -80,6 +80,19 @@ struct GeneralSettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if settings.codexSidebarQuotaEnabled {
+                        Label(
+                            codexSidebarStatusText,
+                            systemImage: codexSidebarStatusIcon)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(codexSidebarStatusColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                codexSidebarStatusColor.opacity(0.1),
+                                in: RoundedRectangle(cornerRadius: 8))
+                    }
                 }
             }
 
@@ -218,6 +231,47 @@ struct GeneralSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(20)
+    }
+
+    private var codexSidebarStatusText: String {
+        switch settings.codexSidebarQuotaStatus {
+        case .disabled, .unavailable:
+            L10n.codexCapsuleUnavailableStatus
+        case .attaching:
+            L10n.codexCapsuleAttachingStatus
+        case .waitingForManualQuit:
+            L10n.codexCapsuleWaitingForQuitStatus
+        case .relaunching:
+            L10n.codexCapsuleRelaunchingStatus
+        case .active:
+            L10n.codexCapsuleActiveStatus
+        }
+    }
+
+    private var codexSidebarStatusIcon: String {
+        switch settings.codexSidebarQuotaStatus {
+        case .attaching, .relaunching:
+            "arrow.triangle.2.circlepath"
+        case .waitingForManualQuit:
+            "hand.raised.fill"
+        case .active:
+            "checkmark.circle.fill"
+        case .disabled, .unavailable:
+            "exclamationmark.circle.fill"
+        }
+    }
+
+    private var codexSidebarStatusColor: Color {
+        switch settings.codexSidebarQuotaStatus {
+        case .active:
+            .green
+        case .waitingForManualQuit:
+            .orange
+        case .disabled, .unavailable:
+            .secondary
+        case .attaching, .relaunching:
+            .accentColor
+        }
     }
 
     @ViewBuilder

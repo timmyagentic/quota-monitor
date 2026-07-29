@@ -7,10 +7,10 @@ struct OpsailCodexRefitTests {
     @Test("managed mode delegates the complete lifecycle to Opsail")
     func managedCommand() {
         #expect(OpsailCodexRefitCommand.managedEnable(allowLaunch: true) == [
-            "refit", "codex", "enable", "usage", "--launch", "--foreground"
+            "refit", "codex", "enable", "usage", "--launch"
         ])
         #expect(OpsailCodexRefitCommand.managedEnable(allowLaunch: false) == [
-            "refit", "codex", "enable", "usage", "--foreground"
+            "refit", "codex", "enable", "usage"
         ])
         #expect(OpsailCodexRefitCommand.disable == [
             "refit", "codex", "disable", "usage"
@@ -73,6 +73,56 @@ struct OpsailCodexRefitTests {
             stopping: false,
             awaitingInitialRestart: true,
             bundleIdentifier: "com.example.other"))
+    }
+
+    @Test("explicit enable attaches before asking for a manual quit")
+    func activationLaunchPolicy() {
+        #expect(!OpsailCodexActivationPolicy.allowLaunch(
+            isInitialObservation: false,
+            codexIsRunning: true))
+        #expect(OpsailCodexActivationPolicy.allowLaunch(
+            isInitialObservation: false,
+            codexIsRunning: false))
+        #expect(!OpsailCodexActivationPolicy.allowLaunch(
+            isInitialObservation: true,
+            codexIsRunning: false))
+        #expect(!OpsailCodexActivationPolicy.allowLaunch(
+            isInitialObservation: true,
+            codexIsRunning: true))
+    }
+
+    @Test("manual quit prompt is one shot and only follows a failed explicit attach")
+    func manualQuitPromptPolicy() {
+        #expect(OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+            awaitingInitialRestart: true,
+            promptAlreadyShown: false))
+        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+            awaitingInitialRestart: true,
+            promptAlreadyShown: true))
+        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+            awaitingInitialRestart: false,
+            promptAlreadyShown: false))
+    }
+
+    @Test("status copy makes the no-force-quit boundary explicit")
+    func manualQuitStatusCopy() {
+        LocalizationTestSupport.withLanguage(.english) {
+            #expect(L10n.codexCapsuleWaitingForQuitStatus.contains("never quit Codex"))
+        }
+        LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            #expect(L10n.codexCapsuleWaitingForQuitStatus.contains("不会替你退出 Codex"))
+        }
+    }
+
+    @MainActor
+    @Test("manual quit alert offers guidance or cancellation without a quit action")
+    func manualQuitAlert() {
+        let alert = OpsailCodexManualQuitPrompt.makeAlert()
+
+        #expect(alert.buttons.count == 2)
+        #expect(alert.buttons[0].title == L10n.codexCapsuleManualQuitConfirm)
+        #expect(alert.buttons[1].title == L10n.codexCapsuleManualQuitCancel)
+        #expect(!alert.buttons.contains { $0.title == L10n.quit })
     }
 
     @Test("helper retries back off and cap at one minute")
