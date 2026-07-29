@@ -37,91 +37,42 @@ struct OpsailCodexRefitTests {
                 + "           !LocalQAEnvironment.isQARequested()"))
     }
 
-    @Test("only the initial opt-in quit relaunches Codex")
-    func initialOptInRelaunchPolicy() {
-        #expect(!OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
-            isInitialObservation: true,
+    @Test("only an explicit action may launch a stopped Codex")
+    func activationLaunchPolicy() {
+        #expect(!OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
             codexIsRunning: true))
-        #expect(OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
-            isInitialObservation: false,
-            codexIsRunning: true))
-        #expect(!OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
-            isInitialObservation: false,
+        #expect(OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
             codexIsRunning: false))
-        #expect(OpsailCodexRelaunchPolicy.shouldRelaunch(
-            enabled: true,
-            stopping: false,
-            awaitingInitialRestart: true,
+        #expect(OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.openai.chat"))
-        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
-            enabled: true,
-            stopping: false,
-            awaitingInitialRestart: false,
-            bundleIdentifier: "com.openai.chat"))
-        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
-            enabled: false,
-            stopping: false,
-            awaitingInitialRestart: true,
-            bundleIdentifier: "com.openai.chat"))
-        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
-            enabled: true,
-            stopping: true,
-            awaitingInitialRestart: true,
-            bundleIdentifier: "com.openai.chat"))
-        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
-            enabled: true,
-            stopping: false,
-            awaitingInitialRestart: true,
+        #expect(OpsailCodexApplicationPolicy.isSupported(
+            bundleIdentifier: "com.openai.codex"))
+        #expect(!OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.example.other"))
     }
 
-    @Test("explicit enable attaches before asking for a manual quit")
-    func activationLaunchPolicy() {
-        #expect(!OpsailCodexActivationPolicy.allowLaunch(
-            isInitialObservation: false,
-            codexIsRunning: true))
-        #expect(OpsailCodexActivationPolicy.allowLaunch(
-            isInitialObservation: false,
-            codexIsRunning: false))
-        #expect(!OpsailCodexActivationPolicy.allowLaunch(
-            isInitialObservation: true,
-            codexIsRunning: false))
-        #expect(!OpsailCodexActivationPolicy.allowLaunch(
-            isInitialObservation: true,
-            codexIsRunning: true))
-    }
-
-    @Test("manual quit prompt is one shot and only follows a failed explicit attach")
-    func manualQuitPromptPolicy() {
-        #expect(OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            manualRestartEligible: true,
-            promptAlreadyShown: false,
+    @Test("attach failure maps to a user-owned next action")
+    func attachFailureStatus() {
+        #expect(OpsailCodexActivationPolicy.actionableStatus(
             status: 1,
-            diagnostic:
-                "[opsail-refit-codex:session-unavailable] no loopback listener"))
-        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            manualRestartEligible: true,
-            promptAlreadyShown: true,
+            diagnostic: "[opsail-refit-codex:session-unavailable] no loopback listener",
+            codexIsRunning: true) == .needsCodexQuit)
+        #expect(OpsailCodexActivationPolicy.actionableStatus(
             status: 1,
-            diagnostic:
-                "[opsail-refit-codex:session-unavailable] no loopback listener"))
-        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            manualRestartEligible: false,
-            promptAlreadyShown: false,
+            diagnostic: "[opsail-refit-codex:session-unavailable] no loopback listener",
+            codexIsRunning: false) == .readyToLaunch)
+        #expect(OpsailCodexActivationPolicy.actionableStatus(
             status: 1,
-            diagnostic:
-                "[opsail-refit-codex:session-unavailable] no loopback listener"))
-        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            manualRestartEligible: true,
-            promptAlreadyShown: false,
+            diagnostic: "[opsail-refit-codex:restart-required] relaunch with CDP",
+            codexIsRunning: false) == .readyToLaunch)
+        #expect(OpsailCodexActivationPolicy.actionableStatus(
             status: 1,
-            diagnostic: "validation failed"))
-        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            manualRestartEligible: true,
-            promptAlreadyShown: false,
+            diagnostic: "validation failed",
+            codexIsRunning: true) == nil)
+        #expect(OpsailCodexActivationPolicy.actionableStatus(
             status: 0,
-            diagnostic:
-                "[opsail-refit-codex:session-unavailable] no loopback listener"))
+            diagnostic: "[opsail-refit-codex:session-unavailable] no loopback listener",
+            codexIsRunning: true) == nil)
     }
 
     @Test("cleanup preserves a pending one-shot launch request")
@@ -137,33 +88,33 @@ struct OpsailCodexRefitTests {
             requestedAllowLaunch: false))
     }
 
-    @Test("confirmation launches immediately only when Codex already exited")
-    func launchAfterConfirmation() {
-        #expect(OpsailCodexActivationPolicy.shouldLaunchAfterConfirmation(
-            codexIsRunning: false))
-        #expect(!OpsailCodexActivationPolicy.shouldLaunchAfterConfirmation(
-            codexIsRunning: true))
-    }
-
-    @Test("status copy makes the no-force-quit boundary explicit")
-    func manualQuitStatusCopy() {
+    @Test("setup copy makes launch ownership explicit")
+    func explicitLaunchCopy() {
         LocalizationTestSupport.withLanguage(.english) {
-            #expect(L10n.codexCapsuleWaitingForQuitStatus.contains("never quit Codex"))
+            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("Quit Codex yourself"))
+            #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("Open it from here"))
+            #expect(L10n.codexCapsuleLaunchButton.contains("Open Codex"))
         }
         LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            #expect(L10n.codexCapsuleWaitingForQuitStatus.contains("不会替你退出 Codex"))
+            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("手动退出 Codex"))
+            #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("从这里打开"))
+            #expect(L10n.codexCapsuleLaunchButton.contains("打开 Codex"))
         }
     }
 
-    @MainActor
-    @Test("manual quit alert offers guidance or cancellation without a quit action")
-    func manualQuitAlert() {
-        let alert = OpsailCodexManualQuitPrompt.makeAlert()
+    @Test("controller source has no modal or automatic relaunch path")
+    func noAutomaticRelaunchSource() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent("QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
 
-        #expect(alert.buttons.count == 2)
-        #expect(alert.buttons[0].title == L10n.codexCapsuleManualQuitConfirm)
-        #expect(alert.buttons[1].title == L10n.codexCapsuleManualQuitCancel)
-        #expect(!alert.buttons.contains { $0.title == L10n.quit })
+        #expect(!source.contains("runModal"))
+        #expect(!source.contains("awaitingInitialCodexRestart"))
+        #expect(!source.contains("relaunchTask"))
+        #expect(source.contains(
+            "if self.pendingManagerAllowLaunch {\n"
+                + "                self.startManagedSession(allowLaunch: true)"))
     }
 
     @Test("helper retries back off and cap at one minute")

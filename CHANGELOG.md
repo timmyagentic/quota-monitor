@@ -33,9 +33,9 @@ window copy.
 #### Summary
 
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
-- Turning on the Codex sidebar widget now tries a quiet connection first, clearly asks you to quit Codex yourself only when necessary, and automatically reopens it just once without ever force-closing your work.
+- The Codex sidebar widget now follows a clear, user-owned launch flow: quit Codex yourself when required, then explicitly open it with the widget from Settings.
 - Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
-- Codex can now show its 5-hour and weekly limits directly inside the account row, with a polished widget that stays attached across navigation, theme changes, and later Codex relaunches.
+- Codex can now show its 5-hour and weekly limits directly inside the account row, with a polished widget that stays attached across navigation, theme changes, and renderer reloads in the current Codex session.
 - Private Beta updates can now be published reliably through the production service.
 - Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
 - Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
@@ -77,9 +77,9 @@ window copy.
 
 ### Changed
 
-- **Safer Codex widget setup.** Enabling the native quota widget now attempts an attach-only connection first, shows visible setup status, asks for a manual Codex quit only after that connection fails, and grants a single automatic relaunch for that explicit setup while persisted enablement and later ordinary quits never reopen Codex.
+- **Explicit Codex widget launch.** The native quota widget now attaches quietly when possible, otherwise asks you to quit Codex yourself and waits for a separate “Open Codex and enable widget” action; Quota Monitor never quits or reopens Codex automatically.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
-- **Reliable Codex sidebar quota.** The opt-in integration now uses Opsail's established Codex refit lifecycle to keep 5-hour and weekly limits in the account row, follow Codex theme tokens, refresh from its live rate-limit bridge, recover after navigation or relaunch, and cleanly remove the widget when disabled.
+- **Reliable Codex sidebar quota.** The opt-in integration uses Opsail's established Codex refit lifecycle to keep 5-hour and weekly limits in the account row, follow Codex theme tokens, refresh from its live rate-limit bridge, recover from renderer changes while Codex remains open, and cleanly remove the widget when disabled.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.
 - **Timelier background update checks.** With automatic checks enabled, launching, waking, or returning to Quota Monitor now starts a silent update check when no prior check exists or the last one is more than six hours old; Check Now remains available when automatic checks are off.
