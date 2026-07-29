@@ -137,6 +137,14 @@ struct OpsailCodexRefitTests {
             requestedAllowLaunch: false))
     }
 
+    @Test("confirmation launches immediately only when Codex already exited")
+    func launchAfterConfirmation() {
+        #expect(OpsailCodexActivationPolicy.shouldLaunchAfterConfirmation(
+            codexIsRunning: false))
+        #expect(!OpsailCodexActivationPolicy.shouldLaunchAfterConfirmation(
+            codexIsRunning: true))
+    }
+
     @Test("status copy makes the no-force-quit boundary explicit")
     func manualQuitStatusCopy() {
         LocalizationTestSupport.withLanguage(.english) {

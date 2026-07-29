@@ -90,6 +90,12 @@ enum OpsailCodexActivationPolicy {
     ) -> Bool {
         pendingAllowLaunch || requestedAllowLaunch
     }
+
+    static func shouldLaunchAfterConfirmation(
+        codexIsRunning: Bool
+    ) -> Bool {
+        !codexIsRunning
+    }
 }
 
 @MainActor
@@ -282,7 +288,13 @@ final class OpsailCodexRefitController: NSObject {
 
     private func startManagedSession(allowLaunch: Bool) {
         guard enabled, !stopping else { return }
-        guard enableProcess?.isRunning != true else { return }
+        guard enableProcess?.isRunning != true else {
+            pendingManagerAllowLaunch =
+                OpsailCodexActivationPolicy.preserveLaunchIntent(
+                    pendingAllowLaunch: pendingManagerAllowLaunch,
+                    requestedAllowLaunch: allowLaunch)
+            return
+        }
         guard OpsailCleanupPolicy.canStartManager(
             disableInvocationPending: disableInvocationID != nil,
             disableProcessPresent: disableProcess != nil)
@@ -365,9 +377,14 @@ final class OpsailCodexRefitController: NSObject {
                     bundleIdentifier: $0.bundleIdentifier)
             }
             manualRestartPromptEligible = false
-            awaitingInitialCodexRestart = codexIsRunning
-            if !codexIsRunning {
-                settings.codexSidebarQuotaStatus = .unavailable
+            if OpsailCodexActivationPolicy.shouldLaunchAfterConfirmation(
+                codexIsRunning: codexIsRunning)
+            {
+                awaitingInitialCodexRestart = false
+                settings.codexSidebarQuotaStatus = .relaunching
+                startManagedSession(allowLaunch: true)
+            } else {
+                awaitingInitialCodexRestart = true
             }
         } else {
             manualRestartPromptEligible = false
