@@ -339,6 +339,10 @@ final class OpsailCodexRefitController: NSObject {
         if process == nil, enableInvocationID == invocationID {
             enableInvocationID = nil
             managedSessionRequested = false
+            pendingManagerAllowLaunch =
+                OpsailCodexActivationPolicy.preserveLaunchIntent(
+                    pendingAllowLaunch: pendingManagerAllowLaunch,
+                    requestedAllowLaunch: effectiveAllowLaunch)
             settings.codexSidebarQuotaStatus = .unavailable
             scheduleManagerRetry()
         }
