@@ -33,7 +33,7 @@ window copy.
 #### Summary
 
 - Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
-- Codex can now show its 5-hour and weekly limits directly inside the account row, with a native-looking capsule and hover details that follow the app's theme.
+- Codex can now show its 5-hour and weekly limits directly inside the account row, with a polished widget that stays attached across navigation, theme changes, and later Codex relaunches.
 - Private Beta updates can now be published reliably through the production service.
 - Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
 - Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
@@ -75,7 +75,7 @@ window copy.
 ### Changed
 
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
-- **Native Codex sidebar quota.** The opt-in Codex integration now places 5-hour and weekly limits inside the account row, follows Codex theme tokens, refreshes from its live rate-limit bridge, and removes the previous external floating panel.
+- **Reliable Codex sidebar quota.** The opt-in integration now uses Opsail's established Codex refit lifecycle to keep 5-hour and weekly limits in the account row, follow Codex theme tokens, refresh from its live rate-limit bridge, recover after navigation or relaunch, and cleanly remove the widget when disabled.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.
 - **Timelier background update checks.** With automatic checks enabled, launching, waking, or returning to Quota Monitor now starts a silent update check when no prior check exists or the last one is more than six hours old; Check Now remains available when automatic checks are off.

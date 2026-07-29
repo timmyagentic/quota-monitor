@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
     private var dailyActiveReporter: DailyActiveReporter?
-    private var codexSidebarQuotaController: CodexSidebarQuotaController?
+    private var codexSidebarQuotaController: OpsailCodexRefitController?
     private var whatsNewCoordinator: WhatsNewCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -76,8 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.statusItemController = controller
 
-        if DistributionChannel.current != .appStore {
-            let sidebarQuotaController = CodexSidebarQuotaController(settings: settings)
+        if DistributionChannel.current != .appStore,
+           !LocalQAEnvironment.isQARequested()
+        {
+            let sidebarQuotaController = OpsailCodexRefitController(settings: settings)
             codexSidebarQuotaController = sidebarQuotaController
             sidebarQuotaController.start()
         }

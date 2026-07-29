@@ -34,6 +34,7 @@ APP_PRIVACY_MANIFEST="${CONTENTS}/Resources/PrivacyInfo.xcprivacy"
 WHATS_NEW_RESOURCES="Resources/WhatsNew"
 THIRD_PARTY_NOTICES="THIRD_PARTY_NOTICES.md"
 OPSAIL_LICENSE="LICENSES/Opsail-Apache-2.0.txt"
+OPSAIL_HELPER_FETCHER="tools/fetch-opsail-helper.sh"
 ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
 if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
     ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
@@ -84,6 +85,22 @@ echo "==> Embedding third-party notices"
 mkdir -p "${CONTENTS}/Resources/Licenses"
 cp "${THIRD_PARTY_NOTICES}" "${CONTENTS}/Resources/THIRD_PARTY_NOTICES.md"
 cp "${OPSAIL_LICENSE}" "${CONTENTS}/Resources/Licenses/Opsail-Apache-2.0.txt"
+
+if [[ "${QM_DISTRIBUTION}" == "developer-id" ]]; then
+    if [[ ! -x "${OPSAIL_HELPER_FETCHER}" ]]; then
+        echo "error: ${OPSAIL_HELPER_FETCHER} missing or not executable" >&2
+        exit 1
+    fi
+    echo "==> Embedding verified Opsail helper"
+    OPSAIL_HELPER_SOURCE="$("${OPSAIL_HELPER_FETCHER}")"
+    if [[ ! -x "${OPSAIL_HELPER_SOURCE}" ]]; then
+        echo "error: verified Opsail helper is unavailable" >&2
+        exit 1
+    fi
+    mkdir -p "${CONTENTS}/Helpers"
+    cp "${OPSAIL_HELPER_SOURCE}" "${CONTENTS}/Helpers/opsail"
+    chmod 755 "${CONTENTS}/Helpers/opsail"
+fi
 
 echo "==> Verifying and embedding PrivacyInfo.xcprivacy"
 python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"
