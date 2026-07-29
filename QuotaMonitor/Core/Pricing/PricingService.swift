@@ -197,6 +197,11 @@ enum PricingSeed {
         // sane even if LiteLLM is unreachable. cache_creation_price_per_million
         // stores the 5-minute cache write rate; 1-hour writes are computed
         // separately as 2x base input during backfill.
+        .init(modelId: "claude-opus-5", displayName: "Claude Opus 5",
+              inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
+              cacheCreationPricePerMillion: 6.25,
+              effectiveModelId: "claude-opus-5", isOfficial: true, note: nil,
+              sourceUrl: "https://platform.claude.com/docs/en/about-claude/pricing"),
         .init(modelId: "claude-fable-5", displayName: "Claude Fable 5",
               inputPricePerMillion: 10.00, cachedInputPricePerMillion: 1.00, outputPricePerMillion: 50.00,
               cacheCreationPricePerMillion: 12.50,
