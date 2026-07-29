@@ -24,16 +24,35 @@ enum OpsailHelperLocator {
     }
 }
 
+enum OpsailCodexRelaunchPolicy {
+    private static let supportedBundleIdentifiers: Set<String> = [
+        "com.openai.chat",
+        "com.openai.codex"
+    ]
+
+    static func isSupported(bundleIdentifier: String?) -> Bool {
+        bundleIdentifier.map(supportedBundleIdentifiers.contains) ?? false
+    }
+
+    static func shouldRelaunch(
+        enabled: Bool,
+        stopping: Bool,
+        awaitingInitialRestart: Bool,
+        bundleIdentifier: String?
+    ) -> Bool {
+        enabled
+            && !stopping
+            && awaitingInitialRestart
+            && isSupported(bundleIdentifier: bundleIdentifier)
+    }
+}
+
 /// Owns only the QuotaMonitor-to-Opsail process boundary.
 ///
 /// Opsail owns application validation, CDP discovery, renderer lifecycle,
 /// bridge reads, DOM placement, health checks, reconnection, and cleanup.
 @MainActor
 final class OpsailCodexRefitController: NSObject {
-    private static let supportedBundleIdentifiers: Set<String> = [
-        "com.openai.chat",
-        "com.openai.codex"
-    ]
     private static let relaunchDelayNanoseconds: UInt64 = 700_000_000
     private static let shutdownTimeout: TimeInterval = 5
 
@@ -44,9 +63,12 @@ final class OpsailCodexRefitController: NSObject {
 
     private var enableProcess: Process?
     private var disableProcess: Process?
+    private var enableInvocationID: UUID?
+    private var disableInvocationID: UUID?
     private var relaunchTask: Task<Void, Never>?
     private var enabled = false
     private var managedSessionRequested = false
+    private var awaitingInitialCodexRestart = false
     private var observingWorkspace = false
     private var stopping = false
 
@@ -84,6 +106,7 @@ final class OpsailCodexRefitController: NSObject {
             || disableProcess != nil
         stopping = true
         enabled = false
+        awaitingInitialCodexRestart = false
         relaunchTask?.cancel()
         relaunchTask = nil
         if observingWorkspace {
@@ -107,6 +130,8 @@ final class OpsailCodexRefitController: NSObject {
         }
         waitForExit(enableProcess, timeout: 1)
         enableProcess = nil
+        enableInvocationID = nil
+        disableInvocationID = nil
         managedSessionRequested = false
     }
 
@@ -127,8 +152,13 @@ final class OpsailCodexRefitController: NSObject {
         relaunchTask = nil
 
         if nextEnabled {
+            awaitingInitialCodexRestart = workspace.runningApplications.contains {
+                OpsailCodexRelaunchPolicy.isSupported(
+                    bundleIdentifier: $0.bundleIdentifier)
+            }
             startManagedSession()
         } else {
+            awaitingInitialCodexRestart = false
             disableManagedSession()
         }
     }
@@ -145,12 +175,14 @@ final class OpsailCodexRefitController: NSObject {
         }
 
         managedSessionRequested = true
-        var process: Process?
-        process = launchProcess(
+        let invocationID = UUID()
+        enableInvocationID = invocationID
+        let process = launchProcess(
             arguments: OpsailCodexRefitCommand.managedEnable
-        ) { [weak self, weak process] status in
+        ) { [weak self] status in
             guard let self else { return }
-            if self.enableProcess === process {
+            if self.enableInvocationID == invocationID {
+                self.enableInvocationID = nil
                 self.enableProcess = nil
             }
             guard self.enabled, !self.stopping else { return }
@@ -158,6 +190,10 @@ final class OpsailCodexRefitController: NSObject {
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
         }
         enableProcess = process
+        if process == nil, enableInvocationID == invocationID {
+            enableInvocationID = nil
+            managedSessionRequested = false
+        }
     }
 
     private func disableManagedSession() {
@@ -170,12 +206,14 @@ final class OpsailCodexRefitController: NSObject {
             return
         }
 
-        var process: Process?
-        process = launchProcess(
+        let invocationID = UUID()
+        disableInvocationID = invocationID
+        let process = launchProcess(
             arguments: OpsailCodexRefitCommand.disable
-        ) { [weak self, weak process] status in
+        ) { [weak self] status in
             guard let self else { return }
-            if self.disableProcess === process {
+            if self.disableInvocationID == invocationID {
+                self.disableInvocationID = nil
                 self.disableProcess = nil
             }
             if self.enableProcess?.isRunning == true {
@@ -190,6 +228,9 @@ final class OpsailCodexRefitController: NSObject {
             }
         }
         disableProcess = process
+        if process == nil, disableInvocationID == invocationID {
+            disableInvocationID = nil
+        }
     }
 
     private func launchProcess(
@@ -230,13 +271,17 @@ final class OpsailCodexRefitController: NSObject {
     }
 
     @objc private func codexDidTerminate(_ notification: Notification) {
-        guard enabled, !stopping,
-              let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+        guard let application =
+                notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                 as? NSRunningApplication,
-              let identifier = application.bundleIdentifier,
-              Self.supportedBundleIdentifiers.contains(identifier)
+              OpsailCodexRelaunchPolicy.shouldRelaunch(
+                enabled: enabled,
+                stopping: stopping,
+                awaitingInitialRestart: awaitingInitialCodexRestart,
+                bundleIdentifier: application.bundleIdentifier)
         else { return }
 
+        awaitingInitialCodexRestart = false
         relaunchTask?.cancel()
         relaunchTask = Task { [weak self] in
             do {

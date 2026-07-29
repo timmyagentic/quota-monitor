@@ -34,6 +34,45 @@ struct OpsailCodexRefitTests {
                 + "           !LocalQAEnvironment.isQARequested()"))
     }
 
+    @Test("only the initial opt-in quit relaunches Codex")
+    func initialOptInRelaunchPolicy() {
+        #expect(OpsailCodexRelaunchPolicy.shouldRelaunch(
+            enabled: true,
+            stopping: false,
+            awaitingInitialRestart: true,
+            bundleIdentifier: "com.openai.chat"))
+        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
+            enabled: true,
+            stopping: false,
+            awaitingInitialRestart: false,
+            bundleIdentifier: "com.openai.chat"))
+        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
+            enabled: false,
+            stopping: false,
+            awaitingInitialRestart: true,
+            bundleIdentifier: "com.openai.chat"))
+        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
+            enabled: true,
+            stopping: true,
+            awaitingInitialRestart: true,
+            bundleIdentifier: "com.openai.chat"))
+        #expect(!OpsailCodexRelaunchPolicy.shouldRelaunch(
+            enabled: true,
+            stopping: false,
+            awaitingInitialRestart: true,
+            bundleIdentifier: "com.example.other"))
+    }
+
+    @Test("Codex sidebar help follows the configured brand")
+    func brandedHelp() {
+        LocalizationTestSupport.withLanguage(.english) {
+            #expect(L10n.codexCapsuleSettingsHelp.contains(Branding.appDisplayName))
+        }
+        LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            #expect(L10n.codexCapsuleSettingsHelp.contains(Branding.appDisplayName))
+        }
+    }
+
     private static func repositoryRoot() throws -> URL {
         var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         while url.path != "/" {

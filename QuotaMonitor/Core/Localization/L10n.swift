@@ -72,10 +72,11 @@ enum L10n {
     static var codexCapsuleSettingsHelp: String {
         t(
             en: "Adds 5-hour and weekly limits inside the Codex account row. "
-                + "After enabling, quit Codex once; QuotaMonitor will reopen it with a "
+                + "After enabling, quit Codex once; \(Branding.appDisplayName) will reopen it with a "
                 + "loopback-only debugging port. Hover or focus the capsule for details.",
             zh: "在 Codex 账户行内显示 5 小时和每周额度。开启后请退出一次 Codex，"
-                + "QuotaMonitor 会用仅限本机的调试端口重新打开；悬停或聚焦挂件可查看详情。")
+                + "\(Branding.appDisplayName) 会用仅限本机的调试端口重新打开；"
+                + "悬停或聚焦挂件可查看详情。")
     }
     static var codexCapsuleWeekly: String { t(en: "weekly", zh: "每周") }
     static var codexCapsuleTitle: String { t(en: "Codex weekly", zh: "Codex 每周额度") }
