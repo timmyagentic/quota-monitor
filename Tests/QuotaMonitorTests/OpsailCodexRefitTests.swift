@@ -112,6 +112,9 @@ struct OpsailCodexRefitTests {
         #expect(!source.contains("runModal"))
         #expect(!source.contains("awaitingInitialCodexRestart"))
         #expect(!source.contains("relaunchTask"))
+        #expect(source.contains(
+            "if self.pendingManagerAllowLaunch {\n"
+                + "                self.startManagedSession(allowLaunch: true)"))
     }
 
     @Test("helper retries back off and cap at one minute")

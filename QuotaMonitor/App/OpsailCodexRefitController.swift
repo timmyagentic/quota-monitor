@@ -302,6 +302,10 @@ final class OpsailCodexRefitController: NSObject {
             self.enableInvocationID = nil
             self.enableProcess = nil
             guard self.enabled, !self.stopping else { return }
+            if self.pendingManagerAllowLaunch {
+                self.startManagedSession(allowLaunch: true)
+                return
+            }
             Log.ui.info(
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
             if status == 0 {
