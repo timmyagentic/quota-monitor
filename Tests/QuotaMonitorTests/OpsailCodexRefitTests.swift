@@ -95,13 +95,33 @@ struct OpsailCodexRefitTests {
     func manualQuitPromptPolicy() {
         #expect(OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: true,
-            promptAlreadyShown: false))
+            promptAlreadyShown: false,
+            helperDidLaunch: true))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: true,
-            promptAlreadyShown: true))
+            promptAlreadyShown: true,
+            helperDidLaunch: true))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: false,
-            promptAlreadyShown: false))
+            promptAlreadyShown: false,
+            helperDidLaunch: true))
+        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+            awaitingInitialRestart: true,
+            promptAlreadyShown: false,
+            helperDidLaunch: false))
+    }
+
+    @Test("cleanup preserves a pending one-shot launch request")
+    func pendingLaunchIntent() {
+        #expect(OpsailCodexActivationPolicy.preserveLaunchIntent(
+            pendingAllowLaunch: false,
+            requestedAllowLaunch: true))
+        #expect(OpsailCodexActivationPolicy.preserveLaunchIntent(
+            pendingAllowLaunch: true,
+            requestedAllowLaunch: false))
+        #expect(!OpsailCodexActivationPolicy.preserveLaunchIntent(
+            pendingAllowLaunch: false,
+            requestedAllowLaunch: false))
     }
 
     @Test("status copy makes the no-force-quit boundary explicit")

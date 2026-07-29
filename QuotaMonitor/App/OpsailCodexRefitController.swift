@@ -71,9 +71,17 @@ enum OpsailCodexActivationPolicy {
 
     static func shouldPromptForManualQuit(
         awaitingInitialRestart: Bool,
-        promptAlreadyShown: Bool
+        promptAlreadyShown: Bool,
+        helperDidLaunch: Bool
     ) -> Bool {
-        awaitingInitialRestart && !promptAlreadyShown
+        helperDidLaunch && awaitingInitialRestart && !promptAlreadyShown
+    }
+
+    static func preserveLaunchIntent(
+        pendingAllowLaunch: Bool,
+        requestedAllowLaunch: Bool
+    ) -> Bool {
+        pendingAllowLaunch || requestedAllowLaunch
     }
 }
 
@@ -137,6 +145,7 @@ final class OpsailCodexRefitController: NSObject {
     private var managedSessionRequested = false
     private var awaitingInitialCodexRestart = false
     private var manualRestartPromptShown = false
+    private var pendingManagerAllowLaunch = false
     private var hasObservedInitialSetting = false
     private var observingWorkspace = false
     private var stopping = false
@@ -254,6 +263,7 @@ final class OpsailCodexRefitController: NSObject {
             cleanupRetryAttempt = 0
             awaitingInitialCodexRestart = false
             manualRestartPromptShown = false
+            pendingManagerAllowLaunch = false
             settings.codexSidebarQuotaStatus = .disabled
             disableManagedSession()
         }
@@ -261,13 +271,22 @@ final class OpsailCodexRefitController: NSObject {
 
     private func startManagedSession(allowLaunch: Bool) {
         guard enabled, !stopping else { return }
-        guard enableProcess?.isRunning != true,
-              OpsailCleanupPolicy.canStartManager(
-                disableInvocationPending: disableInvocationID != nil,
-                disableProcessPresent: disableProcess != nil)
+        guard enableProcess?.isRunning != true else { return }
+        guard OpsailCleanupPolicy.canStartManager(
+            disableInvocationPending: disableInvocationID != nil,
+            disableProcessPresent: disableProcess != nil)
         else {
+            pendingManagerAllowLaunch =
+                OpsailCodexActivationPolicy.preserveLaunchIntent(
+                    pendingAllowLaunch: pendingManagerAllowLaunch,
+                    requestedAllowLaunch: allowLaunch)
             return
         }
+        let effectiveAllowLaunch =
+            OpsailCodexActivationPolicy.preserveLaunchIntent(
+                pendingAllowLaunch: pendingManagerAllowLaunch,
+                requestedAllowLaunch: allowLaunch)
+        pendingManagerAllowLaunch = false
         guard fileManager.isExecutableFile(atPath: helperURL.path) else {
             settings.codexSidebarQuotaStatus = .unavailable
             Log.ui.error(
@@ -282,7 +301,7 @@ final class OpsailCodexRefitController: NSObject {
         enableInvocationID = invocationID
         let process = launchProcess(
             arguments: OpsailCodexRefitCommand.managedEnable(
-                allowLaunch: allowLaunch)
+                allowLaunch: effectiveAllowLaunch)
         ) { [weak self] status in
             guard let self else { return }
             guard self.enableInvocationID == invocationID else { return }
@@ -299,7 +318,8 @@ final class OpsailCodexRefitController: NSObject {
             }
             if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
                 awaitingInitialRestart: self.awaitingInitialCodexRestart,
-                promptAlreadyShown: self.manualRestartPromptShown)
+                promptAlreadyShown: self.manualRestartPromptShown,
+                helperDidLaunch: true)
             {
                 self.presentManualQuitPrompt()
                 return
@@ -311,13 +331,6 @@ final class OpsailCodexRefitController: NSObject {
         if process == nil, enableInvocationID == invocationID {
             enableInvocationID = nil
             managedSessionRequested = false
-            if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-                awaitingInitialRestart: awaitingInitialCodexRestart,
-                promptAlreadyShown: manualRestartPromptShown)
-            {
-                presentManualQuitPrompt()
-                return
-            }
             settings.codexSidebarQuotaStatus = .unavailable
             scheduleManagerRetry()
         }
