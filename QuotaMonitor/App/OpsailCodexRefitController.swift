@@ -53,7 +53,7 @@ enum OpsailCodexRelaunchPolicy {
             && isSupported(bundleIdentifier: bundleIdentifier)
     }
 
-    static func shouldArmInitialRestart(
+    static func shouldOfferManualRestart(
         isInitialObservation: Bool,
         codexIsRunning: Bool
     ) -> Bool {
@@ -73,14 +73,14 @@ enum OpsailCodexActivationPolicy {
     }
 
     static func shouldPromptForManualQuit(
-        awaitingInitialRestart: Bool,
+        manualRestartEligible: Bool,
         promptAlreadyShown: Bool,
         status: Int32,
         diagnostic: String
     ) -> Bool {
         status != 0
             && diagnostic.contains(attachUnavailableMarker)
-            && awaitingInitialRestart
+            && manualRestartEligible
             && !promptAlreadyShown
     }
 
@@ -150,6 +150,7 @@ final class OpsailCodexRefitController: NSObject {
     private var cleanupRetryAttempt = 0
     private var enabled = false
     private var managedSessionRequested = false
+    private var manualRestartPromptEligible = false
     private var awaitingInitialCodexRestart = false
     private var manualRestartPromptShown = false
     private var pendingManagerAllowLaunch = false
@@ -191,6 +192,7 @@ final class OpsailCodexRefitController: NSObject {
             || disableProcess != nil
         stopping = true
         enabled = false
+        manualRestartPromptEligible = false
         awaitingInitialCodexRestart = false
         relaunchTask?.cancel()
         relaunchTask = nil
@@ -256,10 +258,11 @@ final class OpsailCodexRefitController: NSObject {
                 OpsailCodexRelaunchPolicy.isSupported(
                     bundleIdentifier: $0.bundleIdentifier)
             }
-            awaitingInitialCodexRestart =
-                OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+            manualRestartPromptEligible =
+                OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
                     isInitialObservation: isInitialObservation,
                     codexIsRunning: codexIsRunning)
+            awaitingInitialCodexRestart = false
             let allowLaunch = OpsailCodexActivationPolicy.allowLaunch(
                 isInitialObservation: isInitialObservation,
                 codexIsRunning: codexIsRunning)
@@ -268,6 +271,7 @@ final class OpsailCodexRefitController: NSObject {
             startManagedSession(allowLaunch: allowLaunch)
         } else {
             cleanupRetryAttempt = 0
+            manualRestartPromptEligible = false
             awaitingInitialCodexRestart = false
             manualRestartPromptShown = false
             pendingManagerAllowLaunch = false
@@ -318,13 +322,14 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
             if status == 0 {
+                self.manualRestartPromptEligible = false
                 self.awaitingInitialCodexRestart = false
                 self.managerRetryAttempt = 0
                 self.settings.codexSidebarQuotaStatus = .active
                 return
             }
             if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-                awaitingInitialRestart: self.awaitingInitialCodexRestart,
+                manualRestartEligible: self.manualRestartPromptEligible,
                 promptAlreadyShown: self.manualRestartPromptShown,
                 status: status,
                 diagnostic: diagnostic)
@@ -354,7 +359,18 @@ final class OpsailCodexRefitController: NSObject {
 
         let alert = OpsailCodexManualQuitPrompt.makeAlert()
         NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() != .alertFirstButtonReturn {
+        if alert.runModal() == .alertFirstButtonReturn {
+            let codexIsRunning = workspace.runningApplications.contains {
+                OpsailCodexRelaunchPolicy.isSupported(
+                    bundleIdentifier: $0.bundleIdentifier)
+            }
+            manualRestartPromptEligible = false
+            awaitingInitialCodexRestart = codexIsRunning
+            if !codexIsRunning {
+                settings.codexSidebarQuotaStatus = .unavailable
+            }
+        } else {
+            manualRestartPromptEligible = false
             awaitingInitialCodexRestart = false
             settings.codexSidebarQuotaEnabled = false
         }
@@ -524,6 +540,7 @@ final class OpsailCodexRefitController: NSObject {
             awaitingInitialRestart: awaitingInitialCodexRestart,
             bundleIdentifier: application.bundleIdentifier)
         else {
+            manualRestartPromptEligible = false
             settings.codexSidebarQuotaStatus = .unavailable
             scheduleManagerRetry()
             return

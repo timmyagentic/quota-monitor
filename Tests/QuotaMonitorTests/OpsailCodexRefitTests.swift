@@ -39,13 +39,13 @@ struct OpsailCodexRefitTests {
 
     @Test("only the initial opt-in quit relaunches Codex")
     func initialOptInRelaunchPolicy() {
-        #expect(!OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+        #expect(!OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
             isInitialObservation: true,
             codexIsRunning: true))
-        #expect(OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+        #expect(OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
             isInitialObservation: false,
             codexIsRunning: true))
-        #expect(!OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
+        #expect(!OpsailCodexRelaunchPolicy.shouldOfferManualRestart(
             isInitialObservation: false,
             codexIsRunning: false))
         #expect(OpsailCodexRelaunchPolicy.shouldRelaunch(
@@ -94,30 +94,30 @@ struct OpsailCodexRefitTests {
     @Test("manual quit prompt is one shot and only follows a failed explicit attach")
     func manualQuitPromptPolicy() {
         #expect(OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            awaitingInitialRestart: true,
+            manualRestartEligible: true,
             promptAlreadyShown: false,
             status: 1,
             diagnostic:
                 "[opsail-refit-codex:session-unavailable] no loopback listener"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            awaitingInitialRestart: true,
+            manualRestartEligible: true,
             promptAlreadyShown: true,
             status: 1,
             diagnostic:
                 "[opsail-refit-codex:session-unavailable] no loopback listener"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            awaitingInitialRestart: false,
+            manualRestartEligible: false,
             promptAlreadyShown: false,
             status: 1,
             diagnostic:
                 "[opsail-refit-codex:session-unavailable] no loopback listener"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            awaitingInitialRestart: true,
+            manualRestartEligible: true,
             promptAlreadyShown: false,
             status: 1,
             diagnostic: "validation failed"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
-            awaitingInitialRestart: true,
+            manualRestartEligible: true,
             promptAlreadyShown: false,
             status: 0,
             diagnostic:
