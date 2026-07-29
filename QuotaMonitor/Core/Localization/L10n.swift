@@ -72,11 +72,51 @@ enum L10n {
     static var codexCapsuleSettingsHelp: String {
         t(
             en: "Adds 5-hour and weekly limits inside the Codex account row. "
-                + "After enabling, quit Codex once; \(Branding.appDisplayName) will reopen it with a "
-                + "loopback-only debugging port. Hover or focus the capsule for details.",
-            zh: "在 Codex 账户行内显示 5 小时和每周额度。开启后请退出一次 Codex，"
-                + "\(Branding.appDisplayName) 会用仅限本机的调试端口重新打开；"
-                + "悬停或聚焦挂件可查看详情。")
+                + "\(Branding.appDisplayName) first tries to attach without interrupting Codex. "
+                + "If a restart is needed, it asks you to quit Codex yourself, then reopens it once "
+                + "with a loopback-only debugging port.",
+            zh: "在 Codex 账户行内显示 5 小时和每周额度。\(Branding.appDisplayName) "
+                + "会先尝试直接连接，不打断 Codex；仅在确实需要重启时提示你手动退出，"
+                + "随后用仅限本机的调试端口自动打开一次。")
+    }
+    static var codexCapsuleAttachingStatus: String {
+        t(en: "Connecting to the running Codex…", zh: "正在连接当前运行的 Codex…")
+    }
+    static var codexCapsuleWaitingForQuitStatus: String {
+        t(
+            en: "Waiting for you to quit Codex. Quota Monitor will never quit Codex for you.",
+            zh: "正在等待你手动退出 Codex；Quota Monitor 不会替你退出 Codex。")
+    }
+    static var codexCapsuleRelaunchingStatus: String {
+        t(en: "Opening Codex with the native quota widget…",
+          zh: "正在打开 Codex 并加载原生额度挂件…")
+    }
+    static var codexCapsuleActiveStatus: String {
+        t(en: "Connected — the native quota widget is active.",
+          zh: "已连接，原生额度挂件正在运行。")
+    }
+    static var codexCapsuleUnavailableStatus: String {
+        t(en: "Not connected. Toggle the feature off and on to try the guided setup again.",
+          zh: "暂未连接。关闭后重新开启，可再次运行引导流程。")
+    }
+    static var codexCapsuleManualQuitTitle: String {
+        t(en: "Quit Codex when you are ready", zh: "准备好后，请手动退出 Codex")
+    }
+    static var codexCapsuleManualQuitMessage: String {
+        t(
+            en: "The running Codex was not started with its local debugging port. "
+                + "Quota Monitor will not close it or interrupt your work. Save anything you need, "
+                + "then quit Codex yourself. Quota Monitor will detect that quit and reopen Codex "
+                + "once with the native quota widget enabled.",
+            zh: "当前 Codex 启动时没有开启本机调试端口。Quota Monitor 不会关闭 Codex，"
+                + "也不会强制中断你的工作。请先保存需要保留的内容，再由你手动退出 Codex；"
+                + "检测到这次退出后，Quota Monitor 会自动打开 Codex 一次并启用原生额度挂件。")
+    }
+    static var codexCapsuleManualQuitConfirm: String {
+        t(en: "I’ll quit Codex myself", zh: "我会手动退出 Codex")
+    }
+    static var codexCapsuleManualQuitCancel: String {
+        t(en: "Cancel setup", zh: "取消启用")
     }
     static var codexCapsuleWeekly: String { t(en: "weekly", zh: "每周") }
     static var codexCapsuleTitle: String { t(en: "Codex weekly", zh: "Codex 每周额度") }

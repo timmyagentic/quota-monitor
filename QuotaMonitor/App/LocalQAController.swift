@@ -48,6 +48,25 @@ final class LocalQAController {
             case .openWhatsNew:
                 WindowManager.shared.show("whats-new")
                 await pause(seconds: 0.8)
+            case .showCodexSidebarManualQuit:
+                let settings = SettingsStore.shared
+                settings.codexSidebarQuotaEnabled = true
+                settings.codexSidebarQuotaStatus = .waitingForManualQuit
+                WindowManager.shared.show("settings")
+                await pause(seconds: 0.8)
+            case .showCodexSidebarManualQuitPrompt:
+                let settings = SettingsStore.shared
+                settings.codexSidebarQuotaEnabled = true
+                settings.codexSidebarQuotaStatus = .waitingForManualQuit
+                WindowManager.shared.show("settings")
+                await pause(seconds: 0.4)
+                if let window = NSApp.windows.first(where: {
+                    $0.identifier?.rawValue == "settings"
+                }) {
+                    OpsailCodexManualQuitPrompt.makeAlert()
+                        .beginSheetModal(for: window) { _ in }
+                }
+                await pause(seconds: 0.8)
             case .showPopover:
                 statusItemController.showPopover()
                 await pause(seconds: 0.6)

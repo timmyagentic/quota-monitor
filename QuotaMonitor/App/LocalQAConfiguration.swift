@@ -52,6 +52,8 @@ enum LocalQAStep: String, Equatable {
     case openSettings = "open-settings"
     case openMenuBarHelp = "open-menubar-help"
     case openWhatsNew = "open-whats-new"
+    case showCodexSidebarManualQuit = "show-codex-sidebar-manual-quit"
+    case showCodexSidebarManualQuitPrompt = "show-codex-sidebar-manual-quit-prompt"
     case showPopover = "show-popover"
     case refreshAll = "refresh-all"
     case exerciseSettings = "exercise-settings"

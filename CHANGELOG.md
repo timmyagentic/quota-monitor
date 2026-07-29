@@ -33,6 +33,7 @@ window copy.
 #### Summary
 
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
+- Turning on the Codex sidebar widget now tries a quiet connection first, clearly asks you to quit Codex yourself only when necessary, and automatically reopens it just once without ever force-closing your work.
 - Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
 - Codex can now show its 5-hour and weekly limits directly inside the account row, with a polished widget that stays attached across navigation, theme changes, and later Codex relaunches.
 - Private Beta updates can now be published reliably through the production service.
@@ -76,6 +77,7 @@ window copy.
 
 ### Changed
 
+- **Safer Codex widget setup.** Enabling the native quota widget now attempts an attach-only connection first, shows visible setup status, asks for a manual Codex quit only after that connection fails, and grants a single automatic relaunch for that explicit setup while persisted enablement and later ordinary quits never reopen Codex.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
 - **Reliable Codex sidebar quota.** The opt-in integration now uses Opsail's established Codex refit lifecycle to keep 5-hour and weekly limits in the account row, follow Codex theme tokens, refresh from its live rate-limit bridge, recover after navigation or relaunch, and cleanly remove the widget when disabled.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.

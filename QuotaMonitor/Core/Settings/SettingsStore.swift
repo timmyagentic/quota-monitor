@@ -20,6 +20,15 @@ extension Notification.Name {
         Notification.Name("dev.tjzhou.QuotaMonitor.onboardingCompleted")
 }
 
+enum CodexSidebarQuotaStatus: Equatable {
+    case disabled
+    case attaching
+    case waitingForManualQuit
+    case relaunching
+    case active
+    case unavailable
+}
+
 @Observable
 @MainActor
 final class SettingsStore {
@@ -90,6 +99,8 @@ final class SettingsStore {
         didSet { defaults.set(codexSidebarQuotaEnabled,
                               forKey: Keys.codexSidebarQuotaEnabled) }
     }
+    /// Runtime-only state for the one-shot Codex activation flow.
+    var codexSidebarQuotaStatus: CodexSidebarQuotaStatus = .disabled
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
     /// 7 days because most users want a "what did I do this week"
