@@ -96,19 +96,32 @@ struct OpsailCodexRefitTests {
         #expect(OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: true,
             promptAlreadyShown: false,
-            helperDidLaunch: true))
+            status: 1,
+            diagnostic:
+                "[opsail-refit-codex:session-unavailable] no loopback listener"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: true,
             promptAlreadyShown: true,
-            helperDidLaunch: true))
+            status: 1,
+            diagnostic:
+                "[opsail-refit-codex:session-unavailable] no loopback listener"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: false,
             promptAlreadyShown: false,
-            helperDidLaunch: true))
+            status: 1,
+            diagnostic:
+                "[opsail-refit-codex:session-unavailable] no loopback listener"))
         #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
             awaitingInitialRestart: true,
             promptAlreadyShown: false,
-            helperDidLaunch: false))
+            status: 1,
+            diagnostic: "validation failed"))
+        #expect(!OpsailCodexActivationPolicy.shouldPromptForManualQuit(
+            awaitingInitialRestart: true,
+            promptAlreadyShown: false,
+            status: 0,
+            diagnostic:
+                "[opsail-refit-codex:session-unavailable] no loopback listener"))
     }
 
     @Test("cleanup preserves a pending one-shot launch request")

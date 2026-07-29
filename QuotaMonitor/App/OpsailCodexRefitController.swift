@@ -62,6 +62,9 @@ enum OpsailCodexRelaunchPolicy {
 }
 
 enum OpsailCodexActivationPolicy {
+    private static let attachUnavailableMarker =
+        "[opsail-refit-codex:session-unavailable]"
+
     static func allowLaunch(
         isInitialObservation: Bool,
         codexIsRunning: Bool
@@ -72,9 +75,13 @@ enum OpsailCodexActivationPolicy {
     static func shouldPromptForManualQuit(
         awaitingInitialRestart: Bool,
         promptAlreadyShown: Bool,
-        helperDidLaunch: Bool
+        status: Int32,
+        diagnostic: String
     ) -> Bool {
-        helperDidLaunch && awaitingInitialRestart && !promptAlreadyShown
+        status != 0
+            && diagnostic.contains(attachUnavailableMarker)
+            && awaitingInitialRestart
+            && !promptAlreadyShown
     }
 
     static func preserveLaunchIntent(
@@ -253,12 +260,12 @@ final class OpsailCodexRefitController: NSObject {
                 OpsailCodexRelaunchPolicy.shouldArmInitialRestart(
                     isInitialObservation: isInitialObservation,
                     codexIsRunning: codexIsRunning)
+            let allowLaunch = OpsailCodexActivationPolicy.allowLaunch(
+                isInitialObservation: isInitialObservation,
+                codexIsRunning: codexIsRunning)
             settings.codexSidebarQuotaStatus =
-                codexIsRunning ? .attaching : .relaunching
-            startManagedSession(allowLaunch:
-                OpsailCodexActivationPolicy.allowLaunch(
-                    isInitialObservation: isInitialObservation,
-                    codexIsRunning: codexIsRunning))
+                allowLaunch ? .relaunching : .attaching
+            startManagedSession(allowLaunch: allowLaunch)
         } else {
             cleanupRetryAttempt = 0
             awaitingInitialCodexRestart = false
@@ -302,7 +309,7 @@ final class OpsailCodexRefitController: NSObject {
         let process = launchProcess(
             arguments: OpsailCodexRefitCommand.managedEnable(
                 allowLaunch: effectiveAllowLaunch)
-        ) { [weak self] status in
+        ) { [weak self] status, diagnostic in
             guard let self else { return }
             guard self.enableInvocationID == invocationID else { return }
             self.enableInvocationID = nil
@@ -319,7 +326,8 @@ final class OpsailCodexRefitController: NSObject {
             if OpsailCodexActivationPolicy.shouldPromptForManualQuit(
                 awaitingInitialRestart: self.awaitingInitialCodexRestart,
                 promptAlreadyShown: self.manualRestartPromptShown,
-                helperDidLaunch: true)
+                status: status,
+                diagnostic: diagnostic)
             {
                 self.presentManualQuitPrompt()
                 return
@@ -383,7 +391,7 @@ final class OpsailCodexRefitController: NSObject {
         disableInvocationID = invocationID
         let process = launchProcess(
             arguments: OpsailCodexRefitCommand.disable
-        ) { [weak self] status in
+        ) { [weak self] status, _ in
             guard let self else { return }
             guard self.disableInvocationID == invocationID else { return }
             self.disableInvocationID = nil
@@ -434,17 +442,40 @@ final class OpsailCodexRefitController: NSObject {
 
     private func launchProcess(
         arguments: [String],
-        termination: (@MainActor @Sendable (Int32) -> Void)?
+        termination: (@MainActor @Sendable (Int32, String) -> Void)?
     ) -> Process? {
         let process = Process()
         process.executableURL = helperURL
         process.arguments = arguments
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        let diagnosticURL = termination.map { _ in
+            fileManager.temporaryDirectory
+                .appendingPathComponent(
+                    "quota-monitor-opsail-\(UUID().uuidString).log")
+        }
+        let diagnosticHandle: FileHandle?
+        if let diagnosticURL {
+            fileManager.createFile(
+                atPath: diagnosticURL.path,
+                contents: nil)
+            diagnosticHandle = try? FileHandle(forWritingTo: diagnosticURL)
+            process.standardError =
+                diagnosticHandle ?? FileHandle.nullDevice
+        } else {
+            diagnosticHandle = nil
+            process.standardError = FileHandle.nullDevice
+        }
         if let termination {
             process.terminationHandler = { finished in
+                try? diagnosticHandle?.close()
+                let diagnostic = diagnosticURL
+                    .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+                    ?? ""
+                if let diagnosticURL {
+                    try? FileManager.default.removeItem(at: diagnosticURL)
+                }
                 Task { @MainActor in
-                    termination(finished.terminationStatus)
+                    termination(finished.terminationStatus, diagnostic)
                 }
             }
         }
@@ -452,6 +483,10 @@ final class OpsailCodexRefitController: NSObject {
             try process.run()
             return process
         } catch {
+            try? diagnosticHandle?.close()
+            if let diagnosticURL {
+                try? fileManager.removeItem(at: diagnosticURL)
+            }
             Log.ui.error(
                 "Could not launch Opsail helper: \(error.localizedDescription, privacy: .public)")
             return nil
