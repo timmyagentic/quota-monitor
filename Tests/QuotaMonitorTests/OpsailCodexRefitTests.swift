@@ -75,6 +75,22 @@ struct OpsailCodexRefitTests {
             bundleIdentifier: "com.example.other"))
     }
 
+    @Test("helper retries back off and cap at one minute")
+    func retryBackoff() {
+        #expect(OpsailRetryPolicy.delayNanoseconds(attempt: 0) == 2_000_000_000)
+        #expect(OpsailRetryPolicy.delayNanoseconds(attempt: 1) == 4_000_000_000)
+        #expect(OpsailRetryPolicy.delayNanoseconds(attempt: 4) == 32_000_000_000)
+        #expect(OpsailRetryPolicy.delayNanoseconds(attempt: 5) == 60_000_000_000)
+        #expect(OpsailRetryPolicy.delayNanoseconds(attempt: 50) == 60_000_000_000)
+    }
+
+    @Test("cleanup finalizes only after a successful disable")
+    func cleanupCompletionPolicy() {
+        #expect(OpsailCleanupPolicy.didComplete(status: 0))
+        #expect(!OpsailCleanupPolicy.didComplete(status: 1))
+        #expect(!OpsailCleanupPolicy.didComplete(status: -1))
+    }
+
     @Test("Codex sidebar help follows the configured brand")
     func brandedHelp() {
         LocalizationTestSupport.withLanguage(.english) {
