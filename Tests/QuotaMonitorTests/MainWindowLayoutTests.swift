@@ -45,6 +45,24 @@ struct MainWindowLayoutTests {
         #expect(statusItemController.contains(".environment(updater)"))
     }
 
+    @Test("Routine scans use only the compact popover header activity indicator")
+    func routineScansStayCompactInPopover() throws {
+        let menuBar = try Self.source(
+            named: "QuotaMonitor/Features/MenuBar/MenuBarContentView.swift")
+        let scanStatus = try Self.source(
+            named: "QuotaMonitor/Features/MenuBar/ScanStatusView.swift")
+        let onboarding = try Self.source(
+            named: "QuotaMonitor/Features/Onboarding/LanguageOnboardingView.swift")
+
+        #expect(menuBar.contains(
+            "env.isScanning && env.scanPresentation == .compactActivity"))
+        #expect(menuBar.contains(".accessibilityLabel(L10n.scanUpdatingFiles)"))
+        #expect(scanStatus.contains(
+            "env.scanPresentation == .detailedProgress"))
+        #expect(onboarding.contains(
+            "env.runScan(minInterval: 0, trigger: \"onboarding\")"))
+    }
+
     @Test("Native status item stays unchanged when an update is available")
     func nativeStatusItemDoesNotRenderUpdateState() throws {
         let source = try Self.source(named: "QuotaMonitor/App/StatusItemController.swift")

@@ -265,7 +265,7 @@ struct OnboardingView: View {
         settings.markProviderOnboardingDone()
         env.reloadHistoryImportRoots()
         env.applyEnabledProviders()
-        env.runScan(minInterval: 0)
+        env.runScan(minInterval: 0, trigger: "onboarding")
         // Both `needs*` flags are now false, so this legitimate close passes
         // the `windowShouldClose` gate too (it bypasses it anyway).
         WindowManager.shared.close("onboarding")

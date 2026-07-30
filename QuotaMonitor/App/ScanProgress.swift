@@ -1,5 +1,10 @@
 import Foundation
 
+enum ScanPresentation: Sendable, Equatable {
+    case detailedProgress
+    case compactActivity
+}
+
 struct ScanProviderProgress: Sendable, Equatable {
     let completedFiles: Int
     let totalFiles: Int

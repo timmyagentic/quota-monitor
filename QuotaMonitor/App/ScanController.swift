@@ -94,6 +94,7 @@ extension AppEnvironment {
         }
         isScanning = true
         lastError = nil
+        scanPresentation = Self.scanPresentation(forTrigger: trigger)
         let scanRunID = beginScanProgress()
         let op = DeveloperLog.startOperation(
             "scan.run",
@@ -367,6 +368,18 @@ extension AppEnvironment {
         requested: Set<String>, authorized: Set<String>, isAppStore: Bool
     ) -> Set<String> {
         isAppStore ? requested.intersection(authorized) : requested
+    }
+
+    /// Initial imports can involve a large backlog and benefit from exact
+    /// progress. Routine refreshes and file-watcher imports are deliberately
+    /// quiet: the popover header shows a compact activity indicator instead.
+    nonisolated static func scanPresentation(forTrigger trigger: String) -> ScanPresentation {
+        switch trigger {
+        case "launch", "onboarding":
+            .detailedProgress
+        default:
+            .compactActivity
+        }
     }
 
     func beginScanProgress() -> UUID {
