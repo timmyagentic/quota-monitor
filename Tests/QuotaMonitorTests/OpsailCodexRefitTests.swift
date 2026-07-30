@@ -83,6 +83,12 @@ struct OpsailCodexRefitTests {
         manifest = manifest.replacingOccurrences(
             of: #""assetVersion": "1.0.1""#,
             with: #""assetVersion": "1.1.0""#)
+        manifest = manifest.replacingOccurrences(
+            of: #""schemaVersion": 1"#,
+            with: #""schemaVersion": 2"#)
+        manifest = manifest.replacingOccurrences(
+            of: #""apiVersion": 1"#,
+            with: #""apiVersion": 2"#)
         try Data(manifest.utf8).write(to: manifestURL)
         try JSONSerialization.data(
             withJSONObject: [

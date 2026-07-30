@@ -101,13 +101,16 @@ struct OpsailRendererAssetInstaller {
         if let pointer = try loadPointer(at: pointerURL) {
             let selected = versionsRoot
                 .appendingPathComponent(pointer.directory, isDirectory: true)
+            if let selectedVersion = try? loadSelectedVersion(
+                at: selected,
+                expectedVersion: pointer.version
+            ), selectedVersion > bundle.version {
+                return .preservedNewer(version: pointer.version)
+            }
             let installed = try? loadBundle(at: selected)
             if installed?.manifest.assetVersion == pointer.version,
                let ordering = installed?.version.compare(to: bundle.version)
             {
-                if ordering == 1 {
-                    return .preservedNewer(version: pointer.version)
-                }
                 if ordering == 0 {
                     if try bundleMatches(bundle, at: selected) {
                         return .unchanged
@@ -223,6 +226,36 @@ struct OpsailRendererAssetInstaller {
             return nil
         }
         return pointer
+    }
+
+    private func loadSelectedVersion(
+        at root: URL,
+        expectedVersion: String
+    ) throws -> SemanticVersion {
+        guard isRegularDirectory(root) else {
+            throw OpsailRendererAssetInstallError.unsafeStorage(
+                "the selected renderer bundle is not a regular directory")
+        }
+        let manifestData = try readRegularFile(
+            root.appendingPathComponent("manifest.json"),
+            maximumBytes: 64 * 1024,
+            context: "selected renderer manifest")
+        let manifest: AssetVersionManifest
+        do {
+            manifest = try JSONDecoder().decode(
+                AssetVersionManifest.self,
+                from: manifestData)
+        } catch {
+            throw OpsailRendererAssetInstallError.invalidBundle(
+                "selected renderer manifest JSON is invalid")
+        }
+        guard manifest.assetVersion == expectedVersion,
+              let version = SemanticVersion(manifest.assetVersion)
+        else {
+            throw OpsailRendererAssetInstallError.invalidBundle(
+                "selected renderer version does not match current.json")
+        }
+        return version
     }
 
     private func bundleMatches(
@@ -413,6 +446,10 @@ private struct AssetManifest: Codable, Equatable {
     let assetVersion: String
     let apiVersion: Int
     let files: [AssetRecord]
+}
+
+private struct AssetVersionManifest: Decodable {
+    let assetVersion: String
 }
 
 private struct AssetRecord: Codable, Equatable {
