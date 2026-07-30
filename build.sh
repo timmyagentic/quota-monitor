@@ -35,6 +35,7 @@ WHATS_NEW_RESOURCES="Resources/WhatsNew"
 THIRD_PARTY_NOTICES="THIRD_PARTY_NOTICES.md"
 OPSAIL_LICENSE="LICENSES/Opsail-Apache-2.0.txt"
 OPSAIL_HELPER_FETCHER="tools/fetch-opsail-helper.sh"
+OPSAIL_RENDERER_ASSETS="Vendor/Opsail/Renderer"
 ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
 if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
     ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
@@ -100,6 +101,12 @@ if [[ "${QM_DISTRIBUTION}" == "developer-id" ]]; then
     mkdir -p "${CONTENTS}/Helpers"
     cp "${OPSAIL_HELPER_SOURCE}" "${CONTENTS}/Helpers/opsail"
     chmod 755 "${CONTENTS}/Helpers/opsail"
+    if [[ ! -f "${OPSAIL_RENDERER_ASSETS}/manifest.json" ]]; then
+        echo "error: ${OPSAIL_RENDERER_ASSETS}/manifest.json missing" >&2
+        exit 1
+    fi
+    echo "==> Embedding QuotaMonitor Opsail renderer assets"
+    cp -R "${OPSAIL_RENDERER_ASSETS}" "${CONTENTS}/Resources/OpsailRenderer"
 fi
 
 echo "==> Verifying and embedding PrivacyInfo.xcprivacy"
