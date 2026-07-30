@@ -6,11 +6,23 @@ Codex sidebar integration.
 - Release: `v0.2.0`
 - Release commit: `05b8a844b1c27110ab9c66e0de4cdc5bc003a34c`
 - Audited source snapshot: `4580d275d9910e68be2ebf6a524ce2ea6f98a5a9`
-- Renderer asset version: `1.0.0`
+- Upstream renderer asset version: `1.0.0`
+- QuotaMonitor presentation asset version: `1.0.1`
 - License: Apache-2.0
 
 The audited snapshot changes only release imagery after the release commit;
 `crates/opsail-refit-codex` and `crates/opsail` are identical between them.
+
+`Vendor/Opsail/Renderer` is a QuotaMonitor-owned presentation derivative of
+the audited `1.0.0` renderer bundle. It keeps the upstream DOM adapter,
+renderer control, local bridge, and lifecycle contracts while refining only
+localized copy, compact date formatting, visible metadata hierarchy, and
+theme-token CSS. Its manifest pins the exact four-file allowlist, byte counts,
+and SHA-256 digests accepted by Opsail's local-only asset loader.
+
+Before launching the helper, QuotaMonitor installs this bundle atomically into
+Opsail's versioned renderer store. It never replaces an equal-version foreign
+bundle and never downgrades a newer Opsail renderer asset.
 
 Official release archives are fetched by `tools/fetch-opsail-helper.sh` and
 verified before extraction:

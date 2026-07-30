@@ -120,6 +120,7 @@ final class OpsailCodexRefitController: NSObject {
     private let workspace: NSWorkspace
     private let helperURL: URL
     private let fileManager: FileManager
+    private let rendererAssetInstaller: OpsailRendererAssetInstaller
 
     private var enableProcess: Process?
     private var disableProcess: Process?
@@ -140,11 +141,14 @@ final class OpsailCodexRefitController: NSObject {
         settings: SettingsStore = .shared,
         workspace: NSWorkspace = .shared,
         helperURL: URL = OpsailHelperLocator.bundledHelperURL(),
+        rendererAssetInstaller: OpsailRendererAssetInstaller =
+            OpsailRendererAssetInstaller(),
         fileManager: FileManager = .default
     ) {
         self.settings = settings
         self.workspace = workspace
         self.helperURL = helperURL
+        self.rendererAssetInstaller = rendererAssetInstaller
         self.fileManager = fileManager
         super.init()
     }
@@ -285,6 +289,16 @@ final class OpsailCodexRefitController: NSObject {
             settings.codexSidebarQuotaStatus = .unavailable
             Log.ui.error(
                 "Opsail helper unavailable at \(self.helperURL.path, privacy: .public)")
+            return
+        }
+        do {
+            let outcome = try rendererAssetInstaller.installIfNeeded()
+            Log.ui.info(
+                "Opsail renderer assets prepared: \(String(describing: outcome), privacy: .public)")
+        } catch {
+            settings.codexSidebarQuotaStatus = .unavailable
+            Log.ui.error(
+                "Opsail renderer assets unavailable: \(error.localizedDescription, privacy: .public)")
             return
         }
 

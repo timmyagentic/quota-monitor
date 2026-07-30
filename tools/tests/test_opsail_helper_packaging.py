@@ -39,6 +39,10 @@ class OpsailHelperPackagingTests(unittest.TestCase):
         )[1].split('echo "==> Verifying and embedding PrivacyInfo.xcprivacy"', 1)[0]
         self.assertIn('OPSAIL_HELPER_SOURCE="$("${OPSAIL_HELPER_FETCHER}")"', helper_block)
         self.assertIn('"${CONTENTS}/Helpers/opsail"', helper_block)
+        self.assertIn(
+            '"${CONTENTS}/Resources/OpsailRenderer"',
+            helper_block,
+        )
         self.assertNotIn('"app-store"', helper_block)
 
     def test_notarization_signs_nested_helper_before_the_app(self):
@@ -69,6 +73,15 @@ class OpsailHelperPackagingTests(unittest.TestCase):
 
         for relative_path in removed_sources:
             self.assertFalse((REPO_ROOT / relative_path).exists(), relative_path)
+
+        self.assertTrue(
+            (REPO_ROOT / "QuotaMonitor/App/OpsailRendererAssetInstaller.swift").is_file()
+        )
+        self.assertFalse(
+            (REPO_ROOT / "QuotaMonitor/App/OpsailRendererAssetInstaller.swift")
+            .read_text(encoding="utf-8")
+            .find("CDP") >= 0
+        )
 
 
 if __name__ == "__main__":

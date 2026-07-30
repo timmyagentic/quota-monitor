@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- The Codex sidebar quota widget now follows Codex's English or Simplified Chinese language, with clearer weekly labels, shorter reset times, and a calmer compact layout.
 - Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
 - The Codex sidebar widget now follows a clear, user-owned launch flow: quit Codex yourself when required, then explicitly open it with the widget from Settings.
@@ -78,6 +79,7 @@ window copy.
 
 ### Changed
 
+- **Bilingual Codex quota hierarchy.** The sidebar summary now reads “Weekly · 32% left” or “本周 · 剩余 32%”, while details use localized quota terms, minute-level reset dates, and a single compact metadata line without repeating the visible used percentage or local-time note.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
 - **Explicit Codex widget launch.** The native quota widget now attaches quietly when possible, otherwise asks you to quit Codex yourself and waits for a separate “Open Codex and enable widget” action; Quota Monitor never quits or reopens Codex automatically.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.

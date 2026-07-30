@@ -21,8 +21,137 @@ struct OpsailCodexRefitTests {
     func helperLocation() {
         let app = URL(fileURLWithPath: "/Applications/QuotaMonitor.app")
         let helper = OpsailHelperLocator.bundledHelperURL(bundleURL: app)
+        let renderer = OpsailRendererAssetLocator.bundledAssetsURL(bundleURL: app)
 
         #expect(helper.path == "/Applications/QuotaMonitor.app/Contents/Helpers/opsail")
+        #expect(renderer.path
+            == "/Applications/QuotaMonitor.app/Contents/Resources/OpsailRenderer")
+    }
+
+    @Test("QuotaMonitor installs its verified renderer bundle atomically")
+    func rendererAssetInstall() throws {
+        let root = try Self.repositoryRoot()
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let installer = OpsailRendererAssetInstaller(
+            sourceURL: root.appendingPathComponent("Vendor/Opsail/Renderer"),
+            stateRoot: temporary.appendingPathComponent("state"))
+
+        #expect(try installer.installIfNeeded() == .installed)
+        #expect(try installer.installIfNeeded() == .unchanged)
+
+        let pointerURL = temporary
+            .appendingPathComponent("state/renderer-assets/current.json")
+        let pointer = try String(contentsOf: pointerURL, encoding: .utf8)
+        #expect(pointer.contains(#""version" : "1.0.1""#))
+        #expect(pointer.contains(#""directory" : "quota-monitor-1.0.1-"#))
+        #expect(!pointer.contains(".install-"))
+        let versions = temporary
+            .appendingPathComponent("state/renderer-assets/versions")
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: versions.path).count == 1)
+    }
+
+    @Test("a newer Opsail renderer is never downgraded")
+    func rendererAssetPreservesNewerVersion() throws {
+        let root = try Self.repositoryRoot()
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let stateRoot = temporary.appendingPathComponent("state")
+        let installer = OpsailRendererAssetInstaller(
+            sourceURL: root.appendingPathComponent("Vendor/Opsail/Renderer"),
+            stateRoot: stateRoot)
+        #expect(try installer.installIfNeeded() == .installed)
+
+        let assetRoot = stateRoot
+            .appendingPathComponent("renderer-assets", isDirectory: true)
+        let pointerURL = assetRoot.appendingPathComponent("current.json")
+        let pointerData = try Data(contentsOf: pointerURL)
+        let pointerObject = try #require(
+            try JSONSerialization.jsonObject(with: pointerData)
+                as? [String: Any])
+        let directory = try #require(pointerObject["directory"] as? String)
+        let selected = assetRoot.appendingPathComponent(
+            "versions/\(directory)",
+            isDirectory: true)
+        let manifestURL = selected.appendingPathComponent("manifest.json")
+        var manifest = try String(
+            contentsOf: manifestURL,
+            encoding: .utf8)
+        manifest = manifest.replacingOccurrences(
+            of: #""assetVersion": "1.0.1""#,
+            with: #""assetVersion": "1.1.0""#)
+        try Data(manifest.utf8).write(to: manifestURL)
+        try JSONSerialization.data(
+            withJSONObject: [
+                "schemaVersion": 1,
+                "version": "1.1.0",
+                "directory": directory,
+            ],
+            options: [.sortedKeys]
+        ).write(to: pointerURL)
+
+        #expect(try installer.installIfNeeded()
+            == .preservedNewer(version: "1.1.0"))
+    }
+
+    @Test("a broken newer pointer is repaired instead of blocking the widget")
+    func rendererAssetRepairsBrokenNewerPointer() throws {
+        let root = try Self.repositoryRoot()
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let assetRoot = temporary
+            .appendingPathComponent("state/renderer-assets", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: assetRoot,
+            withIntermediateDirectories: true)
+        try Data(
+            #"{"schemaVersion":1,"version":"9.0.0","directory":"missing"}"#
+                .utf8
+        ).write(to: assetRoot.appendingPathComponent("current.json"))
+        let installer = OpsailRendererAssetInstaller(
+            sourceURL: root.appendingPathComponent("Vendor/Opsail/Renderer"),
+            stateRoot: temporary.appendingPathComponent("state"))
+
+        #expect(try installer.installIfNeeded() == .installed)
+        let pointer = try String(
+            contentsOf: assetRoot.appendingPathComponent("current.json"),
+            encoding: .utf8)
+        #expect(pointer.contains(#""version" : "1.0.1""#))
+    }
+
+    @Test("a symlinked renderer store is rejected")
+    func rendererAssetRejectsSymlinkedStore() throws {
+        let root = try Self.repositoryRoot()
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let outside = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: temporary)
+            try? FileManager.default.removeItem(at: outside)
+        }
+        try FileManager.default.createDirectory(
+            at: temporary.appendingPathComponent("state"),
+            withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: outside,
+            withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: temporary.appendingPathComponent("state/renderer-assets"),
+            withDestinationURL: outside)
+        let installer = OpsailRendererAssetInstaller(
+            sourceURL: root.appendingPathComponent("Vendor/Opsail/Renderer"),
+            stateRoot: temporary.appendingPathComponent("state"))
+
+        #expect(throws: OpsailRendererAssetInstallError.self) {
+            try installer.installIfNeeded()
+        }
+        #expect(try FileManager.default.contentsOfDirectory(
+            atPath: outside.path).isEmpty)
     }
 
     @Test("automatic local QA never starts or relaunches an external Codex app")
