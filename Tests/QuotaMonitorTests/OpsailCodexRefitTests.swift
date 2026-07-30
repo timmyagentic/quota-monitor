@@ -327,6 +327,27 @@ struct OpsailCodexRefitTests {
         #expect(OpsailRetryPolicy.delayNanoseconds(attempt: 50) == 60_000_000_000)
     }
 
+    @Test("renderer preparation failures retain launch intent and retry")
+    func rendererFailureRetrySource() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent("QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let installStart = try #require(source.range(
+            of: "let outcome = try rendererAssetInstaller.installIfNeeded()"))
+        let installEnd = try #require(source.range(
+            of: "managerRetryTask?.cancel()",
+            range: installStart.lowerBound..<source.endIndex))
+        let failureBranch = source[
+            installStart.lowerBound..<installEnd.lowerBound]
+
+        #expect(failureBranch.contains(
+            "requestedAllowLaunch: effectiveAllowLaunch)"))
+        #expect(failureBranch.contains(
+            "Opsail renderer assets unavailable:"))
+        #expect(failureBranch.contains("scheduleManagerRetry()"))
+    }
+
     @Test("cleanup finalizes only after a successful disable")
     func cleanupCompletionPolicy() {
         #expect(OpsailCleanupPolicy.didComplete(status: 0))

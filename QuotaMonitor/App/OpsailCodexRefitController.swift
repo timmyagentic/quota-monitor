@@ -296,9 +296,14 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Opsail renderer assets prepared: \(String(describing: outcome), privacy: .public)")
         } catch {
+            pendingManagerAllowLaunch =
+                OpsailCodexActivationPolicy.preserveLaunchIntent(
+                    pendingAllowLaunch: pendingManagerAllowLaunch,
+                    requestedAllowLaunch: effectiveAllowLaunch)
             settings.codexSidebarQuotaStatus = .unavailable
             Log.ui.error(
                 "Opsail renderer assets unavailable: \(error.localizedDescription, privacy: .public)")
+            scheduleManagerRetry()
             return
         }
 
