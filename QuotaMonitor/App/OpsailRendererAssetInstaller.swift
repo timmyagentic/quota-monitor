@@ -219,7 +219,7 @@ struct OpsailRendererAssetInstaller {
         guard let pointer = try? JSONDecoder().decode(
             CurrentPointer.self,
             from: data),
-              pointer.schemaVersion == 1,
+              pointer.schemaVersion >= 1,
               SemanticVersion(pointer.version) != nil,
               isValidDirectoryName(pointer.directory)
         else {

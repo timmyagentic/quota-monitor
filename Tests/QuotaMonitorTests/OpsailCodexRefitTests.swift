@@ -92,7 +92,7 @@ struct OpsailCodexRefitTests {
         try Data(manifest.utf8).write(to: manifestURL)
         try JSONSerialization.data(
             withJSONObject: [
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "version": "1.1.0",
                 "directory": directory,
             ],
