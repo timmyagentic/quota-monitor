@@ -103,6 +103,72 @@ struct OpsailCodexRefitTests {
             == .preservedNewer(version: "1.1.0"))
     }
 
+    @Test("a corrupted newer renderer is repaired with the verified bundle")
+    func rendererAssetRepairsCorruptedNewerVersion() throws {
+        let root = try Self.repositoryRoot()
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let stateRoot = temporary.appendingPathComponent("state")
+        let installer = OpsailRendererAssetInstaller(
+            sourceURL: root.appendingPathComponent("Vendor/Opsail/Renderer"),
+            stateRoot: stateRoot)
+        #expect(try installer.installIfNeeded() == .installed)
+
+        let assetRoot = stateRoot
+            .appendingPathComponent("renderer-assets", isDirectory: true)
+        let pointerURL = assetRoot.appendingPathComponent("current.json")
+        let pointerData = try Data(contentsOf: pointerURL)
+        let pointerObject = try #require(
+            try JSONSerialization.jsonObject(with: pointerData)
+                as? [String: Any])
+        let installedDirectory = try #require(
+            pointerObject["directory"] as? String)
+        let versionsRoot = assetRoot
+            .appendingPathComponent("versions", isDirectory: true)
+        let selected = versionsRoot.appendingPathComponent(
+            "opsail-9.0.0",
+            isDirectory: true)
+        try FileManager.default.copyItem(
+            at: versionsRoot.appendingPathComponent(
+                installedDirectory,
+                isDirectory: true),
+            to: selected)
+
+        let manifestURL = selected.appendingPathComponent("manifest.json")
+        var manifest = try String(
+            contentsOf: manifestURL,
+            encoding: .utf8)
+        manifest = manifest.replacingOccurrences(
+            of: #""assetVersion": "1.0.1""#,
+            with: #""assetVersion": "9.0.0""#)
+        manifest = manifest.replacingOccurrences(
+            of: #""schemaVersion": 1"#,
+            with: #""schemaVersion": 9"#)
+        try Data(manifest.utf8).write(to: manifestURL)
+        let corruptedFile = selected.appendingPathComponent(
+            "opsail-refit-codex-usage-runtime.js")
+        var corruptedData = try Data(contentsOf: corruptedFile)
+        corruptedData.append(Data("\n// corrupt".utf8))
+        try corruptedData.write(to: corruptedFile)
+        try JSONSerialization.data(
+            withJSONObject: [
+                "schemaVersion": 1,
+                "version": "9.0.0",
+                "directory": "opsail-9.0.0",
+            ],
+            options: [.sortedKeys]
+        ).write(to: pointerURL)
+
+        #expect(try installer.installIfNeeded() == .installed)
+        let repairedPointer = try String(
+            contentsOf: pointerURL,
+            encoding: .utf8)
+        #expect(repairedPointer.contains(#""version" : "1.0.1""#))
+        #expect(repairedPointer.contains(
+            #""directory" : "\#(installedDirectory)""#))
+    }
+
     @Test("a broken newer pointer is repaired instead of blocking the widget")
     func rendererAssetRepairsBrokenNewerPointer() throws {
         let root = try Self.repositoryRoot()

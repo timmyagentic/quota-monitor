@@ -250,10 +250,44 @@ struct OpsailRendererAssetInstaller {
                 "selected renderer manifest JSON is invalid")
         }
         guard manifest.assetVersion == expectedVersion,
-              let version = SemanticVersion(manifest.assetVersion)
+              let version = SemanticVersion(manifest.assetVersion),
+              !manifest.files.isEmpty,
+              manifest.files.count <= 64
         else {
             throw OpsailRendererAssetInstallError.invalidBundle(
-                "selected renderer version does not match current.json")
+                "selected renderer manifest is incomplete or does not match current.json")
+        }
+        var names = Set<String>()
+        var totalBytes = 0
+        for record in manifest.files {
+            guard isValidDirectoryName(record.name),
+                  record.name != "manifest.json",
+                  names.insert(record.name).inserted,
+                  record.bytes > 0,
+                  record.bytes <= 32 * 1024 * 1024,
+                  record.sha256.count == 64,
+                  record.sha256.utf8.allSatisfy({
+                      (48...57).contains($0) || (97...102).contains($0)
+                  })
+            else {
+                throw OpsailRendererAssetInstallError.invalidBundle(
+                    "selected renderer file metadata is invalid")
+            }
+            let data = try readRegularFile(
+                root.appendingPathComponent(record.name),
+                maximumBytes: 32 * 1024 * 1024,
+                context: "selected renderer file \(record.name)")
+            guard data.count == record.bytes,
+                  sha256(data) == record.sha256
+            else {
+                throw OpsailRendererAssetInstallError.invalidBundle(
+                    "selected renderer file \(record.name) failed integrity verification")
+            }
+            totalBytes += data.count
+        }
+        guard totalBytes <= 128 * 1024 * 1024 else {
+            throw OpsailRendererAssetInstallError.invalidBundle(
+                "selected renderer bundle exceeds the forward-compatible size limit")
         }
         return version
     }
@@ -450,6 +484,7 @@ private struct AssetManifest: Codable, Equatable {
 
 private struct AssetVersionManifest: Decodable {
     let assetVersion: String
+    let files: [AssetRecord]
 }
 
 private struct AssetRecord: Codable, Equatable {
