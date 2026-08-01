@@ -498,6 +498,32 @@ enum PricingService {
         }
     }()
 
+    private static let gpt56LiteLLMPriceAdjustmentsByModel = Dictionary(
+        uniqueKeysWithValues: gpt56LiteLLMPriceAdjustments.map {
+            ($0.modelId, $0)
+        })
+
+    /// LiteLLM can continue returning a known pre-cutover GPT-5.6 payload
+    /// after OpenAI has reduced its public rates. Normalize that payload on
+    /// every refresh so a one-time migration cannot be undone later.
+    private static func normalizedGPT56LiteLLMPrice(
+        modelId: String,
+        input: Double,
+        cached: Double,
+        output: Double
+    ) -> (input: Double, cached: Double, output: Double) {
+        guard let adjustment = gpt56LiteLLMPriceAdjustmentsByModel[modelId],
+              abs(input - adjustment.oldInputPricePerMillion) < 0.000001,
+              abs(output - adjustment.oldOutputPricePerMillion) < 0.000001
+        else {
+            return (input, cached, output)
+        }
+        return (
+            adjustment.newInputPricePerMillion,
+            adjustment.newCachedInputPricePerMillion,
+            adjustment.newOutputPricePerMillion)
+    }
+
     /// Apply a LiteLLM fetch result to `pricing_catalog`.
     ///
     /// Behavior:
@@ -538,8 +564,8 @@ enum PricingService {
         for modelId in allowed {
             guard let entry = byId[modelId] else { continue }
             // Need at least input + output to be meaningful.
-            guard let inP = entry.perMillionInput,
-                  let outP = entry.perMillionOutput else { continue }
+            guard let rawInP = entry.perMillionInput,
+                  let rawOutP = entry.perMillionOutput else { continue }
 
             // cached read price: LiteLLM's cache_read_input_token_cost; if
             // missing, fall back to the existing seed cached price (read it
@@ -547,7 +573,15 @@ enum PricingService {
             let existingCached = try Double.fetchOne(db, sql:
                 "SELECT cached_input_price_per_million FROM pricing_catalog WHERE model_id = ?",
                 arguments: [modelId]) ?? 0
-            let cachedP = entry.perMillionCacheRead ?? existingCached
+            let rawCachedP = entry.perMillionCacheRead ?? existingCached
+            let normalized = normalizedGPT56LiteLLMPrice(
+                modelId: modelId,
+                input: rawInP,
+                cached: rawCachedP,
+                output: rawOutP)
+            let inP = normalized.input
+            let cachedP = normalized.cached
+            let outP = normalized.output
 
             try db.execute(sql: """
                 UPDATE pricing_catalog

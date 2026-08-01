@@ -719,6 +719,69 @@ struct PricingValueBackfillTests {
         #expect(abs(values[0] - 3.2760) < 1e-9)
     }
 
+    @Test("stale LiteLLM GPT-5.6 refreshes stay on reduced prices")
+    func staleLiteLLMGPT56RefreshUsesReducedPrices() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 200_000, cached: 40_000, output: 20_000,
+            timestamp: "2026-07-29T23:59:59.999Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 200_000, cached: 40_000, output: 20_000,
+            timestamp: "2026-07-30T00:00:00.000Z")
+
+        let staleEntry = LiteLLMEntry(
+            modelId: "gpt-5.6-terra",
+            provider: "openai",
+            inputCostPerToken: 2.50 / 1_000_000,
+            outputCostPerToken: 15.00 / 1_000_000,
+            cacheReadInputTokenCost: 0.25 / 1_000_000,
+            cacheCreationInputTokenCost: nil,
+            inputCostAbove200kTokens: nil,
+            outputCostAbove200kTokens: nil,
+            maxInputTokens: nil,
+            maxOutputTokens: nil)
+        _ = try db.pool.write { conn in
+            try PricingService.applyLiteLLMUpdate(
+                entries: [staleEntry], in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(values.count == 2)
+        #expect(abs(values[0] - 0.7100) < 1e-9)
+        #expect(abs(values[1] - 0.5680) < 1e-9)
+
+        let rows = try db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT model_id, input_price_per_million,
+                       cached_input_price_per_million, output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id IN (
+                  'gpt-5.6-terra', 'gpt-5.6-terra-fast',
+                  'gpt-5.6-terra-flex'
+                )
+                """)
+        }
+        let prices = Dictionary(uniqueKeysWithValues: rows.map { row in
+            (row["model_id"] as String, (
+                row["input_price_per_million"] as Double,
+                row["cached_input_price_per_million"] as Double,
+                row["output_price_per_million"] as Double))
+        })
+        let expected: [String: (Double, Double, Double)] = [
+            "gpt-5.6-terra": (2.00, 0.20, 12.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 24.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 6.00),
+        ]
+        #expect(prices.count == expected.count)
+        for (modelId, price) in expected {
+            #expect(abs((prices[modelId]?.0 ?? -1) - price.0) < 1e-9)
+            #expect(abs((prices[modelId]?.1 ?? -1) - price.1) < 1e-9)
+            #expect(abs((prices[modelId]?.2 ?? -1) - price.2) < 1e-9)
+        }
+    }
+
     @Test("LiteLLM refresh keeps Fast and Flex rows derived from the base price")
     func liteLLMRefreshKeepsCodexTierRowsInSync() throws {
         let db = try makeDatabase()
