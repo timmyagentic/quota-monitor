@@ -92,7 +92,9 @@ struct MigrationsTests {
             // the OpenAI reduction. The migration must advance stale rows,
             // while keeping them owned by LiteLLM rather than by seedCatalog.
             let stalePrices: [(String, Double, Double, Double)] = [
-                ("gpt-5.6-terra", 2.50, 0.25, 15.00),
+                // The cached rate is already current, but input/output are
+                // stale; migration must still recognize and repair the row.
+                ("gpt-5.6-terra", 2.50, 0.20, 15.00),
                 ("gpt-5.6-terra-fast", 5.00, 0.50, 30.00),
                 ("gpt-5.6-terra-flex", 1.25, 0.125, 7.50),
                 ("gpt-5.6-luna", 1.00, 0.10, 6.00),

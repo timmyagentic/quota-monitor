@@ -427,7 +427,6 @@ enum PricingService {
     private struct CodexCatalogPriceAdjustment {
         let modelId: String
         let oldInputPricePerMillion: Double
-        let oldCachedInputPricePerMillion: Double
         let oldOutputPricePerMillion: Double
         let newInputPricePerMillion: Double
         let newCachedInputPricePerMillion: Double
@@ -451,7 +450,6 @@ enum PricingService {
                 WHERE model_id = ?
                   AND price_source = 'litellm'
                   AND ABS(input_price_per_million - ?) < 0.000001
-                  AND ABS(cached_input_price_per_million - ?) < 0.000001
                   AND ABS(output_price_per_million - ?) < 0.000001
                 """, arguments: [
                     adjustment.newInputPricePerMillion,
@@ -460,7 +458,6 @@ enum PricingService {
                     now,
                     adjustment.modelId,
                     adjustment.oldInputPricePerMillion,
-                    adjustment.oldCachedInputPricePerMillion,
                     adjustment.oldOutputPricePerMillion
                 ])
             updated += db.changesCount
@@ -471,12 +468,12 @@ enum PricingService {
     private static let gpt56LiteLLMPriceAdjustments: [CodexCatalogPriceAdjustment] = {
         let currentEntries = Dictionary(
             uniqueKeysWithValues: PricingSeed.entries.map { ($0.modelId, $0) })
-        let launchPrices: [(String, Double, Double, Double)] = [
-            ("gpt-5.6-terra", 2.50, 0.25, 15.00),
-            ("gpt-5.6-luna", 1.00, 0.10, 6.00),
+        let launchPrices: [(String, Double, Double)] = [
+            ("gpt-5.6-terra", 2.50, 15.00),
+            ("gpt-5.6-luna", 1.00, 6.00),
         ]
 
-        return launchPrices.flatMap { modelId, input, cached, output in
+        return launchPrices.flatMap { modelId, input, output in
             var variants: [(String, Double)] = [(modelId, 1.0)]
             if let multiplier = CodexFastMode.multipliers[modelId] {
                 variants.append((modelId + CodexFastMode.suffix, multiplier))
@@ -489,7 +486,6 @@ enum PricingService {
                 return CodexCatalogPriceAdjustment(
                     modelId: variantId,
                     oldInputPricePerMillion: input * multiplier,
-                    oldCachedInputPricePerMillion: cached * multiplier,
                     oldOutputPricePerMillion: output * multiplier,
                     newInputPricePerMillion: current.inputPricePerMillion,
                     newCachedInputPricePerMillion: current.cachedInputPricePerMillion,
