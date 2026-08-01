@@ -424,6 +424,7 @@ enum Migrations {
         // seed updates, so the normal startup seed gate cannot be relied on
         // to repair values already stored in usage_events.
         migrator.registerMigration("v19-gpt56-price-history-reprice") { db in
+            try PricingService.migrateGPT56LiteLLMPrices(in: db)
             try PricingService.backfillAllValues(in: db)
         }
     }

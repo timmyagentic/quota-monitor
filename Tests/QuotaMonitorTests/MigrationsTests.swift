@@ -88,20 +88,27 @@ struct MigrationsTests {
             try db.execute(
                 sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
                 arguments: [migrationId])
-            // Simulate a catalog that was previously refreshed from LiteLLM.
-            // Its current prices are already the reduced post-cutover values,
-            // but seedCatalog must not own or overwrite these rows.
-            try db.execute(sql: """
-                UPDATE pricing_catalog
-                SET input_price_per_million = 2.00,
-                    cached_input_price_per_million = 0.20,
-                    output_price_per_million = 12.00,
-                    price_source = 'litellm'
-                WHERE model_id IN (
-                    'gpt-5.6-terra', 'gpt-5.6-terra-fast',
-                    'gpt-5.6-terra-flex'
-                )
-                """)
+            // Simulate a catalog that was last refreshed from LiteLLM before
+            // the OpenAI reduction. The migration must advance stale rows,
+            // while keeping them owned by LiteLLM rather than by seedCatalog.
+            let stalePrices: [(String, Double, Double, Double)] = [
+                ("gpt-5.6-terra", 2.50, 0.25, 15.00),
+                ("gpt-5.6-terra-fast", 5.00, 0.50, 30.00),
+                ("gpt-5.6-terra-flex", 1.25, 0.125, 7.50),
+                ("gpt-5.6-luna", 1.00, 0.10, 6.00),
+                ("gpt-5.6-luna-fast", 2.00, 0.20, 12.00),
+                ("gpt-5.6-luna-flex", 0.50, 0.05, 3.00),
+            ]
+            for (modelId, input, cached, output) in stalePrices {
+                try db.execute(sql: """
+                    UPDATE pricing_catalog
+                    SET input_price_per_million = ?,
+                        cached_input_price_per_million = ?,
+                        output_price_per_million = ?,
+                        price_source = 'litellm'
+                    WHERE model_id = ?
+                    """, arguments: [input, cached, output, modelId])
+            }
             try db.execute(sql: """
                 INSERT INTO sessions
                     (session_id, root_session_id, started_at, updated_at,
@@ -136,6 +143,38 @@ struct MigrationsTests {
                 WHERE session_id = 'gpt56-litellm-history'
                 ORDER BY timestamp
                 """)
+        }
+        let prices = try manager.pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT model_id, input_price_per_million,
+                       cached_input_price_per_million, output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id IN (
+                  'gpt-5.6-terra', 'gpt-5.6-terra-fast',
+                  'gpt-5.6-terra-flex', 'gpt-5.6-luna',
+                  'gpt-5.6-luna-fast', 'gpt-5.6-luna-flex'
+                )
+                """)
+        }
+        let priceByModel = Dictionary(uniqueKeysWithValues: prices.map { row in
+            (row["model_id"] as String, (
+                row["input_price_per_million"] as Double,
+                row["cached_input_price_per_million"] as Double,
+                row["output_price_per_million"] as Double))
+        })
+        let expectedPrices: [String: (Double, Double, Double)] = [
+            "gpt-5.6-terra": (2.00, 0.20, 12.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 24.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 6.00),
+            "gpt-5.6-luna": (0.20, 0.02, 1.20),
+            "gpt-5.6-luna-fast": (0.40, 0.04, 2.40),
+            "gpt-5.6-luna-flex": (0.10, 0.01, 0.60),
+        ]
+        #expect(priceByModel.count == expectedPrices.count)
+        for (modelId, expected) in expectedPrices {
+            #expect(abs((priceByModel[modelId]?.0 ?? -1) - expected.0) < 1e-9)
+            #expect(abs((priceByModel[modelId]?.1 ?? -1) - expected.1) < 1e-9)
+            #expect(abs((priceByModel[modelId]?.2 ?? -1) - expected.2) < 1e-9)
         }
         #expect(values.count == 2)
         #expect(abs(values[0] - 0.7100) < 1e-9)

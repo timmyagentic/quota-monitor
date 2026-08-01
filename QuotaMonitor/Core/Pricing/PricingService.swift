@@ -424,6 +424,80 @@ enum PricingService {
         return pricingChanged
     }
 
+    private struct CodexCatalogPriceAdjustment {
+        let modelId: String
+        let oldInputPricePerMillion: Double
+        let oldCachedInputPricePerMillion: Double
+        let oldOutputPricePerMillion: Double
+        let newInputPricePerMillion: Double
+        let newCachedInputPricePerMillion: Double
+        let newOutputPricePerMillion: Double
+    }
+
+    /// Updates only stale LiteLLM-owned GPT-5.6 rows whose rates still match
+    /// the known launch prices. A user-local row, a current LiteLLM row, or a
+    /// future catalog revision remains untouched.
+    @discardableResult
+    static func migrateGPT56LiteLLMPrices(in db: Database) throws -> Int {
+        let now = ISO8601.fractional.string(from: Date())
+        var updated = 0
+        for adjustment in gpt56LiteLLMPriceAdjustments {
+            try db.execute(sql: """
+                UPDATE pricing_catalog
+                SET input_price_per_million = ?,
+                    cached_input_price_per_million = ?,
+                    output_price_per_million = ?,
+                    updated_at = ?
+                WHERE model_id = ?
+                  AND price_source = 'litellm'
+                  AND ABS(input_price_per_million - ?) < 0.000001
+                  AND ABS(cached_input_price_per_million - ?) < 0.000001
+                  AND ABS(output_price_per_million - ?) < 0.000001
+                """, arguments: [
+                    adjustment.newInputPricePerMillion,
+                    adjustment.newCachedInputPricePerMillion,
+                    adjustment.newOutputPricePerMillion,
+                    now,
+                    adjustment.modelId,
+                    adjustment.oldInputPricePerMillion,
+                    adjustment.oldCachedInputPricePerMillion,
+                    adjustment.oldOutputPricePerMillion
+                ])
+            updated += db.changesCount
+        }
+        return updated
+    }
+
+    private static let gpt56LiteLLMPriceAdjustments: [CodexCatalogPriceAdjustment] = {
+        let currentEntries = Dictionary(
+            uniqueKeysWithValues: PricingSeed.entries.map { ($0.modelId, $0) })
+        let launchPrices: [(String, Double, Double, Double)] = [
+            ("gpt-5.6-terra", 2.50, 0.25, 15.00),
+            ("gpt-5.6-luna", 1.00, 0.10, 6.00),
+        ]
+
+        return launchPrices.flatMap { modelId, input, cached, output in
+            var variants: [(String, Double)] = [(modelId, 1.0)]
+            if let multiplier = CodexFastMode.multipliers[modelId] {
+                variants.append((modelId + CodexFastMode.suffix, multiplier))
+            }
+            if let multiplier = CodexFlexMode.multipliers[modelId] {
+                variants.append((modelId + CodexFlexMode.suffix, multiplier))
+            }
+            return variants.compactMap { (variantId, multiplier) -> CodexCatalogPriceAdjustment? in
+                guard let current = currentEntries[variantId] else { return nil }
+                return CodexCatalogPriceAdjustment(
+                    modelId: variantId,
+                    oldInputPricePerMillion: input * multiplier,
+                    oldCachedInputPricePerMillion: cached * multiplier,
+                    oldOutputPricePerMillion: output * multiplier,
+                    newInputPricePerMillion: current.inputPricePerMillion,
+                    newCachedInputPricePerMillion: current.cachedInputPricePerMillion,
+                    newOutputPricePerMillion: current.outputPricePerMillion)
+            }
+        }
+    }()
+
     /// Apply a LiteLLM fetch result to `pricing_catalog`.
     ///
     /// Behavior:
