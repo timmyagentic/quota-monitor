@@ -76,6 +76,72 @@ struct MigrationsTests {
         #expect(abs((repriced ?? 0) - 3.50) < 1e-6)
     }
 
+    @Test("GPT-5.6 history migration reprices existing LiteLLM catalogs")
+    func gpt56HistoryMigrationRepricesLiteLLMCatalog() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-gpt56-history-reprice")
+        let manager = try DatabaseManager(url: url)
+        let migrationId = "v19-gpt56-price-history-reprice"
+        let beforeCutover = "2026-07-29T23:59:59.999Z"
+        let afterCutover = "2026-07-30T00:00:00.000Z"
+
+        try manager.pool.write { db in
+            try db.execute(
+                sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+                arguments: [migrationId])
+            // Simulate a catalog that was previously refreshed from LiteLLM.
+            // Its current prices are already the reduced post-cutover values,
+            // but seedCatalog must not own or overwrite these rows.
+            try db.execute(sql: """
+                UPDATE pricing_catalog
+                SET input_price_per_million = 2.00,
+                    cached_input_price_per_million = 0.20,
+                    output_price_per_million = 12.00,
+                    price_source = 'litellm'
+                WHERE model_id IN (
+                    'gpt-5.6-terra', 'gpt-5.6-terra-fast',
+                    'gpt-5.6-terra-flex'
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO sessions
+                    (session_id, root_session_id, started_at, updated_at,
+                     last_model_id, created_at, imported_at, provider)
+                VALUES
+                    ('gpt56-litellm-history', 'gpt56-litellm-history', ?, ?,
+                     'gpt-5.6-terra', ?, ?, 'codex')
+                """, arguments: [beforeCutover, beforeCutover,
+                                  beforeCutover, beforeCutover])
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (session_id, timestamp, model_id,
+                     input_tokens, cached_input_tokens, output_tokens,
+                     reasoning_output_tokens, total_tokens, value_usd,
+                     provider, codex_service_tier_preference)
+                VALUES
+                    ('gpt56-litellm-history', ?, 'gpt-5.6-terra',
+                     200000, 40000, 20000, 0, 220000, 0.568,
+                     'codex', NULL),
+                    ('gpt56-litellm-history', ?, 'gpt-5.6-terra',
+                     200000, 40000, 20000, 0, 220000, 0.568,
+                     'codex', NULL)
+                """, arguments: [beforeCutover, afterCutover])
+        }
+
+        _ = try DatabaseManager(url: url)
+
+        let values = try manager.pool.read { db in
+            try Double.fetchAll(db, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE session_id = 'gpt56-litellm-history'
+                ORDER BY timestamp
+                """)
+        }
+        #expect(values.count == 2)
+        #expect(abs(values[0] - 0.7100) < 1e-9)
+        #expect(abs(values[1] - 0.5680) < 1e-9)
+    }
+
     @Test("pre-v14 schema clears only Codex tiers and invalidates Codex sessions")
     func preV14SchemaMigratesCodexTierPreferences() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-tier-v14")

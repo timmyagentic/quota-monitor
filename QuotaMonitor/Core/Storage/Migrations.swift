@@ -418,5 +418,13 @@ enum Migrations {
                 WHERE session_id IS NOT NULL
                 """)
         }
+
+        // v19: Reprice existing usage after introducing timestamp-dependent
+        // GPT-5.6 history. LiteLLM-owned catalog rows intentionally bypass
+        // seed updates, so the normal startup seed gate cannot be relied on
+        // to repair values already stored in usage_events.
+        migrator.registerMigration("v19-gpt56-price-history-reprice") { db in
+            try PricingService.backfillAllValues(in: db)
+        }
     }
 }
