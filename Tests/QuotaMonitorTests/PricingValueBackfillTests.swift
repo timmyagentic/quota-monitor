@@ -59,7 +59,8 @@ struct PricingValueBackfillTests {
                   cached_input_price_per_million = excluded.cached_input_price_per_million,
                   output_price_per_million = excluded.output_price_per_million,
                   cache_creation_price_per_million = excluded.cache_creation_price_per_million,
-                  updated_at = excluded.updated_at
+                  updated_at = excluded.updated_at,
+                  price_source = excluded.price_source
                 """, arguments: [
                     modelId, modelId, input, cached, output, cacheCreation,
                     modelId, true, nil, "https://example/", now, priceSource
@@ -80,9 +81,10 @@ struct PricingValueBackfillTests {
         cacheCreation1h: Int64 = 0,
         serviceTierPreference: String? = nil,
         seedValueUSD: Double = -1,
-        sessionId: String? = nil
+        sessionId: String? = nil,
+        timestamp: String = "2026-04-29T10:00:00Z"
     ) throws -> String {
-        let stamp = "2026-04-29T10:00:00Z"
+        let stamp = timestamp
         let sid = sessionId ?? "s-\(UUID().uuidString)"
         try db.pool.write { conn in
             try conn.execute(sql: """
@@ -585,6 +587,136 @@ struct PricingValueBackfillTests {
         #expect(abs((row?["input_price_per_million"] as Double? ?? 0) - 2.50) < 1e-6)
         #expect(abs((row?["cached_input_price_per_million"] as Double? ?? 0) - 0.25) < 1e-6)
         #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 15.00) < 1e-6)
+    }
+
+    @Test("database initialization seeds post-July-30 GPT-5.6 prices and tiers")
+    func databaseInitializationSeedsCurrentGPT56Prices() throws {
+        let db = try makeDatabase()
+
+        let rows = try db.pool.read { conn in
+            try Row.fetchAll(conn, sql: """
+                SELECT model_id, input_price_per_million,
+                       cached_input_price_per_million, output_price_per_million
+                FROM pricing_catalog
+                WHERE model_id IN (
+                  'gpt-5.6-terra', 'gpt-5.6-terra-fast', 'gpt-5.6-terra-flex',
+                  'gpt-5.6-luna', 'gpt-5.6-luna-fast', 'gpt-5.6-luna-flex'
+                )
+                """)
+        }
+        let prices = Dictionary(uniqueKeysWithValues: rows.map { row in
+            (row["model_id"] as String, (
+                row["input_price_per_million"] as Double,
+                row["cached_input_price_per_million"] as Double,
+                row["output_price_per_million"] as Double))
+        })
+        let expected: [String: (Double, Double, Double)] = [
+            "gpt-5.6-terra": (2.00, 0.20, 12.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 24.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 6.00),
+            "gpt-5.6-luna": (0.20, 0.02, 1.20),
+            "gpt-5.6-luna-fast": (0.40, 0.04, 2.40),
+            "gpt-5.6-luna-flex": (0.10, 0.01, 0.60),
+        ]
+
+        #expect(prices.count == expected.count)
+        for (modelId, price) in expected {
+            #expect(abs((prices[modelId]?.0 ?? -1) - price.0) < 1e-9)
+            #expect(abs((prices[modelId]?.1 ?? -1) - price.1) < 1e-9)
+            #expect(abs((prices[modelId]?.2 ?? -1) - price.2) < 1e-9)
+        }
+    }
+
+    @Test("GPT-5.6 Terra and Luna use launch prices before July 30 and reduced prices from July 30")
+    func gpt56PriceCutoverUsesEventTimestamp() throws {
+        let db = try makeDatabase()
+        for modelId in ["gpt-5.6-terra", "gpt-5.6-luna"] {
+            try insertUsageEvent(
+                in: db, provider: "codex", modelId: modelId,
+                input: 200_000, cached: 40_000, output: 20_000,
+                timestamp: "2026-07-29T23:59:59.999Z")
+            try insertUsageEvent(
+                in: db, provider: "codex", modelId: modelId,
+                input: 200_000, cached: 40_000, output: 20_000,
+                timestamp: "2026-07-30T00:00:00.000Z")
+        }
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(values.count == 4)
+        #expect(abs(values[0] - 0.7100) < 1e-9) // Terra launch price.
+        #expect(abs(values[1] - 0.5680) < 1e-9) // Terra reduced price.
+        #expect(abs(values[2] - 0.2840) < 1e-9) // Luna launch price.
+        #expect(abs(values[3] - 0.0568) < 1e-9) // Luna reduced price.
+    }
+
+    @Test("GPT-5.6 historical prices preserve Fast, Flex, and long-context rules")
+    func gpt56PriceCutoverPreservesTierAndContextRules() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-luna",
+            input: 200_000, cached: 40_000, output: 20_000,
+            serviceTierPreference: "priority",
+            timestamp: "2026-07-29T12:00:00Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-luna",
+            input: 200_000, cached: 40_000, output: 20_000,
+            serviceTierPreference: "priority",
+            timestamp: "2026-07-30T12:00:00Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 200_000, cached: 40_000, output: 20_000,
+            serviceTierPreference: "flex",
+            timestamp: "2026-07-29T12:00:00Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 200_000, cached: 40_000, output: 20_000,
+            serviceTierPreference: "flex",
+            timestamp: "2026-07-30T12:00:00Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 300_000, cached: 100_000, output: 10_000,
+            timestamp: "2026-07-29T12:00:00Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 300_000, cached: 100_000, output: 10_000,
+            timestamp: "2026-07-30T12:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(values.count == 6)
+        #expect(abs(values[0] - 0.5680) < 1e-9) // Luna launch Fast.
+        #expect(abs(values[1] - 0.1136) < 1e-9) // Luna reduced Fast.
+        #expect(abs(values[2] - 0.3550) < 1e-9) // Terra launch Flex.
+        #expect(abs(values[3] - 0.2840) < 1e-9) // Terra reduced Flex.
+        #expect(abs(values[4] - 1.2750) < 1e-9) // Terra launch long context.
+        #expect(abs(values[5] - 1.0200) < 1e-9) // Terra reduced long context.
+    }
+
+    @Test("local GPT-5.6 prices override the built-in history")
+    func localGPT56PriceOverridesHistory() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db, modelId: "gpt-5.6-terra",
+            input: 9.00, cached: 0.90, output: 90.00,
+            priceSource: "local")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 200_000, cached: 40_000, output: 20_000,
+            timestamp: "2026-07-29T12:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(abs(values[0] - 3.2760) < 1e-9)
     }
 
     @Test("LiteLLM refresh keeps Fast and Flex rows derived from the base price")

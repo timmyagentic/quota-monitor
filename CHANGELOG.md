@@ -33,6 +33,7 @@ window copy.
 #### Summary
 
 - The Codex sidebar quota widget now follows Codex's English or Simplified Chinese language, with clearer weekly labels, shorter reset times, and a calmer compact layout.
+- GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
 - Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
 - The Codex sidebar widget now follows a clear, user-owned launch flow: quit Codex yourself when required, then explicitly open it with the widget from Settings.
@@ -71,6 +72,7 @@ window copy.
 
 ### Fixed
 
+- **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
