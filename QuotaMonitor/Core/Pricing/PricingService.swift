@@ -115,6 +115,38 @@ enum CodexLongContextPricing {
     ]
 }
 
+struct CodexHistoricalPricePeriod: Sendable, Hashable {
+    let modelId: String
+    let startsOn: String?
+    let endsBefore: String
+    let inputPricePerMillion: Double
+    let cachedInputPricePerMillion: Double
+    let outputPricePerMillion: Double
+}
+
+/// Fixed OpenAI list-price periods that must survive later catalog refreshes.
+/// Rollout timestamps are stored as UTC ISO-8601 strings. OpenAI announced the
+/// GPT-5.6 adjustment as starting on July 30 without a time, so every event
+/// dated 2026-07-30 or later uses the new catalog price.
+enum CodexPriceHistory {
+    static let periods: [CodexHistoricalPricePeriod] = [
+        .init(
+            modelId: "gpt-5.6-terra",
+            startsOn: nil,
+            endsBefore: "2026-07-30",
+            inputPricePerMillion: 2.50,
+            cachedInputPricePerMillion: 0.25,
+            outputPricePerMillion: 15.00),
+        .init(
+            modelId: "gpt-5.6-luna",
+            startsOn: nil,
+            endsBefore: "2026-07-30",
+            inputPricePerMillion: 1.00,
+            cachedInputPricePerMillion: 0.10,
+            outputPricePerMillion: 6.00),
+    ]
+}
+
 enum PricingSeed {
     /// Concrete catalog entries shipped with the binary. Includes the
     /// real model rows plus synthetic `*-fast` siblings derived from
@@ -135,12 +167,14 @@ enum PricingSeed {
               effectiveModelId: "gpt-5.6-sol", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-terra", displayName: "GPT-5.6 Terra",
-              inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
-              effectiveModelId: "gpt-5.6-terra", isOfficial: true, note: nil,
+              inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 12.00,
+              effectiveModelId: "gpt-5.6-terra", isOfficial: true,
+              note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-luna", displayName: "GPT-5.6 Luna",
-              inputPricePerMillion: 1.00, cachedInputPricePerMillion: 0.10, outputPricePerMillion: 6.00,
-              effectiveModelId: "gpt-5.6-luna", isOfficial: true, note: nil,
+              inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.20,
+              effectiveModelId: "gpt-5.6-luna", isOfficial: true,
+              note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.5", displayName: "GPT-5.5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
@@ -390,6 +424,102 @@ enum PricingService {
         return pricingChanged
     }
 
+    private struct CodexCatalogPriceAdjustment {
+        let modelId: String
+        let oldInputPricePerMillion: Double
+        let oldOutputPricePerMillion: Double
+        let newInputPricePerMillion: Double
+        let newCachedInputPricePerMillion: Double
+        let newOutputPricePerMillion: Double
+    }
+
+    /// Updates only stale LiteLLM-owned GPT-5.6 rows whose rates still match
+    /// the known launch prices. A user-local row, a current LiteLLM row, or a
+    /// future catalog revision remains untouched.
+    @discardableResult
+    static func migrateGPT56LiteLLMPrices(in db: Database) throws -> Int {
+        let now = ISO8601.fractional.string(from: Date())
+        var updated = 0
+        for adjustment in gpt56LiteLLMPriceAdjustments {
+            try db.execute(sql: """
+                UPDATE pricing_catalog
+                SET input_price_per_million = ?,
+                    cached_input_price_per_million = ?,
+                    output_price_per_million = ?,
+                    updated_at = ?
+                WHERE model_id = ?
+                  AND price_source = 'litellm'
+                  AND ABS(input_price_per_million - ?) < 0.000001
+                  AND ABS(output_price_per_million - ?) < 0.000001
+                """, arguments: [
+                    adjustment.newInputPricePerMillion,
+                    adjustment.newCachedInputPricePerMillion,
+                    adjustment.newOutputPricePerMillion,
+                    now,
+                    adjustment.modelId,
+                    adjustment.oldInputPricePerMillion,
+                    adjustment.oldOutputPricePerMillion
+                ])
+            updated += db.changesCount
+        }
+        return updated
+    }
+
+    private static let gpt56LiteLLMPriceAdjustments: [CodexCatalogPriceAdjustment] = {
+        let currentEntries = Dictionary(
+            uniqueKeysWithValues: PricingSeed.entries.map { ($0.modelId, $0) })
+        let launchPrices: [(String, Double, Double)] = [
+            ("gpt-5.6-terra", 2.50, 15.00),
+            ("gpt-5.6-luna", 1.00, 6.00),
+        ]
+
+        return launchPrices.flatMap { modelId, input, output in
+            var variants: [(String, Double)] = [(modelId, 1.0)]
+            if let multiplier = CodexFastMode.multipliers[modelId] {
+                variants.append((modelId + CodexFastMode.suffix, multiplier))
+            }
+            if let multiplier = CodexFlexMode.multipliers[modelId] {
+                variants.append((modelId + CodexFlexMode.suffix, multiplier))
+            }
+            return variants.compactMap { (variantId, multiplier) -> CodexCatalogPriceAdjustment? in
+                guard let current = currentEntries[variantId] else { return nil }
+                return CodexCatalogPriceAdjustment(
+                    modelId: variantId,
+                    oldInputPricePerMillion: input * multiplier,
+                    oldOutputPricePerMillion: output * multiplier,
+                    newInputPricePerMillion: current.inputPricePerMillion,
+                    newCachedInputPricePerMillion: current.cachedInputPricePerMillion,
+                    newOutputPricePerMillion: current.outputPricePerMillion)
+            }
+        }
+    }()
+
+    private static let gpt56LiteLLMPriceAdjustmentsByModel = Dictionary(
+        uniqueKeysWithValues: gpt56LiteLLMPriceAdjustments.map {
+            ($0.modelId, $0)
+        })
+
+    /// LiteLLM can continue returning a known pre-cutover GPT-5.6 payload
+    /// after OpenAI has reduced its public rates. Normalize that payload on
+    /// every refresh so a one-time migration cannot be undone later.
+    private static func normalizedGPT56LiteLLMPrice(
+        modelId: String,
+        input: Double,
+        cached: Double,
+        output: Double
+    ) -> (input: Double, cached: Double, output: Double) {
+        guard let adjustment = gpt56LiteLLMPriceAdjustmentsByModel[modelId],
+              abs(input - adjustment.oldInputPricePerMillion) < 0.000001,
+              abs(output - adjustment.oldOutputPricePerMillion) < 0.000001
+        else {
+            return (input, cached, output)
+        }
+        return (
+            adjustment.newInputPricePerMillion,
+            adjustment.newCachedInputPricePerMillion,
+            adjustment.newOutputPricePerMillion)
+    }
+
     /// Apply a LiteLLM fetch result to `pricing_catalog`.
     ///
     /// Behavior:
@@ -430,8 +560,8 @@ enum PricingService {
         for modelId in allowed {
             guard let entry = byId[modelId] else { continue }
             // Need at least input + output to be meaningful.
-            guard let inP = entry.perMillionInput,
-                  let outP = entry.perMillionOutput else { continue }
+            guard let rawInP = entry.perMillionInput,
+                  let rawOutP = entry.perMillionOutput else { continue }
 
             // cached read price: LiteLLM's cache_read_input_token_cost; if
             // missing, fall back to the existing seed cached price (read it
@@ -439,7 +569,15 @@ enum PricingService {
             let existingCached = try Double.fetchOne(db, sql:
                 "SELECT cached_input_price_per_million FROM pricing_catalog WHERE model_id = ?",
                 arguments: [modelId]) ?? 0
-            let cachedP = entry.perMillionCacheRead ?? existingCached
+            let rawCachedP = entry.perMillionCacheRead ?? existingCached
+            let normalized = normalizedGPT56LiteLLMPrice(
+                modelId: modelId,
+                input: rawInP,
+                cached: rawCachedP,
+                output: rawOutP)
+            let inP = normalized.input
+            let cachedP = normalized.cached
+            let outP = normalized.output
 
             try db.execute(sql: """
                 UPDATE pricing_catalog
@@ -639,6 +777,9 @@ enum PricingService {
             multiplier: CodexLongContextPricing.inputMultiplier)
         let outputMultiplierExpr = longContextMultiplierSQL(
             multiplier: CodexLongContextPricing.outputMultiplier)
+        let inputPriceExpr = codexPricePerMillionSQL(component: .input)
+        let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
+        let outputPriceExpr = codexPricePerMillionSQL(component: .output)
         let scopeClause: String
         let updateTarget: String
         let arguments: StatementArguments
@@ -703,13 +844,13 @@ enum PricingService {
                       ) / 1000000.0
                     ELSE
                       (MAX(usage_events.input_tokens - usage_events.cached_input_tokens, 0)
-                          * pc.input_price_per_million
+                          * (\(inputPriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.cached_input_tokens
-                          * pc.cached_input_price_per_million
+                          * (\(cachedInputPriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.output_tokens
-                          * pc.output_price_per_million
+                          * (\(outputPriceExpr))
                           * \(outputMultiplierExpr)
                       ) / 1000000.0
                   END
@@ -723,6 +864,87 @@ enum PricingService {
             \(scopeClause)
             """
         try db.execute(sql: sql, arguments: arguments)
+    }
+
+    private enum CodexPriceComponent {
+        case input
+        case cachedInput
+        case output
+
+        var catalogColumn: String {
+            switch self {
+            case .input: "input_price_per_million"
+            case .cachedInput: "cached_input_price_per_million"
+            case .output: "output_price_per_million"
+            }
+        }
+
+        func price(in period: CodexHistoricalPricePeriod) -> Double {
+            switch self {
+            case .input: period.inputPricePerMillion
+            case .cachedInput: period.cachedInputPricePerMillion
+            case .output: period.outputPricePerMillion
+            }
+        }
+    }
+
+    /// Selects a fixed historical list price when an event predates a known
+    /// adjustment. Current events and locally edited catalog rows keep using
+    /// the selected Standard/Fast/Flex catalog row.
+    private static func codexPricePerMillionSQL(
+        component: CodexPriceComponent
+    ) -> String {
+        guard !CodexPriceHistory.periods.isEmpty else {
+            return "pc.\(component.catalogColumn)"
+        }
+        let cases = CodexPriceHistory.periods.map { period -> String in
+            assert(!period.modelId.contains("'") && !period.endsBefore.contains("'"),
+                   "Codex historical pricing values must be safe to interpolate")
+            if let startsOn = period.startsOn {
+                assert(!startsOn.contains("'"),
+                       "Codex historical pricing values must be safe to interpolate")
+            }
+            let lowerBound = period.startsOn.map {
+                "AND usage_events.timestamp >= '\($0)'"
+            } ?? ""
+            let tierMultiplier = codexHistoricalTierMultiplierSQL(
+                modelId: period.modelId)
+            return """
+              WHEN usage_events.provider = 'codex'
+                   AND usage_events.model_id = '\(period.modelId)'
+                   \(lowerBound)
+                   AND usage_events.timestamp < '\(period.endsBefore)'
+                   AND pc.price_source != 'local'
+                THEN \(component.price(in: period)) * (\(tierMultiplier))
+            """
+        }.joined(separator: "\n")
+        return """
+        CASE
+        \(cases)
+          ELSE pc.\(component.catalogColumn)
+        END
+        """
+    }
+
+    /// `pc` already points at the event's selected Standard/Fast/Flex row.
+    /// Reapply that tier to a fixed historical base price without tying old
+    /// events to whatever the current catalog happens to contain.
+    private static func codexHistoricalTierMultiplierSQL(
+        modelId: String
+    ) -> String {
+        var cases: [String] = []
+        if let multiplier = CodexFastMode.multipliers[modelId] {
+            cases.append("WHEN pc.model_id = '\(modelId)\(CodexFastMode.suffix)' THEN \(multiplier)")
+        }
+        if let multiplier = CodexFlexMode.multipliers[modelId] {
+            cases.append("WHEN pc.model_id = '\(modelId)\(CodexFlexMode.suffix)' THEN \(multiplier)")
+        }
+        return """
+        CASE
+          \(cases.joined(separator: "\n  "))
+          ELSE 1.0
+        END
+        """
     }
 
     /// SQL expression that resolves to the catalog `model_id` we should
