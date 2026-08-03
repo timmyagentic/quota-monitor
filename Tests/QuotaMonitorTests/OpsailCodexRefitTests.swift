@@ -238,7 +238,7 @@ struct OpsailCodexRefitTests {
                 + "           !LocalQAEnvironment.isQARequested()"))
     }
 
-    @Test("only an explicit action may launch a stopped Codex")
+    @Test("an explicit action launches Codex only when it is stopped")
     func activationLaunchPolicy() {
         #expect(!OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
             codexIsRunning: true))
@@ -250,6 +250,164 @@ struct OpsailCodexRefitTests {
             bundleIdentifier: "com.openai.codex"))
         #expect(!OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.example.other"))
+    }
+
+    @Test("automatic restore records only opted-in normal launches")
+    func automaticRestoreLaunchRecording() {
+        let now = Date()
+        var state = OpsailCodexAutomaticRestoreState()
+
+        state.recordLaunch(
+            processIdentifier: 41,
+            observedAt: now,
+            enabled: false,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [41])
+        #expect(state.freshLaunch == nil)
+
+        state.recordLaunch(
+            processIdentifier: 42,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: true,
+            runningProcessIdentifiers: [42])
+        #expect(state.freshLaunch == nil)
+
+        state.recordLaunch(
+            processIdentifier: 43,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [42, 43])
+        #expect(state.freshLaunch == nil)
+
+        state.recordLaunch(
+            processIdentifier: 44,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [44])
+        #expect(state.freshLaunch == OpsailCodexLaunchObservation(
+            processIdentifier: 44,
+            observedAt: now))
+    }
+
+    @Test("automatic restore accepts one matching fresh Codex process")
+    func automaticRestoreEligibility() {
+        let now = Date()
+        var state = OpsailCodexAutomaticRestoreState()
+        state.recordLaunch(
+            processIdentifier: 51,
+            observedAt: now.addingTimeInterval(-1),
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [51])
+
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .needsCodexQuit,
+            runningProcessIdentifiers: [51],
+            now: now) == 51)
+        #expect(state.freshLaunch == nil)
+        #expect(state.awaitingTerminationProcessIdentifier == 51)
+    }
+
+    @Test("automatic restore rejects stale, mismatched, or multiple processes")
+    func automaticRestoreRejectsUnsafeCandidates() {
+        let now = Date()
+        var state = OpsailCodexAutomaticRestoreState()
+
+        state.recordLaunch(
+            processIdentifier: 61,
+            observedAt: now.addingTimeInterval(
+                -OpsailCodexAutomaticRestoreState.maximumFreshLaunchAge - 0.1),
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [61])
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .needsCodexQuit,
+            runningProcessIdentifiers: [61],
+            now: now) == nil)
+
+        state.recordLaunch(
+            processIdentifier: 62,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [62])
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .needsCodexQuit,
+            runningProcessIdentifiers: [99],
+            now: now) == nil)
+
+        state.recordLaunch(
+            processIdentifier: 63,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [63])
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .needsCodexQuit,
+            runningProcessIdentifiers: [63, 64],
+            now: now) == nil)
+
+        state.recordLaunch(
+            processIdentifier: 65,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [65])
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .readyToLaunch,
+            runningProcessIdentifiers: [65],
+            now: now) == nil)
+    }
+
+    @Test("only the exact graceful termination launches once")
+    func automaticRestoreTerminationMatching() {
+        let now = Date()
+        var state = OpsailCodexAutomaticRestoreState()
+        state.recordLaunch(
+            processIdentifier: 71,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [71])
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .needsCodexQuit,
+            runningProcessIdentifiers: [71],
+            now: now) == 71)
+
+        let wrongTermination = state.didTerminate(processIdentifier: 72)
+        let matchingTermination = state.didTerminate(processIdentifier: 71)
+        let repeatedTermination = state.didTerminate(processIdentifier: 71)
+        #expect(!wrongTermination)
+        #expect(matchingTermination)
+        #expect(!repeatedTermination)
+    }
+
+    @Test("a timed-out graceful handoff cannot relaunch Codex later")
+    func automaticRestoreCancellation() {
+        let now = Date()
+        var state = OpsailCodexAutomaticRestoreState()
+        state.recordLaunch(
+            processIdentifier: 81,
+            observedAt: now,
+            enabled: true,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: [81])
+        #expect(state.beginHandoffIfEligible(
+            actionableStatus: .needsCodexQuit,
+            runningProcessIdentifiers: [81],
+            now: now) == 81)
+
+        let wrongCancellation = state.cancelAwaitingTermination(
+            processIdentifier: 82)
+        let matchingCancellation = state.cancelAwaitingTermination(
+            processIdentifier: 81)
+        let lateTermination = state.didTerminate(processIdentifier: 81)
+        #expect(!wrongCancellation)
+        #expect(matchingCancellation)
+        #expect(!lateTermination)
     }
 
     @Test("attach failure maps to a user-owned next action")
@@ -289,33 +447,38 @@ struct OpsailCodexRefitTests {
             requestedAllowLaunch: false))
     }
 
-    @Test("setup copy makes launch ownership explicit")
-    func explicitLaunchCopy() {
+    @Test("setup copy explains the bounded automatic handoff")
+    func automaticRestoreCopy() {
         LocalizationTestSupport.withLanguage(.english) {
-            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("Quit Codex yourself"))
+            #expect(L10n.codexCapsuleSettingsHelp.contains("normal icon"))
+            #expect(L10n.codexCapsuleAutoRestoreHelp.contains("newly launched"))
+            #expect(L10n.codexCapsuleAutoRestoreHelp.contains("never force-quit"))
+            #expect(L10n.codexCapsuleNeedsQuitStatus.contains(
+                "Automatic restore was not available"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("Open it from here"))
             #expect(L10n.codexCapsuleLaunchButton.contains("Open Codex"))
         }
         LocalizationTestSupport.withLanguage(.simplifiedChinese) {
-            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("手动退出 Codex"))
+            #expect(L10n.codexCapsuleSettingsHelp.contains("原来的图标"))
+            #expect(L10n.codexCapsuleAutoRestoreHelp.contains("刚启动"))
+            #expect(L10n.codexCapsuleAutoRestoreHelp.contains("绝不会强制退出"))
+            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("无法自动恢复"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("从这里打开"))
             #expect(L10n.codexCapsuleLaunchButton.contains("打开 Codex"))
         }
     }
 
-    @Test("controller source has no modal or automatic relaunch path")
-    func noAutomaticRelaunchSource() throws {
+    @Test("controller uses a graceful handoff and never force-quits Codex")
+    func gracefulAutomaticRestoreSource() throws {
         let source = try String(
             contentsOf: Self.repositoryRoot()
                 .appendingPathComponent("QuotaMonitor/App/OpsailCodexRefitController.swift"),
             encoding: .utf8)
 
         #expect(!source.contains("runModal"))
-        #expect(!source.contains("awaitingInitialCodexRestart"))
-        #expect(!source.contains("relaunchTask"))
-        #expect(source.contains(
-            "if self.pendingManagerAllowLaunch {\n"
-                + "                self.startManagedSession(allowLaunch: true)"))
+        #expect(source.contains("guard application.terminate() else"))
+        #expect(source.contains("beginAutomaticRestoreIfEligible"))
+        #expect(!source.contains("forceTerminate"))
     }
 
     @Test("helper retries back off and cap at one minute")
@@ -391,7 +554,7 @@ struct OpsailCodexRefitTests {
 @MainActor
 @Suite("Codex sidebar quota setting")
 struct CodexSidebarQuotaSettingTests {
-    @Test("new Opsail integration remains off even when the legacy overlay was enabled")
+    @Test("widget and automatic restore require independent opt-ins")
     func isolatedOptInKey() throws {
         let suite = "OpsailCodexRefitTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -400,8 +563,12 @@ struct CodexSidebarQuotaSettingTests {
         defaults.set(true, forKey: "settings.codexAttachedCapsuleEnabled")
         let initial = SettingsStore(defaults: defaults)
         #expect(initial.codexSidebarQuotaEnabled == false)
+        #expect(initial.codexSidebarQuotaAutoRestoreEnabled == false)
 
         initial.codexSidebarQuotaEnabled = true
+        initial.codexSidebarQuotaAutoRestoreEnabled = true
         #expect(SettingsStore(defaults: defaults).codexSidebarQuotaEnabled == true)
+        #expect(SettingsStore(defaults: defaults)
+            .codexSidebarQuotaAutoRestoreEnabled == true)
     }
 }

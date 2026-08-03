@@ -80,6 +80,13 @@ struct GeneralSettingsTab: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if settings.codexSidebarQuotaEnabled {
+                        Toggle(
+                            L10n.codexCapsuleAutoRestoreLabel,
+                            isOn: $settings.codexSidebarQuotaAutoRestoreEnabled)
+                        Text(L10n.codexCapsuleAutoRestoreHelp)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                         Label(
                             codexSidebarStatusText,
                             systemImage: codexSidebarStatusIcon)
@@ -94,6 +101,7 @@ struct GeneralSettingsTab: View {
                         codexSidebarActions
                     } else {
                         Button(L10n.codexCapsuleEnableButton) {
+                            settings.codexSidebarQuotaAutoRestoreEnabled = true
                             OpsailCodexRefitActions.requestExplicitLaunch()
                         }
                         .buttonStyle(.borderedProminent)
