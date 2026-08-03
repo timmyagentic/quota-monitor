@@ -100,6 +100,13 @@ final class SettingsStore {
         didSet { defaults.set(codexSidebarQuotaEnabled,
                               forKey: Keys.codexSidebarQuotaEnabled) }
     }
+    /// Allows QuotaMonitor to hand off a normal Codex launch before its window
+    /// appears. Default OFF for existing users: enabling this permits a
+    /// graceful, one-time handoff of only a newly launched Codex process.
+    var codexSidebarQuotaAutoRestoreEnabled: Bool {
+        didSet { defaults.set(codexSidebarQuotaAutoRestoreEnabled,
+                              forKey: Keys.codexSidebarQuotaAutoRestoreEnabled) }
+    }
     /// Runtime-only state for the one-shot Codex activation flow.
     var codexSidebarQuotaStatus: CodexSidebarQuotaStatus = .disabled
     /// Which rolling window the menu bar uses for the headline
@@ -371,6 +378,8 @@ final class SettingsStore {
             defaults.bool(forKey: Keys.showDockIconForWindows)
         self.codexSidebarQuotaEnabled =
             defaults.bool(forKey: Keys.codexSidebarQuotaEnabled)
+        self.codexSidebarQuotaAutoRestoreEnabled =
+            defaults.bool(forKey: Keys.codexSidebarQuotaAutoRestoreEnabled)
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.quotaDisplayMode = (defaults.string(forKey: Keys.quotaDisplayMode)
@@ -724,6 +733,8 @@ final class SettingsStore {
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
         static let codexSidebarQuotaEnabled = "settings.codexSidebarQuotaEnabled"
+        static let codexSidebarQuotaAutoRestoreEnabled =
+            "settings.codexSidebarQuotaAutoRestoreEnabled"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"

@@ -73,21 +73,37 @@ enum L10n {
         t(
             en: "Adds 5-hour and weekly limits inside the Codex account row. "
                 + "\(Branding.appDisplayName) connects only when Codex has a loopback debugging "
-                + "port. If Codex is already running without one, quit Codex yourself, then use "
-                + "the button here to open it with the widget. Codex is never quit or reopened "
-                + "automatically.",
+                + "port. Keep using the normal Codex icon; automatic restore prepares the widget "
+                + "before the newly launched window appears.",
             zh: "在 Codex 账户行内显示 5 小时和每周额度。\(Branding.appDisplayName) "
-                + "只连接带本机调试端口的 Codex。如果 Codex 已正常运行，请先自行退出，"
-                + "再使用这里的按钮打开并启用挂件；Quota Monitor 不会自动退出或重新打开 Codex。")
+                + "只连接带本机调试端口的 Codex。你仍可从原来的图标打开 Codex；自动恢复会在"
+                + "刚启动的窗口出现前准备好挂件。")
+    }
+    static var codexCapsuleAutoRestoreLabel: String {
+        t(
+            en: "Keep the widget when opening Codex normally",
+            zh: "正常打开 Codex 时保留挂件")
+    }
+    static var codexCapsuleAutoRestoreHelp: String {
+        t(
+            en: "Before a normal launch can show its window, Quota Monitor sends a standard quit "
+                + "signal only to that newly launched process, then immediately reopens it with "
+                + "the widget. Existing or ambiguous sessions are left untouched; Codex is never "
+                + "force-quit.",
+            zh: "正常启动的窗口出现前，Quota Monitor 只会向这个刚启动的进程发送标准退出信号，"
+                + "随后立即用挂件模式重新打开。已经运行或无法明确识别的会话都不会被触碰，"
+                + "也绝不会强制退出 Codex。")
     }
     static var codexCapsuleAttachingStatus: String {
         t(en: "Connecting to the running Codex…", zh: "正在连接当前运行的 Codex…")
     }
     static var codexCapsuleNeedsQuitStatus: String {
         t(
-            en: "Quit Codex yourself when ready. Closing its window is not enough. "
-                + "After Codex has stopped, return here to open it with the widget.",
-            zh: "准备好后请手动退出 Codex，仅关闭窗口还不够。Codex 完全停止后，"
+            en: "Automatic restore was not available for this session. Quit Codex yourself when "
+                + "ready; closing its window is not enough. After it stops, return here to open "
+                + "it with the widget.",
+            zh: "这次会话无法自动恢复。准备好后请手动退出 Codex，仅关闭窗口还不够。"
+                + "Codex 完全停止后，"
                 + "回到这里再用挂件模式打开。")
     }
     static var codexCapsuleReadyToLaunchStatus: String {
@@ -104,11 +120,11 @@ enum L10n {
           zh: "已连接，原生额度挂件正在运行。")
     }
     static var codexCapsuleUnavailableStatus: String {
-        t(en: "Not connected. Try again without closing or reopening Codex automatically.",
-          zh: "暂未连接。可以再次尝试；Quota Monitor 不会自动退出或重新打开 Codex。")
+        t(en: "Not connected. The existing Codex session was left untouched; you can try again.",
+          zh: "暂未连接；当前 Codex 会话未被触碰，可以再次尝试。")
     }
     static var codexCapsuleEnableButton: String {
-        t(en: "Enable native quota widget", zh: "启用原生额度挂件")
+        t(en: "Enable widget and automatic restore", zh: "启用挂件与自动恢复")
     }
     static var codexCapsuleLaunchButton: String {
         t(en: "Open Codex and enable widget", zh: "打开 Codex 并启用挂件")
