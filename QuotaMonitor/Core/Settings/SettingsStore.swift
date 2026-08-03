@@ -100,8 +100,8 @@ final class SettingsStore {
         didSet { defaults.set(codexSidebarQuotaEnabled,
                               forKey: Keys.codexSidebarQuotaEnabled) }
     }
-    /// Allows QuotaMonitor to restore the widget after the user launches Codex
-    /// normally. Default OFF for existing users: enabling this permits a
+    /// Allows QuotaMonitor to hand off a normal Codex launch before its window
+    /// appears. Default OFF for existing users: enabling this permits a
     /// graceful, one-time handoff of only a newly launched Codex process.
     var codexSidebarQuotaAutoRestoreEnabled: Bool {
         didSet { defaults.set(codexSidebarQuotaAutoRestoreEnabled,

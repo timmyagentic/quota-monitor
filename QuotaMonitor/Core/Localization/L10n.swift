@@ -73,25 +73,25 @@ enum L10n {
         t(
             en: "Adds 5-hour and weekly limits inside the Codex account row. "
                 + "\(Branding.appDisplayName) connects only when Codex has a loopback debugging "
-                + "port. Enable automatic restore to keep opening Codex from its normal icon; "
-                + "only a Codex process that has just launched can be handed off.",
+                + "port. Keep using the normal Codex icon; automatic restore prepares the widget "
+                + "before the newly launched window appears.",
             zh: "在 Codex 账户行内显示 5 小时和每周额度。\(Branding.appDisplayName) "
-                + "只连接带本机调试端口的 Codex。启用自动恢复后，你仍可从原来的图标打开 "
-                + "Codex；Quota Monitor 只会接管刚刚启动的 Codex 进程。")
+                + "只连接带本机调试端口的 Codex。你仍可从原来的图标打开 Codex；自动恢复会在"
+                + "刚启动的窗口出现前准备好挂件。")
     }
     static var codexCapsuleAutoRestoreLabel: String {
         t(
-            en: "Automatically restore after a normal Codex launch",
-            zh: "正常启动 Codex 时自动恢复")
+            en: "Keep the widget when opening Codex normally",
+            zh: "正常打开 Codex 时保留挂件")
     }
     static var codexCapsuleAutoRestoreHelp: String {
         t(
-            en: "If a normal launch has no debugging port, Quota Monitor asks only that newly "
-                + "launched process to quit, then reopens it once with the widget. Existing "
-                + "sessions and later connection failures are left untouched; Codex is never "
+            en: "Before a normal launch can show its window, Quota Monitor sends a standard quit "
+                + "signal only to that newly launched process, then immediately reopens it with "
+                + "the widget. Existing or ambiguous sessions are left untouched; Codex is never "
                 + "force-quit.",
-            zh: "如果正常启动时没有调试端口，Quota Monitor 只会请求这个刚启动的进程退出，"
-                + "再用挂件模式重新打开一次。已经运行的会话和稍后的连接异常都不会被触碰，"
+            zh: "正常启动的窗口出现前，Quota Monitor 只会向这个刚启动的进程发送标准退出信号，"
+                + "随后立即用挂件模式重新打开。已经运行或无法明确识别的会话都不会被触碰，"
                 + "也绝不会强制退出 Codex。")
     }
     static var codexCapsuleAttachingStatus: String {

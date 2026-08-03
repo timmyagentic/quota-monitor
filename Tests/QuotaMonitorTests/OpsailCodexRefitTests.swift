@@ -252,130 +252,69 @@ struct OpsailCodexRefitTests {
             bundleIdentifier: "com.example.other"))
     }
 
-    @Test("automatic restore records only opted-in normal launches")
-    func automaticRestoreLaunchRecording() {
-        let now = Date()
+    @Test("automatic restore intercepts only one opted-in unmanaged launch")
+    func automaticRestorePrelaunchEligibility() {
         var state = OpsailCodexAutomaticRestoreState()
 
-        state.recordLaunch(
+        let disabled = state.beginPrelaunchHandoff(
             processIdentifier: 41,
-            observedAt: now,
             enabled: false,
             isManagedLaunch: false,
             runningProcessIdentifiers: [41])
-        #expect(state.freshLaunch == nil)
+        #expect(!disabled)
+        #expect(state.awaitingTerminationProcessIdentifier == nil)
 
-        state.recordLaunch(
+        let managed = state.beginPrelaunchHandoff(
             processIdentifier: 42,
-            observedAt: now,
             enabled: true,
             isManagedLaunch: true,
             runningProcessIdentifiers: [42])
-        #expect(state.freshLaunch == nil)
+        #expect(!managed)
+        #expect(state.awaitingTerminationProcessIdentifier == nil)
 
-        state.recordLaunch(
+        let multiple = state.beginPrelaunchHandoff(
             processIdentifier: 43,
-            observedAt: now,
             enabled: true,
             isManagedLaunch: false,
             runningProcessIdentifiers: [42, 43])
-        #expect(state.freshLaunch == nil)
+        #expect(!multiple)
+        #expect(state.awaitingTerminationProcessIdentifier == nil)
 
-        state.recordLaunch(
+        let mismatched = state.beginPrelaunchHandoff(
             processIdentifier: 44,
-            observedAt: now,
             enabled: true,
             isManagedLaunch: false,
-            runningProcessIdentifiers: [44])
-        #expect(state.freshLaunch == OpsailCodexLaunchObservation(
-            processIdentifier: 44,
-            observedAt: now))
-    }
+            runningProcessIdentifiers: [45])
+        #expect(!mismatched)
+        #expect(state.awaitingTerminationProcessIdentifier == nil)
 
-    @Test("automatic restore accepts one matching fresh Codex process")
-    func automaticRestoreEligibility() {
-        let now = Date()
-        var state = OpsailCodexAutomaticRestoreState()
-        state.recordLaunch(
-            processIdentifier: 51,
-            observedAt: now.addingTimeInterval(-1),
+        let accepted = state.beginPrelaunchHandoff(
+            processIdentifier: 46,
             enabled: true,
             isManagedLaunch: false,
-            runningProcessIdentifiers: [51])
+            runningProcessIdentifiers: [46])
+        #expect(accepted)
+        #expect(state.awaitingTerminationProcessIdentifier == 46)
+        #expect(state.isAwaitingTermination(processIdentifier: 46))
+        #expect(!state.isAwaitingTermination(processIdentifier: 47))
 
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .needsCodexQuit,
-            runningProcessIdentifiers: [51],
-            now: now) == 51)
-        #expect(state.freshLaunch == nil)
-        #expect(state.awaitingTerminationProcessIdentifier == 51)
-    }
-
-    @Test("automatic restore rejects stale, mismatched, or multiple processes")
-    func automaticRestoreRejectsUnsafeCandidates() {
-        let now = Date()
-        var state = OpsailCodexAutomaticRestoreState()
-
-        state.recordLaunch(
-            processIdentifier: 61,
-            observedAt: now.addingTimeInterval(
-                -OpsailCodexAutomaticRestoreState.maximumFreshLaunchAge - 0.1),
+        let overlapping = state.beginPrelaunchHandoff(
+            processIdentifier: 47,
             enabled: true,
             isManagedLaunch: false,
-            runningProcessIdentifiers: [61])
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .needsCodexQuit,
-            runningProcessIdentifiers: [61],
-            now: now) == nil)
-
-        state.recordLaunch(
-            processIdentifier: 62,
-            observedAt: now,
-            enabled: true,
-            isManagedLaunch: false,
-            runningProcessIdentifiers: [62])
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .needsCodexQuit,
-            runningProcessIdentifiers: [99],
-            now: now) == nil)
-
-        state.recordLaunch(
-            processIdentifier: 63,
-            observedAt: now,
-            enabled: true,
-            isManagedLaunch: false,
-            runningProcessIdentifiers: [63])
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .needsCodexQuit,
-            runningProcessIdentifiers: [63, 64],
-            now: now) == nil)
-
-        state.recordLaunch(
-            processIdentifier: 65,
-            observedAt: now,
-            enabled: true,
-            isManagedLaunch: false,
-            runningProcessIdentifiers: [65])
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .readyToLaunch,
-            runningProcessIdentifiers: [65],
-            now: now) == nil)
+            runningProcessIdentifiers: [47])
+        #expect(!overlapping)
     }
 
     @Test("only the exact graceful termination launches once")
     func automaticRestoreTerminationMatching() {
-        let now = Date()
         var state = OpsailCodexAutomaticRestoreState()
-        state.recordLaunch(
+        let accepted = state.beginPrelaunchHandoff(
             processIdentifier: 71,
-            observedAt: now,
             enabled: true,
             isManagedLaunch: false,
             runningProcessIdentifiers: [71])
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .needsCodexQuit,
-            runningProcessIdentifiers: [71],
-            now: now) == 71)
+        #expect(accepted)
 
         let wrongTermination = state.didTerminate(processIdentifier: 72)
         let matchingTermination = state.didTerminate(processIdentifier: 71)
@@ -387,18 +326,13 @@ struct OpsailCodexRefitTests {
 
     @Test("a timed-out graceful handoff cannot relaunch Codex later")
     func automaticRestoreCancellation() {
-        let now = Date()
         var state = OpsailCodexAutomaticRestoreState()
-        state.recordLaunch(
+        let accepted = state.beginPrelaunchHandoff(
             processIdentifier: 81,
-            observedAt: now,
             enabled: true,
             isManagedLaunch: false,
             runningProcessIdentifiers: [81])
-        #expect(state.beginHandoffIfEligible(
-            actionableStatus: .needsCodexQuit,
-            runningProcessIdentifiers: [81],
-            now: now) == 81)
+        #expect(accepted)
 
         let wrongCancellation = state.cancelAwaitingTermination(
             processIdentifier: 82)
@@ -408,6 +342,16 @@ struct OpsailCodexRefitTests {
         #expect(!wrongCancellation)
         #expect(matchingCancellation)
         #expect(!lateTermination)
+    }
+
+    @Test("launch arguments identify an existing debugging port")
+    func launchArgumentInspection() {
+        #expect(OpsailCodexLaunchArgumentPolicy.containsDebuggingPort(
+            in: Data("Codex\0--remote-debugging-port=9222\0".utf8)))
+        #expect(!OpsailCodexLaunchArgumentPolicy.containsDebuggingPort(
+            in: Data("Codex\0--user-data-dir=/tmp/profile\0".utf8)))
+        #expect(OpsailCodexLaunchArgumentPolicy.alreadyHasDebuggingPort(
+            processIdentifier: getpid()) == false)
     }
 
     @Test("attach failure maps to a user-owned next action")
@@ -450,7 +394,7 @@ struct OpsailCodexRefitTests {
     @Test("setup copy explains the bounded automatic handoff")
     func automaticRestoreCopy() {
         LocalizationTestSupport.withLanguage(.english) {
-            #expect(L10n.codexCapsuleSettingsHelp.contains("normal icon"))
+            #expect(L10n.codexCapsuleSettingsHelp.contains("normal Codex icon"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("newly launched"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("never force-quit"))
             #expect(L10n.codexCapsuleNeedsQuitStatus.contains(
@@ -476,8 +420,11 @@ struct OpsailCodexRefitTests {
             encoding: .utf8)
 
         #expect(!source.contains("runModal"))
-        #expect(source.contains("guard application.terminate() else"))
-        #expect(source.contains("beginAutomaticRestoreIfEligible"))
+        #expect(source.contains("NSWorkspace.willLaunchApplicationNotification"))
+        #expect(source.contains("Darwin.kill(processIdentifier, SIGTERM)"))
+        #expect(source.contains("beginPrelaunchHandoff"))
+        #expect(!source.contains("guard application.terminate() else"))
+        #expect(!source.contains("SIGKILL"))
         #expect(!source.contains("forceTerminate"))
     }
 

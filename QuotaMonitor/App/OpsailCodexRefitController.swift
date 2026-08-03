@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import Observation
 
@@ -74,59 +75,30 @@ enum OpsailCodexActivationPolicy {
 
 }
 
-struct OpsailCodexLaunchObservation: Equatable {
-    let processIdentifier: pid_t
-    let observedAt: Date
-}
-
 struct OpsailCodexAutomaticRestoreState: Equatable {
-    static let maximumFreshLaunchAge: TimeInterval = 15
-
-    private(set) var freshLaunch: OpsailCodexLaunchObservation?
     private(set) var awaitingTerminationProcessIdentifier: pid_t?
 
-    mutating func recordLaunch(
+    mutating func beginPrelaunchHandoff(
         processIdentifier: pid_t,
-        observedAt: Date,
         enabled: Bool,
         isManagedLaunch: Bool,
         runningProcessIdentifiers: [pid_t]
-    ) {
-        reset()
-        guard enabled,
+    ) -> Bool {
+        guard awaitingTerminationProcessIdentifier == nil,
+              enabled,
               !isManagedLaunch,
               runningProcessIdentifiers.count == 1,
               runningProcessIdentifiers[0] == processIdentifier
-        else { return }
-        freshLaunch = OpsailCodexLaunchObservation(
-            processIdentifier: processIdentifier,
-            observedAt: observedAt)
+        else { return false }
+        awaitingTerminationProcessIdentifier = processIdentifier
+        return true
     }
 
-    mutating func beginHandoffIfEligible(
-        actionableStatus: CodexSidebarQuotaStatus,
-        runningProcessIdentifiers: [pid_t],
-        now: Date
-    ) -> pid_t? {
-        guard awaitingTerminationProcessIdentifier == nil,
-              let launch = freshLaunch
-        else { return nil }
-        freshLaunch = nil
-
-        let age = now.timeIntervalSince(launch.observedAt)
-        guard actionableStatus == .needsCodexQuit,
-              age >= 0,
-              age <= Self.maximumFreshLaunchAge,
-              runningProcessIdentifiers.count == 1,
-              runningProcessIdentifiers[0] == launch.processIdentifier
-        else { return nil }
-
-        awaitingTerminationProcessIdentifier = launch.processIdentifier
-        return launch.processIdentifier
+    func isAwaitingTermination(processIdentifier: pid_t) -> Bool {
+        awaitingTerminationProcessIdentifier == processIdentifier
     }
 
     mutating func didTerminate(processIdentifier: pid_t) -> Bool {
-        freshLaunch = nil
         guard awaitingTerminationProcessIdentifier == processIdentifier else {
             return false
         }
@@ -144,13 +116,64 @@ struct OpsailCodexAutomaticRestoreState: Equatable {
         return true
     }
 
-    mutating func discardFreshLaunch() {
-        freshLaunch = nil
+    mutating func reset() {
+        awaitingTerminationProcessIdentifier = nil
+    }
+}
+
+enum OpsailCodexLaunchArgumentPolicy {
+    private static let remoteDebuggingMarker = Data(
+        "--remote-debugging-port".utf8)
+
+    static func alreadyHasDebuggingPort(processIdentifier: pid_t) -> Bool? {
+        guard let processArguments = processArguments(
+            processIdentifier: processIdentifier)
+        else { return nil }
+        return processArguments.range(of: remoteDebuggingMarker) != nil
     }
 
-    mutating func reset() {
-        freshLaunch = nil
-        awaitingTerminationProcessIdentifier = nil
+    static func containsDebuggingPort(in processArguments: Data) -> Bool {
+        processArguments.range(of: remoteDebuggingMarker) != nil
+    }
+
+    private static func processArguments(
+        processIdentifier: pid_t
+    ) -> Data? {
+        var query = [CTL_KERN, KERN_PROCARGS2, processIdentifier]
+        var requiredSize = 0
+        let sizeStatus = query.withUnsafeMutableBufferPointer { pointer in
+            sysctl(
+                pointer.baseAddress,
+                u_int(pointer.count),
+                nil,
+                &requiredSize,
+                nil,
+                0)
+        }
+        guard sizeStatus == 0, requiredSize > 0 else { return nil }
+
+        var bytes = [UInt8](repeating: 0, count: requiredSize)
+        let readStatus = query.withUnsafeMutableBufferPointer { queryPointer in
+            bytes.withUnsafeMutableBytes { bytePointer in
+                sysctl(
+                    queryPointer.baseAddress,
+                    u_int(queryPointer.count),
+                    bytePointer.baseAddress,
+                    &requiredSize,
+                    nil,
+                    0)
+            }
+        }
+        guard readStatus == 0, requiredSize > 0 else { return nil }
+        return Data(bytes.prefix(requiredSize))
+    }
+}
+
+enum OpsailCodexTerminationSignal {
+    static func requestGracefulTermination(
+        processIdentifier: pid_t
+    ) -> Bool {
+        Darwin.kill(processIdentifier, SIGTERM) == 0
     }
 }
 
@@ -252,6 +275,11 @@ final class OpsailCodexRefitController: NSObject {
                 object: nil)
             workspace.notificationCenter.addObserver(
                 self,
+                selector: #selector(codexWillLaunch),
+                name: NSWorkspace.willLaunchApplicationNotification,
+                object: nil)
+            workspace.notificationCenter.addObserver(
+                self,
                 selector: #selector(codexDidLaunch),
                 name: NSWorkspace.didLaunchApplicationNotification,
                 object: nil)
@@ -286,6 +314,10 @@ final class OpsailCodexRefitController: NSObject {
             workspace.notificationCenter.removeObserver(
                 self,
                 name: NSWorkspace.didTerminateApplicationNotification,
+                object: nil)
+            workspace.notificationCenter.removeObserver(
+                self,
+                name: NSWorkspace.willLaunchApplicationNotification,
                 object: nil)
             workspace.notificationCenter.removeObserver(
                 self,
@@ -395,7 +427,6 @@ final class OpsailCodexRefitController: NSObject {
                 requestedAllowLaunch: allowLaunch)
         pendingManagerAllowLaunch = false
         guard fileManager.isExecutableFile(atPath: helperURL.path) else {
-            automaticRestoreState.discardFreshLaunch()
             settings.codexSidebarQuotaStatus = .unavailable
             Log.ui.error(
                 "Opsail helper unavailable at \(self.helperURL.path, privacy: .public)")
@@ -406,7 +437,6 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Opsail renderer assets prepared: \(String(describing: outcome), privacy: .public)")
         } catch {
-            automaticRestoreState.discardFreshLaunch()
             pendingManagerAllowLaunch =
                 OpsailCodexActivationPolicy.preserveLaunchIntent(
                     pendingAllowLaunch: pendingManagerAllowLaunch,
@@ -446,7 +476,6 @@ final class OpsailCodexRefitController: NSObject {
                 "Opsail Codex manager exited with status \(status, privacy: .public)")
             if status == 0 {
                 self.managerRetryAttempt = 0
-                self.automaticRestoreState.discardFreshLaunch()
                 self.settings.codexSidebarQuotaStatus = .active
                 return
             }
@@ -455,15 +484,9 @@ final class OpsailCodexRefitController: NSObject {
                 diagnostic: diagnostic,
                 codexIsRunning: self.codexIsRunning())
             {
-                if self.beginAutomaticRestoreIfEligible(
-                    actionableStatus: actionableStatus)
-                {
-                    return
-                }
                 self.settings.codexSidebarQuotaStatus = actionableStatus
                 return
             }
-            self.automaticRestoreState.discardFreshLaunch()
             self.settings.codexSidebarQuotaStatus = .unavailable
             self.scheduleManagerRetry()
         }
@@ -474,7 +497,6 @@ final class OpsailCodexRefitController: NSObject {
             if effectiveAllowLaunch {
                 clearManagedLaunchExpectation()
             }
-            automaticRestoreState.discardFreshLaunch()
             pendingManagerAllowLaunch =
                 OpsailCodexActivationPolicy.preserveLaunchIntent(
                     pendingAllowLaunch: pendingManagerAllowLaunch,
@@ -643,39 +665,6 @@ final class OpsailCodexRefitController: NSObject {
         }
     }
 
-    private func beginAutomaticRestoreIfEligible(
-        actionableStatus: CodexSidebarQuotaStatus
-    ) -> Bool {
-        guard automaticRestoreEnabled else {
-            automaticRestoreState.discardFreshLaunch()
-            return false
-        }
-        let applications = supportedCodexApplications()
-        let processIdentifiers = applications.map(\.processIdentifier)
-        guard let targetProcessIdentifier =
-                automaticRestoreState.beginHandoffIfEligible(
-                    actionableStatus: actionableStatus,
-                    runningProcessIdentifiers: processIdentifiers,
-                    now: Date()),
-              let application = applications.first(where: {
-                  $0.processIdentifier == targetProcessIdentifier
-              })
-        else { return false }
-
-        guard application.terminate() else {
-            _ = automaticRestoreState.cancelAwaitingTermination(
-                processIdentifier: targetProcessIdentifier)
-            return false
-        }
-
-        Log.ui.info(
-            "Requested a graceful handoff for newly launched Codex process \(targetProcessIdentifier, privacy: .public)")
-        settings.codexSidebarQuotaStatus = .launching
-        armAutomaticHandoffTimeout(
-            processIdentifier: targetProcessIdentifier)
-        return true
-    }
-
     private func armAutomaticHandoffTimeout(processIdentifier: pid_t) {
         automaticHandoffTimeoutTask?.cancel()
         automaticHandoffTimeoutTask = Task { @MainActor [weak self] in
@@ -690,9 +679,14 @@ final class OpsailCodexRefitController: NSObject {
                       processIdentifier: processIdentifier)
             else { return }
             self.automaticHandoffTimeoutTask = nil
-            self.settings.codexSidebarQuotaStatus = .needsCodexQuit
             Log.ui.info(
                 "Codex declined the graceful handoff; leaving the session untouched")
+            if self.codexIsRunning() {
+                self.settings.codexSidebarQuotaStatus = .attaching
+                self.startManagedSession(allowLaunch: false)
+            } else {
+                self.settings.codexSidebarQuotaStatus = .readyToLaunch
+            }
         }
     }
 
@@ -750,6 +744,68 @@ final class OpsailCodexRefitController: NSObject {
         startManagedSession(allowLaunch: allowLaunch)
     }
 
+    @objc private func codexWillLaunch(_ notification: Notification) {
+        guard let application =
+                notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication,
+              enabled,
+              automaticRestoreEnabled,
+              !stopping,
+              OpsailCodexApplicationPolicy.isSupported(
+                bundleIdentifier: application.bundleIdentifier)
+        else { return }
+
+        if expectingManagedCodexLaunch {
+            settings.codexSidebarQuotaStatus = .launching
+            return
+        }
+
+        let processIdentifier = application.processIdentifier
+        guard let alreadyHasDebuggingPort =
+                OpsailCodexLaunchArgumentPolicy.alreadyHasDebuggingPort(
+                    processIdentifier: processIdentifier)
+        else {
+            Log.ui.info(
+                "Could not inspect newly launched Codex process \(processIdentifier, privacy: .public); skipping automatic handoff")
+            return
+        }
+        guard !alreadyHasDebuggingPort else {
+            Log.ui.info(
+                "Newly launched Codex process \(processIdentifier, privacy: .public) already has a debugging port")
+            return
+        }
+
+        let runningProcessIdentifiers =
+            supportedCodexApplications().map(\.processIdentifier)
+        guard automaticRestoreState.beginPrelaunchHandoff(
+            processIdentifier: processIdentifier,
+            enabled: automaticRestoreEnabled,
+            isManagedLaunch: false,
+            runningProcessIdentifiers: runningProcessIdentifiers)
+        else {
+            Log.ui.info(
+                "Skipped automatic handoff because Codex launch ownership was ambiguous")
+            return
+        }
+
+        guard OpsailCodexTerminationSignal.requestGracefulTermination(
+            processIdentifier: processIdentifier)
+        else {
+            _ = automaticRestoreState.cancelAwaitingTermination(
+                processIdentifier: processIdentifier)
+            Log.ui.info(
+                "Could not send SIGTERM to newly launched Codex process \(processIdentifier, privacy: .public); leaving it untouched")
+            return
+        }
+
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
+        settings.codexSidebarQuotaStatus = .launching
+        armAutomaticHandoffTimeout(processIdentifier: processIdentifier)
+        Log.ui.info(
+            "Intercepted newly launched Codex process \(processIdentifier, privacy: .public) before activation")
+    }
+
     @objc private func codexDidTerminate(_ notification: Notification) {
         guard let application =
                 notification.userInfo?[NSWorkspace.applicationUserInfoKey]
@@ -790,15 +846,15 @@ final class OpsailCodexRefitController: NSObject {
                 bundleIdentifier: application.bundleIdentifier)
         else { return }
 
+        let processIdentifier = application.processIdentifier
+        if automaticRestoreState.isAwaitingTermination(
+            processIdentifier: processIdentifier)
+        {
+            settings.codexSidebarQuotaStatus = .launching
+            return
+        }
+
         let isManagedLaunch = consumeManagedLaunchExpectation()
-        let runningProcessIdentifiers =
-            supportedCodexApplications().map(\.processIdentifier)
-        automaticRestoreState.recordLaunch(
-            processIdentifier: application.processIdentifier,
-            observedAt: Date(),
-            enabled: automaticRestoreEnabled,
-            isManagedLaunch: isManagedLaunch,
-            runningProcessIdentifiers: runningProcessIdentifiers)
         if isManagedLaunch {
             settings.codexSidebarQuotaStatus = .launching
             return
