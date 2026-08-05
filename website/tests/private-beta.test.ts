@@ -461,9 +461,46 @@ describe("private Beta resources", () => {
     }
   });
 
+  it("keeps full downloads out of the R2 range path", async () => {
+    const database = new Database();
+    database.firstResults = [{ device_id: "device-1" }];
+    const env = environment(database);
+    let getOptions: R2GetOptions | undefined;
+    env.PRIVATE_BETA_BUCKET = {
+      async get(_key: string, options?: R2GetOptions): Promise<R2ObjectBody> {
+        getOptions = options;
+        return objectBody(new Uint8Array(10));
+      },
+    } as unknown as R2Bucket;
+    const path = "/api/private-beta/artifacts/app.dmg";
+    const response = await handlePrivateBetaResource(
+      new Request(`https://example.test${path}`, {
+        headers: { Authorization: `Bearer ${"A".repeat(43)}` },
+      }),
+      env,
+      path,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Length")).toBe("10");
+    expect(response.headers.get("Content-Range")).toBeNull();
+    expect(getOptions).toBeUndefined();
+  });
+
   it("preserves byte ranges for Sparkle downloads", async () => {
     const database = new Database();
     database.firstResults = [{ device_id: "device-1" }];
+    const env = environment(database);
+    let getOptions: R2GetOptions | undefined;
+    env.PRIVATE_BETA_BUCKET = {
+      async get(_key: string, options?: R2GetOptions): Promise<R2ObjectBody> {
+        getOptions = options;
+        return objectBody(new Uint8Array([4, 5, 6]), {
+          offset: 4,
+          length: 3,
+        });
+      },
+    } as unknown as R2Bucket;
     const response = await handlePrivateBetaResource(
       new Request("https://example.test/api/private-beta/artifacts/app.dmg", {
         headers: {
@@ -471,10 +508,7 @@ describe("private Beta resources", () => {
           Range: "bytes=4-6",
         },
       }),
-      environment(database, objectBody(new Uint8Array([4, 5, 6]), {
-        offset: 4,
-        length: 3,
-      })),
+      env,
       "/api/private-beta/artifacts/app.dmg",
     );
 
@@ -482,6 +516,124 @@ describe("private Beta resources", () => {
     expect(response.headers.get("Content-Range")).toBe("bytes 4-6/10");
     expect(response.headers.get("Content-Length")).toBe("3");
     expect(response.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(getOptions?.range).toEqual({ offset: 4, length: 3 });
+  });
+
+  it("preserves the zero-offset probe used before a Sparkle download", async () => {
+    const database = new Database();
+    database.firstResults = [{ device_id: "device-1" }];
+    const env = environment(database);
+    let getOptions: R2GetOptions | undefined;
+    env.PRIVATE_BETA_BUCKET = {
+      async get(_key: string, options?: R2GetOptions): Promise<R2ObjectBody> {
+        getOptions = options;
+        return objectBody(new Uint8Array([0]), { offset: 0, length: 1 });
+      },
+    } as unknown as R2Bucket;
+    const path = "/api/private-beta/artifacts/app.dmg";
+    const response = await handlePrivateBetaResource(
+      new Request(`https://example.test${path}`, {
+        headers: {
+          Authorization: `Bearer ${"A".repeat(43)}`,
+          Range: "bytes=0-0",
+        },
+      }),
+      env,
+      path,
+    );
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Length")).toBe("1");
+    expect(response.headers.get("Content-Range")).toBe("bytes 0-0/10");
+    expect(getOptions?.range).toEqual({ offset: 0, length: 1 });
+  });
+
+  it.each([
+    ["bytes=4-", { offset: 4 }, { offset: 4, length: 6 }, "bytes 4-9/10"],
+    ["bytes=-3", { suffix: 3 }, { suffix: 3 }, "bytes 7-9/10"],
+  ])(
+    "normalizes the supported %s range before reading R2",
+    async (header, expectedRequestRange, returnedRange, expectedContentRange) => {
+      const database = new Database();
+      database.firstResults = [{ device_id: "device-1" }];
+      const env = environment(database);
+      let getOptions: R2GetOptions | undefined;
+      env.PRIVATE_BETA_BUCKET = {
+        async get(_key: string, options?: R2GetOptions): Promise<R2ObjectBody> {
+          getOptions = options;
+          const length = "suffix" in returnedRange
+            ? returnedRange.suffix
+            : returnedRange.length;
+          return objectBody(new Uint8Array(length), returnedRange);
+        },
+      } as unknown as R2Bucket;
+      const path = "/api/private-beta/artifacts/app.dmg";
+      const response = await handlePrivateBetaResource(
+        new Request(`https://example.test${path}`, {
+          headers: {
+            Authorization: `Bearer ${"A".repeat(43)}`,
+            Range: header,
+          },
+        }),
+        env,
+        path,
+      );
+
+      expect(response.status).toBe(206);
+      expect(response.headers.get("Content-Range")).toBe(expectedContentRange);
+      expect(getOptions?.range).toEqual(expectedRequestRange);
+    },
+  );
+
+  it.each([
+    "bytes=",
+    "bytes=-0",
+    "bytes=6-4",
+    "bytes=0-0,2-2",
+    "items=0-1",
+    "bytes=999999999999999999999-",
+  ])("fails closed before R2 for malformed range %s", async (header) => {
+    const database = new Database();
+    database.firstResults = [{ device_id: "device-1" }];
+    const env = environment(database);
+    const get = vi.fn();
+    env.PRIVATE_BETA_BUCKET = { get } as unknown as R2Bucket;
+    const path = "/api/private-beta/artifacts/app.dmg";
+    const response = await handlePrivateBetaResource(
+      new Request(`https://example.test${path}`, {
+        headers: {
+          Authorization: `Bearer ${"A".repeat(43)}`,
+          Range: header,
+        },
+      }),
+      env,
+      path,
+    );
+
+    expect(response.status).toBe(404);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("fails closed instead of emitting a non-numeric Content-Range", async () => {
+    const database = new Database();
+    database.firstResults = [{ device_id: "device-1" }];
+    const malformedRange = { offset: Number.NaN, length: Number.NaN };
+    const response = await handlePrivateBetaResource(
+      new Request("https://example.test/api/private-beta/artifacts/app.dmg", {
+        headers: {
+          Authorization: `Bearer ${"A".repeat(43)}`,
+          Range: "bytes=0-0",
+        },
+      }),
+      environment(
+        database,
+        objectBody(new Uint8Array([1]), malformedRange),
+      ),
+      "/api/private-beta/artifacts/app.dmg",
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Content-Range")).toBeNull();
   });
 
   it("fails closed when authenticated storage access fails", async () => {
