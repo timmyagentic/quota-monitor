@@ -526,16 +526,37 @@ async function serveObject(
 
   const requestRange = parseRequestRange(request.headers.get("Range"));
   if (requestRange === null) return hiddenNotFound();
-  const object = requestRange === undefined
+  let storageRange = requestRange;
+  let expectedVersion: string | undefined;
+  let expectedSize: number | undefined;
+  if (storageRange !== undefined && "suffix" in storageRange) {
+    // The production R2 binding rejects suffix reads even though previews
+    // accept them. Resolve the suffix against current metadata and use the
+    // explicit offset/length path that behaves consistently in production.
+    const head = await env.PRIVATE_BETA_BUCKET.head(key);
+    if (head === null) return hiddenNotFound();
+    const resolved = resolvedRequestRange(storageRange, head.size);
+    if (resolved === null) return hiddenNotFound();
+    storageRange = { offset: resolved.start, length: resolved.length };
+    expectedVersion = head.version;
+    expectedSize = head.size;
+  }
+  const object = storageRange === undefined
     ? await env.PRIVATE_BETA_BUCKET.get(key)
-    : await env.PRIVATE_BETA_BUCKET.get(key, { range: requestRange });
+    : await env.PRIVATE_BETA_BUCKET.get(key, { range: storageRange });
   if (object === null || !("body" in object)) return hiddenNotFound();
+  if (
+    expectedVersion !== undefined &&
+    (object.version !== expectedVersion || object.size !== expectedSize)
+  ) {
+    return hiddenNotFound();
+  }
   const headers = new Headers(privateHeaders);
   object.writeHttpMetadata(headers);
   headers.set("Accept-Ranges", "bytes");
   headers.set("ETag", object.httpEtag);
 
-  if (requestRange === undefined) {
+  if (storageRange === undefined) {
     headers.set("Content-Length", String(object.size));
     return new Response(object.body, { headers });
   }
@@ -543,7 +564,7 @@ async function serveObject(
   // `object.range` metadata. The request range was parsed into numeric values
   // before the read, so resolve the response range from it and the authoritative
   // total object size instead of trusting that optional metadata.
-  const range = resolvedRequestRange(requestRange, object.size);
+  const range = resolvedRequestRange(storageRange, object.size);
   if (range === null) return hiddenNotFound();
   headers.set("Content-Length", String(range.length));
   headers.set(

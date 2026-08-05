@@ -75,7 +75,7 @@ window copy.
 
 ### Fixed
 
-- **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; malformed ranges continue to fail closed.
+- **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
 - **Restored in-app Codex launch.** The widget setup prepares its helper assets before asking the single identified Codex session to restart, asks users to close extra instances when ownership is ambiguous, and keeps generic retries attach-only.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.

@@ -545,23 +545,50 @@ describe("private Beta resources", () => {
     expect(getOptions?.range).toEqual({ offset: 0, length: 1 });
   });
 
+  it("normalizes an open-ended range before reading R2", async () => {
+    const database = new Database();
+    database.firstResults = [{ device_id: "device-1" }];
+    const env = environment(database);
+    let getOptions: R2GetOptions | undefined;
+    env.PRIVATE_BETA_BUCKET = {
+      async get(_key: string, options?: R2GetOptions): Promise<R2ObjectBody> {
+        getOptions = options;
+        return objectBody(new Uint8Array(6));
+      },
+    } as unknown as R2Bucket;
+    const path = "/api/private-beta/artifacts/app.dmg";
+    const response = await handlePrivateBetaResource(
+      new Request(`https://example.test${path}`, {
+        headers: {
+          Authorization: `Bearer ${"A".repeat(43)}`,
+          Range: "bytes=4-",
+        },
+      }),
+      env,
+      path,
+    );
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Content-Range")).toBe("bytes 4-9/10");
+    expect(getOptions?.range).toEqual({ offset: 4 });
+  });
+
   it.each([
-    ["bytes=4-", { offset: 4 }, { offset: 4, length: 6 }, "bytes 4-9/10"],
-    ["bytes=-3", { suffix: 3 }, { suffix: 3 }, "bytes 7-9/10"],
+    ["bytes=-3", { offset: 7, length: 3 }, 3, "bytes 7-9/10"],
+    ["bytes=-20", { offset: 0, length: 10 }, 10, "bytes 0-9/10"],
   ])(
-    "normalizes the supported %s range before reading R2",
-    async (header, expectedRequestRange, returnedRange, expectedContentRange) => {
+    "converts the supported suffix range %s into an explicit R2 read",
+    async (header, expectedStorageRange, bodyLength, expectedContentRange) => {
       const database = new Database();
       database.firstResults = [{ device_id: "device-1" }];
       const env = environment(database);
       let getOptions: R2GetOptions | undefined;
+      const head = vi.fn(async () => objectBody(new Uint8Array()));
       env.PRIVATE_BETA_BUCKET = {
+        head,
         async get(_key: string, options?: R2GetOptions): Promise<R2ObjectBody> {
           getOptions = options;
-          const length = "suffix" in returnedRange
-            ? returnedRange.suffix
-            : returnedRange.length;
-          return objectBody(new Uint8Array(length));
+          return objectBody(new Uint8Array(bodyLength));
         },
       } as unknown as R2Bucket;
       const path = "/api/private-beta/artifacts/app.dmg";
@@ -578,7 +605,9 @@ describe("private Beta resources", () => {
 
       expect(response.status).toBe(206);
       expect(response.headers.get("Content-Range")).toBe(expectedContentRange);
-      expect(getOptions?.range).toEqual(expectedRequestRange);
+      expect(response.headers.get("Content-Length")).toBe(String(bodyLength));
+      expect(getOptions?.range).toEqual(expectedStorageRange);
+      expect(head).toHaveBeenCalledOnce();
     },
   );
 
