@@ -56,9 +56,47 @@ enum HeatmapGeometry {
     }
 }
 
+/// Responsive dimensions for the full-year heatmap. The regular layout keeps
+/// the existing cell size on wide dashboards; the compact layout lets the
+/// complete year breathe at the default window width. Both reserve enough
+/// trailing space for the final month label.
+struct HeatmapLayout: Equatable {
+    static let regular = HeatmapLayout(cell: 13, gap: 4)
+    static let compact = HeatmapLayout(cell: 12, gap: 3)
+
+    static let monthLabelWidth: CGFloat = 32
+    static let trailingLabelAllowance: CGFloat = 24
+
+    let cell: CGFloat
+    let gap: CGFloat
+
+    var pitch: CGFloat { cell + gap }
+
+    func gridWidth(weekCount: Int) -> CGFloat {
+        CGFloat(max(weekCount, 0)) * pitch
+    }
+
+    func contentWidth(weekCount: Int) -> CGFloat {
+        max(gridWidth(weekCount: weekCount) + Self.trailingLabelAllowance, 1)
+    }
+
+    func fits(availableWidth: CGFloat, weekCount: Int) -> Bool {
+        contentWidth(weekCount: weekCount) <= availableWidth
+    }
+
+    func monthLabelOffset(column: Int, weekCount: Int) -> CGFloat {
+        let proposed = gap / 2 + CGFloat(max(column, 0)) * pitch
+        let maximum = max(
+            contentWidth(weekCount: weekCount) - Self.monthLabelWidth,
+            0)
+        return min(proposed, maximum)
+    }
+}
+
 /// GitHub-style contribution heatmap: weeks as columns, weekday as rows,
 /// month labels along the top. Cells are bucketed into five intensity levels.
-/// Horizontally scrollable so a full year never clips inside the dashboard.
+/// It uses a compact layout at the default dashboard width and only becomes
+/// horizontally scrollable when even that layout cannot fit.
 /// Only used in `.daily` mode.
 struct ActivityHeatmap: View {
     /// Trailing daily series, oldest first, zero-filled (one entry per day).
@@ -67,38 +105,58 @@ struct ActivityHeatmap: View {
 
     @State private var hoveredCell: (col: Int, row: Int, cell: HeatmapModel.Cell)?
 
-    private let cell: CGFloat = 13
-    private let gap: CGFloat = 4
-
     var body: some View {
         let model = HeatmapModel(daily: daily, calendar: .current)
         VStack(alignment: .leading, spacing: 6) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                ZStack(alignment: .topLeading) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        grid(model)
-                        monthLabels(model)
-                    }
-                    if let (col, row, cell) = hoveredCell, let point = cell.point {
-                        tooltipOverlay(for: point, col: col, row: row)
-                    }
+            ViewThatFits(in: .horizontal) {
+                heatmapCanvas(model, layout: .regular)
+                heatmapCanvas(model, layout: .compact)
+                ScrollView(.horizontal, showsIndicators: true) {
+                    heatmapCanvas(model, layout: .compact)
                 }
-                // Give the tooltip room to appear above the first row
-                // without being clipped by the parent card.
-                .padding(.top, 44)
             }
+            // Each canvas reserves tooltip room above the first row. Pull that
+            // room back out of normal layout while keeping overlays unclipped.
             .padding(.top, -44)
             legend
         }
     }
 
+    private func heatmapCanvas(_ model: HeatmapModel, layout: HeatmapLayout) -> some View {
+        ZStack(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: 4) {
+                grid(model, layout: layout)
+                monthLabels(model, layout: layout)
+            }
+            if let (col, row, cell) = hoveredCell, let point = cell.point {
+                tooltipOverlay(for: point, col: col, row: row, layout: layout)
+            }
+        }
+        // Give the tooltip room to appear above the first row without being
+        // clipped by the parent card or the narrow-window scroll view.
+        .padding(.top, 44)
+        .frame(
+            width: layout.contentWidth(weekCount: model.weeks.count),
+            alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     // MARK: - tooltip overlay
 
-    private func tooltipOverlay(for point: DailyPoint, col: Int, row: Int) -> some View {
+    private func tooltipOverlay(
+        for point: DailyPoint,
+        col: Int,
+        row: Int,
+        layout: HeatmapLayout
+    ) -> some View {
         let date = point.date.formatted(.dateTime.year().month(.abbreviated).day())
         let tokens = point.tokens.formatted(
             .number.notation(.compactName).locale(tokenLocale))
-        let anchor = HeatmapGeometry.tooltipAnchor(col: col, row: row, cell: cell, gap: gap)
+        let anchor = HeatmapGeometry.tooltipAnchor(
+            col: col,
+            row: row,
+            cell: layout.cell,
+            gap: layout.gap)
 
         return VStack(alignment: .leading, spacing: 2) {
             Text(date)
@@ -127,7 +185,7 @@ struct ActivityHeatmap: View {
 
     // MARK: - grid
 
-    private func grid(_ model: HeatmapModel) -> some View {
+    private func grid(_ model: HeatmapModel, layout: HeatmapLayout) -> some View {
         // Spacing lives INSIDE each cell (gap/2 padding around the visible
         // square) rather than between stack elements, so the hover-sensitive
         // areas tile the grid edge-to-edge — pointing at the gap between two
@@ -136,7 +194,11 @@ struct ActivityHeatmap: View {
             ForEach(model.weeks.indices, id: \.self) { col in
                 VStack(spacing: 0) {
                     ForEach(model.weeks[col].indices, id: \.self) { row in
-                        cellView(model.weeks[col][row], col: col, row: row)
+                        cellView(
+                            model.weeks[col][row],
+                            col: col,
+                            row: row,
+                            layout: layout)
                     }
                 }
             }
@@ -144,11 +206,16 @@ struct ActivityHeatmap: View {
     }
 
     @ViewBuilder
-    private func cellView(_ entry: HeatmapModel.Cell, col: Int, row: Int) -> some View {
+    private func cellView(
+        _ entry: HeatmapModel.Cell,
+        col: Int,
+        row: Int,
+        layout: HeatmapLayout
+    ) -> some View {
         RoundedRectangle(cornerRadius: 2, style: .continuous)
             .fill(HeatmapPalette.color(level: entry.level))
-            .frame(width: cell, height: cell)
-            .padding(gap / 2)
+            .frame(width: layout.cell, height: layout.cell)
+            .padding(layout.gap / 2)
             .contentShape(Rectangle())
             .onHover { hovering in
                 if hovering && entry.point != nil {
@@ -163,16 +230,20 @@ struct ActivityHeatmap: View {
 
     // MARK: - month labels
 
-    private func monthLabels(_ model: HeatmapModel) -> some View {
-        let width = CGFloat(model.weeks.count) * (cell + gap)
+    private func monthLabels(_ model: HeatmapModel, layout: HeatmapLayout) -> some View {
+        let width = layout.contentWidth(weekCount: model.weeks.count)
         return ZStack(alignment: .topLeading) {
             ForEach(model.monthMarkers, id: \.column) { marker in
                 Text(marker.label)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    // gap/2 keeps the label flush with its column's visible
-                    // square now that squares sit inset inside their cells.
-                    .offset(x: gap / 2 + CGFloat(marker.column) * (cell + gap))
+                    .lineLimit(1)
+                    .frame(width: HeatmapLayout.monthLabelWidth, alignment: .leading)
+                    // Keep labels flush with their visible square, then clamp
+                    // the last one into the reserved trailing label space.
+                    .offset(x: layout.monthLabelOffset(
+                        column: marker.column,
+                        weekCount: model.weeks.count))
             }
         }
         .frame(width: max(width, 1), height: 12, alignment: .topLeading)
@@ -188,7 +259,9 @@ struct ActivityHeatmap: View {
             ForEach(0..<5, id: \.self) { level in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
                     .fill(HeatmapPalette.color(level: level))
-                    .frame(width: cell, height: cell)
+                    .frame(
+                        width: HeatmapLayout.regular.cell,
+                        height: HeatmapLayout.regular.cell)
             }
             Text(L10n.activityHeatmapMore)
                 .font(.caption2)

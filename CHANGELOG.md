@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
 - The Codex sidebar widget can once again open or restart Codex directly from Quota Monitor, including when the current session cannot accept the widget.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
@@ -75,6 +76,7 @@ window copy.
 
 ### Fixed
 
+- **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
 - **Restored in-app Codex launch.** The widget setup prepares its helper assets before asking the single identified Codex session to restart, asks users to close extra instances when ownership is ambiguous, and keeps generic retries attach-only.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
