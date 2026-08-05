@@ -24,6 +24,7 @@ enum CodexSidebarQuotaStatus: Equatable {
     case disabled
     case attaching
     case needsCodexQuit
+    case multipleCodexInstances
     case readyToLaunch
     case launching
     case active

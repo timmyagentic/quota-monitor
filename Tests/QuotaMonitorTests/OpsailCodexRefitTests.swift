@@ -238,18 +238,72 @@ struct OpsailCodexRefitTests {
                 + "           !LocalQAEnvironment.isQARequested()"))
     }
 
-    @Test("an explicit action launches Codex only when it is stopped")
+    @Test("an explicit action launches a stopped Codex or restarts one exact session")
     func activationLaunchPolicy() {
-        #expect(!OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
-            codexIsRunning: true))
-        #expect(OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
-            codexIsRunning: false))
+        #expect(OpsailCodexActivationPolicy.explicitLaunchPlan(
+            runningProcessIdentifiers: []) == .launch)
+        #expect(OpsailCodexActivationPolicy.explicitLaunchPlan(
+            runningProcessIdentifiers: [41])
+            == .restart(processIdentifier: 41))
+        #expect(OpsailCodexActivationPolicy.explicitLaunchPlan(
+            runningProcessIdentifiers: [41, 42]) == .ambiguous)
         #expect(OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.openai.chat"))
         #expect(OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.openai.codex"))
         #expect(!OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.example.other"))
+    }
+
+    @Test("handoff completion launches only when no Codex instance remains")
+    func handoffCompletionPolicy() {
+        #expect(OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: []) == .launch)
+        #expect(OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: [41]) == .attach)
+        #expect(OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: [41, 42]) == .ambiguous)
+    }
+
+    @Test("an explicit restart follows only its exact authorized process")
+    func explicitRestartMatching() {
+        var state = OpsailCodexExplicitRestartState()
+
+        let ambiguous = state.begin(
+            processIdentifier: 51,
+            runningProcessIdentifiers: [51, 52])
+        #expect(!ambiguous)
+        #expect(state.awaitingTerminationProcessIdentifier == nil)
+        let accepted = state.begin(
+            processIdentifier: 51,
+            runningProcessIdentifiers: [51])
+        #expect(accepted)
+        #expect(state.isAwaitingTermination(processIdentifier: 51))
+        #expect(!state.isAwaitingTermination(processIdentifier: 52))
+        let wrongTermination = state.didTerminate(processIdentifier: 52)
+        let matchingTermination = state.didTerminate(processIdentifier: 51)
+        let repeatedTermination = state.didTerminate(processIdentifier: 51)
+        #expect(!wrongTermination)
+        #expect(matchingTermination)
+        #expect(!repeatedTermination)
+    }
+
+    @Test("a cancelled explicit restart cannot relaunch Codex later")
+    func explicitRestartCancellation() {
+        var state = OpsailCodexExplicitRestartState()
+        let accepted = state.begin(
+            processIdentifier: 61,
+            runningProcessIdentifiers: [61])
+
+        let wrongCancellation = state.cancelAwaitingTermination(
+            processIdentifier: 62)
+        let matchingCancellation = state.cancelAwaitingTermination(
+            processIdentifier: 61)
+        let lateTermination = state.didTerminate(processIdentifier: 61)
+        #expect(accepted)
+        #expect(!wrongCancellation)
+        #expect(matchingCancellation)
+        #expect(!lateTermination)
     }
 
     @Test("automatic restore intercepts only one opted-in unmanaged launch")
@@ -398,18 +452,261 @@ struct OpsailCodexRefitTests {
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("newly launched"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("never force-quit"))
             #expect(L10n.codexCapsuleNeedsQuitStatus.contains(
-                "Automatic restore was not available"))
+                "standard quit signal"))
+            #expect(L10n.codexCapsuleMultipleInstancesStatus.contains(
+                "Close the extra instances"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("Open it from here"))
             #expect(L10n.codexCapsuleLaunchButton.contains("Open Codex"))
+            #expect(L10n.codexCapsuleRestartButton.contains("Restart Codex"))
         }
         LocalizationTestSupport.withLanguage(.simplifiedChinese) {
             #expect(L10n.codexCapsuleSettingsHelp.contains("原来的图标"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("刚启动"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("绝不会强制退出"))
-            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("无法自动恢复"))
+            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("标准退出信号"))
+            #expect(L10n.codexCapsuleMultipleInstancesStatus.contains("关闭多余实例"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("从这里打开"))
             #expect(L10n.codexCapsuleLaunchButton.contains("打开 Codex"))
+            #expect(L10n.codexCapsuleRestartButton.contains("重新打开 Codex"))
         }
+    }
+
+    @Test("ambiguous in-app launch asks the user to close extra instances")
+    func ambiguousLaunchActionSource() throws {
+        let controller = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let ambiguous = try #require(controller.range(of: "case .ambiguous:"))
+        let branchEnd = try #require(controller.range(
+            of: "@objc private func attachRetryRequested()",
+            range: ambiguous.upperBound..<controller.endIndex))
+        let branch = controller[ambiguous.lowerBound..<branchEnd.lowerBound]
+        #expect(branch.contains("enterMultipleCodexInstancesState()"))
+
+        let settings = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/Features/Settings/GeneralSettingsTab.swift"),
+            encoding: .utf8)
+        let actions = try #require(settings.range(
+            of: "private var codexSidebarActions"))
+        let multiple = try #require(settings.range(
+            of: "case .multipleCodexInstances:",
+            range: actions.upperBound..<settings.endIndex))
+        let unavailable = try #require(settings.range(
+            of: "case .unavailable:",
+            range: multiple.upperBound..<settings.endIndex))
+        let actionBranch = settings[multiple.lowerBound..<unavailable.lowerBound]
+        #expect(actionBranch.contains(
+            "Button(L10n.codexCapsuleMultipleInstancesRetryButton)"))
+        #expect(actionBranch.contains(
+            "OpsailCodexRefitActions.requestExplicitLaunch()"))
+    }
+
+    @Test("needs-quit UI keeps the user-authorized restart action")
+    func needsQuitActionSource() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/Features/Settings/GeneralSettingsTab.swift"),
+            encoding: .utf8)
+        let actions = try #require(source.range(
+            of: "private var codexSidebarActions"))
+        let start = try #require(source.range(
+            of: "case .needsCodexQuit:",
+            range: actions.upperBound..<source.endIndex))
+        let end = try #require(source.range(
+            of: "case .unavailable:",
+            range: start.upperBound..<source.endIndex))
+        let branch = source[start.lowerBound..<end.lowerBound]
+
+        #expect(branch.contains("Button(L10n.codexCapsuleRestartButton)"))
+        #expect(branch.contains(
+            "OpsailCodexRefitActions.requestExplicitLaunch()"))
+
+        let retryEnd = try #require(source.range(
+            of: "case .attaching, .launching:",
+            range: end.upperBound..<source.endIndex))
+        let retryBranch = source[end.lowerBound..<retryEnd.lowerBound]
+        #expect(retryBranch.contains(
+            "OpsailCodexRefitActions.requestAttachRetry()"))
+        #expect(!retryBranch.contains(
+            "OpsailCodexRefitActions.requestExplicitLaunch()"))
+    }
+
+    @Test("attach retry drops stale one-shot launch intent")
+    func attachRetryDropsPendingLaunchIntent() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let start = try #require(source.range(
+            of: "@objc private func attachRetryRequested()"))
+        let end = try #require(source.range(
+            of: "@objc private func codexWillLaunch",
+            range: start.upperBound..<source.endIndex))
+        let branch = source[start.lowerBound..<end.lowerBound]
+        let clearIntent = try #require(branch.range(
+            of: "pendingManagerAllowLaunch = false"))
+        let attach = try #require(branch.range(
+            of: "startManagedSession(allowLaunch: false)"))
+
+        #expect(clearIntent.lowerBound < attach.lowerBound)
+    }
+
+    @Test("explicit restart prepares helper and renderer before terminating Codex")
+    func explicitRestartPreflightsPrerequisites() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let action = try #require(source.range(
+            of: "@objc private func explicitLaunchRequested()"))
+        let retry = try #require(source.range(
+            of: "@objc private func attachRetryRequested()",
+            range: action.upperBound..<source.endIndex))
+        let branch = source[action.lowerBound..<retry.lowerBound]
+        let preflight = try #require(branch.range(
+            of: "guard prepareExplicitRestartPrerequisites() else { return }"))
+        let ownershipRecheck = try #require(branch.range(
+            of: "let revalidatedRunningProcessIdentifiers =",
+            range: preflight.upperBound..<branch.endIndex))
+        let signal = try #require(branch.range(
+            of: "OpsailCodexTerminationSignal.requestGracefulTermination"))
+        let restartTracking = try #require(branch.range(
+            of: "guard explicitRestartState.begin(",
+            range: ownershipRecheck.upperBound..<signal.lowerBound))
+        let revalidatedOwnershipUse = try #require(branch.range(
+            of: "revalidatedRunningProcessIdentifiers",
+            range: restartTracking.upperBound..<signal.lowerBound))
+        #expect(preflight.lowerBound < signal.lowerBound)
+        #expect(preflight.lowerBound < ownershipRecheck.lowerBound)
+        #expect(ownershipRecheck.lowerBound < signal.lowerBound)
+        #expect(restartTracking.lowerBound < revalidatedOwnershipUse.lowerBound)
+        #expect(branch.contains("enterMultipleCodexInstancesState()"))
+
+        let preparation = try #require(source.range(
+            of: "private func prepareExplicitRestartPrerequisites()"))
+        let preparationEnd = try #require(source.range(
+            of: "private func scheduleManagerRetry()",
+            range: preparation.upperBound..<source.endIndex))
+        let preparationBranch = source[
+            preparation.lowerBound..<preparationEnd.lowerBound]
+        #expect(preparationBranch.contains(
+            "fileManager.isExecutableFile(atPath: helperURL.path)"))
+        #expect(preparationBranch.contains(
+            "rendererAssetInstaller.installIfNeeded()"))
+        #expect(preparationBranch.contains(
+            "settings.codexSidebarQuotaStatus = .unavailable"))
+    }
+
+    @Test("termination handoff revalidates running Codex apps before relaunch")
+    func terminationHandoffRevalidatesOwnership() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let completion = try #require(source.range(
+            of: "private func resumeManagedSessionAfterHandoff"))
+        let action = try #require(source.range(
+            of: "@objc private func explicitLaunchRequested()",
+            range: completion.upperBound..<source.endIndex))
+        let branch = source[completion.lowerBound..<action.lowerBound]
+
+        #expect(branch.contains("supportedCodexApplications()"))
+        #expect(branch.contains(".filter { $0 != terminatedProcessIdentifier }"))
+        #expect(branch.contains("remainingProcessIdentifiers: remainingProcessIdentifiers"))
+        #expect(branch.contains("startManagedSession(allowLaunch: true)"))
+        #expect(branch.contains("startManagedSession(allowLaunch: false)"))
+
+        let didTerminate = try #require(source.range(
+            of: "@objc private func codexDidTerminate"))
+        let didLaunch = try #require(source.range(
+            of: "@objc private func codexDidLaunch",
+            range: didTerminate.upperBound..<source.endIndex))
+        let terminationBranch = source[
+            didTerminate.lowerBound..<didLaunch.lowerBound]
+        #expect(terminationBranch.components(
+            separatedBy: "resumeManagedSessionAfterHandoff(").count == 3)
+    }
+
+    @Test("closing an extra Codex instance retries attach without relaunch")
+    func multipleInstanceRecoveryIsAttachOnly() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let start = try #require(source.range(
+            of: "if settings.codexSidebarQuotaStatus == .multipleCodexInstances"))
+        let end = try #require(source.range(
+            of: "\n        managerRetryTask?.cancel()\n        managerRetryTask = nil\n        clearManagedLaunchExpectation()",
+            range: start.upperBound..<source.endIndex))
+        let branch = source[start.lowerBound..<end.lowerBound]
+        let attach = try #require(branch.range(of: "case .attach:"))
+        let ambiguous = try #require(branch.range(
+            of: "case .ambiguous:",
+            range: attach.upperBound..<branch.endIndex))
+        let attachBranch = branch[attach.lowerBound..<ambiguous.lowerBound]
+
+        #expect(branch.contains(
+            "OpsailCodexActivationPolicy.handoffCompletionPlan"))
+        #expect(branch.contains("enterMultipleCodexInstancesState()"))
+        #expect(attachBranch.contains(
+            "settings.codexSidebarQuotaStatus = .attaching"))
+        #expect(attachBranch.contains(
+            "startManagedSession(allowLaunch: false)"))
+        #expect(!branch.contains(".needsCodexQuit"))
+    }
+
+    @Test("entering multi-instance state cancels stale manager work")
+    func multipleInstanceStateCancelsStaleManagerWork() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let state = try #require(source.range(
+            of: "private func enterMultipleCodexInstancesState()"))
+        let resume = try #require(source.range(
+            of: "private func resumeManagedSessionAfterHandoff",
+            range: state.upperBound..<source.endIndex))
+        let stateBranch = source[state.lowerBound..<resume.lowerBound]
+        #expect(stateBranch.contains("managerRetryTask?.cancel()"))
+        #expect(stateBranch.contains("managerRetryTask = nil"))
+        #expect(stateBranch.contains("managerRetryAttempt = 0"))
+        #expect(stateBranch.contains("pendingManagerAllowLaunch = false"))
+        #expect(stateBranch.contains("clearManagedLaunchExpectation()"))
+        #expect(stateBranch.contains(
+            "settings.codexSidebarQuotaStatus = .multipleCodexInstances"))
+
+        let didLaunch = try #require(source.range(
+            of: "@objc private func codexDidLaunch"))
+        let runningCount = try #require(source.range(
+            of: "guard runningProcessIdentifiers.count <= 1 else",
+            range: didLaunch.upperBound..<source.endIndex))
+        let managedLaunch = try #require(source.range(
+            of: "let isManagedLaunch = consumeManagedLaunchExpectation()",
+            range: runningCount.upperBound..<source.endIndex))
+        let ambiguousLaunch = source[
+            runningCount.lowerBound..<managedLaunch.lowerBound]
+        #expect(ambiguousLaunch.contains("enterMultipleCodexInstancesState()"))
+
+        let managerCompletion = try #require(source.range(
+            of: "if self.settings.codexSidebarQuotaStatus == .multipleCodexInstances"))
+        let pendingLaunch = try #require(source.range(
+            of: "if self.pendingManagerAllowLaunch",
+            range: managerCompletion.upperBound..<source.endIndex))
+        let completionBranch = source[
+            managerCompletion.lowerBound..<pendingLaunch.lowerBound]
+        #expect(completionBranch.contains(
+            "self.pendingManagerAllowLaunch = false"))
+        #expect(completionBranch.contains("return"))
     }
 
     @Test("controller uses a graceful handoff and never force-quits Codex")
