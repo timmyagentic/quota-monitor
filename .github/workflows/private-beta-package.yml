@@ -96,6 +96,19 @@ jobs:
           echo "sha=${normalized_sha}" >> "${GITHUB_OUTPUT}"
           echo "short_sha=$(git rev-parse --short HEAD)" >> "${GITHUB_OUTPUT}"
 
+      - name: Provision authenticated-encryption tooling
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! brew list --versions openssl@3 >/dev/null 2>&1; then
+            brew install openssl@3
+          fi
+          openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+          test -x "${openssl_bin}"
+          "${openssl_bin}" version | grep -E '^OpenSSL 3\.'
+
       - name: Validate one-time recipient certificate
         env:
           RECIPIENT_CERTIFICATE_BASE64: ${{ inputs.recipient_certificate_base64 }}

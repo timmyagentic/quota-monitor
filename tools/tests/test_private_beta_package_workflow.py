@@ -36,7 +36,7 @@ class PrivateBetaPackageWorkflowTests(unittest.TestCase):
     def test_exact_source_must_already_belong_to_main(self):
         validate = self.step(
             "Validate source ownership and checkout exact commit",
-            "Validate one-time recipient certificate",
+            "Provision authenticated-encryption tooling",
         )
         self.assertIn("^[0-9a-fA-F]{40}$", self.workflow)
         self.assertIn("git fetch --no-tags origin +refs/heads/main", validate)
@@ -47,6 +47,16 @@ class PrivateBetaPackageWorkflowTests(unittest.TestCase):
             self.workflow.index("Validate source ownership and checkout exact commit"),
             self.workflow.index("Build, sign, and notarize Private Beta"),
         )
+
+    def test_workflow_provisions_and_verifies_openssl_three(self):
+        provision = self.step(
+            "Provision authenticated-encryption tooling",
+            "Validate one-time recipient certificate",
+        )
+        self.assertIn("brew list --versions openssl@3", provision)
+        self.assertIn("brew install openssl@3", provision)
+        self.assertIn("HOMEBREW_NO_AUTO_UPDATE: 1", provision)
+        self.assertIn("grep -E '^OpenSSL 3", provision)
 
     def test_release_secrets_are_scoped_to_signing_and_notarization(self):
         build = self.step(
