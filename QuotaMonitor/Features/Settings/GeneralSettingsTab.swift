@@ -306,9 +306,9 @@ struct GeneralSettingsTab: View {
                     settings.codexSidebarQuotaEnabled = false
                 }
             }
-        case .unavailable:
+        case .needsCodexQuit:
             HStack {
-                Button(L10n.codexCapsuleRetryButton) {
+                Button(L10n.codexCapsuleRestartButton) {
                     OpsailCodexRefitActions.requestExplicitLaunch()
                 }
                 .buttonStyle(.borderedProminent)
@@ -316,7 +316,17 @@ struct GeneralSettingsTab: View {
                     settings.codexSidebarQuotaEnabled = false
                 }
             }
-        case .needsCodexQuit, .attaching, .launching:
+        case .unavailable:
+            HStack {
+                Button(L10n.codexCapsuleRetryButton) {
+                    OpsailCodexRefitActions.requestAttachRetry()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleDisableButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .attaching, .launching:
             Button(L10n.codexCapsuleCancelButton) {
                 settings.codexSidebarQuotaEnabled = false
             }

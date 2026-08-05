@@ -99,12 +99,12 @@ enum L10n {
     }
     static var codexCapsuleNeedsQuitStatus: String {
         t(
-            en: "Automatic restore was not available for this session. Quit Codex yourself when "
-                + "ready; closing its window is not enough. After it stops, return here to open "
-                + "it with the widget.",
-            zh: "这次会话无法自动恢复。准备好后请手动退出 Codex，仅关闭窗口还不够。"
-                + "Codex 完全停止后，"
-                + "回到这里再用挂件模式打开。")
+            en: "This Codex session cannot accept the widget yet. Choose Restart Codex to send "
+                + "this one session a standard quit signal and immediately reopen it with the "
+                + "widget; Codex is never force-quit.",
+            zh: "当前 Codex 会话还无法接入挂件。选择“重新打开 Codex”后，Quota Monitor "
+                + "只会向这一个会话发送标准退出信号，并立即用挂件模式重新打开；"
+                + "绝不会强制退出 Codex。")
     }
     static var codexCapsuleReadyToLaunchStatus: String {
         t(
@@ -128,6 +128,9 @@ enum L10n {
     }
     static var codexCapsuleLaunchButton: String {
         t(en: "Open Codex and enable widget", zh: "打开 Codex 并启用挂件")
+    }
+    static var codexCapsuleRestartButton: String {
+        t(en: "Restart Codex with widget", zh: "重新打开 Codex 并启用挂件")
     }
     static var codexCapsuleRetryButton: String {
         t(en: "Try again", zh: "再次尝试")

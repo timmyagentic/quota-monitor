@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- The Codex sidebar widget can once again open or restart Codex directly from Quota Monitor, including when the current session cannot accept the widget.
 - The Codex sidebar quota widget now follows Codex's English or Simplified Chinese language, with clearer weekly labels, shorter reset times, and a calmer compact layout.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
 - Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
@@ -72,6 +73,7 @@ window copy.
 
 ### Fixed
 
+- **Restored in-app Codex launch.** The widget setup keeps a clear restart action when Codex is already running and uses that explicit click to reopen only the single identified session with the widget, while generic retries remain attach-only.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.

@@ -238,18 +238,62 @@ struct OpsailCodexRefitTests {
                 + "           !LocalQAEnvironment.isQARequested()"))
     }
 
-    @Test("an explicit action launches Codex only when it is stopped")
+    @Test("an explicit action launches a stopped Codex or restarts one exact session")
     func activationLaunchPolicy() {
-        #expect(!OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
-            codexIsRunning: true))
-        #expect(OpsailCodexActivationPolicy.allowLaunchForExplicitRequest(
-            codexIsRunning: false))
+        #expect(OpsailCodexActivationPolicy.explicitLaunchPlan(
+            runningProcessIdentifiers: []) == .launch)
+        #expect(OpsailCodexActivationPolicy.explicitLaunchPlan(
+            runningProcessIdentifiers: [41])
+            == .restart(processIdentifier: 41))
+        #expect(OpsailCodexActivationPolicy.explicitLaunchPlan(
+            runningProcessIdentifiers: [41, 42]) == .ambiguous)
         #expect(OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.openai.chat"))
         #expect(OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.openai.codex"))
         #expect(!OpsailCodexApplicationPolicy.isSupported(
             bundleIdentifier: "com.example.other"))
+    }
+
+    @Test("an explicit restart follows only its exact authorized process")
+    func explicitRestartMatching() {
+        var state = OpsailCodexExplicitRestartState()
+
+        let ambiguous = state.begin(
+            processIdentifier: 51,
+            runningProcessIdentifiers: [51, 52])
+        #expect(!ambiguous)
+        #expect(state.awaitingTerminationProcessIdentifier == nil)
+        let accepted = state.begin(
+            processIdentifier: 51,
+            runningProcessIdentifiers: [51])
+        #expect(accepted)
+        #expect(state.isAwaitingTermination(processIdentifier: 51))
+        #expect(!state.isAwaitingTermination(processIdentifier: 52))
+        let wrongTermination = state.didTerminate(processIdentifier: 52)
+        let matchingTermination = state.didTerminate(processIdentifier: 51)
+        let repeatedTermination = state.didTerminate(processIdentifier: 51)
+        #expect(!wrongTermination)
+        #expect(matchingTermination)
+        #expect(!repeatedTermination)
+    }
+
+    @Test("a cancelled explicit restart cannot relaunch Codex later")
+    func explicitRestartCancellation() {
+        var state = OpsailCodexExplicitRestartState()
+        let accepted = state.begin(
+            processIdentifier: 61,
+            runningProcessIdentifiers: [61])
+
+        let wrongCancellation = state.cancelAwaitingTermination(
+            processIdentifier: 62)
+        let matchingCancellation = state.cancelAwaitingTermination(
+            processIdentifier: 61)
+        let lateTermination = state.didTerminate(processIdentifier: 61)
+        #expect(accepted)
+        #expect(!wrongCancellation)
+        #expect(matchingCancellation)
+        #expect(!lateTermination)
     }
 
     @Test("automatic restore intercepts only one opted-in unmanaged launch")
@@ -398,18 +442,51 @@ struct OpsailCodexRefitTests {
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("newly launched"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("never force-quit"))
             #expect(L10n.codexCapsuleNeedsQuitStatus.contains(
-                "Automatic restore was not available"))
+                "standard quit signal"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("Open it from here"))
             #expect(L10n.codexCapsuleLaunchButton.contains("Open Codex"))
+            #expect(L10n.codexCapsuleRestartButton.contains("Restart Codex"))
         }
         LocalizationTestSupport.withLanguage(.simplifiedChinese) {
             #expect(L10n.codexCapsuleSettingsHelp.contains("原来的图标"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("刚启动"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("绝不会强制退出"))
-            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("无法自动恢复"))
+            #expect(L10n.codexCapsuleNeedsQuitStatus.contains("标准退出信号"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("从这里打开"))
             #expect(L10n.codexCapsuleLaunchButton.contains("打开 Codex"))
+            #expect(L10n.codexCapsuleRestartButton.contains("重新打开 Codex"))
         }
+    }
+
+    @Test("needs-quit UI keeps the user-authorized restart action")
+    func needsQuitActionSource() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/Features/Settings/GeneralSettingsTab.swift"),
+            encoding: .utf8)
+        let actions = try #require(source.range(
+            of: "private var codexSidebarActions"))
+        let start = try #require(source.range(
+            of: "case .needsCodexQuit:",
+            range: actions.upperBound..<source.endIndex))
+        let end = try #require(source.range(
+            of: "case .unavailable:",
+            range: start.upperBound..<source.endIndex))
+        let branch = source[start.lowerBound..<end.lowerBound]
+
+        #expect(branch.contains("Button(L10n.codexCapsuleRestartButton)"))
+        #expect(branch.contains(
+            "OpsailCodexRefitActions.requestExplicitLaunch()"))
+
+        let retryEnd = try #require(source.range(
+            of: "case .attaching, .launching:",
+            range: end.upperBound..<source.endIndex))
+        let retryBranch = source[end.lowerBound..<retryEnd.lowerBound]
+        #expect(retryBranch.contains(
+            "OpsailCodexRefitActions.requestAttachRetry()"))
+        #expect(!retryBranch.contains(
+            "OpsailCodexRefitActions.requestExplicitLaunch()"))
     }
 
     @Test("controller uses a graceful handoff and never force-quits Codex")
