@@ -1101,13 +1101,19 @@ final class OpsailCodexRefitController: NSObject {
             let remainingProcessIdentifiers = supportedCodexApplications()
                 .map(\.processIdentifier)
                 .filter { $0 != processIdentifier }
-            switch OpsailCodexActivationPolicy.explicitLaunchPlan(
-                runningProcessIdentifiers: remainingProcessIdentifiers)
+            managerRetryTask?.cancel()
+            managerRetryTask = nil
+            managerRetryAttempt = 0
+            pendingManagerAllowLaunch = false
+            clearManagedLaunchExpectation()
+            switch OpsailCodexActivationPolicy.handoffCompletionPlan(
+                remainingProcessIdentifiers: remainingProcessIdentifiers)
             {
             case .launch:
                 settings.codexSidebarQuotaStatus = .readyToLaunch
-            case .restart:
-                settings.codexSidebarQuotaStatus = .needsCodexQuit
+            case .attach:
+                settings.codexSidebarQuotaStatus = .attaching
+                startManagedSession(allowLaunch: false)
             case .ambiguous:
                 settings.codexSidebarQuotaStatus = .multipleCodexInstances
             }

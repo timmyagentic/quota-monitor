@@ -637,6 +637,36 @@ struct OpsailCodexRefitTests {
             separatedBy: "resumeManagedSessionAfterHandoff(").count == 3)
     }
 
+    @Test("closing an extra Codex instance retries attach without relaunch")
+    func multipleInstanceRecoveryIsAttachOnly() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let start = try #require(source.range(
+            of: "if settings.codexSidebarQuotaStatus == .multipleCodexInstances"))
+        let end = try #require(source.range(
+            of: "\n        managerRetryTask?.cancel()\n        managerRetryTask = nil\n        clearManagedLaunchExpectation()",
+            range: start.upperBound..<source.endIndex))
+        let branch = source[start.lowerBound..<end.lowerBound]
+        let attach = try #require(branch.range(of: "case .attach:"))
+        let ambiguous = try #require(branch.range(
+            of: "case .ambiguous:",
+            range: attach.upperBound..<branch.endIndex))
+        let attachBranch = branch[attach.lowerBound..<ambiguous.lowerBound]
+
+        #expect(branch.contains(
+            "OpsailCodexActivationPolicy.handoffCompletionPlan"))
+        #expect(branch.contains("pendingManagerAllowLaunch = false"))
+        #expect(branch.contains("clearManagedLaunchExpectation()"))
+        #expect(attachBranch.contains(
+            "settings.codexSidebarQuotaStatus = .attaching"))
+        #expect(attachBranch.contains(
+            "startManagedSession(allowLaunch: false)"))
+        #expect(!branch.contains(".needsCodexQuit"))
+    }
+
     @Test("controller uses a graceful handoff and never force-quits Codex")
     func gracefulAutomaticRestoreSource() throws {
         let source = try String(
