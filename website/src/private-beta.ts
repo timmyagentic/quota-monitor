@@ -446,12 +446,59 @@ function resolvedRange(object: R2ObjectBody): { start: number; length: number } 
   const range = object.range;
   if (range === undefined) return null;
   if ("suffix" in range) {
+    if (!Number.isSafeInteger(range.suffix) || range.suffix <= 0) return null;
     const length = Math.min(range.suffix, object.size);
+    if (length <= 0) return null;
     return { start: object.size - length, length };
   }
+  if (range.offset === undefined && range.length === undefined) return null;
   const start = range.offset ?? 0;
   const length = range.length ?? object.size - start;
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(length) ||
+    start < 0 ||
+    length <= 0 ||
+    start >= object.size ||
+    start + length > object.size
+  ) {
+    return null;
+  }
   return { start, length };
+}
+
+// `undefined` means no Range header; `null` means a malformed or unsupported
+// range. Parse it ourselves instead of forwarding all request Headers to R2:
+// the production binding can otherwise expose a non-numeric `object.range`,
+// which previously produced 206 responses such as `bytes NaN-NaN/…`.
+function parseRequestRange(value: string | null): R2Range | null | undefined {
+  if (value === null) return undefined;
+  const match = value.trim().match(/^bytes=([0-9]*)-([0-9]*)$/);
+  if (match === null || (match[1] === "" && match[2] === "")) return null;
+
+  const first = match[1]!;
+  const last = match[2]!;
+  if (first === "") {
+    const suffix = Number(last);
+    if (!Number.isSafeInteger(suffix) || suffix <= 0) return null;
+    return { suffix };
+  }
+
+  const offset = Number(first);
+  if (!Number.isSafeInteger(offset)) return null;
+  if (last === "") return { offset };
+
+  const end = Number(last);
+  const length = end - offset + 1;
+  if (
+    !Number.isSafeInteger(end) ||
+    end < offset ||
+    !Number.isSafeInteger(length) ||
+    length <= 0
+  ) {
+    return null;
+  }
+  return { offset, length };
 }
 
 async function serveObject(
@@ -474,20 +521,23 @@ async function serveObject(
     return new Response(null, { headers });
   }
 
-  const object = await env.PRIVATE_BETA_BUCKET.get(key, {
-    range: request.headers,
-  });
+  const requestRange = parseRequestRange(request.headers.get("Range"));
+  if (requestRange === null) return hiddenNotFound();
+  const object = requestRange === undefined
+    ? await env.PRIVATE_BETA_BUCKET.get(key)
+    : await env.PRIVATE_BETA_BUCKET.get(key, { range: requestRange });
   if (object === null || !("body" in object)) return hiddenNotFound();
   const headers = new Headers(privateHeaders);
   object.writeHttpMetadata(headers);
   headers.set("Accept-Ranges", "bytes");
   headers.set("ETag", object.httpEtag);
 
-  const range = resolvedRange(object);
-  if (range === null) {
+  if (requestRange === undefined) {
     headers.set("Content-Length", String(object.size));
     return new Response(object.body, { headers });
   }
+  const range = resolvedRange(object);
+  if (range === null) return hiddenNotFound();
   headers.set("Content-Length", String(range.length));
   headers.set(
     "Content-Range",
