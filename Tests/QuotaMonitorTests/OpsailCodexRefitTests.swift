@@ -548,6 +548,40 @@ struct OpsailCodexRefitTests {
         #expect(clearIntent.lowerBound < attach.lowerBound)
     }
 
+    @Test("explicit restart prepares helper and renderer before terminating Codex")
+    func explicitRestartPreflightsPrerequisites() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let action = try #require(source.range(
+            of: "@objc private func explicitLaunchRequested()"))
+        let retry = try #require(source.range(
+            of: "@objc private func attachRetryRequested()",
+            range: action.upperBound..<source.endIndex))
+        let branch = source[action.lowerBound..<retry.lowerBound]
+        let preflight = try #require(branch.range(
+            of: "guard prepareExplicitRestartPrerequisites() else { return }"))
+        let signal = try #require(branch.range(
+            of: "OpsailCodexTerminationSignal.requestGracefulTermination"))
+        #expect(preflight.lowerBound < signal.lowerBound)
+
+        let preparation = try #require(source.range(
+            of: "private func prepareExplicitRestartPrerequisites()"))
+        let preparationEnd = try #require(source.range(
+            of: "private func scheduleManagerRetry()",
+            range: preparation.upperBound..<source.endIndex))
+        let preparationBranch = source[
+            preparation.lowerBound..<preparationEnd.lowerBound]
+        #expect(preparationBranch.contains(
+            "fileManager.isExecutableFile(atPath: helperURL.path)"))
+        #expect(preparationBranch.contains(
+            "rendererAssetInstaller.installIfNeeded()"))
+        #expect(preparationBranch.contains(
+            "settings.codexSidebarQuotaStatus = .unavailable"))
+    }
+
     @Test("controller uses a graceful handoff and never force-quits Codex")
     func gracefulAutomaticRestoreSource() throws {
         let source = try String(

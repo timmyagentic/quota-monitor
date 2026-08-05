@@ -582,6 +582,26 @@ final class OpsailCodexRefitController: NSObject {
         }
     }
 
+    private func prepareExplicitRestartPrerequisites() -> Bool {
+        guard fileManager.isExecutableFile(atPath: helperURL.path) else {
+            settings.codexSidebarQuotaStatus = .unavailable
+            Log.ui.error(
+                "Opsail helper unavailable during explicit restart preflight at \(self.helperURL.path, privacy: .public)")
+            return false
+        }
+        do {
+            let outcome = try rendererAssetInstaller.installIfNeeded()
+            Log.ui.info(
+                "Opsail explicit restart prerequisites prepared: \(String(describing: outcome), privacy: .public)")
+            return true
+        } catch {
+            settings.codexSidebarQuotaStatus = .unavailable
+            Log.ui.error(
+                "Opsail explicit restart prerequisites unavailable: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
     private func scheduleManagerRetry() {
         guard enabled, !stopping, managerRetryTask == nil else { return }
         let delay = OpsailRetryPolicy.delayNanoseconds(
@@ -845,11 +865,13 @@ final class OpsailCodexRefitController: NSObject {
         managerRetryTask?.cancel()
         managerRetryTask = nil
         managerRetryAttempt = 0
+        pendingManagerAllowLaunch = false
         switch launchPlan {
         case .launch:
             settings.codexSidebarQuotaStatus = .launching
             startManagedSession(allowLaunch: true)
         case .restart(let processIdentifier):
+            guard prepareExplicitRestartPrerequisites() else { return }
             guard explicitRestartState.begin(
                 processIdentifier: processIdentifier,
                 runningProcessIdentifiers: runningProcessIdentifiers)
