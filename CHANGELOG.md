@@ -33,6 +33,7 @@ window copy.
 #### Summary
 
 - The Codex sidebar widget can once again open or restart Codex directly from Quota Monitor, including when the current session cannot accept the widget.
+- Private Beta builds now remain protected until they reach the authorized release service.
 - The Codex sidebar quota widget now follows Codex's English or Simplified Chinese language, with clearer weekly labels, shorter reset times, and a calmer compact layout.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
 - Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
@@ -83,6 +84,7 @@ window copy.
 
 ### Changed
 
+- **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
 - **Bilingual Codex quota hierarchy.** The sidebar summary now reads “Weekly · 32% left” or “本周 · 剩余 32%”, while details use localized quota terms, minute-level reset dates, and a single compact metadata line without repeating the visible used percentage or local-time note.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
 - **Seamless automatic Codex widget restoration.** After a separate opt-in, Quota Monitor intercepts only a unique just-launched Codex process before its window appears, then reopens it once with the native widget; existing, ambiguous, and custom debugging sessions remain untouched, and Codex is never force-quit.

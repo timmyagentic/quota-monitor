@@ -95,6 +95,51 @@ Only one publisher can hold the lease. A failed or interrupted publisher leaves
 the lease in place until its expiry, so another run cannot interleave artifact
 and appcast writes. Successful publication releases the lease immediately.
 
+### Encrypted CI packaging handoff
+
+When the release Mac has the Sparkle and Cloudflare publisher credentials but
+not the Apple notarization credentials, the maintainer can dispatch
+`private-beta-package.yml`. The workflow accepts only an exact commit already
+contained in `main`, runs the existing Developer ID signing and notarization
+pipeline, and uploads only two one-day-retention files: an AES-256-GCM CMS
+ciphertext and its provenance metadata. It has read-only repository permission
+and contains no Sparkle, Cloudflare, R2, publication-lock, GitHub Release, or
+appcast publication capability.
+
+Generate a new one-time RSA recipient on the release Mac and keep its private
+key there:
+
+```sh
+openssl req -x509 -newkey rsa:4096 -sha256 -nodes \
+  -keyout private-beta-recipient.key \
+  -out private-beta-recipient.pem \
+  -subj "/CN=QuotaMonitor Private Beta One-Time Recipient" \
+  -days 2
+chmod 600 private-beta-recipient.key
+RECIPIENT_CERTIFICATE_BASE64="$(base64 < private-beta-recipient.pem | tr -d '\n')"
+gh workflow run private-beta-package.yml \
+  -f source_sha="FULL_MAIN_COMMIT_SHA" \
+  -f beta_sequence="1" \
+  -f recipient_certificate_base64="${RECIPIENT_CERTIFICATE_BASE64}"
+```
+
+After the workflow succeeds, download the named artifact and decrypt it
+locally. Compare both ciphertext and plaintext SHA-256 values with the metadata
+before continuing with the normal publisher in `--skip-package` mode:
+
+```sh
+openssl cms -decrypt -binary -inform DER \
+  -in QuotaMonitor-0.2.43-beta.1.dmg.cms \
+  -recip private-beta-recipient.pem \
+  -inkey private-beta-recipient.key \
+  -out dist/QuotaMonitor-0.2.43-beta.1.dmg
+python3 tools/private-beta-release.py --beta-sequence 1 --skip-package
+```
+
+The recipient key is single-release material. Delete it after the decrypted
+DMG, code signature, notarization ticket, hashes, private Worker routes, and
+unchanged public stable feed have all been verified.
+
 The internal build number is numeric and monotonic. For a given semantic
 version, Private Beta sequences occupy slots 1–8999 and the stable build uses
 slot 9000, so stable supersedes every Beta of that version. A later semantic
