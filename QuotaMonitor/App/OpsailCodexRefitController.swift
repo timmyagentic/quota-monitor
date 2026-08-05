@@ -893,6 +893,7 @@ final class OpsailCodexRefitController: NSObject {
         managerRetryTask?.cancel()
         managerRetryTask = nil
         managerRetryAttempt = 0
+        pendingManagerAllowLaunch = false
         settings.codexSidebarQuotaStatus = .attaching
         startManagedSession(allowLaunch: false)
     }

@@ -489,6 +489,27 @@ struct OpsailCodexRefitTests {
             "OpsailCodexRefitActions.requestExplicitLaunch()"))
     }
 
+    @Test("attach retry drops stale one-shot launch intent")
+    func attachRetryDropsPendingLaunchIntent() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let start = try #require(source.range(
+            of: "@objc private func attachRetryRequested()"))
+        let end = try #require(source.range(
+            of: "@objc private func codexWillLaunch",
+            range: start.upperBound..<source.endIndex))
+        let branch = source[start.lowerBound..<end.lowerBound]
+        let clearIntent = try #require(branch.range(
+            of: "pendingManagerAllowLaunch = false"))
+        let attach = try #require(branch.range(
+            of: "startManagedSession(allowLaunch: false)"))
+
+        #expect(clearIntent.lowerBound < attach.lowerBound)
+    }
+
     @Test("controller uses a graceful handoff and never force-quits Codex")
     func gracefulAutomaticRestoreSource() throws {
         let source = try String(
