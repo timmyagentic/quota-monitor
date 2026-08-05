@@ -560,6 +560,10 @@ final class OpsailCodexRefitController: NSObject {
             self.enableInvocationID = nil
             self.enableProcess = nil
             guard self.enabled, !self.stopping else { return }
+            if self.settings.codexSidebarQuotaStatus == .multipleCodexInstances {
+                self.pendingManagerAllowLaunch = false
+                return
+            }
             if effectiveAllowLaunch, status != 0 {
                 self.clearManagedLaunchExpectation()
             }
@@ -868,6 +872,15 @@ final class OpsailCodexRefitController: NSObject {
         managedLaunchExpectationTask = nil
     }
 
+    private func enterMultipleCodexInstancesState() {
+        managerRetryTask?.cancel()
+        managerRetryTask = nil
+        managerRetryAttempt = 0
+        pendingManagerAllowLaunch = false
+        clearManagedLaunchExpectation()
+        settings.codexSidebarQuotaStatus = .multipleCodexInstances
+    }
+
     private func resumeManagedSessionAfterHandoff(
         terminatedProcessIdentifier: pid_t
     ) {
@@ -885,7 +898,7 @@ final class OpsailCodexRefitController: NSObject {
             settings.codexSidebarQuotaStatus = .attaching
             startManagedSession(allowLaunch: false)
         case .ambiguous:
-            settings.codexSidebarQuotaStatus = .multipleCodexInstances
+            enterMultipleCodexInstancesState()
             Log.ui.info(
                 "Skipped managed Codex relaunch because handoff ownership became ambiguous")
         }
@@ -932,7 +945,7 @@ final class OpsailCodexRefitController: NSObject {
                     return
                 }
             case .ambiguous:
-                settings.codexSidebarQuotaStatus = .multipleCodexInstances
+                enterMultipleCodexInstancesState()
                 Log.ui.info(
                     "Skipped the explicit Codex restart because launch ownership became ambiguous during preflight")
                 return
@@ -963,7 +976,7 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Restarting Codex process \(processIdentifier, privacy: .public) after an explicit in-app request")
         case .ambiguous:
-            settings.codexSidebarQuotaStatus = .multipleCodexInstances
+            enterMultipleCodexInstancesState()
             Log.ui.info(
                 "Skipped the explicit Codex restart because launch ownership was ambiguous")
         }
@@ -1115,7 +1128,7 @@ final class OpsailCodexRefitController: NSObject {
                 settings.codexSidebarQuotaStatus = .attaching
                 startManagedSession(allowLaunch: false)
             case .ambiguous:
-                settings.codexSidebarQuotaStatus = .multipleCodexInstances
+                enterMultipleCodexInstancesState()
             }
             return
         }
@@ -1161,7 +1174,7 @@ final class OpsailCodexRefitController: NSObject {
         let runningProcessIdentifiers =
             supportedCodexApplications().map(\.processIdentifier)
         guard runningProcessIdentifiers.count <= 1 else {
-            settings.codexSidebarQuotaStatus = .multipleCodexInstances
+            enterMultipleCodexInstancesState()
             return
         }
 

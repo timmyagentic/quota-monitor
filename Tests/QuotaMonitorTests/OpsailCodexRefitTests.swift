@@ -483,8 +483,7 @@ struct OpsailCodexRefitTests {
             of: "@objc private func attachRetryRequested()",
             range: ambiguous.upperBound..<controller.endIndex))
         let branch = controller[ambiguous.lowerBound..<branchEnd.lowerBound]
-        #expect(branch.contains(
-            "settings.codexSidebarQuotaStatus = .multipleCodexInstances"))
+        #expect(branch.contains("enterMultipleCodexInstancesState()"))
 
         let settings = try String(
             contentsOf: Self.repositoryRoot()
@@ -588,8 +587,7 @@ struct OpsailCodexRefitTests {
         #expect(preflight.lowerBound < ownershipRecheck.lowerBound)
         #expect(ownershipRecheck.lowerBound < signal.lowerBound)
         #expect(restartTracking.lowerBound < revalidatedOwnershipUse.lowerBound)
-        #expect(branch.contains(
-            "settings.codexSidebarQuotaStatus = .multipleCodexInstances"))
+        #expect(branch.contains("enterMultipleCodexInstancesState()"))
 
         let preparation = try #require(source.range(
             of: "private func prepareExplicitRestartPrerequisites()"))
@@ -658,13 +656,57 @@ struct OpsailCodexRefitTests {
 
         #expect(branch.contains(
             "OpsailCodexActivationPolicy.handoffCompletionPlan"))
-        #expect(branch.contains("pendingManagerAllowLaunch = false"))
-        #expect(branch.contains("clearManagedLaunchExpectation()"))
+        #expect(branch.contains("enterMultipleCodexInstancesState()"))
         #expect(attachBranch.contains(
             "settings.codexSidebarQuotaStatus = .attaching"))
         #expect(attachBranch.contains(
             "startManagedSession(allowLaunch: false)"))
         #expect(!branch.contains(".needsCodexQuit"))
+    }
+
+    @Test("entering multi-instance state cancels stale manager work")
+    func multipleInstanceStateCancelsStaleManagerWork() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let state = try #require(source.range(
+            of: "private func enterMultipleCodexInstancesState()"))
+        let resume = try #require(source.range(
+            of: "private func resumeManagedSessionAfterHandoff",
+            range: state.upperBound..<source.endIndex))
+        let stateBranch = source[state.lowerBound..<resume.lowerBound]
+        #expect(stateBranch.contains("managerRetryTask?.cancel()"))
+        #expect(stateBranch.contains("managerRetryTask = nil"))
+        #expect(stateBranch.contains("managerRetryAttempt = 0"))
+        #expect(stateBranch.contains("pendingManagerAllowLaunch = false"))
+        #expect(stateBranch.contains("clearManagedLaunchExpectation()"))
+        #expect(stateBranch.contains(
+            "settings.codexSidebarQuotaStatus = .multipleCodexInstances"))
+
+        let didLaunch = try #require(source.range(
+            of: "@objc private func codexDidLaunch"))
+        let runningCount = try #require(source.range(
+            of: "guard runningProcessIdentifiers.count <= 1 else",
+            range: didLaunch.upperBound..<source.endIndex))
+        let managedLaunch = try #require(source.range(
+            of: "let isManagedLaunch = consumeManagedLaunchExpectation()",
+            range: runningCount.upperBound..<source.endIndex))
+        let ambiguousLaunch = source[
+            runningCount.lowerBound..<managedLaunch.lowerBound]
+        #expect(ambiguousLaunch.contains("enterMultipleCodexInstancesState()"))
+
+        let managerCompletion = try #require(source.range(
+            of: "if self.settings.codexSidebarQuotaStatus == .multipleCodexInstances"))
+        let pendingLaunch = try #require(source.range(
+            of: "if self.pendingManagerAllowLaunch",
+            range: managerCompletion.upperBound..<source.endIndex))
+        let completionBranch = source[
+            managerCompletion.lowerBound..<pendingLaunch.lowerBound]
+        #expect(completionBranch.contains(
+            "self.pendingManagerAllowLaunch = false"))
+        #expect(completionBranch.contains("return"))
     }
 
     @Test("controller uses a graceful handoff and never force-quits Codex")
