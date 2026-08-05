@@ -872,9 +872,33 @@ final class OpsailCodexRefitController: NSObject {
             startManagedSession(allowLaunch: true)
         case .restart(let processIdentifier):
             guard prepareExplicitRestartPrerequisites() else { return }
+            let revalidatedRunningProcessIdentifiers =
+                supportedCodexApplications().map(\.processIdentifier)
+            switch OpsailCodexActivationPolicy.explicitLaunchPlan(
+                runningProcessIdentifiers:
+                    revalidatedRunningProcessIdentifiers)
+            {
+            case .launch:
+                settings.codexSidebarQuotaStatus = .launching
+                startManagedSession(allowLaunch: true)
+                return
+            case .restart(let revalidatedProcessIdentifier):
+                guard revalidatedProcessIdentifier == processIdentifier else {
+                    settings.codexSidebarQuotaStatus = .needsCodexQuit
+                    Log.ui.info(
+                        "Skipped the explicit Codex restart because the running process changed during preflight")
+                    return
+                }
+            case .ambiguous:
+                settings.codexSidebarQuotaStatus = .multipleCodexInstances
+                Log.ui.info(
+                    "Skipped the explicit Codex restart because launch ownership became ambiguous during preflight")
+                return
+            }
             guard explicitRestartState.begin(
                 processIdentifier: processIdentifier,
-                runningProcessIdentifiers: runningProcessIdentifiers)
+                runningProcessIdentifiers:
+                    revalidatedRunningProcessIdentifiers)
             else {
                 settings.codexSidebarQuotaStatus = .needsCodexQuit
                 return

@@ -563,9 +563,23 @@ struct OpsailCodexRefitTests {
         let branch = source[action.lowerBound..<retry.lowerBound]
         let preflight = try #require(branch.range(
             of: "guard prepareExplicitRestartPrerequisites() else { return }"))
+        let ownershipRecheck = try #require(branch.range(
+            of: "let revalidatedRunningProcessIdentifiers =",
+            range: preflight.upperBound..<branch.endIndex))
         let signal = try #require(branch.range(
             of: "OpsailCodexTerminationSignal.requestGracefulTermination"))
+        let restartTracking = try #require(branch.range(
+            of: "guard explicitRestartState.begin(",
+            range: ownershipRecheck.upperBound..<signal.lowerBound))
+        let revalidatedOwnershipUse = try #require(branch.range(
+            of: "revalidatedRunningProcessIdentifiers",
+            range: restartTracking.upperBound..<signal.lowerBound))
         #expect(preflight.lowerBound < signal.lowerBound)
+        #expect(preflight.lowerBound < ownershipRecheck.lowerBound)
+        #expect(ownershipRecheck.lowerBound < signal.lowerBound)
+        #expect(restartTracking.lowerBound < revalidatedOwnershipUse.lowerBound)
+        #expect(branch.contains(
+            "settings.codexSidebarQuotaStatus = .multipleCodexInstances"))
 
         let preparation = try #require(source.range(
             of: "private func prepareExplicitRestartPrerequisites()"))
