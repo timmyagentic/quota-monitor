@@ -442,28 +442,31 @@ export async function handlePrivateBetaAdmin(
   return jsonResponse({ revoked: true });
 }
 
-function resolvedRange(object: R2ObjectBody): { start: number; length: number } | null {
-  const range = object.range;
-  if (range === undefined) return null;
+function resolvedRequestRange(
+  range: R2Range,
+  objectSize: number,
+): { start: number; length: number } | null {
+  if (!Number.isSafeInteger(objectSize) || objectSize <= 0) return null;
   if ("suffix" in range) {
     if (!Number.isSafeInteger(range.suffix) || range.suffix <= 0) return null;
-    const length = Math.min(range.suffix, object.size);
+    const length = Math.min(range.suffix, objectSize);
     if (length <= 0) return null;
-    return { start: object.size - length, length };
+    return { start: objectSize - length, length };
   }
   if (range.offset === undefined && range.length === undefined) return null;
   const start = range.offset ?? 0;
-  const length = range.length ?? object.size - start;
+  const requestedLength = range.length ?? objectSize - start;
   if (
     !Number.isSafeInteger(start) ||
-    !Number.isSafeInteger(length) ||
+    !Number.isSafeInteger(requestedLength) ||
     start < 0 ||
-    length <= 0 ||
-    start >= object.size ||
-    start + length > object.size
+    requestedLength <= 0 ||
+    start >= objectSize
   ) {
     return null;
   }
+  const length = Math.min(requestedLength, objectSize - start);
+  if (!Number.isSafeInteger(length) || length <= 0) return null;
   return { start, length };
 }
 
@@ -536,7 +539,11 @@ async function serveObject(
     headers.set("Content-Length", String(object.size));
     return new Response(object.body, { headers });
   }
-  const range = resolvedRange(object);
+  // The production R2 binding does not consistently expose numeric
+  // `object.range` metadata. The request range was parsed into numeric values
+  // before the read, so resolve the response range from it and the authoritative
+  // total object size instead of trusting that optional metadata.
+  const range = resolvedRequestRange(requestRange, object.size);
   if (range === null) return hiddenNotFound();
   headers.set("Content-Length", String(range.length));
   headers.set(
