@@ -55,6 +55,12 @@ enum OpsailCodexActivationPolicy {
         case ambiguous
     }
 
+    enum HandoffCompletionPlan: Equatable {
+        case launch
+        case attach
+        case ambiguous
+    }
+
     static func explicitLaunchPlan(
         runningProcessIdentifiers: [pid_t]
     ) -> ExplicitLaunchPlan {
@@ -63,6 +69,19 @@ enum OpsailCodexActivationPolicy {
             .launch
         case 1:
             .restart(processIdentifier: runningProcessIdentifiers[0])
+        default:
+            .ambiguous
+        }
+    }
+
+    static func handoffCompletionPlan(
+        remainingProcessIdentifiers: [pid_t]
+    ) -> HandoffCompletionPlan {
+        switch remainingProcessIdentifiers.count {
+        case 0:
+            .launch
+        case 1:
+            .attach
         default:
             .ambiguous
         }
@@ -849,6 +868,29 @@ final class OpsailCodexRefitController: NSObject {
         managedLaunchExpectationTask = nil
     }
 
+    private func resumeManagedSessionAfterHandoff(
+        terminatedProcessIdentifier: pid_t
+    ) {
+        let remainingProcessIdentifiers = supportedCodexApplications()
+            .map(\.processIdentifier)
+            .filter { $0 != terminatedProcessIdentifier }
+        pendingManagerAllowLaunch = false
+        switch OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: remainingProcessIdentifiers)
+        {
+        case .launch:
+            settings.codexSidebarQuotaStatus = .launching
+            startManagedSession(allowLaunch: true)
+        case .attach:
+            settings.codexSidebarQuotaStatus = .attaching
+            startManagedSession(allowLaunch: false)
+        case .ambiguous:
+            settings.codexSidebarQuotaStatus = .multipleCodexInstances
+            Log.ui.info(
+                "Skipped managed Codex relaunch because handoff ownership became ambiguous")
+        }
+    }
+
     @objc private func explicitLaunchRequested() {
         guard !stopping else { return }
         resetAutomaticRestoreState()
@@ -1030,8 +1072,8 @@ final class OpsailCodexRefitController: NSObject {
             managerRetryTask?.cancel()
             managerRetryTask = nil
             managerRetryAttempt = 0
-            settings.codexSidebarQuotaStatus = .launching
-            startManagedSession(allowLaunch: true)
+            resumeManagedSessionAfterHandoff(
+                terminatedProcessIdentifier: processIdentifier)
             return
         }
         if explicitRestartState.awaitingTerminationProcessIdentifier != nil {
@@ -1046,8 +1088,8 @@ final class OpsailCodexRefitController: NSObject {
             managerRetryTask?.cancel()
             managerRetryTask = nil
             managerRetryAttempt = 0
-            settings.codexSidebarQuotaStatus = .launching
-            startManagedSession(allowLaunch: true)
+            resumeManagedSessionAfterHandoff(
+                terminatedProcessIdentifier: processIdentifier)
             return
         }
         if automaticRestoreState.awaitingTerminationProcessIdentifier != nil {

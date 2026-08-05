@@ -255,6 +255,16 @@ struct OpsailCodexRefitTests {
             bundleIdentifier: "com.example.other"))
     }
 
+    @Test("handoff completion launches only when no Codex instance remains")
+    func handoffCompletionPolicy() {
+        #expect(OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: []) == .launch)
+        #expect(OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: [41]) == .attach)
+        #expect(OpsailCodexActivationPolicy.handoffCompletionPlan(
+            remainingProcessIdentifiers: [41, 42]) == .ambiguous)
+    }
+
     @Test("an explicit restart follows only its exact authorized process")
     func explicitRestartMatching() {
         var state = OpsailCodexExplicitRestartState()
@@ -594,6 +604,37 @@ struct OpsailCodexRefitTests {
             "rendererAssetInstaller.installIfNeeded()"))
         #expect(preparationBranch.contains(
             "settings.codexSidebarQuotaStatus = .unavailable"))
+    }
+
+    @Test("termination handoff revalidates running Codex apps before relaunch")
+    func terminationHandoffRevalidatesOwnership() throws {
+        let source = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let completion = try #require(source.range(
+            of: "private func resumeManagedSessionAfterHandoff"))
+        let action = try #require(source.range(
+            of: "@objc private func explicitLaunchRequested()",
+            range: completion.upperBound..<source.endIndex))
+        let branch = source[completion.lowerBound..<action.lowerBound]
+
+        #expect(branch.contains("supportedCodexApplications()"))
+        #expect(branch.contains(".filter { $0 != terminatedProcessIdentifier }"))
+        #expect(branch.contains("remainingProcessIdentifiers: remainingProcessIdentifiers"))
+        #expect(branch.contains("startManagedSession(allowLaunch: true)"))
+        #expect(branch.contains("startManagedSession(allowLaunch: false)"))
+
+        let didTerminate = try #require(source.range(
+            of: "@objc private func codexDidTerminate"))
+        let didLaunch = try #require(source.range(
+            of: "@objc private func codexDidLaunch",
+            range: didTerminate.upperBound..<source.endIndex))
+        let terminationBranch = source[
+            didTerminate.lowerBound..<didLaunch.lowerBound]
+        #expect(terminationBranch.components(
+            separatedBy: "resumeManagedSessionAfterHandoff(").count == 3)
     }
 
     @Test("controller uses a graceful handoff and never force-quits Codex")
