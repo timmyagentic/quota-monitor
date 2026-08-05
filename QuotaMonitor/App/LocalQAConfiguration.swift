@@ -53,6 +53,7 @@ enum LocalQAStep: String, Equatable {
     case openMenuBarHelp = "open-menubar-help"
     case openWhatsNew = "open-whats-new"
     case showCodexSidebarNeedsQuit = "show-codex-sidebar-needs-quit"
+    case showCodexSidebarMultipleInstances = "show-codex-sidebar-multiple-instances"
     case showCodexSidebarReadyToLaunch = "show-codex-sidebar-ready-to-launch"
     case showPopover = "show-popover"
     case refreshAll = "refresh-all"

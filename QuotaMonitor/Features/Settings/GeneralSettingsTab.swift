@@ -254,6 +254,8 @@ struct GeneralSettingsTab: View {
             L10n.codexCapsuleAttachingStatus
         case .needsCodexQuit:
             L10n.codexCapsuleNeedsQuitStatus
+        case .multipleCodexInstances:
+            L10n.codexCapsuleMultipleInstancesStatus
         case .readyToLaunch:
             L10n.codexCapsuleReadyToLaunchStatus
         case .launching:
@@ -267,7 +269,7 @@ struct GeneralSettingsTab: View {
         switch settings.codexSidebarQuotaStatus {
         case .attaching, .launching:
             "arrow.triangle.2.circlepath"
-        case .needsCodexQuit:
+        case .needsCodexQuit, .multipleCodexInstances:
             "hand.raised.fill"
         case .readyToLaunch:
             "play.circle.fill"
@@ -282,7 +284,7 @@ struct GeneralSettingsTab: View {
         switch settings.codexSidebarQuotaStatus {
         case .active:
             .green
-        case .needsCodexQuit:
+        case .needsCodexQuit, .multipleCodexInstances:
             .orange
         case .readyToLaunch:
             .accentColor
@@ -309,6 +311,16 @@ struct GeneralSettingsTab: View {
         case .needsCodexQuit:
             HStack {
                 Button(L10n.codexCapsuleRestartButton) {
+                    OpsailCodexRefitActions.requestExplicitLaunch()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleDisableButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .multipleCodexInstances:
+            HStack {
+                Button(L10n.codexCapsuleMultipleInstancesRetryButton) {
                     OpsailCodexRefitActions.requestExplicitLaunch()
                 }
                 .buttonStyle(.borderedProminent)

@@ -106,6 +106,14 @@ enum L10n {
                 + "只会向这一个会话发送标准退出信号，并立即用挂件模式重新打开；"
                 + "绝不会强制退出 Codex。")
     }
+    static var codexCapsuleMultipleInstancesStatus: String {
+        t(
+            en: "More than one Codex or ChatGPT instance is running. Close the extra instances, "
+                + "then try again. Quota Monitor will not choose or quit a session while it "
+                + "cannot identify a single one safely.",
+            zh: "检测到多个 Codex 或 ChatGPT 实例。请先关闭多余实例，再重新检测。"
+                + "Quota Monitor 无法安全确认唯一会话时，不会擅自选择或退出任何一个实例。")
+    }
     static var codexCapsuleReadyToLaunchStatus: String {
         t(
             en: "Codex is closed. Open it from here to enable the native quota widget.",
@@ -131,6 +139,9 @@ enum L10n {
     }
     static var codexCapsuleRestartButton: String {
         t(en: "Restart Codex with widget", zh: "重新打开 Codex 并启用挂件")
+    }
+    static var codexCapsuleMultipleInstancesRetryButton: String {
+        t(en: "Close extras, then retry", zh: "关闭多余实例后重试")
     }
     static var codexCapsuleRetryButton: String {
         t(en: "Try again", zh: "再次尝试")

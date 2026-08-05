@@ -875,7 +875,7 @@ final class OpsailCodexRefitController: NSObject {
             Log.ui.info(
                 "Restarting Codex process \(processIdentifier, privacy: .public) after an explicit in-app request")
         case .ambiguous:
-            settings.codexSidebarQuotaStatus = .needsCodexQuit
+            settings.codexSidebarQuotaStatus = .multipleCodexInstances
             Log.ui.info(
                 "Skipped the explicit Codex restart because launch ownership was ambiguous")
         }
@@ -1009,6 +1009,23 @@ final class OpsailCodexRefitController: NSObject {
             return
         }
 
+        if settings.codexSidebarQuotaStatus == .multipleCodexInstances {
+            let remainingProcessIdentifiers = supportedCodexApplications()
+                .map(\.processIdentifier)
+                .filter { $0 != processIdentifier }
+            switch OpsailCodexActivationPolicy.explicitLaunchPlan(
+                runningProcessIdentifiers: remainingProcessIdentifiers)
+            {
+            case .launch:
+                settings.codexSidebarQuotaStatus = .readyToLaunch
+            case .restart:
+                settings.codexSidebarQuotaStatus = .needsCodexQuit
+            case .ambiguous:
+                settings.codexSidebarQuotaStatus = .multipleCodexInstances
+            }
+            return
+        }
+
         managerRetryTask?.cancel()
         managerRetryTask = nil
         clearManagedLaunchExpectation()
@@ -1044,6 +1061,13 @@ final class OpsailCodexRefitController: NSObject {
         }
         if automaticRestoreState.awaitingTerminationProcessIdentifier != nil {
             settings.codexSidebarQuotaStatus = .launching
+            return
+        }
+
+        let runningProcessIdentifiers =
+            supportedCodexApplications().map(\.processIdentifier)
+        guard runningProcessIdentifiers.count <= 1 else {
+            settings.codexSidebarQuotaStatus = .multipleCodexInstances
             return
         }
 

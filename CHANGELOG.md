@@ -73,7 +73,7 @@ window copy.
 
 ### Fixed
 
-- **Restored in-app Codex launch.** The widget setup keeps a clear restart action when Codex is already running and uses that explicit click to reopen only the single identified session with the widget, while generic retries remain attach-only.
+- **Restored in-app Codex launch.** The widget setup keeps a clear restart action when Codex is already running, reopens only the single identified session after an explicit click, and asks users to close extra instances when ownership is ambiguous, while generic retries remain attach-only.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.

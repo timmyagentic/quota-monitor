@@ -443,6 +443,8 @@ struct OpsailCodexRefitTests {
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("never force-quit"))
             #expect(L10n.codexCapsuleNeedsQuitStatus.contains(
                 "standard quit signal"))
+            #expect(L10n.codexCapsuleMultipleInstancesStatus.contains(
+                "Close the extra instances"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("Open it from here"))
             #expect(L10n.codexCapsuleLaunchButton.contains("Open Codex"))
             #expect(L10n.codexCapsuleRestartButton.contains("Restart Codex"))
@@ -452,10 +454,46 @@ struct OpsailCodexRefitTests {
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("刚启动"))
             #expect(L10n.codexCapsuleAutoRestoreHelp.contains("绝不会强制退出"))
             #expect(L10n.codexCapsuleNeedsQuitStatus.contains("标准退出信号"))
+            #expect(L10n.codexCapsuleMultipleInstancesStatus.contains("关闭多余实例"))
             #expect(L10n.codexCapsuleReadyToLaunchStatus.contains("从这里打开"))
             #expect(L10n.codexCapsuleLaunchButton.contains("打开 Codex"))
             #expect(L10n.codexCapsuleRestartButton.contains("重新打开 Codex"))
         }
+    }
+
+    @Test("ambiguous in-app launch asks the user to close extra instances")
+    func ambiguousLaunchActionSource() throws {
+        let controller = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/App/OpsailCodexRefitController.swift"),
+            encoding: .utf8)
+        let ambiguous = try #require(controller.range(of: "case .ambiguous:"))
+        let branchEnd = try #require(controller.range(
+            of: "@objc private func attachRetryRequested()",
+            range: ambiguous.upperBound..<controller.endIndex))
+        let branch = controller[ambiguous.lowerBound..<branchEnd.lowerBound]
+        #expect(branch.contains(
+            "settings.codexSidebarQuotaStatus = .multipleCodexInstances"))
+
+        let settings = try String(
+            contentsOf: Self.repositoryRoot()
+                .appendingPathComponent(
+                    "QuotaMonitor/Features/Settings/GeneralSettingsTab.swift"),
+            encoding: .utf8)
+        let actions = try #require(settings.range(
+            of: "private var codexSidebarActions"))
+        let multiple = try #require(settings.range(
+            of: "case .multipleCodexInstances:",
+            range: actions.upperBound..<settings.endIndex))
+        let unavailable = try #require(settings.range(
+            of: "case .unavailable:",
+            range: multiple.upperBound..<settings.endIndex))
+        let actionBranch = settings[multiple.lowerBound..<unavailable.lowerBound]
+        #expect(actionBranch.contains(
+            "Button(L10n.codexCapsuleMultipleInstancesRetryButton)"))
+        #expect(actionBranch.contains(
+            "OpsailCodexRefitActions.requestExplicitLaunch()"))
     }
 
     @Test("needs-quit UI keeps the user-authorized restart action")
