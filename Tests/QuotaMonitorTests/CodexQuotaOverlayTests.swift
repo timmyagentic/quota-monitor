@@ -1,0 +1,385 @@
+import CoreGraphics
+import Foundation
+import Testing
+@testable import QuotaMonitor
+
+@Suite("Codex native quota overlay")
+struct CodexQuotaOverlayTests {
+    private let now = Date(timeIntervalSince1970: 1_786_000_000)
+
+    private func window(
+        usedPercent: Double,
+        resetOffset: TimeInterval = 3_600
+    ) -> RateLimitSnapshot.Window {
+        RateLimitSnapshot.Window(
+            usedPercent: usedPercent,
+            windowDuration: 18_000,
+            resetAt: now.addingTimeInterval(resetOffset))
+    }
+
+    private func snapshot(
+        capturedOffset: TimeInterval = 0,
+        primary: RateLimitSnapshot.Window?,
+        secondary: RateLimitSnapshot.Window?
+    ) -> RateLimitSnapshot {
+        RateLimitSnapshot(
+            capturedAt: now.addingTimeInterval(capturedOffset),
+            planType: "pro",
+            primary: primary,
+            secondary: secondary,
+            additional: [],
+            resetCreditsAvailable: nil)
+    }
+
+    @Test("Fresh quota follows the selected used or remaining display mode")
+    func presentationFollowsDisplayMode() {
+        let rateLimits = snapshot(
+            primary: window(usedPercent: 37.4),
+            secondary: window(usedPercent: 82.6))
+
+        let used = CodexQuotaOverlayPresentation.make(
+            snapshot: rateLimits,
+            displayMode: .used,
+            now: now)
+        #expect(used.fiveHour?.percent == 37)
+        #expect(used.fiveHour?.usedPercent == 37)
+        #expect(used.fiveHour?.remainingPercent == 63)
+        #expect(used.fiveHour?.resetAt == now.addingTimeInterval(3_600))
+        #expect(used.weekly?.percent == 83)
+        #expect(used.fiveHour?.severity == .healthy)
+        #expect(used.weekly?.severity == .warning)
+        #expect(!used.isCached)
+
+        let remaining = CodexQuotaOverlayPresentation.make(
+            snapshot: rateLimits,
+            displayMode: .remaining,
+            now: now)
+        #expect(remaining.fiveHour?.percent == 63)
+        #expect(remaining.weekly?.percent == 17)
+    }
+
+    @Test("Last-good quota remains visible while it is stale")
+    func stalePresentationKeepsValues() {
+        let rateLimits = snapshot(
+            capturedOffset: -(16 * 60),
+            primary: window(usedPercent: 91),
+            secondary: window(usedPercent: 42))
+
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: rateLimits,
+            displayMode: .used,
+            now: now)
+
+        #expect(presentation.hasQuota)
+        #expect(presentation.isCached)
+        #expect(presentation.fiveHour?.percent == 91)
+        #expect(presentation.fiveHour?.severity == .critical)
+    }
+
+    @Test("An expired window marks an otherwise recent snapshot as cached")
+    func expiredWindowMarksSnapshotCached() {
+        let rateLimits = snapshot(
+            primary: window(usedPercent: 55, resetOffset: -1),
+            secondary: window(usedPercent: 44))
+
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: rateLimits,
+            displayMode: .used,
+            now: now)
+
+        #expect(presentation.isCached)
+        #expect(presentation.hasQuota)
+    }
+
+    @Test("Missing quota produces a compact unavailable state")
+    func unavailableWithoutQuota() {
+        let emptySnapshot = snapshot(primary: nil, secondary: nil)
+
+        #expect(!CodexQuotaOverlayPresentation.make(
+            snapshot: nil,
+            displayMode: .used,
+            now: now).hasQuota)
+        #expect(!CodexQuotaOverlayPresentation.make(
+            snapshot: emptySnapshot,
+            displayMode: .used,
+            now: now).hasQuota)
+    }
+
+    @Test("Window selection rejects helper surfaces and preserves front order")
+    func selectsFrontCodexWindow() {
+        let pid: pid_t = 120
+        let candidates = [
+            CodexWindowCandidate(
+                windowNumber: 1,
+                ownerPID: pid,
+                layer: 2,
+                alpha: 1,
+                bounds: CGRect(x: 0, y: 0, width: 1_200, height: 800)),
+            CodexWindowCandidate(
+                windowNumber: 2,
+                ownerPID: pid,
+                layer: 0,
+                alpha: 1,
+                bounds: CGRect(x: 0, y: 0, width: 1_200, height: 32)),
+            CodexWindowCandidate(
+                windowNumber: 3,
+                ownerPID: 999,
+                layer: 0,
+                alpha: 1,
+                bounds: CGRect(x: 0, y: 0, width: 1_200, height: 800)),
+            CodexWindowCandidate(
+                windowNumber: 4,
+                ownerPID: pid,
+                layer: 0,
+                alpha: 1,
+                bounds: CGRect(x: 100, y: 80, width: 1_200, height: 800)),
+            CodexWindowCandidate(
+                windowNumber: 5,
+                ownerPID: pid,
+                layer: 0,
+                alpha: 1,
+                bounds: CGRect(x: 200, y: 100, width: 1_000, height: 700))
+        ]
+
+        #expect(CodexWindowSelectionPolicy.frontWindow(
+            for: pid,
+            candidates: candidates)?.windowNumber == 4)
+    }
+
+    @Test("Quartz window frames map onto primary and secondary AppKit screens")
+    func convertsWindowCoordinates() {
+        let displays = [
+            CodexDisplayGeometry(
+                quartzFrame: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+                appKitFrame: CGRect(x: 0, y: 0, width: 1_920, height: 1_080)),
+            CodexDisplayGeometry(
+                quartzFrame: CGRect(x: -1_440, y: 0, width: 1_440, height: 900),
+                appKitFrame: CGRect(x: -1_440, y: 180, width: 1_440, height: 900))
+        ]
+
+        #expect(CodexWindowFrameConverter.appKitFrame(
+            for: CGRect(x: 100, y: 50, width: 900, height: 700),
+            displays: displays) == CGRect(x: 100, y: 330, width: 900, height: 700))
+        #expect(CodexWindowFrameConverter.appKitFrame(
+            for: CGRect(x: -1_400, y: 100, width: 1_000, height: 700),
+            displays: displays) == CGRect(x: -1_400, y: 280, width: 1_000, height: 700))
+    }
+
+    @Test("Overlay preserves the legacy right-side account-row slot")
+    func accountRowLayout() {
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080))
+            == CGRect(x: 300, y: 12, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
+            == CGRect(x: -900, y: 212, width: 132, height: 25))
+
+        let weeklyOnly = CodexQuotaOverlayPresentation.make(
+            snapshot: snapshot(
+                primary: nil,
+                secondary: window(usedPercent: 20)),
+            displayMode: .used,
+            now: now)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            presentation: weeklyOnly) == CGRect(
+                x: 348,
+                y: 12,
+                width: 84,
+                height: 25))
+    }
+
+    @Test("Hover details occupy the sidebar above the established account row")
+    func hoverDetailsLayout() {
+        let rateLimits = snapshot(
+            primary: window(usedPercent: 37),
+            secondary: window(usedPercent: 18))
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: rateLimits,
+            displayMode: .used,
+            now: now)
+        let resetCredits = CodexQuotaOverlayResetCreditsPresentation(
+            availableCount: 3,
+            expirations: [
+                now.addingTimeInterval(86_400),
+                now.addingTimeInterval(172_800),
+                now.addingTimeInterval(259_200)
+            ])
+
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: presentation,
+            resetCredits: nil) == 199)
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: presentation,
+            resetCredits: resetCredits) == 296)
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            contentHeight: 296) == CGRect(
+                x: 12,
+                y: 45,
+                width: 464,
+                height: 296))
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
+            contentHeight: 300) == CGRect(
+                x: -1_188,
+                y: 245,
+                width: 464,
+                height: 263))
+    }
+
+    @Test("Reset-card details prefer expirations and fall back to a live count")
+    func resetCreditsPresentation() {
+        let expirations = [
+            now.addingTimeInterval(100),
+            now.addingTimeInterval(200),
+            now.addingTimeInterval(300),
+            now.addingTimeInterval(400)
+        ]
+        let snapshot = CodexResetCreditsSnapshot(
+            capturedAt: now,
+            availableCount: 4,
+            credits: expirations.map {
+                CodexResetCredit(grantedAt: nil, expiresAt: $0)
+            },
+            detailStatus: .complete)
+
+        let detailed = CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: snapshot,
+            fallbackAvailableCount: nil,
+            now: now)
+        #expect(detailed?.availableCount == 4)
+        #expect(detailed?.expirations == Array(expirations.prefix(3)))
+
+        let countOnly = CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: nil,
+            fallbackAvailableCount: 2,
+            now: now)
+        #expect(countOnly?.availableCount == 2)
+        #expect(countOnly?.expirations.isEmpty == true)
+        #expect(CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: nil,
+            fallbackAvailableCount: 0,
+            now: now) == nil)
+    }
+
+    @Test("Expired reset cards disappear and no longer inflate the count")
+    func expiredResetCreditsAreFiltered() throws {
+        let snapshot = CodexResetCreditsSnapshot(
+            capturedAt: now.addingTimeInterval(-300),
+            availableCount: 4,
+            credits: [
+                CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now.addingTimeInterval(-1)),
+                CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now.addingTimeInterval(100)),
+                CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now.addingTimeInterval(200)),
+            ],
+            detailStatus: .complete)
+
+        let active = try #require(
+            CodexQuotaOverlayResetCreditsPresentation.make(
+                snapshot: snapshot,
+                fallbackAvailableCount: 4,
+                now: now))
+        #expect(active.availableCount == 2)
+        #expect(active.expirations == [
+            now.addingTimeInterval(100),
+            now.addingTimeInterval(200)
+        ])
+
+        #expect(CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: CodexResetCreditsSnapshot(
+                capturedAt: now.addingTimeInterval(-300),
+                availableCount: 1,
+                credits: [CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now)],
+                detailStatus: .complete),
+            fallbackAvailableCount: 1,
+            now: now) == nil)
+    }
+
+    @Test("Reset countdowns stay compact and stop at the refresh boundary")
+    func compactResetCountdown() {
+        #expect(CodexQuotaOverlayTimeFormatting.countdown(
+            to: now.addingTimeInterval(60),
+            now: now) != nil)
+        #expect(CodexQuotaOverlayTimeFormatting.countdown(
+            to: now,
+            now: now) == nil)
+        #expect(CodexQuotaOverlayTimeFormatting.countdown(
+            to: now.addingTimeInterval(-1),
+            now: now) == nil)
+    }
+
+    @Test("The existing sidebar opt-in persists across the native migration")
+    @MainActor
+    func settingPersists() {
+        let suite = "CodexQuotaOverlayTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.removePersistentDomain(forName: suite)
+
+        let settings = SettingsStore(defaults: defaults)
+        #expect(!settings.codexSidebarQuotaEnabled)
+        settings.codexSidebarQuotaEnabled = true
+        #expect(SettingsStore(defaults: defaults).codexSidebarQuotaEnabled)
+    }
+
+    @Test("Overlay intent stays hidden until Codex tracking is enabled")
+    @MainActor
+    func overlayRequiresCodexProvider() {
+        let suite = "CodexQuotaOverlayProviderTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(["claude"], forKey: "settings.enabledProviders")
+        defaults.set(true, forKey: "settings.codexSidebarQuotaEnabled")
+
+        let settings = SettingsStore(defaults: defaults)
+        #expect(settings.codexSidebarQuotaEnabled)
+        #expect(!settings.shouldShowCodexSidebarQuota)
+        #expect(settings.setProviderEnabled("codex", enabled: true))
+        #expect(settings.shouldShowCodexSidebarQuota)
+    }
+
+    @Test("Native overlay contains no Codex process or debugging lifecycle")
+    func nativeArchitectureHasNoRelaunchPath() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "QuotaMonitor/App/CodexQuotaOverlayController.swift"),
+            encoding: .utf8)
+        let buildScript = try String(
+            contentsOf: repositoryRoot.appendingPathComponent("build.sh"),
+            encoding: .utf8)
+        let appDelegate = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "QuotaMonitor/App/AppDelegate.swift"),
+            encoding: .utf8)
+
+        #expect(!source.contains("SIGTERM"))
+        #expect(!source.contains("remote-debugging-port"))
+        #expect(!source.contains("Process()"))
+        #expect(source.contains("panel.ignoresMouseEvents = false"))
+        #expect(source.contains("onHoverChanged"))
+        #expect(source.contains("detailsPanel"))
+        let pollingStart = try #require(
+            appDelegate.range(of: "env.startBackgroundPolling()"))
+        let overlayStart = try #require(
+            appDelegate.range(of: "overlayController.start()"))
+        #expect(pollingStart.lowerBound < overlayStart.lowerBound)
+        #expect(!buildScript.localizedCaseInsensitiveContains("opsail"))
+        #expect(!FileManager.default.fileExists(
+            atPath: repositoryRoot.appendingPathComponent(
+                "QuotaMonitor/App/OpsailCodexRefitController.swift").path))
+    }
+}

@@ -1,12 +1,31 @@
-# Codex sidebar quota reference
+# Codex sidebar quota evidence
+
+`native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
+screenshots from the isolated real-data QA build. They show the
+QuotaMonitor-owned native widget in the established slot immediately before
+Codex's account-row help control and its hover detail card with remaining
+quota, reset timing, progress, and reset-card expirations. The account name
+and unrelated conversation content are excluded.
+
+SHA-256:
+
+- `native-overlay.png`: `62d8e1ac10e75ad64034085bcdede4cd114ecf6e74d4542533c4b311e1c52bd1`
+- `native-overlay-expanded.png`: `587d5ee2c44581ac9d749a7d14e1e780ef762c1b4f29766fdeb1b76f3ca60e08`
+
+## Legacy reference
+
+These images document the superseded Chromium-injection implementation. They
+are retained as historical PR evidence only; current builds use a
+QuotaMonitor-owned native overlay and do not bundle Opsail, open a debugging
+port, inject renderer assets, or relaunch Codex.
 
 `opsail-v0.2.0-reference.png` is the upstream Opsail v0.2.0 product image
 copied from the audited source snapshot
 `4580d275d9910e68be2ebf6a524ce2ea6f98a5a9`.
 
-It documents the renderer now shipped unchanged through the bundled Opsail
-helper. It is a provenance/reference image, not evidence of a live
-QuotaMonitor-to-Codex restart test.
+It documents the renderer that the earlier implementation shipped through an
+Opsail helper. It is a provenance/reference image, not evidence for the current
+native overlay.
 
 SHA-256:
 `c60958d99126651308605092fefaf0ffe2d9b52575d3de1a396e8e7504fa0688`

@@ -22,13 +22,10 @@ extension Notification.Name {
 
 enum CodexSidebarQuotaStatus: Equatable {
     case disabled
-    case attaching
-    case needsCodexQuit
-    case multipleCodexInstances
-    case readyToLaunch
-    case launching
+    case waitingForCodex
     case active
-    case unavailable
+    case showingCached
+    case quotaUnavailable
 }
 
 @Observable
@@ -94,22 +91,21 @@ final class SettingsStore {
         didSet { defaults.set(showDockIconForWindows,
                               forKey: Keys.showDockIconForWindows) }
     }
-    /// Injects a native-looking quota capsule into the validated Codex sidebar
-    /// through Chromium's loopback DevTools protocol. Default OFF: this is an
-    /// intentional cross-app integration and requires an explicit new opt-in.
+    /// Shows an interactive QuotaMonitor-owned panel over the Codex account
+    /// row. The preference key is retained from the original sidebar feature
+    /// so existing opt-ins migrate without user action.
     var codexSidebarQuotaEnabled: Bool {
         didSet { defaults.set(codexSidebarQuotaEnabled,
                               forKey: Keys.codexSidebarQuotaEnabled) }
     }
-    /// Allows QuotaMonitor to hand off a normal Codex launch before its window
-    /// appears. Default OFF for existing users: enabling this permits a
-    /// graceful, one-time handoff of only a newly launched Codex process.
-    var codexSidebarQuotaAutoRestoreEnabled: Bool {
-        didSet { defaults.set(codexSidebarQuotaAutoRestoreEnabled,
-                              forKey: Keys.codexSidebarQuotaAutoRestoreEnabled) }
-    }
-    /// Runtime-only state for the one-shot Codex activation flow.
+    /// Runtime-only visibility and freshness state for the native overlay.
     var codexSidebarQuotaStatus: CodexSidebarQuotaStatus = .disabled
+    /// The persisted widget opt-in is user intent, while provider tracking is
+    /// the data-source gate. Reading both here prevents an older preference
+    /// combination from leaving an unavailable widget over Codex indefinitely.
+    var shouldShowCodexSidebarQuota: Bool {
+        codexSidebarQuotaEnabled && enabledProviders.contains("codex")
+    }
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
     /// 7 days because most users want a "what did I do this week"
@@ -379,8 +375,6 @@ final class SettingsStore {
             defaults.bool(forKey: Keys.showDockIconForWindows)
         self.codexSidebarQuotaEnabled =
             defaults.bool(forKey: Keys.codexSidebarQuotaEnabled)
-        self.codexSidebarQuotaAutoRestoreEnabled =
-            defaults.bool(forKey: Keys.codexSidebarQuotaAutoRestoreEnabled)
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.quotaDisplayMode = (defaults.string(forKey: Keys.quotaDisplayMode)
@@ -738,8 +732,6 @@ final class SettingsStore {
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
         static let codexSidebarQuotaEnabled = "settings.codexSidebarQuotaEnabled"
-        static let codexSidebarQuotaAutoRestoreEnabled =
-            "settings.codexSidebarQuotaAutoRestoreEnabled"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"
