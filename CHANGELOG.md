@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Dates and times in Sessions, History, Activity, and Trends now match the language selected inside Quota Monitor.
+
+### Fixed
+
+- **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
+
 ## [1.0.0] — 2026-08-09
 
 #### Summary
@@ -51,7 +59,6 @@ window copy.
 
 ### Fixed
 
-- **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
 - **Consistent Codex widget presentation.** The hover card now keeps one configured used-or-remaining percentage in its emphasized top-right position, matches the menu popover's typography and green/orange/red progress styling, and omits redundant refresh and local-time notes.
 - **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
