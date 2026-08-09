@@ -34,7 +34,10 @@ struct CodexResetCreditsRow: View {
 
     private var detailLabel: String {
         if let next = snapshot.nextExpiration {
-            return L10n.codexResetCardsNextExpires(Self.dateFormatter.string(from: next))
+            let formatted = LocalizedDateFormatting.string(
+                from: next,
+                style: .mediumDateShortTime)
+            return L10n.codexResetCardsNextExpires(formatted)
         }
         return snapshot.availableCount > 0
             ? L10n.codexResetCardsExpiryUnavailable
@@ -44,28 +47,17 @@ struct CodexResetCreditsRow: View {
     private var helpText: String {
         guard !snapshot.credits.isEmpty else { return detailLabel }
         let lines = snapshot.credits
-            .map { "- \(Self.dateTimeFormatter.string(from: $0.expiresAt))" }
+            .map { credit -> String in
+                let formatted = LocalizedDateFormatting.string(
+                    from: credit.expiresAt,
+                    style: .mediumDateMediumTime)
+                return "- \(formatted)"
+            }
             .joined(separator: "\n")
         return L10n.codexResetCardsHelp(lines)
     }
 
     private var countColor: Color {
         snapshot.availableCount > 0 ? .blue : .secondary
-    }
-
-    private static var dateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = LocalizationStore.activeLanguage.locale
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }
-
-    private static var dateTimeFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = LocalizationStore.activeLanguage.locale
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .medium
-        return formatter
     }
 }
