@@ -82,13 +82,12 @@ enum Migrations {
             }
         }
 
-        // v2: extend pricing_catalog with LiteLLM-derived fields.
+        // v2: historical schema expansion. The migration identifier and
+        // columns remain for databases created by older releases; current
+        // runtime pricing is bundled-only and resets this legacy metadata.
         //   - cache_creation_price_per_million: Claude-only 5-minute cache write rate. 0 for OpenAI models.
-        //   - above_*: tiered prices for >200k context (LiteLLM exposes these as
-        //     `*_cost_per_token_above_200k_tokens`). Stored but not yet billed.
-        //   - price_source: 'seed' | 'litellm' | 'local'. Locally-edited rows are
-        //     locked from automatic LiteLLM updates.
-        //   - fetched_at: when these prices were last refreshed from LiteLLM.
+        //   - above_*, price_source, fetched_at, and max_* are retained only so
+        //     the append-only migration chain can open existing databases.
         migrator.registerMigration("v2-litellm-pricing") { db in
             try db.alter(table: "pricing_catalog") { t in
                 t.add(column: "cache_creation_price_per_million", .double)
@@ -96,7 +95,7 @@ enum Migrations {
                 t.add(column: "above_200k_input_price_per_million", .double)
                 t.add(column: "above_200k_output_price_per_million", .double)
                 t.add(column: "price_source", .text)
-                    .notNull().defaults(to: "seed")
+                    .notNull().defaults(to: "bundled")
                 t.add(column: "fetched_at", .text)
                 t.add(column: "max_input_tokens", .integer)
                 t.add(column: "max_output_tokens", .integer)
@@ -347,7 +346,7 @@ enum Migrations {
         // This must be a migration rather than relying on the next history
         // scan: unchanged rollouts may otherwise retain stale values forever.
         migrator.registerMigration("v15-codex-pricing-policy-reprice") { db in
-            try PricingService.seedCatalog(in: db)
+            _ = try PricingService.installBundledCatalog(in: db)
             try PricingService.backfillAllValues(in: db)
         }
 
@@ -419,12 +418,11 @@ enum Migrations {
                 """)
         }
 
-        // v19: Reprice existing usage after introducing timestamp-dependent
-        // GPT-5.6 history. LiteLLM-owned catalog rows intentionally bypass
-        // seed updates, so the normal startup seed gate cannot be relied on
-        // to repair values already stored in usage_events.
+        // v19: Install current bundled prices before repricing existing usage
+        // with timestamp-dependent GPT-5.6 history. Older databases may still
+        // carry external or local provenance, but bundled prices now replace it.
         migrator.registerMigration("v19-gpt56-price-history-reprice") { db in
-            try PricingService.migrateGPT56LiteLLMPrices(in: db)
+            _ = try PricingService.installBundledCatalog(in: db)
             try PricingService.backfillAllValues(in: db)
         }
     }

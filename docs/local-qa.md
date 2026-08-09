@@ -269,7 +269,6 @@ Those paths can appear in human-facing docs as examples, but not in
 
 Artifact checks also reject Developer Mode logs that show live external-source
 activity (`appserver.*`, `ratelimits.poll*`, `claude_usage.poll*`,
-`claude_credentials*`, `claude_cli*`, `pricing.refresh_if_stale.refresh`, or
-`pricing.litellm_refresh`). Real-data shadow QA is for rendering and manual UI
-verification against a copied database, not for refreshing real provider quota
-or pricing state.
+`claude_credentials*`, or `claude_cli*`). Real-data shadow QA is for rendering
+and manual UI verification against a copied database, not for refreshing real
+provider quota state. Pricing is bundled with the app and has no live source.

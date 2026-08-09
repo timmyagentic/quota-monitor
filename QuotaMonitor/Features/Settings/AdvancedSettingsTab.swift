@@ -17,14 +17,7 @@ struct AdvancedSettingsTab: View {
     @Environment(UpdaterController.self) private var updater
     @State private var exportStatus: String?
     @State private var exporting = false
-    @State private var pricingRows: [PricingCatalogRow] = []
-    @State private var pricingLoaded = false
-    @State private var refreshingPricing = false
-    @State private var restoringPricing = false
-    @State private var pricingStatusMessage: String?
-    @State private var pricingErrorMessage: String?
     @State private var showingUninstallConfirm = false
-    @State private var showingPricingSheet = false
     @State private var privateBetaCode = ""
     @State private var enrollingPrivateBeta = false
     @State private var privateBetaEnrollmentRevealed = false
@@ -45,8 +38,8 @@ struct AdvancedSettingsTab: View {
         Form {
             if DistributionChannel.current != .appStore {
                 // Updates lives at the top: it's the single most useful
-                // control for end users (vs. provider polling cadence
-                // / database paths / pricing which are power-user knobs).
+                // control for end users (vs. provider polling cadence and
+                // other power-user knobs).
                 Section(L10n.sectionUpdates) {
                     if updater.updateAvailability.isVisible {
                         HStack(spacing: 8) {
@@ -278,10 +271,6 @@ struct AdvancedSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(20)
-        .sheet(isPresented: $showingPricingSheet) {
-            PricingCatalogSheet(rows: pricingRows,
-                                onDismiss: { showingPricingSheet = false })
-        }
         .alert(L10n.uninstallConfirmTitle,
                isPresented: $showingUninstallConfirm) {
             Button(L10n.uninstallConfirmAction, role: .destructive) {
@@ -290,12 +279,6 @@ struct AdvancedSettingsTab: View {
             Button(L10n.cancel, role: .cancel) { }
         } message: {
             Text(L10n.uninstallConfirmBody)
-        }
-        .task {
-            if !pricingLoaded {
-                pricingLoaded = true
-                await reloadPricing()
-            }
         }
     }
 
@@ -313,17 +296,6 @@ struct AdvancedSettingsTab: View {
         } catch {
             exportStatus = L10n.exportFailed(String(describing: error))
         }
-    }
-
-    private var lastPricingRefreshedLabel: String {
-        let latest = pricingRows.compactMap { $0.fetchedAt }.max()
-        guard let latest, let date = ISO8601.parse(latest) else {
-            return L10n.neverRefreshed
-        }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = LocalizationStore.activeLanguage.locale
-        formatter.unitsStyle = .short
-        return L10n.lastRefreshed(formatter.localizedString(for: date, relativeTo: Date()))
     }
 
     private func handleCheckForUpdates() {
@@ -347,42 +319,6 @@ struct AdvancedSettingsTab: View {
         formatter.locale = LocalizationStore.activeLanguage.locale
         formatter.unitsStyle = .short
         return formatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    private func reloadPricing() async {
-        do {
-            pricingRows = try await env.loadPricingCatalog()
-        } catch {
-            pricingErrorMessage = String(describing: error)
-        }
-    }
-
-    private func restorePricingDefaults() async {
-        restoringPricing = true
-        defer { restoringPricing = false }
-        do {
-            try await env.restorePricingDefaults()
-            await reloadPricing()
-            pricingErrorMessage = nil
-            pricingStatusMessage = L10n.restoredSeedPrices
-        } catch {
-            pricingErrorMessage = String(describing: error)
-        }
-    }
-
-    private func refreshPricingFromLiteLLM() async {
-        refreshingPricing = true
-        defer { refreshingPricing = false }
-        do {
-            let updated = try await env.refreshPricingFromLiteLLM()
-            await reloadPricing()
-            pricingErrorMessage = nil
-            pricingStatusMessage = updated == 0
-                ? L10n.litellmNoMatch
-                : L10n.litellmUpdated(updated)
-        } catch {
-            pricingErrorMessage = L10n.litellmRefreshFailed(error.localizedDescription)
-        }
     }
 
     private func revealDeveloperLog() {

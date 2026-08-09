@@ -33,14 +33,14 @@ struct PricingValueBackfillTests {
     }
 
     /// Insert a pricing_catalog row with a known set of per-million prices.
-    /// We bypass `seedCatalog` so each test can pin its own model id +
-    /// numbers without depending on PricingSeed.entries (which can shift).
+    /// We bypass `installBundledCatalog` so each formula test can pin its own
+    /// model id and numbers without depending on the shipped catalog.
     private func insertPriceRow(
         in db: DatabaseManager,
         modelId: String,
         input: Double, cached: Double,
         output: Double, cacheCreation: Double = 0,
-        priceSource: String = "seed"
+        priceSource: String = "bundled"
     ) throws {
         let now = ISO8601DateFormatter().string(from: Date())
         try db.pool.write { conn in
@@ -297,7 +297,7 @@ struct PricingValueBackfillTests {
 
         for item in expected {
             let row = byId[item.modelId]
-            #expect(row != nil, "\(item.modelId) should be seeded")
+            #expect(row != nil, "\(item.modelId) should be bundled")
             #expect(abs((row?["input_price_per_million"] as Double? ?? 0) - item.input) < 1e-6)
             #expect(abs((row?["cached_input_price_per_million"] as Double? ?? 0) - item.cached) < 1e-6)
             #expect(abs((row?["cache_creation_price_per_million"] as Double? ?? 0) - item.cacheCreation) < 1e-6)
@@ -338,35 +338,47 @@ struct PricingValueBackfillTests {
 
     // MARK: - idempotency
 
-    @Test("seed catalog reports only calculation changes")
-    func seedCatalogChangeDetectionIsStable() throws {
+    @Test("bundled catalog restores legacy rows and reports only pricing-semantic changes")
+    func bundledCatalogSemanticChangeDetectionIsStable() throws {
         let db = try makeDatabase()
 
         let unchanged = try db.pool.write { conn in
-            try PricingService.seedCatalog(in: conn)
+            try PricingService.installBundledCatalog(in: conn)
         }
-        #expect(!unchanged, "an identical startup seed must not request a full reprice")
+        #expect(!unchanged, "an identical bundled catalog must not request a full reprice")
 
         try db.pool.write { conn in
             try conn.execute(sql: """
                 UPDATE pricing_catalog
-                SET input_price_per_million = 999
-                WHERE model_id = 'gpt-5.4' AND price_source = 'seed'
+                SET input_price_per_million = 999,
+                    price_source = 'local',
+                    fetched_at = '2026-07-01T00:00:00Z'
+                WHERE model_id = 'gpt-5.4'
                 """)
         }
         let repaired = try db.pool.write { conn in
-            try PricingService.seedCatalog(in: conn)
+            try PricingService.installBundledCatalog(in: conn)
         }
-        #expect(repaired, "a changed seed calculation field must request a full reprice")
+        #expect(repaired, "a changed legacy calculation field must request a full reprice")
+
+        let normalized = try db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT input_price_per_million, price_source, fetched_at
+                FROM pricing_catalog WHERE model_id = 'gpt-5.4'
+                """)
+        }
+        #expect(abs((normalized?["input_price_per_million"] as Double? ?? 0) - 2.50) < 1e-9)
+        #expect((normalized?["price_source"] as String?) == "bundled")
+        #expect((normalized?["fetched_at"] as String?) == nil)
 
         let stableAgain = try db.pool.write { conn in
-            try PricingService.seedCatalog(in: conn)
+            try PricingService.installBundledCatalog(in: conn)
         }
         #expect(!stableAgain, "the repaired catalog must be stable on the next launch")
     }
 
-    @Test("database startup reprices finished history after a seed price changes")
-    func databaseStartupRepricesAfterSeedChange() throws {
+    @Test("database startup reprices finished history after a bundled price changes")
+    func databaseStartupRepricesAfterBundledPriceChange() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexmonitor-tests", isDirectory: true)
         try FileManager.default.createDirectory(
@@ -393,7 +405,7 @@ struct PricingValueBackfillTests {
             try conn.execute(sql: """
                 UPDATE pricing_catalog
                 SET input_price_per_million = 999
-                WHERE model_id = 'gpt-5.4' AND price_source = 'seed'
+                WHERE model_id = 'gpt-5.4' AND price_source = 'bundled'
                 """)
             try conn.execute(
                 sql: "UPDATE usage_events SET value_usd = -1 WHERE session_id = ?",
@@ -404,7 +416,7 @@ struct PricingValueBackfillTests {
         let reopened = try DatabaseManager(url: url)
         let values = try valueBitPatterns(in: reopened, sessionId: sessionId)
         #expect(values == expected,
-                "startup must repair historical values when seed pricing changes")
+                "startup must repair historical values when bundled pricing changes")
     }
 
     @Test("running backfill twice produces the same value (deterministic)")
@@ -699,52 +711,28 @@ struct PricingValueBackfillTests {
         #expect(abs(values[5] - 1.0200) < 1e-9) // Terra reduced long context.
     }
 
-    @Test("local GPT-5.6 prices override the built-in history")
-    func localGPT56PriceOverridesHistory() throws {
+    @Test("bundled catalog replaces legacy local prices before historical reprice")
+    func bundledCatalogReplacesLegacyLocalPrices() throws {
         let db = try makeDatabase()
         try insertPriceRow(
             in: db, modelId: "gpt-5.6-terra",
-            input: 9.00, cached: 0.90, output: 90.00,
+            // Match the current bundled numbers exactly. The legacy source
+            // alone must still force a reprice because older versions let a
+            // local row bypass effective-date history.
+            input: 2.00, cached: 0.20, output: 12.00,
             priceSource: "local")
         try insertUsageEvent(
             in: db, provider: "codex", modelId: "gpt-5.6-terra",
             input: 200_000, cached: 40_000, output: 20_000,
             timestamp: "2026-07-29T12:00:00Z")
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.6-terra",
+            input: 200_000, cached: 40_000, output: 20_000,
+            timestamp: "2026-07-30T12:00:00Z")
 
         try db.pool.write { conn in
+            #expect(try PricingService.installBundledCatalog(in: conn))
             try PricingService.backfillAllValues(in: conn)
-        }
-
-        let values = try valueUSD(in: db)
-        #expect(abs(values[0] - 3.2760) < 1e-9)
-    }
-
-    @Test("stale LiteLLM GPT-5.6 refreshes stay on reduced prices")
-    func staleLiteLLMGPT56RefreshUsesReducedPrices() throws {
-        let db = try makeDatabase()
-        try insertUsageEvent(
-            in: db, provider: "codex", modelId: "gpt-5.6-terra",
-            input: 200_000, cached: 40_000, output: 20_000,
-            timestamp: "2026-07-29T23:59:59.999Z")
-        try insertUsageEvent(
-            in: db, provider: "codex", modelId: "gpt-5.6-terra",
-            input: 200_000, cached: 40_000, output: 20_000,
-            timestamp: "2026-07-30T00:00:00.000Z")
-
-        let staleEntry = LiteLLMEntry(
-            modelId: "gpt-5.6-terra",
-            provider: "openai",
-            inputCostPerToken: 2.50 / 1_000_000,
-            outputCostPerToken: 15.00 / 1_000_000,
-            cacheReadInputTokenCost: 0.25 / 1_000_000,
-            cacheCreationInputTokenCost: nil,
-            inputCostAbove200kTokens: nil,
-            outputCostAbove200kTokens: nil,
-            maxInputTokens: nil,
-            maxOutputTokens: nil)
-        _ = try db.pool.write { conn in
-            try PricingService.applyLiteLLMUpdate(
-                entries: [staleEntry], in: conn)
         }
 
         let values = try valueUSD(in: db)
@@ -752,86 +740,20 @@ struct PricingValueBackfillTests {
         #expect(abs(values[0] - 0.7100) < 1e-9)
         #expect(abs(values[1] - 0.5680) < 1e-9)
 
-        let rows = try db.pool.read { conn in
-            try Row.fetchAll(conn, sql: """
-                SELECT model_id, input_price_per_million,
-                       cached_input_price_per_million, output_price_per_million
-                FROM pricing_catalog
-                WHERE model_id IN (
-                  'gpt-5.6-terra', 'gpt-5.6-terra-fast',
-                  'gpt-5.6-terra-flex'
-                )
+        let metadata = try db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT price_source, fetched_at
+                FROM pricing_catalog WHERE model_id = 'gpt-5.6-terra'
                 """)
         }
-        let prices = Dictionary(uniqueKeysWithValues: rows.map { row in
-            (row["model_id"] as String, (
-                row["input_price_per_million"] as Double,
-                row["cached_input_price_per_million"] as Double,
-                row["output_price_per_million"] as Double))
-        })
-        let expected: [String: (Double, Double, Double)] = [
-            "gpt-5.6-terra": (2.00, 0.20, 12.00),
-            "gpt-5.6-terra-fast": (4.00, 0.40, 24.00),
-            "gpt-5.6-terra-flex": (1.00, 0.10, 6.00),
-        ]
-        #expect(prices.count == expected.count)
-        for (modelId, price) in expected {
-            #expect(abs((prices[modelId]?.0 ?? -1) - price.0) < 1e-9)
-            #expect(abs((prices[modelId]?.1 ?? -1) - price.1) < 1e-9)
-            #expect(abs((prices[modelId]?.2 ?? -1) - price.2) < 1e-9)
-        }
-    }
-
-    @Test("LiteLLM refresh keeps Fast and Flex rows derived from the base price")
-    func liteLLMRefreshKeepsCodexTierRowsInSync() throws {
-        let db = try makeDatabase()
-        let entry = LiteLLMEntry(
-            modelId: "gpt-5.5",
-            provider: "openai",
-            inputCostPerToken: 6.0 / 1_000_000,
-            outputCostPerToken: 36.0 / 1_000_000,
-            cacheReadInputTokenCost: 0.6 / 1_000_000,
-            cacheCreationInputTokenCost: nil,
-            inputCostAbove200kTokens: nil,
-            outputCostAbove200kTokens: nil,
-            maxInputTokens: nil,
-            maxOutputTokens: nil)
-
-        _ = try db.pool.write { conn in
-            try PricingService.applyLiteLLMUpdate(entries: [entry], in: conn)
-        }
-
-        let rows = try db.pool.read { conn in
-            try Row.fetchAll(conn, sql: """
-                SELECT model_id, input_price_per_million,
-                       cached_input_price_per_million, output_price_per_million
-                FROM pricing_catalog
-                WHERE model_id IN ('gpt-5.5', 'gpt-5.5-fast', 'gpt-5.5-flex')
-                ORDER BY model_id
-                """)
-        }
-        let prices = Dictionary(uniqueKeysWithValues: rows.map { row in
-            (row["model_id"] as String, (
-                row["input_price_per_million"] as Double,
-                row["cached_input_price_per_million"] as Double,
-                row["output_price_per_million"] as Double))
-        })
-
-        #expect(abs((prices["gpt-5.5"]?.0 ?? 0) - 6.0) < 1e-9)
-        #expect(abs((prices["gpt-5.5"]?.1 ?? 0) - 0.6) < 1e-9)
-        #expect(abs((prices["gpt-5.5"]?.2 ?? 0) - 36.0) < 1e-9)
-        #expect(abs((prices["gpt-5.5-fast"]?.0 ?? 0) - 15.0) < 1e-9)
-        #expect(abs((prices["gpt-5.5-fast"]?.1 ?? 0) - 1.5) < 1e-9)
-        #expect(abs((prices["gpt-5.5-fast"]?.2 ?? 0) - 90.0) < 1e-9)
-        #expect(abs((prices["gpt-5.5-flex"]?.0 ?? 0) - 3.0) < 1e-9)
-        #expect(abs((prices["gpt-5.5-flex"]?.1 ?? 0) - 0.3) < 1e-9)
-        #expect(abs((prices["gpt-5.5-flex"]?.2 ?? 0) - 18.0) < 1e-9)
+        #expect((metadata?["price_source"] as String?) == "bundled")
+        #expect((metadata?["fetched_at"] as String?) == nil)
     }
 
     @Test("codex without recorded tier stays Standard even when legacy fallback is on")
     func codexUnknownTierStaysStandard() throws {
         let db = try makeDatabase()
-        // Standard rate (matches base PricingSeed shape; numbers chosen
+        // Standard rate (matches the bundled catalog shape; numbers chosen
         // so the maths is hand-verifiable).
         try insertPriceRow(in: db, modelId: "gpt-5.5",
                            input: 5.00, cached: 0.50, output: 30.00)
@@ -993,10 +915,10 @@ struct PricingValueBackfillTests {
                 "claude event must not be affected by codex Fast-Mode, got \(values[0])")
     }
 
-    // MARK: - price edit propagates
+    // MARK: - bundled catalog revision propagates
 
-    @Test("after editing a price, backfill recomputes only matching rows")
-    func priceEditRepricesAffectedRowsOnly() throws {
+    @Test("a bundled catalog revision reprices only matching rows")
+    func bundledCatalogRevisionRepricesAffectedRowsOnly() throws {
         let db = try makeDatabase()
         try insertPriceRow(in: db, modelId: "model-a",
                            input: 1.00, cached: 0.10, output: 1.00)
@@ -1015,10 +937,10 @@ struct PricingValueBackfillTests {
         #expect(abs(before[0] - 2.00) < 1e-6)
         #expect(abs(before[1] - 4.00) < 1e-6)
 
-        // Edit model-a's prices upward (10x). model-b unchanged.
+        // Simulate a later app release revising model-a upward. model-b is unchanged.
         try insertPriceRow(in: db, modelId: "model-a",
                            input: 10.00, cached: 1.00, output: 10.00,
-                           priceSource: "user")
+                           priceSource: "bundled")
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn)
         }

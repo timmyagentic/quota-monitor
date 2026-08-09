@@ -8,7 +8,6 @@ import GRDB
 // can launch even if the SQLite directory has a permission issue.
 //
 // Big methods live in topic-focused extensions:
-//   - PricingController.swift  — LiteLLM refresh + per-row edits
 //   - ScanController.swift     — file scan + CSV export
 //   - QueryFacade.swift        — sessions / history / day queries
 
@@ -111,14 +110,6 @@ final class AppEnvironment {
     /// trailing scan; cancelled when the watcher stops.
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
     var isLoadingDashboard = false
-    /// Internal re-entrancy guard for `refreshPricingFromLiteLLM`. Not
-    /// observed by any view — opted out of `@Observable` tracking so it
-    /// doesn't churn the dependency graph on every settings refresh.
-    /// Lives on the type rather than as a `private var` because the
-    /// owning method sits in a `PricingController.swift` extension and
-    /// Swift extensions can't add stored properties.
-    @ObservationIgnored
-    var isRefreshingPricing = false
     var lastError: String?
 
     /// True when the status item has been detected as clipped/hidden and
@@ -186,8 +177,6 @@ final class AppEnvironment {
     private let codexResetCreditsClient: any CodexResetCreditsFetching
     private let launchAtLoginController: any LaunchAtLoginControlling
     private var lastCodexResetCreditsRefreshAttemptAt: Date?
-    let pricingSource = LiteLLMPricingSource()
-
     convenience init(
         appServer: AppServerClient = AppServerClient(),
         codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
@@ -219,12 +208,6 @@ final class AppEnvironment {
         // ever opening the menu bar. Idempotent — safe if .task fires later too.
         Task { [weak self] in
             await MainActor.run { self?.startBackgroundPolling() }
-        }
-        // Stale-pricing check: if no row has ever been fetched from LiteLLM, or
-        // the freshest fetched_at is >24h old, kick a one-shot refresh. Best
-        // effort — silently tolerated if offline.
-        Task { [weak self] in
-            await self?.refreshPricingIfStale()
         }
     }
 

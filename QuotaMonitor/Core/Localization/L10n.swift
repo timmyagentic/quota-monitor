@@ -1003,49 +1003,7 @@ enum L10n {
     static var interval: String { t(en: "Interval", zh: "间隔") }
     static func minutesShort(_ n: Int) -> String { t(en: "\(n) min", zh: "\(n) 分钟") }
 
-    // pricing
-    static var pricingRestoreDefaults: String { t(en: "Restore Defaults", zh: "恢复默认") }
-    static var pricingFetchLiteLLM: String { t(en: "Sync from LiteLLM", zh: "从 LiteLLM 同步") }
-    // Pricing catalog sheet (Advanced → Pricing → View catalog)
-    static var pricingViewCatalog: String { t(en: "View Catalog…", zh: "查看价目表…") }
-    static var pricingSheetTitle: String { t(en: "Pricing Catalog", zh: "价目表") }
-    static var pricingSheetUnit: String {
-        t(en: "USD per million tokens", zh: "美元 / 百万 token")
-    }
-    static var colModel: String { t(en: "Model", zh: "模型") }
-    static var colInputPerM: String { t(en: "Input", zh: "输入") }
-    static var colCachedPerM: String { t(en: "Cached", zh: "缓存读取") }
-    static var colOutputPerM: String { t(en: "Output", zh: "输出") }
-    static var colCacheCreatePerM: String { t(en: "Cache create", zh: "缓存创建") }
-    static var badgeLive: String { t(en: "LIVE", zh: "实时") }
-    static var badgeLocal: String { t(en: "LOCAL", zh: "本地") }
-    static var badgeSeed: String { t(en: "SEED", zh: "内置") }
-    static var helpLocallyEdited: String {
-        t(en: "This row was edited locally.", zh: "该行已被本地修改。")
-    }
     static var done: String { t(en: "Done", zh: "完成") }
-    static var neverRefreshed: String {
-        t(en: "Never refreshed — click to fetch the live catalog.",
-          zh: "尚未刷新 — 点击以获取实时目录。")
-    }
-    static func lastRefreshed(_ relative: String) -> String {
-        t(en: "Last refreshed \(relative)", zh: "上次刷新 \(relative)")
-    }
-    static var restoredSeedPrices: String {
-        t(en: "Restored seed prices.", zh: "已恢复内置价格。")
-    }
-    static var litellmNoMatch: String {
-        t(en: "LiteLLM responded but matched no catalog rows.",
-          zh: "LiteLLM 已响应但未匹配任何目录行。")
-    }
-    static func litellmUpdated(_ n: Int) -> String {
-        t(en: "Updated \(n) model\(n == 1 ? "" : "s") from LiteLLM.",
-          zh: "已通过 LiteLLM 更新 \(n) 个模型。")
-    }
-    static func litellmRefreshFailed(_ err: String) -> String {
-        t(en: "LiteLLM refresh failed: \(err)",
-          zh: "LiteLLM 刷新失败：\(err)")
-    }
 
     // data
     static var location: String { t(en: "Location", zh: "位置") }

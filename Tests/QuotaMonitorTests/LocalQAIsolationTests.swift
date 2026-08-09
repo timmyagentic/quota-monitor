@@ -224,18 +224,6 @@ struct LocalQAIsolationTests {
         #expect(snap.hasCompletedProviderOnboarding)
     }
 
-    @Test("QA launch disables pricing refreshes")
-    func qaLaunchDisablesPricingRefreshes() {
-        let arguments = inlineConfigArguments(home: "/tmp/qm-qa-pricing")
-
-        #expect(AppEnvironment.allowsPricingRefresh(
-            environment: [:],
-            arguments: arguments) == false)
-        #expect(AppEnvironment.allowsPricingRefresh(
-            environment: [:],
-            arguments: ["QuotaMonitor"]) == true)
-    }
-
     @Test("QA Claude credentials path stays under QA home")
     func qaClaudeCredentialsPathUsesQAHome() {
         let arguments = inlineConfigArguments(home: "/tmp/qm-qa-claude-home")

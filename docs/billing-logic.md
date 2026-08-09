@@ -4,12 +4,12 @@
 
 ## 核心数据流
 
-1. 启动或扫描前，`DatabaseManager` / `ImportEngine` 会调用 `PricingService.seedCatalog`，确保 `pricing_catalog` 至少有内置模型价格。
+1. 数据库打开时，`DatabaseManager` 调用 `PricingService.installBundledCatalog`，把 `pricing_catalog` 恢复为当前 App 随包提供的完整模型价格。
 2. Codex 导入器读取 `~/.codex/sessions` / `archived_sessions` JSONL，把累计的 `token_count.info.total_token_usage` 转成每次增量。
 3. Claude 导入器读取 `~/.claude/projects` 和 `~/.config/claude/projects` JSONL，把每条 `assistant.message.usage` 作为独立用量事件。
 4. 导入器写入 `sessions` 和 `usage_events`，新事件初始 `value_usd = 0`。
 5. `ScanController.runScan` 在 Codex 和 Claude 扫描都完成后，如果有文件变化，会调用一次 `PricingService.backfillAllValues`。
-6. 价格同步和恢复默认价格也会触发回填。
+6. App 升级带来新的内置价格或有效模型映射时，启动流程会对既有历史执行一次完整回填。
 7. Dashboard、History、Sessions、menu bar 和 Claude 5 小时 block 都读取 `usage_events.value_usd` 的聚合结果。
 
 ## 关键表
@@ -45,19 +45,24 @@
 | `cached_input_price_per_million` | cache read / cached input 价格。 |
 | `output_price_per_million` | 输出价格。 |
 | `cache_creation_price_per_million` | Claude 5 分钟 cache write 价格；OpenAI / Codex 为 0。 |
-| `price_source` | `seed`、`litellm` 或 `local`。`local` 行不会被自动同步覆盖。 |
-| `fetched_at` | 最近一次从 LiteLLM 成功同步该行的时间。 |
-| `above_200k_*` | LiteLLM 暴露的其他大上下文价格字段；Codex 的 272K 规则由确定的请求级倍率单独计算。 |
+
+旧数据库仍可能包含 `price_source`、`fetched_at`、`above_200k_*` 和 `max_*` 列。这些列只为保持既有 append-only migration 链可升级而保留；当前运行时会把受支持行统一恢复为内置目录，并清空旧的外部来源元数据，不再用这些列选择价格。
 
 ## 价格来源
 
-`PricingSeed.entries` 是随应用发布的内置价格表。它覆盖当前支持的 OpenAI / Codex 模型、Claude 模型，以及 Codex Fast / Flex 估算使用的合成 `*-fast`、`*-flex` 行。
+`BundledPricingCatalog.entries` 是唯一价格来源。它随应用版本发布，覆盖当前支持的 OpenAI / Codex、Claude、GLM 模型，以及 Codex Fast / Flex 估算使用的合成 `*-fast`、`*-flex` 行。应用不会联网下载价格，不提供单行本地覆盖，也不会保留旧版外部目录对随包价格的优先级。
 
-LiteLLM 同步由 `LiteLLMPricingSource` 拉取 `model_prices_and_context_window.json`，再由 `PricingService.applyLiteLLMUpdate` 写入 `pricing_catalog`。当前策略是只更新 catalog 中已经存在、且 `price_source != 'local'` 的模型，不自动新增任意未知模型。这样可以避免把 LiteLLM 的大量无关 provider 直接塞进本地表，但也意味着新模型需要先加入 seed 或用户手工建行，之后 LiteLLM 才能持续刷新它。
+`PricingService.installBundledCatalog` 每次打开数据库都会 upsert 全部内置行。若计算相关字段发生变化，或受支持行需要从旧版外部 / 本地来源归一为 `bundled`，启动流程会重算既有 `usage_events.value_usd`；即使旧行数值碰巧等于当前内置价，也会执行这次升级回填，修复旧版本地覆盖曾绕过生效日期而留下的历史金额。原始 token、事件时间和会话数据不受影响。
 
 `CodexFastMode.multipliers` 在代码里维护支持 Fast 估算的模型及倍率，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。每个合成 `<model_id>-fast` 行会把对应模型的 input、cached input 和 output 单价都乘以该倍率；Codex 金额公式本身不变。未列入该映射的 Codex 模型，以及所有 Claude 事件，都不会使用这些倍率。
 
-`CodexFlexMode.multipliers` 维护 OpenAI 已公布 Flex 价格的模型。当前这些模型的 input、cached input 与 output 都是 Standard 的 `0.5x`，因此合成 `<model_id>-flex` 行统一由基础价格乘以 `0.5` 得出；LiteLLM 刷新基础行时会同步刷新对应 Fast 和 Flex 行，避免派生价格漂移。
+`CodexFlexMode.multipliers` 维护 OpenAI 已公布 Flex 价格的模型。当前这些模型的 input、cached input 与 output 都是 Standard 的 `0.5x`，因此合成 `<model_id>-flex` 行统一由基础价格乘以 `0.5` 得出；Fast 和 Flex 行每次都从同一份随包基础价格确定性派生，避免派生价格漂移。
+
+## 生效日期与历史价格
+
+价格变更不能只覆盖当前目录，否则完整回填会把旧用量按新价格重算。`CodexPriceHistory.periods` 保存已经发生的固定价格区间，`backfillAllValues` 根据 `usage_events.timestamp` 选择事件发生时适用的价格，再叠加 Standard / Fast / Flex 和长上下文倍率。
+
+当前 GPT-5.6 Terra 与 Luna 以 `2026-07-30` 为切换点：此前事件使用上市价格，当日及之后使用随包当前价格。ISO-8601 UTC 时间戳可以直接稳定比较。以后供应商调价时，必须同时保留旧区间并更新当前内置行，不能只修改当前数字。
 
 ## Codex 服务档位偏好与 Fast 估算
 
@@ -73,7 +78,7 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`default`、`flex`、`NULL` 四种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast 或 Flex。
 
-迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前 seed 当前价格行并强制回填全部派生金额，确保旧版未知→Fast 金额和缺失的长上下文倍率不会滞留；之后的扫描再用持久化 rollout 偏好重建事件。
+迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额，确保旧版未知→Fast 金额和缺失的长上下文倍率不会滞留；之后的扫描再用持久化 rollout 偏好重建事件。
 
 这次失效按 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`。因此默认 home、自定义 `CODEX_HOME` 和 App Store 中用户选择的 Codex home 都在重读范围内。
 
@@ -150,7 +155,7 @@ else:
 
 - cache read：通过 `cached_input_price_per_million` 表达，通常是 `0.1x input`。
 - 5m cache write：通过 `cache_creation_price_per_million` 表达，通常是 `1.25x input`。
-- 1h cache write：不依赖 LiteLLM 的 `cache_creation_input_token_cost`，直接按 `2.0x input_price_per_million` 计算。
+- 1h cache write：直接按内置 `input_price_per_million` 的 `2.0x` 计算。
 
 `Migrations` 的 `v6-claude-cache-creation-duration` 增加了 `cache_creation_5m_tokens` 和 `cache_creation_1h_tokens`，并把 Claude `import_state` 标记为需要从 0 offset 全量重读。这样已有 Claude 行会在下一次扫描时重新导入，补齐 1h / 5m 拆分后再回填正确金额。
 
@@ -159,8 +164,7 @@ else:
 `value_usd` 是派生值，以下路径会重算：
 
 - 扫描有文件变化时：`ScanController.runScan` 在两种 provider 扫描后统一调用 `backfillAllValues`。
-- LiteLLM 同步成功且更新了 catalog 行时：`applyLiteLLMUpdate` 内部调用回填。
-- 恢复默认价格时：`restorePricingDefaults` 先 seed，再回填。
+- App 升级后内置目录的计算字段发生变化，或旧价格来源需要归一为 `bundled` 时：数据库启动流程先安装目录，再执行完整回填。
 
 没有匹配 `pricing_catalog` 的事件不会被回填，原 `value_usd` 保持不变。新导入事件默认是 0，所以未知模型会显示为 0 美元，直到 catalog 有对应价格并触发回填。
 
@@ -175,10 +179,9 @@ UI 不重复实现计费公式。
 ## 已知边界
 
 - 这是 API-equivalent spend，不是 Codex / Claude 订阅费用，也不一定等于供应商账单。
-- Codex 只对 OpenAI 已公布 272K 规则的支持模型应用长上下文倍率。当前 Codex 模型目录把 GPT-5.6 的最大上下文限制在 272K，因此常规 GPT-5.6 请求不会越过边界；历史、自定义目录或允许更大窗口的模型仍可能触发。Claude 及没有公布该规则的模型不套用这一逻辑。
+- Codex 只对 OpenAI 已公布 272K 规则的支持模型应用长上下文倍率。当前 Codex 模型目录把 GPT-5.6 的最大上下文限制在 272K，因此常规 GPT-5.6 请求不会越过边界；历史记录或允许更大窗口的模型仍可能触发。Claude 及没有公布该规则的模型不套用这一逻辑。
 - 区域以及未持久化的实际服务层、执行层倍率暂不纳入当前计费要求。例如 regional processing、data residency、batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要逐请求字段或账单侧数据才能准确还原。上文的 Codex Priority/Fast/Flex 逻辑只按 rollout 记录的偏好估算，不能突破这条 served-tier 边界。
-- LiteLLM 当前只更新已存在于本地 catalog 的模型；新模型需要 seed 或本地建行。
-- `price_source = 'local'` 的行不会被 LiteLLM 或 seed 覆盖。
+- 未随 App 内置价格的未知模型不会获得美元估值；需要在新版本中加入模型行后才会开始计价。
 - 近期 Codex 混合历史可以按 turn 中冻结的 `priority` / `default` / `flex` 偏好分别估算；没有 `thread_settings_applied` / `task_started` 证据的旧版或未标记事件仍为 `NULL`，并按 Standard 估算。两种情况都不等同于还原服务端实际 served tier。
 - Codex 缺模型的历史事件按 `gpt-5` 估算，`model_inferred = true`。
 - Claude 旧数据必须经过 v6 迁移后的重新扫描，才能从“全部按 5m cache write”升级为 1h / 5m 分开计价。
@@ -187,9 +190,9 @@ UI 不重复实现计费公式。
 
 新增模型或调整计费时，至少检查这些点：
 
-1. 在 `PricingSeed.entries` 加入或修正模型价格。
+1. 在 `BundledPricingCatalog.entries` 加入或修正模型价格。
 2. 如果是 Codex Fast、Flex 或支持超过 272K 的模型，更新对应 multiplier / long-context 映射，确认合成价格行和边界合理。
-3. 如果 LiteLLM 已有对应模型，确认本地 catalog 有 seed 行，否则同步不会自动新增。
+3. 如果供应商价格发生变化，在更新当前内置行的同时为旧价格增加有效日期区间，避免重算历史用量。
 4. 如果新增 token 类型或 provider，先扩展 `usage_events` schema，再扩展 `PricingService.backfillAllValues`。
 5. 补 `PricingValueBackfillTests`，固定最终美元公式。
 6. 如果改导入字段，补对应 parser / importer 测试，避免金额正确但原始 token 写错。
