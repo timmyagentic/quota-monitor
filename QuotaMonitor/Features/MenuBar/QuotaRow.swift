@@ -107,17 +107,11 @@ struct QuotaRow: View {
     }
 
     /// Locale-aware relative-time string for `resetAt` ("in 23 minutes" /
-    /// "23 分钟后"). Computed at body-evaluation time, so it refreshes
-    /// when the popover re-renders. Uses the `RelativeDateTimeFormatter`
-    /// configured with `LocalizationStore.locale`, which is the SwiftUI
-    /// environment locale we inject from `QuotaMonitorApp` — meaning a
-    /// language flip in Settings instantly re-formats this string the
-    /// next time the popover re-renders.
+    /// "23 分钟后"). The shared formatter cache selects the active language
+    /// on every call, so a Settings language flip is reflected on the next
+    /// popover render without rebuilding a formatter for every row.
     private var relativeReset: String {
-        let f = RelativeDateTimeFormatter()
-        f.locale = LocalizationStore.activeLanguage.locale
-        f.unitsStyle = .short
-        return f.localizedString(for: resetAt, relativeTo: Date())
+        LocalizedDateFormatting.relativeString(for: resetAt)
     }
 
     private func paceColor(_ s: QuotaPaceLabel.Severity) -> Color {

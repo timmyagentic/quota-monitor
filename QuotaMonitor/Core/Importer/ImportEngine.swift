@@ -9,11 +9,17 @@ import GRDB
 // shape takes the conservative full-rebuild path.
 
 actor ImportEngine {
+    private static let proactiveMetadataBackfillWindow: TimeInterval = 7 * 24 * 60 * 60
+
     private let database: DatabaseManager
     private let codexHome: URL?
     private let securityScopedAccess: any SecurityScopedResourceAccessing
     private let maxCheckpointBytes: Int
     private var warnedOversizedSources: Set<RolloutSourceIdentity> = []
+    private var cachedCodexSessionMetadata: (
+        fingerprint: CodexSessionMetadataSourceFingerprint,
+        metadata: [String: CodexSessionMetadata]
+    )?
 
     private struct ProbedSource {
         let file: SessionFile
@@ -153,26 +159,52 @@ actor ImportEngine {
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })
         }
         var errors: [String] = []
+        let metadataBackfillCutoff = ISO8601.fractional.string(
+            from: Date().addingTimeInterval(-Self.proactiveMetadataBackfillWindow))
 
+        let metadataFingerprint = try? CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
         let codexMetadata: [String: CodexSessionMetadata]
-        do {
-            codexMetadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
-        } catch {
-            codexMetadata = [:]
+        let updatedSessionMetadata: Int
+        let sessionMetadataCacheHit: Bool
+        if let metadataFingerprint,
+           let cached = cachedCodexSessionMetadata,
+           cached.fingerprint == metadataFingerprint {
+            codexMetadata = cached.metadata
+            updatedSessionMetadata = 0
+            sessionMetadataCacheHit = true
+        } else {
+            let loadResult = CodexSessionMetadataStore.loadResult(codexHome: codexHome)
+            codexMetadata = loadResult.metadata
+            updatedSessionMetadata = try await backfillCodexSessionMetadata(
+                codexMetadata,
+                activeSince: metadataBackfillCutoff)
+            let fingerprintAfterLoad = try? CodexSessionMetadataStore.sourceFingerprint(
+                codexHome: codexHome)
+            if loadResult.isComplete,
+               let metadataFingerprint,
+               fingerprintAfterLoad == metadataFingerprint {
+                cachedCodexSessionMetadata = (
+                    fingerprint: metadataFingerprint,
+                    metadata: codexMetadata)
+            } else {
+                cachedCodexSessionMetadata = nil
+            }
+            sessionMetadataCacheHit = false
         }
-        let updatedSessionMetadata = try await backfillCodexSessionMetadata(codexMetadata)
 
-        // Source paths of Codex sessions still missing project metadata —
-        // re-parse them so the split metadata columns can be backfilled
-        // without waiting for the source file to change.
+        // Proactively repair recent metadata only. Inactive history is best
+        // effort, while actual rollout changes still enter the normal import
+        // path below regardless of this cutoff.
         let metadataIncompleteCodexPaths: Set<String> = try await database.pool.read { db in
             let rows = try String.fetchAll(db, sql: """
                 SELECT source_path FROM sessions
                 WHERE provider = 'codex'
                   AND source_path IS NOT NULL
+                  AND COALESCE(updated_at, started_at) >= ?
                   AND ((project_name IS NULL OR project_name = '')
                        OR (cwd IS NULL OR cwd = ''))
-                """)
+                """, arguments: [metadataBackfillCutoff])
             return Set(rows)
         }
 
@@ -376,6 +408,7 @@ actor ImportEngine {
                 "imported_events": .int(report.importedEvents),
                 "imported_rate_limit_samples": .int(report.importedRateLimitSamples),
                 "updated_session_metadata": .int(report.updatedSessionMetadata),
+                "session_metadata_cache_hit": .bool(sessionMetadataCacheHit),
                 "incremental_files": .int(report.incrementalFiles),
                 "source_bytes_read": .int(Int(report.sourceBytesRead)),
                 "errors": .int(report.errors.count)
@@ -615,7 +648,8 @@ actor ImportEngine {
     }
 
     private func backfillCodexSessionMetadata(
-        _ metadataBySessionId: [String: CodexSessionMetadata]
+        _ metadataBySessionId: [String: CodexSessionMetadata],
+        activeSince: String
     ) async throws -> Int {
         guard !metadataBySessionId.isEmpty else { return 0 }
         let now = ISO8601.fractional.string(from: Date())
@@ -625,7 +659,8 @@ actor ImportEngine {
                 SELECT session_id, title, project_name, cwd
                 FROM sessions
                 WHERE provider = 'codex'
-                """)
+                  AND COALESCE(updated_at, started_at) >= ?
+                """, arguments: [activeSince])
             var updateCount = 0
 
             for row in rows {

@@ -200,6 +200,35 @@ test_write_real_data_defaults_copies_user_preferences_without_overrides() {
         || fail "real-data defaults should not apply product-setting overrides"
 }
 
+test_write_real_data_defaults_can_enable_codex_overlay() {
+    local source_home target_home source_domain target_domain report
+    source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-overlay.XXXXXX")"
+    target_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-target-overlay.XXXXXX")"
+    source_domain="dev.tjzhou.QuotaMonitor.SourceOverlayTest.$RANDOM.$$"
+    target_domain="dev.tjzhou.QuotaMonitor.TargetOverlayTest.$RANDOM.$$"
+    report="$target_home/user-defaults-shadow.txt"
+    trap 'HOME="$target_home" defaults delete "$target_domain" >/dev/null 2>&1 || true; rm -rf "$source_home" "$target_home"' RETURN
+
+    write_test_preferences_plist "$source_home" "$source_domain" \
+        string app.language zh-Hans \
+        array2 settings.enabledProviders codex claude \
+        bool settings.codexSidebarQuotaEnabled false
+
+    QM_QA_CODEX_SIDEBAR_QUOTA=1 qm_write_real_data_defaults \
+        "$target_home" \
+        "$target_domain" \
+        "$source_home" \
+        "$source_domain" \
+        "$report"
+
+    local enabled
+    enabled="$(HOME="$target_home" defaults read \
+        "$target_domain" settings.codexSidebarQuotaEnabled)"
+    [[ "$enabled" == "1" ]] || fail "real-data overlay override was $enabled"
+    grep -q '^qa_overrides=settings.codexSidebarQuotaEnabled=true$' "$report" \
+        || fail "real-data overlay override was not recorded"
+}
+
 test_write_real_data_defaults_accepts_language_override() {
     local source_home target_home source_domain target_domain report
     source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-language-override.XXXXXX")"
@@ -1159,6 +1188,7 @@ test_write_defaults_can_enable_codex_sidebar_quota
 test_refuses_installed_app_defaults_suite
 test_accepts_custom_qa_defaults_suite
 test_write_real_data_defaults_copies_user_preferences_without_overrides
+test_write_real_data_defaults_can_enable_codex_overlay
 test_write_real_data_defaults_fails_when_user_preferences_cannot_be_copied
 test_select_real_data_defaults_domain_prefers_domain_with_product_preferences
 test_write_defaults_accepts_language_override

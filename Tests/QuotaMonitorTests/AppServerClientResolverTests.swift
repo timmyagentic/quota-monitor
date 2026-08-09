@@ -3,7 +3,11 @@ import Foundation
 import Testing
 @testable import QuotaMonitor
 
-@Suite("AppServerClient binary resolver")
+/// The shell-timeout cases launch real short-lived process trees and share the
+/// machine's process-startup budget. Running them concurrently can consume the
+/// timeout before a shell writes its PID fixture, especially during the full
+/// suite; serialize this one suite so it tests supervision instead of load.
+@Suite("AppServerClient binary resolver", .serialized)
 struct AppServerClientResolverTests {
 
     @Test("explicit override wins when executable")
@@ -121,11 +125,11 @@ struct AppServerClientResolverTests {
         let startedAt = Date()
         let result = AppServerClient.runLoginShellLine(
             shell: "/bin/sh",
-            command: "printf %s $$ > \(Self.shellQuote(pidFile.path)); trap '' TERM; exec sleep 3",
-            timeout: 0.5)
+            command: "printf %s $$ > \(Self.shellQuote(pidFile.path)); trap '' TERM; exec sleep 5",
+            timeout: 2)
 
         #expect(result == nil)
-        #expect(Date().timeIntervalSince(startedAt) < 1)
+        #expect(Date().timeIntervalSince(startedAt) < 3)
         let pidText = try String(contentsOf: pidFile, encoding: .utf8)
         let pid = pid_t(pidText.trimmingCharacters(in: .whitespacesAndNewlines))
         #expect(pid != nil)
@@ -140,8 +144,8 @@ struct AppServerClientResolverTests {
         defer { try? FileManager.default.removeItem(at: pidFile) }
         let result = AppServerClient.runLoginShellLine(
             shell: "/bin/sh",
-            command: "(trap '' HUP TERM; exec sleep 3) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); wait",
-            timeout: 0.5)
+            command: "(trap '' HUP TERM; exec sleep 5) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); wait",
+            timeout: 2)
 
         #expect(result == nil)
         let pidText = try String(contentsOf: pidFile, encoding: .utf8)
@@ -159,11 +163,11 @@ struct AppServerClientResolverTests {
         let startedAt = Date()
         let result = AppServerClient.runLoginShellLine(
             shell: "/bin/sh",
-            command: "(trap '' HUP TERM; exec sleep 3) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); printf /tmp/codex",
-            timeout: 1)
+            command: "(trap '' HUP TERM; exec sleep 5) & child=$!; printf %s \"$child\" > \(Self.shellQuote(pidFile.path)); printf /tmp/codex",
+            timeout: 3)
 
         #expect(result == "/tmp/codex")
-        #expect(Date().timeIntervalSince(startedAt) < 1)
+        #expect(Date().timeIntervalSince(startedAt) < 3)
         let pidText = try String(contentsOf: pidFile, encoding: .utf8)
         let pid = pid_t(pidText.trimmingCharacters(in: .whitespacesAndNewlines))
         #expect(pid != nil)

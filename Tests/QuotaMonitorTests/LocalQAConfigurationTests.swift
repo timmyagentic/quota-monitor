@@ -23,16 +23,13 @@ struct LocalQAConfigurationTests {
         let config = try #require(LocalQAConfiguration(environment: [
             "QUOTAMONITOR_QA_MODE": "1",
             "QUOTAMONITOR_QA_OUTPUT_DIR": "/tmp/qm-qa",
-            "QUOTAMONITOR_QA_STEPS": "open-dashboard,open-whats-new,show-codex-sidebar-needs-quit,show-codex-sidebar-multiple-instances,show-codex-sidebar-ready-to-launch,exercise-settings,snapshot,quit"
+            "QUOTAMONITOR_QA_STEPS": "open-dashboard,open-whats-new,exercise-settings,snapshot,quit"
         ]))
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa")
         #expect(config.steps == [
             .openDashboard,
             .openWhatsNew,
-            .showCodexSidebarNeedsQuit,
-            .showCodexSidebarMultipleInstances,
-            .showCodexSidebarReadyToLaunch,
             .exerciseSettings,
             .snapshot,
             .quit

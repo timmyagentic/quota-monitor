@@ -44,7 +44,7 @@ struct DailyPoint: Sendable, Identifiable, Equatable {
     }
 }
 
-enum TrendBreakdownGrouping: Sendable {
+enum TrendBreakdownGrouping: Sendable, Equatable {
     case provider
     case model
 }

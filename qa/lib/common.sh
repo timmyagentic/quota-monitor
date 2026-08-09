@@ -196,6 +196,16 @@ qm_write_real_data_defaults() {
         qa_overrides="app.language=${QM_QA_LANGUAGE}"
     fi
 
+    if [[ "$copied" == "true" && "${QM_QA_CODEX_SIDEBAR_QUOTA:-0}" == "1" ]]; then
+        HOME="$home" defaults write \
+            "$domain" settings.codexSidebarQuotaEnabled -bool true
+        if [[ "$qa_overrides" == "none" ]]; then
+            qa_overrides="settings.codexSidebarQuotaEnabled=true"
+        else
+            qa_overrides="${qa_overrides},settings.codexSidebarQuotaEnabled=true"
+        fi
+    fi
+
     {
         printf 'source_home=%s\n' "$source_home"
         printf 'source_domain=%s\n' "$source_domain"
