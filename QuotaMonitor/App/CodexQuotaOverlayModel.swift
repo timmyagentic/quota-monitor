@@ -285,26 +285,19 @@ enum CodexQuotaOverlayLayout {
         guard windowCount > 0 else { return 0 }
 
         var height: CGFloat = 28
-        if presentation.isCached {
-            height += 22
-        }
-        height += CGFloat(windowCount) * 50
+        height += CGFloat(windowCount) * 42
         height += CGFloat(max(0, windowCount - 1)) * 17
 
         if let resetCredits {
-            height += 21 + 14
+            height += 21 + 18
             if !resetCredits.expirations.isEmpty {
-                height += 8
-                height += CGFloat(resetCredits.expirations.count) * 14
-                height += CGFloat(max(0, resetCredits.expirations.count - 1)) * 6
+                height += 3
+                height += CGFloat(resetCredits.expirations.count) * 13
+                height += CGFloat(max(0, resetCredits.expirations.count - 1)) * 4
             } else {
-                height += 20
+                height += 16
             }
         }
-
-        // Every absolute timestamp in the card uses local time, so keep the
-        // same explanatory footer the previous inline widget provided.
-        height += 22
         return ceil(max(104, height))
     }
 

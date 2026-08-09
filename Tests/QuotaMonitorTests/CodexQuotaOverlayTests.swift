@@ -221,17 +221,29 @@ struct CodexQuotaOverlayTests {
 
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: nil) == 167)
+            resetCredits: nil) == 129)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: resetCredits) == 264)
+            resetCredits: resetCredits) == 218)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            contentHeight: 264) == CGRect(
+            contentHeight: 218) == CGRect(
                 x: 12,
                 y: 45,
                 width: 464,
-                height: 264))
+                height: 218))
+
+        let cached = CodexQuotaOverlayPresentation.make(
+            snapshot: snapshot(
+                capturedOffset: -(16 * 60),
+                primary: window(usedPercent: 37),
+                secondary: window(usedPercent: 18)),
+            displayMode: .used,
+            now: now)
+        #expect(cached.isCached)
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: cached,
+            resetCredits: nil) == 129)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(

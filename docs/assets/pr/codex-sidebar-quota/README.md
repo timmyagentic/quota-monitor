@@ -14,12 +14,14 @@ SHA-256:
 
 `single-percentage-used.png` is a privacy-cropped screenshot from the isolated
 fixture QA build. With the app-wide quota setting on Used, each detail row
-keeps only its configured percentage in the emphasized top-right position and
-the progress bar follows the same direction. No account identity or unrelated
+keeps only its configured percentage in the top-right position and matches the
+menu popover's caption hierarchy and green/orange/red progress styling. The
+shared progress bar follows the same display direction, while redundant
+refresh and local-time notes are omitted. No account identity or unrelated
 conversation content is included.
 
 SHA-256:
-`e50b63a9909dccd8ef80134443ef4e2316e1e218aa8f9c753c4b73f182f127f5`
+`36a5dc425352c2475fdaa58a06357117ac0048d3f0a3eecd9f5120814c496f43`
 
 ## Legacy reference
 

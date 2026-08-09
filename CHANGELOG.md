@@ -32,7 +32,7 @@ window copy.
 
 #### Summary
 
-- Codex widget details now show either used or remaining quota, matching the app-wide percentage setting without duplicating both values.
+- Codex widget details now show either used or remaining quota in the same type, wording, progress style, and health colors as the menu popover, without duplicate values or redundant status notes.
 - Menu-popover resets, reset-credit expirations, and Session update times now stay responsive during repeated rendering while preserving their current localized wording.
 - The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
 - Codex now shows 5-hour and weekly quota in a native window-following widget; hovering or clicking reveals remaining usage, reset times, and reset cards without requiring a debugging port or restarting Codex.
@@ -80,7 +80,7 @@ window copy.
 
 ### Fixed
 
-- **Consistent Codex widget percentages.** The hover card now keeps one configured used-or-remaining percentage in its emphasized top-right position, with the progress bar following the same direction.
+- **Consistent Codex widget presentation.** The hover card now keeps one configured used-or-remaining percentage in its emphasized top-right position, matches the menu popover's typography and green/orange/red progress styling, and omits redundant refresh and local-time notes.
 - **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
 - **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background or when Codex tracking is disabled, avoids a duplicate launch request, preserves the last good quota during refreshes, filters expired reset cards, retries data loading without requiring a restart, and restores the previous hover detail card with usage, progress, and reset timing.
