@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-08-09
+
 #### Summary
 
 - Codex widget details now show either used or remaining quota in the same type, wording, progress style, and health colors as the menu popover, without duplicate values or redundant status notes.
