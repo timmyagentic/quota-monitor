@@ -1,4 +1,4 @@
-# Quota Monitor 1.0 update-page evidence
+# Quota Monitor 1.0 update-edition evidence
 
 The images in this directory come from uniquely scoped, isolated QA app
 bundles. They use synthetic data and do not read the installed app's database,
@@ -6,42 +6,45 @@ preferences, credentials, or account content.
 
 Verified surfaces:
 
-- English and Simplified Chinese pages 1, 3, and 4 of the final in-app What's
-  New campaign, proving that the quota widget, History view, update-window
-  image, copy, accessibility labels, and controls all follow the app language.
-- English and Simplified Chinese update-window captures demonstrate the full
-  four-card 1.0 release summary and localized controls. The final generated
-  release-note HTML is additionally covered by the release-note validator and
-  update-window tests.
+- English and Simplified Chinese update-window captures show the resizable
+  1.0 release edition with its large version stage, 44 changes, localized
+  controls, complete chapter list, and fixed action shelf.
+- Computer Use read the complete WebView accessibility tree, scrolled the
+  release, and jumped directly from the chapter navigation to `Removed`,
+  proving that the page is not a static hero or a four-card summary.
+- English and Simplified Chinese What's New pages 1 and 4 prove that the new
+  update edition is bundled into the replayable product tour and that its copy,
+  accessibility label, and controls follow the app language.
 - `bilingual-update-pages.png` is the exact final-build comparison board for
   What's New pages 1 and 4 in both languages.
 
-Final What's New build:
+Exact builds:
 
-- App and media commit: `75d30959e0396b5799350c94e4730d94c0efede8`
+- Release-edition implementation commit: `a90b3b929ed312136c462bab8f67d42b8d7182e0`
+- What's New media commit: `1c223afaa79fec4354bfb6cae3f77f71e3dce88c`
 - App version: `1.0.0`
 - Build number: `10000009000`
-- Embedded `BuildCommit`: `75d3095`
+- Embedded `BuildCommit` values: `a90b3b9` for the standalone update-window
+  captures and `1c223af` for the final What's New captures.
 - Distribution configuration: Developer ID debug assembly, ad-hoc signed
   because the local Developer ID identity was unavailable.
 
-The standalone update-window images are the exact pre-rebase implementation
-captures from `8d0c8aa6478205be212c7cb1b4312ea548a60a11`.
+QA evidence:
 
-QA artifact directories:
+- Isolated fixture and capture directory:
+  `.build/qa-artifacts/20260809T184414Z-computer-use-fixture-smoke`
+- Standalone exact-build app:
+  `.build/QuotaMonitor-ReleaseEditionQA-a90b3b9.app`
+- What's New exact-build app:
+  `.build/QuotaMonitor-WhatsNewReleaseEditionQA-1c223af.app`
 
-- `.build/qa-artifacts/20260810T015500Z-whatsnew-final-75d3095-en`
-- `.build/qa-artifacts/20260810T015500Z-whatsnew-final-75d3095-zh-Hans`
-- `.build/qa-artifacts/20260809T174000Z-update-final-8d0c8aa-en`
-- `.build/qa-artifacts/20260809T174100Z-update-final-8d0c8aa-zh`
-
-Each boundary manifest records fixture mode, a unique defaults suite and QA
+The boundary manifest records fixture mode, a unique defaults suite and QA
 home, disabled live external sources, and no copied credentials.
 
 SHA-256:
 
-- `bilingual-update-pages.png`: `39af47c7aa5a2201074717730714e7e68d8ed018f8dfa987defb3767cb752035`
-- `update-window.en.png`: `d0b3732487d4a7bb2ee7ac614d0ad675bfc787e534b47244007d5a1a63fa795f`
-- `update-window.zh-Hans.png`: `5f6a824ca88bf3dc964799dfd37ead01876d686451a3c9da0f0c17a9f7f5b4ac`
-- `whats-new.en.png`: `ed273baaf9081e4d69d61c52de49259a7c1ed8a3d695043664dc5615b9fc9d76`
-- `whats-new.zh-Hans.png`: `f83757058a8f8d01eb2549a50c1ed04e415a4deff34b052012b21fb640ba1e25`
+- `bilingual-update-pages.png`: `53a87f365883091e7a39e91d259a2547dd50406bcd365a94cbe8c91d2267397a`
+- `update-window.en.png`: `476acc667760f0d0651456fcfbdabc861db5a1cb398fb1ba7f3f140891c1c63c`
+- `update-window.zh-Hans.png`: `8de186e17eacd261dfc2bb307b2fb5c4ecc17fc88893cbc675d48538a1c497f9`
+- `whats-new.en.png`: `9a5ba2bcacd64402a10285f86a0916175e9e234539350b07b573867243d0fcd7`
+- `whats-new.zh-Hans.png`: `7f81a9bbb137077e0591a85f9674f5ed10dd101e382dcc5b3eb9841233f1fdd0`
