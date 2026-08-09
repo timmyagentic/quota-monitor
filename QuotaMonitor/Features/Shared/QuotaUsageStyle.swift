@@ -3,6 +3,10 @@ import SwiftUI
 enum QuotaWindowCompactLabel {
     static let fiveHour = "5h"
     static let sevenDay = "7d"
+
+    static func segment(label: String, value: String) -> String {
+        "\(label) \(value)"
+    }
 }
 
 enum QuotaUsageStyle {

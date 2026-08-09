@@ -333,7 +333,11 @@ enum MenuBarTitleBuilder {
         for r in rows {
             let tag = multi ? "\(r.tag) " : ""
             let windows = visibleSegments(for: r)
-                .map { "\($0.label) \($0.value)" }
+                .map {
+                    QuotaWindowCompactLabel.segment(
+                        label: $0.label,
+                        value: $0.value)
+                }
                 .joined(separator: " · ")
             parts.append("\(tag)\(windows)")
         }

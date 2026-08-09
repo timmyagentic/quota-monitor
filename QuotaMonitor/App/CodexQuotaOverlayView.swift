@@ -110,19 +110,14 @@ struct CodexQuotaOverlayView: View {
         _ label: String,
         _ value: CodexQuotaOverlayMetric
     ) -> some View {
-        HStack(spacing: 3.5) {
-            Circle()
-                .fill(metricAccent(value))
-                .frame(width: 4, height: 4)
-            Text(label)
-                .foregroundStyle(.secondary)
-            Text("\(value.percent)%")
-                .monospacedDigit()
-                .foregroundStyle(metricColor(value))
-        }
-        .font(.system(size: 10, weight: .semibold))
-        .padding(.horizontal, 4)
-        .lineLimit(1)
+        Text(QuotaWindowCompactLabel.segment(
+            label: label,
+            value: "\(value.percent)%"))
+            .monospacedDigit()
+            .foregroundStyle(metricColor(value))
+            .font(.system(size: 10, weight: .semibold))
+            .padding(.horizontal, 4)
+            .lineLimit(1)
     }
 
     private func summaryWidth(
@@ -145,11 +140,6 @@ struct CodexQuotaOverlayView: View {
         case .critical:
             .red
         }
-    }
-
-    private func metricAccent(_ metric: CodexQuotaOverlayMetric) -> Color {
-        QuotaUsageStyle.tintColor(
-            forUsedPercent: Double(metric.usedPercent))
     }
 }
 

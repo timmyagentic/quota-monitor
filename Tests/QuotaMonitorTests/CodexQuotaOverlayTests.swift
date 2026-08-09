@@ -137,6 +137,9 @@ struct CodexQuotaOverlayTests {
 
         #expect(english == ["5h", "7d"])
         #expect(chinese == english)
+        #expect(QuotaWindowCompactLabel.segment(
+            label: QuotaWindowCompactLabel.sevenDay,
+            value: "51%") == "7d 51%")
     }
 
     @Test("Window selection rejects helper surfaces and preserves front order")
@@ -439,6 +442,8 @@ struct CodexQuotaOverlayTests {
         #expect(viewSource.contains("Text(Branding.appDisplayName)"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
+        #expect(viewSource.contains("Text(QuotaWindowCompactLabel.segment("))
+        #expect(!viewSource.contains("private func metricAccent"))
         let pollingStart = try #require(
             appDelegate.range(of: "env.startBackgroundPolling()"))
         let overlayStart = try #require(
