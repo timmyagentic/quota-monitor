@@ -162,11 +162,14 @@ struct CodexQuotaOverlayTests {
             displays: displays) == CGRect(x: -1_400, y: 280, width: 1_000, height: 700))
     }
 
-    @Test("Overlay stays inside the Codex account row")
+    @Test("Overlay preserves the legacy right-side account-row slot")
     func accountRowLayout() {
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080))
-            == CGRect(x: 100, y: 12, width: 132, height: 25))
+            == CGRect(x: 300, y: 12, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
+            == CGRect(x: -900, y: 212, width: 132, height: 25))
     }
 
     @Test("The existing sidebar opt-in persists across the native migration")

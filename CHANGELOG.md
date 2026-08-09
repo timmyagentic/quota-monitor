@@ -86,7 +86,7 @@ window copy.
 ### Changed
 
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
-- **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself over Codex's account row, follows window movement and Spaces, and passes every click through to Codex.
+- **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself in the established right-side account-row slot, follows window movement and Spaces, and passes every click through to Codex.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.

@@ -143,14 +143,20 @@ enum CodexWindowFrameConverter {
 enum CodexQuotaOverlayLayout {
     static let size = CGSize(width: 132, height: 25)
     static let windowIdentifier = "codex-quota-overlay"
+    private static let legacyAccountRowTrailingOffset: CGFloat = 432
+    private static let bottomInset: CGFloat = 12
 
-    /// Codex's account row is 260 pt wide. Right-align before its help button
-    /// so the widget follows the window without covering the avatar or row
-    /// actions; mouse events pass through to Codex regardless.
+    /// Preserve the established injected-widget slot immediately before the
+    /// account-row help control. The native overlay is wider because it shows
+    /// both rolling windows, so anchor its trailing edge instead of placing it
+    /// directly after the account name.
     static func frame(in codexWindowFrame: CGRect) -> CGRect {
-        CGRect(
-            x: codexWindowFrame.minX + 100,
-            y: codexWindowFrame.minY + 12,
+        let trailingX = min(
+            codexWindowFrame.minX + legacyAccountRowTrailingOffset,
+            codexWindowFrame.maxX - bottomInset)
+        return CGRect(
+            x: trailingX - size.width,
+            y: codexWindowFrame.minY + bottomInset,
             width: size.width,
             height: size.height)
     }

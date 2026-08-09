@@ -2,11 +2,11 @@
 
 `native-overlay.png` is a privacy-cropped screenshot from the isolated
 real-data QA build. It shows the QuotaMonitor-owned, click-through native
-overlay aligned with Codex's account-row help control; the account name and
-unrelated conversation content are excluded.
+overlay in the established slot immediately before Codex's account-row help
+control; the account name and unrelated conversation content are excluded.
 
 SHA-256:
-`1de8d73ff064b10622a11472b6912e60b8ada7c14a07138e74bab37863b7eca6`
+`0c0315f996f01df6c1b5cbf9cd52ff48241f04208530fda62669db091d153177`
 
 ## Legacy reference
 
