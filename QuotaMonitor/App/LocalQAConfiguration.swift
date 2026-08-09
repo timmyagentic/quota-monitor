@@ -9,14 +9,21 @@ struct LocalQAConfiguration: Equatable {
     let steps: [LocalQAStep]
     let mockCodexResetCredits: Bool
 
+    init?() {
+        self.init(resolved: LocalQAEnvironment.resolvedConfiguration())
+    }
+
     init?(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) {
-        guard let resolved = LocalQAEnvironment.resolvedConfiguration(
+        self.init(resolved: LocalQAEnvironment.resolvedConfiguration(
             environment: environment,
-            arguments: arguments),
-              resolved.isActive else { return nil }
+            arguments: arguments))
+    }
+
+    private init?(resolved: LocalQAResolvedConfiguration?) {
+        guard let resolved, resolved.isActive else { return nil }
 
         if let rawSteps = resolved.steps,
            !rawSteps.isEmpty {

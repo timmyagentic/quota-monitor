@@ -1,6 +1,7 @@
 import Foundation
+import os
 
-struct LocalQAResolvedConfiguration: Equatable {
+struct LocalQAResolvedConfiguration: Equatable, Sendable {
     let isActive: Bool
     let homeDirectory: URL?
     let defaultsSuite: String?
@@ -21,6 +22,36 @@ enum LocalQAEnvironment {
     static let configArgument = "--quotamonitor-qa-config"
     static let configBase64Argument = "--quotamonitor-qa-config-base64"
     static let invalidQADefaultsSuite = "dev.tjzhou.QuotaMonitor.InvalidQA"
+
+    // Swift initializes static lets once and publishes them atomically. Keeping
+    // this value immutable makes every no-argument read concurrency-safe while
+    // explicit environment/argument injection continues to resolve afresh.
+    private static let launchResolutionCount = OSAllocatedUnfairLock(initialState: 0)
+    private static let launchState: LaunchState = {
+        launchResolutionCount.withLock { $0 += 1 }
+        let processInfo = ProcessInfo.processInfo
+        let environment = processInfo.environment
+        let arguments = processInfo.arguments
+        let configuration = resolvedConfiguration(
+            environment: environment,
+            arguments: arguments)
+        return LaunchState(
+            environment: environment,
+            arguments: arguments,
+            resolvedConfiguration: configuration,
+            activeConfiguration: configuration.flatMap { $0.isActive ? $0 : nil },
+            qaRequested: isQARequested(
+                environment: environment,
+                arguments: arguments))
+    }()
+
+    static var launchResolutionCountForTesting: Int {
+        launchResolutionCount.withLock { $0 }
+    }
+
+    static func resolvedConfiguration() -> LocalQAResolvedConfiguration? {
+        launchState.resolvedConfiguration
+    }
 
     static func resolvedConfiguration(
         environment: [String: String] = ProcessInfo.processInfo.environment,
@@ -44,11 +75,19 @@ enum LocalQAEnvironment {
             mockCodexResetCredits: boolValue(environment[mockCodexResetCreditsKey]))
     }
 
+    static func isActive() -> Bool {
+        launchState.activeConfiguration != nil
+    }
+
     static func isActive(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> Bool {
         activeConfiguration(environment: environment, arguments: arguments) != nil
+    }
+
+    static func isQARequested() -> Bool {
+        launchState.qaRequested
     }
 
     static func isQARequested(
@@ -62,39 +101,44 @@ enum LocalQAEnvironment {
         }
     }
 
+    static func homeDirectory() -> URL {
+        resolvedHomeDirectory(
+            environment: launchState.environment,
+            configuration: launchState.activeConfiguration)
+    }
+
     static func homeDirectory(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> URL {
-        if let home = activeConfiguration(
+        resolvedHomeDirectory(
             environment: environment,
-            arguments: arguments)?.homeDirectory {
-            return home
-        }
-        if let home = directoryURL(environment[homeKey]) {
-            return home
-        }
-        return FileManager.default.homeDirectoryForCurrentUser
+            configuration: activeConfiguration(
+                environment: environment,
+                arguments: arguments))
+    }
+
+    static func applicationSupportDirectory() -> URL {
+        resolvedApplicationSupportDirectory(
+            environment: launchState.environment,
+            configuration: launchState.activeConfiguration)
     }
 
     static func applicationSupportDirectory(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> URL {
-        if let home = activeConfiguration(
+        resolvedApplicationSupportDirectory(
             environment: environment,
-            arguments: arguments)?.homeDirectory {
-            return home
-                .appendingPathComponent("Library/Application Support", isDirectory: true)
-        }
-        if let home = directoryURL(environment[homeKey]) {
-            return home
-                .appendingPathComponent("Library/Application Support", isDirectory: true)
-        }
-        return FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            configuration: activeConfiguration(
+                environment: environment,
+                arguments: arguments))
+    }
+
+    static func userDefaults() -> UserDefaults? {
+        resolvedUserDefaults(
+            configuration: launchState.activeConfiguration,
+            requested: launchState.qaRequested)
     }
 
     static func userDefaults(
@@ -105,6 +149,69 @@ enum LocalQAEnvironment {
             environment: environment,
             arguments: arguments)
         let requested = isQARequested(environment: environment, arguments: arguments)
+        return resolvedUserDefaults(
+            configuration: configuration,
+            requested: requested)
+    }
+
+    static func processEnvironmentOverrides() -> [String: String] {
+        resolvedProcessEnvironmentOverrides(
+            configuration: launchState.activeConfiguration)
+    }
+
+    static func processEnvironmentOverrides(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [String: String] {
+        resolvedProcessEnvironmentOverrides(
+            configuration: activeConfiguration(
+                environment: environment,
+                arguments: arguments))
+    }
+
+    @discardableResult
+    static func applyProcessEnvironmentOverridesIfNeeded() -> [String: String] {
+        applyProcessEnvironmentOverrides(processEnvironmentOverrides())
+    }
+
+    @discardableResult
+    static func applyProcessEnvironmentOverridesIfNeeded(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [String: String] {
+        applyProcessEnvironmentOverrides(processEnvironmentOverrides(
+            environment: environment,
+            arguments: arguments))
+    }
+
+    static func codexHomeDirectory() -> URL? {
+        resolvedCodexHomeDirectory(configuration: launchState.activeConfiguration)
+    }
+
+    static func codexHomeDirectory(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> URL? {
+        resolvedCodexHomeDirectory(configuration: activeConfiguration(
+            environment: environment,
+            arguments: arguments))
+    }
+
+    static func allowsExternalDataSources() -> Bool {
+        !launchState.qaRequested
+    }
+
+    static func allowsExternalDataSources(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
+        !isQARequested(environment: environment, arguments: arguments)
+    }
+
+    private static func resolvedUserDefaults(
+        configuration: LocalQAResolvedConfiguration?,
+        requested: Bool
+    ) -> UserDefaults? {
         if requested && configuration == nil {
             return UserDefaults(suiteName: invalidQADefaultsSuite)
         }
@@ -118,15 +225,41 @@ enum LocalQAEnvironment {
         return UserDefaults(suiteName: suite)
     }
 
-    static func processEnvironmentOverrides(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        arguments: [String] = ProcessInfo.processInfo.arguments
-    ) -> [String: String] {
-        guard let configuration = activeConfiguration(
-            environment: environment,
-            arguments: arguments) else {
-            return [:]
+    private static func resolvedHomeDirectory(
+        environment: [String: String],
+        configuration: LocalQAResolvedConfiguration?
+    ) -> URL {
+        if let home = configuration?.homeDirectory {
+            return home
         }
+        if let home = directoryURL(environment[homeKey]) {
+            return home
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }
+
+    private static func resolvedApplicationSupportDirectory(
+        environment: [String: String],
+        configuration: LocalQAResolvedConfiguration?
+    ) -> URL {
+        if let home = configuration?.homeDirectory {
+            return home
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        }
+        if let home = directoryURL(environment[homeKey]) {
+            return home
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        }
+        return FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+    }
+
+    private static func resolvedProcessEnvironmentOverrides(
+        configuration: LocalQAResolvedConfiguration?
+    ) -> [String: String] {
+        guard let configuration else { return [:] }
 
         var overrides: [String: String] = [:]
         if let home = configuration.homeDirectory {
@@ -139,39 +272,24 @@ enum LocalQAEnvironment {
         return overrides
     }
 
-    @discardableResult
-    static func applyProcessEnvironmentOverridesIfNeeded(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        arguments: [String] = ProcessInfo.processInfo.arguments
+    private static func applyProcessEnvironmentOverrides(
+        _ overrides: [String: String]
     ) -> [String: String] {
-        let overrides = processEnvironmentOverrides(
-            environment: environment,
-            arguments: arguments)
         for (key, value) in overrides {
             setenv(key, value, 1)
         }
         return overrides
     }
 
-    static func codexHomeDirectory(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        arguments: [String] = ProcessInfo.processInfo.arguments
+    private static func resolvedCodexHomeDirectory(
+        configuration: LocalQAResolvedConfiguration?
     ) -> URL? {
-        guard let configuration = activeConfiguration(
-            environment: environment,
-            arguments: arguments) else { return nil }
+        guard let configuration else { return nil }
         if let codexHome = configuration.codexHomeDirectory {
             return codexHome
         }
         return configuration.homeDirectory?
             .appendingPathComponent(".codex", isDirectory: true)
-    }
-
-    static func allowsExternalDataSources(
-        environment: [String: String] = ProcessInfo.processInfo.environment,
-        arguments: [String] = ProcessInfo.processInfo.arguments
-    ) -> Bool {
-        !isQARequested(environment: environment, arguments: arguments)
     }
 
     private static func activeConfiguration(
@@ -288,5 +406,13 @@ enum LocalQAEnvironment {
         let codexHome: String?
         let steps: [String]?
         let mockCodexResetCredits: Bool?
+    }
+
+    private struct LaunchState: Sendable {
+        let environment: [String: String]
+        let arguments: [String]
+        let resolvedConfiguration: LocalQAResolvedConfiguration?
+        let activeConfiguration: LocalQAResolvedConfiguration?
+        let qaRequested: Bool
     }
 }

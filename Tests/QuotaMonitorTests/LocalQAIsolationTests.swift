@@ -166,6 +166,39 @@ struct LocalQAIsolationTests {
         #expect(overrides["CODEX_HOME"] == "/tmp/qm-qa-home/.codex")
     }
 
+    @Test("Explicit QA injection stays isolated after the launch cache is initialized")
+    func explicitQAInjectionBypassesLaunchCache() {
+        _ = LocalQAEnvironment.isActive()
+        let arguments = inlineConfigArguments(home: "/tmp/qm-qa-explicit-cache")
+
+        #expect(LocalQAEnvironment.isActive(environment: [:], arguments: arguments))
+        #expect(LocalQAEnvironment.homeDirectory(
+            environment: [:],
+            arguments: arguments).path == "/tmp/qm-qa-explicit-cache")
+        #expect(!LocalQAEnvironment.allowsExternalDataSources(
+            environment: [:],
+            arguments: arguments))
+        #expect(LocalQAEnvironment.processEnvironmentOverrides(
+            environment: [:],
+            arguments: arguments) == [
+                "HOME": "/tmp/qm-qa-explicit-cache",
+                "CODEX_HOME": "/tmp/qm-qa-explicit-cache/.codex",
+            ])
+        #expect(!LocalQAEnvironment.isActive(
+            environment: [:],
+            arguments: ["QuotaMonitor"]))
+    }
+
+    @Test("Repeated no-argument settings checks resolve the launch environment once")
+    func repeatedSettingsChecksReuseLaunchResolution() {
+        for _ in 0..<100 {
+            _ = SettingsStore.snapshot()
+            _ = SettingsStore.developerModeEnabledNonisolated
+        }
+
+        #expect(LocalQAEnvironment.launchResolutionCountForTesting == 1)
+    }
+
     @Test("QA settings snapshot reads the isolated defaults suite")
     func qaSettingsSnapshotReadsIsolatedDefaultsSuite() throws {
         let suiteName = "dev.tjzhou.QuotaMonitor.QATest.\(UUID().uuidString)"
