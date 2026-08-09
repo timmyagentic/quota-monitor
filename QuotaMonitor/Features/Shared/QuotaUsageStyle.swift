@@ -4,8 +4,21 @@ enum QuotaWindowCompactLabel {
     static let fiveHour = "5h"
     static let sevenDay = "7d"
 
-    static func segment(label: String, value: String) -> String {
-        "\(label) \(value)"
+    static func segment(
+        label: String,
+        value: String,
+        style: SettingsStore.MenuBarLabelStyle
+    ) -> String {
+        "\(label)\(separator(for: style))\(value)"
+    }
+
+    static func separator(
+        for style: SettingsStore.MenuBarLabelStyle
+    ) -> String {
+        switch style {
+        case .emphasis: "\u{2009}"
+        case .native: " "
+        }
     }
 }
 

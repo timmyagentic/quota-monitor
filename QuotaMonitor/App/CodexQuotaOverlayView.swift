@@ -112,7 +112,8 @@ struct CodexQuotaOverlayView: View {
     ) -> some View {
         Text(QuotaWindowCompactLabel.segment(
             label: label,
-            value: "\(value.percent)%"))
+            value: "\(value.percent)%",
+            style: settings.menuBarLabelStyle))
             .monospacedDigit()
             .foregroundStyle(metricColor(value))
             .font(.system(size: 10, weight: .semibold))
