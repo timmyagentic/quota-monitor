@@ -91,7 +91,7 @@ final class SettingsStore {
         didSet { defaults.set(showDockIconForWindows,
                               forKey: Keys.showDockIconForWindows) }
     }
-    /// Shows a click-through QuotaMonitor-owned panel over the Codex account
+    /// Shows an interactive QuotaMonitor-owned panel over the Codex account
     /// row. The preference key is retained from the original sidebar feature
     /// so existing opt-ins migrate without user action.
     var codexSidebarQuotaEnabled: Bool {
@@ -100,6 +100,12 @@ final class SettingsStore {
     }
     /// Runtime-only visibility and freshness state for the native overlay.
     var codexSidebarQuotaStatus: CodexSidebarQuotaStatus = .disabled
+    /// The persisted widget opt-in is user intent, while provider tracking is
+    /// the data-source gate. Reading both here prevents an older preference
+    /// combination from leaving an unavailable widget over Codex indefinitely.
+    var shouldShowCodexSidebarQuota: Bool {
+        codexSidebarQuotaEnabled && enabledProviders.contains("codex")
+    }
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
     /// 7 days because most users want a "what did I do this week"

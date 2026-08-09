@@ -155,7 +155,8 @@ struct CodexQuotaOverlayDetailsView: View {
             let resetCredits = CodexQuotaOverlayResetCreditsPresentation.make(
                 snapshot: environment.latestCodexResetCredits,
                 fallbackAvailableCount: environment.latestRateLimits?
-                    .resetCreditsAvailable)
+                    .resetCreditsAvailable,
+                now: context.date)
 
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {

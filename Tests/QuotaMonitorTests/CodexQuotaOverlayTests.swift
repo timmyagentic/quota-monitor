@@ -246,18 +246,62 @@ struct CodexQuotaOverlayTests {
 
         let detailed = CodexQuotaOverlayResetCreditsPresentation.make(
             snapshot: snapshot,
-            fallbackAvailableCount: nil)
+            fallbackAvailableCount: nil,
+            now: now)
         #expect(detailed?.availableCount == 4)
         #expect(detailed?.expirations == Array(expirations.prefix(3)))
 
         let countOnly = CodexQuotaOverlayResetCreditsPresentation.make(
             snapshot: nil,
-            fallbackAvailableCount: 2)
+            fallbackAvailableCount: 2,
+            now: now)
         #expect(countOnly?.availableCount == 2)
         #expect(countOnly?.expirations.isEmpty == true)
         #expect(CodexQuotaOverlayResetCreditsPresentation.make(
             snapshot: nil,
-            fallbackAvailableCount: 0) == nil)
+            fallbackAvailableCount: 0,
+            now: now) == nil)
+    }
+
+    @Test("Expired reset cards disappear and no longer inflate the count")
+    func expiredResetCreditsAreFiltered() throws {
+        let snapshot = CodexResetCreditsSnapshot(
+            capturedAt: now.addingTimeInterval(-300),
+            availableCount: 4,
+            credits: [
+                CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now.addingTimeInterval(-1)),
+                CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now.addingTimeInterval(100)),
+                CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now.addingTimeInterval(200)),
+            ],
+            detailStatus: .complete)
+
+        let active = try #require(
+            CodexQuotaOverlayResetCreditsPresentation.make(
+                snapshot: snapshot,
+                fallbackAvailableCount: 4,
+                now: now))
+        #expect(active.availableCount == 2)
+        #expect(active.expirations == [
+            now.addingTimeInterval(100),
+            now.addingTimeInterval(200)
+        ])
+
+        #expect(CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: CodexResetCreditsSnapshot(
+                capturedAt: now.addingTimeInterval(-300),
+                availableCount: 1,
+                credits: [CodexResetCredit(
+                    grantedAt: nil,
+                    expiresAt: now)],
+                detailStatus: .complete),
+            fallbackAvailableCount: 1,
+            now: now) == nil)
     }
 
     @Test("Reset countdowns stay compact and stop at the refresh boundary")
@@ -287,6 +331,23 @@ struct CodexQuotaOverlayTests {
         #expect(SettingsStore(defaults: defaults).codexSidebarQuotaEnabled)
     }
 
+    @Test("Overlay intent stays hidden until Codex tracking is enabled")
+    @MainActor
+    func overlayRequiresCodexProvider() {
+        let suite = "CodexQuotaOverlayProviderTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.removePersistentDomain(forName: suite)
+        defaults.set(["claude"], forKey: "settings.enabledProviders")
+        defaults.set(true, forKey: "settings.codexSidebarQuotaEnabled")
+
+        let settings = SettingsStore(defaults: defaults)
+        #expect(settings.codexSidebarQuotaEnabled)
+        #expect(!settings.shouldShowCodexSidebarQuota)
+        #expect(settings.setProviderEnabled("codex", enabled: true))
+        #expect(settings.shouldShowCodexSidebarQuota)
+    }
+
     @Test("Native overlay contains no Codex process or debugging lifecycle")
     func nativeArchitectureHasNoRelaunchPath() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -300,6 +361,10 @@ struct CodexQuotaOverlayTests {
         let buildScript = try String(
             contentsOf: repositoryRoot.appendingPathComponent("build.sh"),
             encoding: .utf8)
+        let appDelegate = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "QuotaMonitor/App/AppDelegate.swift"),
+            encoding: .utf8)
 
         #expect(!source.contains("SIGTERM"))
         #expect(!source.contains("remote-debugging-port"))
@@ -307,6 +372,11 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("panel.ignoresMouseEvents = false"))
         #expect(source.contains("onHoverChanged"))
         #expect(source.contains("detailsPanel"))
+        let pollingStart = try #require(
+            appDelegate.range(of: "env.startBackgroundPolling()"))
+        let overlayStart = try #require(
+            appDelegate.range(of: "overlayController.start()"))
+        #expect(pollingStart.lowerBound < overlayStart.lowerBound)
         #expect(!buildScript.localizedCaseInsensitiveContains("opsail"))
         #expect(!FileManager.default.fileExists(
             atPath: repositoryRoot.appendingPathComponent(

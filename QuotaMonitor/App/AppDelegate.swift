@@ -76,14 +76,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.statusItemController = controller
 
-        if DistributionChannel.current != .appStore {
-            let overlayController = CodexQuotaOverlayController(
-                environment: env,
-                settings: settings)
-            codexQuotaOverlayController = overlayController
-            overlayController.start()
-        }
-
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
             self,
@@ -93,6 +85,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Launch fan-out previously carried by the MenuBarExtra `.task`.
         env.startBackgroundPolling()
+        if DistributionChannel.current != .appStore {
+            let overlayController = CodexQuotaOverlayController(
+                environment: env,
+                settings: settings)
+            codexQuotaOverlayController = overlayController
+            overlayController.start()
+        }
         env.refreshAll(throttle: false, trigger: "launch")
         // Keep one launch-time menu snapshot request even when the initial
         // history scan is a no-op. DashboardView loads its heavier snapshot

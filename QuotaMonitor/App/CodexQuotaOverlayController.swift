@@ -95,7 +95,7 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func refreshOverlay(now: Date = Date()) {
         guard isStarted else { return }
-        guard settings.codexSidebarQuotaEnabled else {
+        guard settings.shouldShowCodexSidebarQuota else {
             lastFrontmostPID = nil
             hideOverlay()
             setStatus(.disabled)

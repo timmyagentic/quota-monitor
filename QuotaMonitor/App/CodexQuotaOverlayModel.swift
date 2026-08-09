@@ -87,12 +87,28 @@ struct CodexQuotaOverlayResetCreditsPresentation: Equatable {
 
     static func make(
         snapshot: CodexResetCreditsSnapshot?,
-        fallbackAvailableCount: Int?
+        fallbackAvailableCount: Int?,
+        now: Date = Date()
     ) -> CodexQuotaOverlayResetCreditsPresentation? {
-        if let snapshot, snapshot.availableCount > 0 {
-            return CodexQuotaOverlayResetCreditsPresentation(
-                availableCount: snapshot.availableCount,
-                expirations: Array(snapshot.credits.prefix(3).map(\.expiresAt)))
+        if let snapshot {
+            if snapshot.detailStatus == .complete {
+                let activeExpirations = snapshot.credits
+                    .map(\.expiresAt)
+                    .filter { $0 > now }
+                let activeCount = min(
+                    snapshot.availableCount,
+                    activeExpirations.count)
+                guard activeCount > 0 else { return nil }
+                return CodexQuotaOverlayResetCreditsPresentation(
+                    availableCount: activeCount,
+                    expirations: Array(
+                        activeExpirations.prefix(min(3, activeCount))))
+            }
+            if snapshot.availableCount > 0 {
+                return CodexQuotaOverlayResetCreditsPresentation(
+                    availableCount: snapshot.availableCount,
+                    expirations: [])
+            }
         }
         guard let fallbackAvailableCount, fallbackAvailableCount > 0 else {
             return nil
