@@ -37,6 +37,7 @@ window copy.
 - Moving across the yearly Token Activity heatmap now keeps its tooltips smooth, even with a full year of history.
 - Scrubbing across Dashboard Trends now stays responsive while preserving the same chart, tooltip, and legend values.
 - Developer diagnostics and background settings reads now avoid repeatedly rescanning the unchanged launch environment, reducing routine overhead while runtime setting changes still take effect immediately.
+- Repeated Codex history refreshes now reuse unchanged session metadata and focus proactive corrections on sessions active in the latest seven days, reducing routine background work.
 - The Codex sidebar widget can once again open or restart Codex directly from Quota Monitor, including when the current session cannot accept the widget.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
@@ -96,6 +97,7 @@ window copy.
 - **Smoother heatmap hover.** Token Activity tooltips now reuse the already prepared yearly grid while the pointer moves, avoiding repeated full-year work without changing levels, month labels, or responsive layouts.
 - **Faster Trends scrubbing.** The chart, selected-day tooltip, and legend now share one derived provider/model series until its source data, range, grouping, calendar, or language changes, avoiding repeated filtering and aggregation without changing displayed totals or ordering.
 - **Lighter launch-environment checks.** Local QA routing is resolved once for normal process-backed reads, reducing recurring settings and diagnostics work without caching runtime preferences or changing QA isolation.
+- **Bounded Codex metadata refreshes.** Session titles and project metadata are reused while their source files remain unchanged; when metadata changes, proactive corrections cover sessions active in the latest seven days, while new or changed rollouts still receive current metadata.
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
 - **Bilingual Codex quota hierarchy.** The sidebar summary now reads “Weekly · 32% left” or “本周 · 剩余 32%”, while details use localized quota terms, minute-level reset dates, and a single compact metadata line without repeating the visible used percentage or local-time note.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
