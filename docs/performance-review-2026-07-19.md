@@ -31,8 +31,8 @@ menu-bar open otherwise.
 
 ## Delivery status — refreshed 2026-08-09
 
-Status was checked against `origin/main` at `797237d`. The original 20 findings
-are **not all complete**: **6 are delivered, 5 are partially delivered, and 9
+Status was checked against `origin/main` at `0aadea5`. The original 20 findings
+are **not all complete**: **10 are delivered, 5 are partially delivered, and 5
 remain open**. “Delivered” means the referenced merge commit is an ancestor of
 that exact main head. “Partial” means a material part shipped, but the original
 cost described below still exists.
@@ -42,32 +42,35 @@ cost described below still exists.
 | P0.1 full-history repricing | Delivered | PR #135 scopes incremental pricing to changed events. |
 | P0.2 repeated Dashboard scans | Partial | PR #144 removes the redundant 14-day daily scan by deriving it from the 365-day result. `loadDashboard` still performs independent overview, daily, two breakdown, monthly, three model-share, provider-share, and all-time activity reads. |
 | P0.3 full Codex rollout reparsing | Delivered | PR #121 adds validated incremental checkpoints and tail parsing. |
-| P0.4 broad session-tree and metadata walks | Partial | PR #133 skips the heavy tree refresh after no-op scans and gates reconciliation on imported sessions; metadata backfill and changed-scan reconciliation still traverse broad session state. |
+| P0.4 broad session-tree and metadata walks | Partial | PR #133 gates tree reconciliation on imported sessions. PR #169 fingerprints Codex metadata sources, reuses unchanged metadata, and proactively repairs only the latest 7 days; changed-session tree reconciliation is still broad, while older inactive metadata remains best-effort. |
 | P1.1 synchronous login-shell discovery | Partial | PR #124 prefers the CLI bundled with ChatGPT before shell probing, but the remaining fallback path is still synchronous. |
 | P1.2 per-file popover progress invalidation | Partial | PR #155 keeps routine scans on a compact activity indicator, so those renders no longer read per-file `scanProgress`. Launch/onboarding imports still publish every file on MainActor and invalidate the parent popover view. |
 | P1.3 redundant status-item title renders | Delivered | PR #136 caches visible rows, style, and localization state before assigning the native title. |
 | P1.4 per-line rollout decoder allocation | Delivered | PR #137 reuses rollout JSON decoders. |
-| P1.5 repeated environment snapshots | Open | `LocalQAEnvironment` still defaults many calls to `ProcessInfo.processInfo.environment`. |
+| P1.5 repeated environment snapshots | Delivered | PR #166 resolves and caches the no-argument Local QA launch environment once while preserving explicit dependency injection for tests. |
 | P2.1 Keychain busy-wait | Open | The Claude credential fallback still polls `/usr/bin/security` with `Thread.sleep` from an actor method. |
 | P2.2 Claude cross-day lookup batching | Open | `crossDaySnapshotResolution` still queries stored rows separately for each parsed event. |
 | P2.3 bulk import transactions | Open | Both importers still commit one write transaction per changed file. |
 | P2.4 unindexed import-state session lookup | Delivered | PR #138 adds and tests the `import_state(session_id)` index. |
 | P2.5 catalog seeding on every Codex scan | Delivered | PR #121 removed scan-time seeding; catalog setup remains in database initialization and explicit pricing flows. |
 | P2.6 unbounded Sessions aggregation before limit | Partial | PR #129 adds request-driven 50-row pagination and PR #134 debounces search; the aggregate query still groups matching events before applying `LIMIT`. |
-| P2.7 heatmap model rebuild on hover | Open | PR #164 makes the year layout responsive, but `ActivityHeatmap.body` still constructs `HeatmapModel` from `daily` on every hover-driven body evaluation. |
-| P2.8 repeated Trends series derivation | Open | `activeSeries` is still recomputed by chart, selection, and legend paths. |
-| P2.9 per-render formatter allocation | Open | Menu-bar and Sessions rows still allocate relative/date formatters during rendering. |
+| P2.7 heatmap model rebuild on hover | Delivered | PR #167 moves hover-only state into a child view so pointer movement reuses the parent-built `HeatmapModel`. |
+| P2.8 repeated Trends series derivation | Delivered | PR #168 derives one cached series for each distinct input and passes it to chart, selection, and legend consumers. |
+| P2.9 per-render formatter allocation | Delivered | PR #165 routes the affected rows through a shared formatter cache keyed by language, time zone, and style. |
 | P2.10 model-share index coverage | Open | Current usage-event indexes still omit `model_id` from the timestamp-leading covering indexes. |
 | P2.11 small read, network, and logging costs | Open | The two Dashboard/BillingBlocks reads, monthly session sets, separate reset-credit request, developer-log file churn, and other small items remain. |
 
-### Delta since the 2026-07-25 refresh
+### Delta since the earlier 2026-08-09 refresh
 
-- `main` advanced by 25 commits from `90b48a3` to `797237d`.
-- PR #155 moves P1.2 from Open to Partial by removing detailed per-file progress from routine
-  refresh and file-watcher presentation. It does not coalesce progress publication itself.
-- PR #164 addresses heatmap width and scrolling. It does not cache `HeatmapModel`, so it does
-  not change P2.7's delivery status.
-- The other 19 findings keep their previous status after re-reading their current code paths.
+- `main` advanced by 6 commits from `797237d` to `0aadea5`.
+- PRs #165, #166, #167, and #168 move P2.9, P1.5, P2.7, and P2.8 from Open to
+  Delivered with focused regression coverage for each cache boundary.
+- PR #169 keeps P0.4 Partial: unchanged metadata sources now short-circuit their load and
+  backfill, recent sessions are proactively repaired for 7 days, and inactive historical
+  sessions remain best-effort until their rollout changes.
+- PR #170 replaces the Codex injected renderer with a native overlay but does not change the
+  delivery status of any original performance finding.
+- The other 15 findings keep their previous status after reviewing this six-commit delta.
 
 ---
 
@@ -129,15 +132,20 @@ cost described below still exists.
 ### P0.4 metadata backfill walks all Codex sessions on every scan; changed scans reconcile the full tree
 
 - [ ] Fixed
-- **Current evidence:** `ImportEngine.performScan` still calls `CodexSessionMetadataStore.load`
-  and `backfillCodexSessionMetadata` before it knows whether any rollout changed; the backfill
-  reads every Codex session. PR #133 correctly gates `reconcileSessionTree()` on
-  `importedSessions > 0`, but that function still reads and updates every Codex session when it
-  does run (`ImportEngine.swift:947-975`).
-- **Impact:** no-op scans avoid the full tree rewrite, but still pay metadata-store loading and
-  an all-session comparison. A one-session changed scan can still turn into a full-tree update.
-- **Fix direction:** cache/gate external metadata by file identity or mtime, select only missing
-  metadata rows, and reconcile affected ancestors/descendants instead of every session.
+- **Current evidence:** PR #169 fingerprints `session_index.jsonl`, both supported state
+  databases, and their WAL files (`CodexSessionMetadataStore.swift:88-97`).
+  `ImportEngine.performScan` reuses the loaded dictionary when that fingerprint is unchanged
+  (`ImportEngine.swift:165-194`) and restricts proactive metadata repair to sessions active in
+  the last 7 days (`:196-209`). A changed rollout still takes the normal import path regardless
+  of this cutoff. PR #133 continues to gate `reconcileSessionTree()` on imported sessions, but
+  that reconciliation still reads and updates broad Codex session state when it does run.
+- **Impact:** repeated scans with unchanged metadata sources avoid the external metadata read
+  and database backfill. Recent titles, project names, and cwd values are actively repaired;
+  inactive history older than 7 days is intentionally best-effort until its rollout changes.
+  A one-session changed scan can still trigger a full-tree reconciliation.
+- **Fix direction:** keep the accepted 7-day/best-effort metadata policy and narrow tree
+  reconciliation to affected ancestors and descendants rather than restoring a hot-path scan
+  of all historical metadata.
 
 ## P1 — significant, bounded or less frequent
 
@@ -196,17 +204,14 @@ cost described below still exists.
 
 ### P1.5 Logging/QA-config hot path copies the whole process environment per call
 
-- [ ] Fixed
-- **Where:** `DeveloperLog.eventRecord` guards on `SettingsStore.developerModeEnabledNonisolated`,
-  which calls `LocalQAEnvironment.userDefaults()`. The default arguments throughout
-  `App/LocalQAEnvironment.swift:25-175` still copy `ProcessInfo.processInfo.environment`, and
-  `isQARequested` scans every key. `SettingsStore.snapshot()` and
-  `allowsExternalDataSources()` use the same uncached defaults.
-- **Impact:** modest per call but multiplied by log volume — every `eventRecord` on every hot
-  path (including the per-file scan progress events) pays an env snapshot just to discard the
-  record when dev mode is off.
-- **Fix direction:** the QA configuration cannot change at runtime — resolve it once into a
-  `static let`; gate `eventRecord` on a cached bool.
+- [x] Fixed by PR #166.
+- **Current evidence:** `LocalQAEnvironment.launchState` captures the process environment,
+  arguments, resolved QA configuration, and request state exactly once
+  (`LocalQAEnvironment.swift:26-46`). No-argument production callers read that immutable
+  launch state, while overloads with explicit environment and argument values continue to
+  resolve afresh for deterministic tests.
+- **Result:** the developer-log and settings hot paths no longer copy and scan the process
+  environment on every call, without changing launch-time QA isolation semantics.
 
 ## P2 — bounded, spiky, or cheap-to-fix
 
@@ -236,20 +241,22 @@ cost described below still exists.
   applying `LIMIT`. PR #129 reduced the requested page to 50 (+1 sentinel) and PR #134 debounces
   search, but the database still aggregates every matching session. Fix: maintain/materialize
   per-session totals, or select candidate session ids before joining when the chosen sort allows.
-- [ ] **P2.7 `ActivityHeatmap` rebuilds its model on every hover.**
-  `ActivityHeatmap.swift:106-109,276-336` keeps `hoveredCell` in `@State` and constructs
-  `HeatmapModel(daily:calendar:)` in `body`, including threshold sorting and a month
-  `DateFormatter`. PR #164 made the year layout responsive but left this dataflow unchanged.
-  Fix: cache the model by `daily`/language/calendar inputs and keep hover state in a child view.
-- [ ] **P2.8 `TrendsSection.activeSeries` recomputed 2–3× per body eval, per scrub frame.**
-  `TrendsSection.swift:95,359-366,384,403-404` reads the computed series from chart,
-  selection, and legend paths; the legend alone evaluates it twice. `.chartXSelection` causes
-  repeated body work while scrubbing. Fix: derive one immutable series per body evaluation or
-  cache `collapsedModelSeries` by breakdown/range/stack mode.
-- [ ] **P2.9 Per-render formatter allocations in rows.**
-  `QuotaRow.swift:116-120` and `SessionRowMetadataView.swift:53-58` build a fresh
-  `RelativeDateTimeFormatter`; `CodexResetCreditsRow.swift:56-69` uses computed static vars that
-  allocate each access. Fix: cache formatters by active language or use value-style formatting.
+- [x] **P2.7 `ActivityHeatmap` rebuilds its model on every hover.** Fixed by PR #167.
+  `ActivityHeatmap` builds the immutable model from its data inputs, while
+  `InteractiveActivityHeatmap` owns hover-only observation (`ActivityHeatmap.swift:127-185`).
+  Pointer movement therefore invalidates only the child subtree instead of repeating threshold
+  sorting and month-label construction. Regression tests exercise repeated hover transitions
+  and data/language invalidation.
+- [x] **P2.8 `TrendsSection.activeSeries` recomputed 2–3× per body eval, per scrub frame.**
+  Fixed by PR #168. One derived `activeSeries` is passed to the chart and legend
+  (`TrendsSection.swift:31-41`), and `TrendSeriesDerivationCache` reuses it until a relevant
+  input changes (`:508-535`). Tests cover selection scrubbing, ordering, local-day/DST
+  filtering, model collapse, and every cache-key input.
+- [x] **P2.9 Per-render formatter allocations in rows.** Fixed by PR #165.
+  `LocalizedDateFormatting` owns main-actor Foundation formatter caches keyed by active
+  language, time zone, and absolute style. `QuotaRow`, `CodexResetCreditsRow`, and
+  `SessionRowMetadataView` now share those formatters; tests compare output to fresh
+  Foundation formatters and verify cache invalidation boundaries.
 - [ ] **P2.10 Windowed model-share queries `GROUP BY model_id` without index support.**
   `AggregatorReports.swift:308-385` groups both lifetime and windowed reads by `model_id`.
   Current timestamp-leading covering indexes omit `model_id`, so matching index rows still need
@@ -297,17 +304,16 @@ cost described below still exists.
 1. **Finish the bounded scan-progress win** — complete P1.2 with publication coalescing and a
    child observation boundary. PR #155 already removed the routine-render risk, so the
    remaining change can stay narrow and measurable.
-2. **Remove repeated UI derivation** — P2.7 heatmap-model caching, then P2.8 Trends-series
-   reuse. These have small correctness surfaces and direct interaction-level measurements.
-3. **Cheap allocation cleanups** — cache launch-time QA configuration (P1.5) and row formatters
-   (P2.9), preserving runtime language changes in the cache key.
-4. **Measure before consolidating Dashboard reads** — benchmark P0.2 with a large, DST-spanning
+2. **Measure before consolidating Dashboard reads** — benchmark P0.2 with a large, DST-spanning
    fixture; then combine compatible 365-day passes and fold P2.11's BillingBlocks read into the
    same transaction without changing provider/model semantics.
-5. **Narrow broad scan work** — scope P0.4 metadata/tree reconciliation and move P1.1 fallback
-   shell discovery off the main actor.
-6. **Batch only with importer invariants locked down** — P2.1–P2.3, P2.6, and P2.10 should
+3. **Narrow the remaining broad scan work** — keep P0.4's accepted 7-day/best-effort metadata
+   policy, scope tree reconciliation to affected sessions, and move P1.1 fallback shell
+   discovery off the main actor.
+4. **Batch only with importer invariants locked down** — P2.1–P2.3, P2.6, and P2.10 should
    follow targeted contention/query-plan measurements rather than their priority labels alone.
+5. **Fold in small singles when touching their owners** — take P2.11 items with the related
+   Dashboard, network, or developer-logging work instead of creating broad cleanup changes.
 
 Each fix should land with a measurement note (Instruments trace, `os_signpost`, or timed log
 delta) against a realistic fixture — several months of history, an active multi-hundred-MB
@@ -315,12 +321,15 @@ rollout — so the win is demonstrated, not assumed.
 
 ## Document verification — 2026-08-09
 
-- Synced the PR branch with `origin/main` at `797237d063ee5a6f292d1631cca3501b0dc953f5`.
-- Re-read the current implementation for all 20 original findings, including each P2.11
-  sub-item, and inspected the 25 commits added since the previous `90b48a3` refresh.
-- Confirmed PR #155 changes the presentation side of P1.2 but not progress publication, and
-  confirmed PR #164 changes heatmap layout without caching `HeatmapModel`.
-- Recounted the matrix from the individual rows: 6 Delivered, 5 Partial, 9 Open.
+- Synced the PR branch with `origin/main` at
+  `0aadea5e9f2edf23bc46fd3b80a1a586c8062943`.
+- Revalidated the 15 unaffected findings from the earlier same-day audit, then reviewed every
+  implementation and regression test added by PRs #165–#169 plus the unrelated #170 delta.
+- Confirmed P1.5 and P2.7–P2.9 are Delivered, while P0.4 remains Partial under the accepted
+  “recent 7 days proactive, inactive history best-effort” policy.
+- Recounted the matrix from the individual rows: 10 Delivered, 5 Partial, 5 Open.
+- Confirmed GitHub Actions run `31315267787` passed static QA, release-build smoke, and the
+  aggregate Swift-test gate on that exact `main` head.
 - This PR changes documentation and changelog text only. Product runtime E2E is
   therefore not applicable; the appropriate gate is Markdown review, status/commit freshness,
   repository validation, and GitHub CI.
