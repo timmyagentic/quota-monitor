@@ -1,4 +1,5 @@
 import Foundation
+import os
 import Testing
 @testable import QuotaMonitor
 
@@ -72,6 +73,37 @@ struct DeveloperModeTests {
 
         #expect(wrote == false)
         #expect(FileManager.default.fileExists(atPath: url.path) == false)
+    }
+
+    @Test
+    func fileLoggerRechecksDeveloperModeAfterRuntimeChanges() async throws {
+        let developerModeEnabled = OSAllocatedUnfairLock(initialState: false)
+        let url = try Self.tempLogURL()
+        let logger = DeveloperFileLogger(
+            fileURL: url,
+            isEnabled: { developerModeEnabled.withLock { $0 } })
+
+        #expect(await logger.record(
+            level: .info,
+            category: "test",
+            message: "disabled-before") == false)
+
+        developerModeEnabled.withLock { $0 = true }
+        #expect(await logger.record(
+            level: .info,
+            category: "test",
+            message: "enabled") == true)
+
+        developerModeEnabled.withLock { $0 = false }
+        #expect(await logger.record(
+            level: .info,
+            category: "test",
+            message: "disabled-after") == false)
+
+        let text = try String(contentsOf: url, encoding: .utf8)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        #expect(lines.count == 1)
+        #expect(try Self.firstJSONLine(at: url)["message"] as? String == "enabled")
     }
 
     @Test

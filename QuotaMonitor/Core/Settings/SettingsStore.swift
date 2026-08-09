@@ -635,6 +635,10 @@ final class SettingsStore {
     nonisolated static let knownProviders: Set<String> = ["codex", "claude"]
 
     /// Read-only snapshot for non-MainActor callers (poller actor, etc.).
+    nonisolated static func snapshot() -> Snapshot {
+        snapshot(defaults: LocalQAEnvironment.userDefaults() ?? .standard)
+    }
+
     nonisolated static func snapshot(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
