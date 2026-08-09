@@ -1,7 +1,7 @@
 import Foundation
 import GRDB
 
-// Seeds the pricing_catalog table and computes API-equivalent value for usage events.
+// Installs the bundled pricing catalog and computes API-equivalent value for usage events.
 //
 // Value formula (matches codex-pacer):
 //   value_usd =   max(input - cached, 0) * input_price/1M
@@ -58,13 +58,12 @@ struct PricingEntry: Sendable, Hashable {
 /// the base row. The preference is pricing evidence, not confirmation of the
 /// tier ultimately served by OpenAI.
 ///
-/// **Why a hard-coded map, not catalog rows.** We seed synthetic
-/// `-fast` rows in `PricingSeed.entries` derived from these numbers so
-/// the catalog stays the single source of truth; `applyLiteLLMUpdate`
-/// keeps them in sync whenever the base row is refreshed.
+/// **Why a hard-coded map, not catalog rows.** The bundled catalog derives
+/// synthetic `-fast` rows from these numbers so every shipped tier remains
+/// deterministic and versioned with the app.
 ///
 /// Update this when OpenAI publishes a new Fast tier ratio or a new
-/// model gains a Fast variant — and tweak the seed rows below.
+/// model gains a Fast variant — and update the bundled rows below.
 enum CodexFastMode {
     /// model_id → multiplier (applied to input, cached, output rates).
     /// Empty for any model not listed (toggle effectively no-ops for it).
@@ -147,7 +146,7 @@ enum CodexPriceHistory {
     ]
 }
 
-enum PricingSeed {
+enum BundledPricingCatalog {
     /// Concrete catalog entries shipped with the binary. Includes the
     /// real model rows plus synthetic `*-fast` siblings derived from
     /// `CodexFastMode.multipliers` so per-event preference and fallback
@@ -226,11 +225,10 @@ enum PricingSeed {
               effectiveModelId: "gpt-5.1-codex-mini", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex-mini"),
 
-        // --- Anthropic Claude (placeholder seeds; LiteLLM refresh overwrites) ---
-        // Seeded with public April-2026 list prices so first-launch values are
-        // sane even if LiteLLM is unreachable. cache_creation_price_per_million
-        // stores the 5-minute cache write rate; 1-hour writes are computed
-        // separately as 2x base input during backfill.
+        // --- Anthropic Claude (bundled catalog) ---
+        // Prices ship with the app. Update them in a release when vendor rates
+        // change. cache_creation_price_per_million stores the 5-minute cache
+        // write rate; 1-hour writes are computed separately as 2x base input.
         .init(modelId: "claude-opus-5", displayName: "Claude Opus 5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
@@ -240,54 +238,54 @@ enum PricingSeed {
               inputPricePerMillion: 10.00, cachedInputPricePerMillion: 1.00, outputPricePerMillion: 50.00,
               cacheCreationPricePerMillion: 12.50,
               effectiveModelId: "claude-fable-5", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-opus-4-8", displayName: "Claude Opus 4.8",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "claude-opus-4-8", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-opus-4-7", displayName: "Claude Opus 4.7",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "claude-opus-4-7", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-opus-4-6", displayName: "Claude Opus 4.6",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "claude-opus-4-6", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-opus-4-5-20251101", displayName: "Claude Opus 4.5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "claude-opus-4-5-20251101", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6",
               inputPricePerMillion: 3.00, cachedInputPricePerMillion: 0.30, outputPricePerMillion: 15.00,
               cacheCreationPricePerMillion: 3.75,
               effectiveModelId: "claude-sonnet-4-6", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-sonnet-4-5-20250929", displayName: "Claude Sonnet 4.5",
               inputPricePerMillion: 3.00, cachedInputPricePerMillion: 0.30, outputPricePerMillion: 15.00,
               cacheCreationPricePerMillion: 3.75,
               effectiveModelId: "claude-sonnet-4-5-20250929", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-haiku-4-5-20251001", displayName: "Claude Haiku 4.5",
               inputPricePerMillion: 1.00, cachedInputPricePerMillion: 0.10, outputPricePerMillion: 5.00,
               cacheCreationPricePerMillion: 1.25,
               effectiveModelId: "claude-haiku-4-5-20251001", isOfficial: false,
-              note: "Seeded from public list price; refresh from LiteLLM for authoritative values.",
+              note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
 
         // --- Zhipu GLM (Z.AI Anthropic-compatible endpoint) ---
         // Official Z.AI USD list prices for GLM models observed through the
-        // Claude-style import path. No separate cache-write premium is seeded.
+        // Claude-style import path. No separate cache-write premium is bundled.
         .init(modelId: "glm-5.1", displayName: "GLM-5.1",
               inputPricePerMillion: 1.40, cachedInputPricePerMillion: 0.26, outputPricePerMillion: 4.40,
               effectiveModelId: "glm-5.1", isOfficial: true, note: nil,
@@ -300,7 +298,7 @@ enum PricingSeed {
 
     /// Synthetic `*-fast` rows for every entry in `CodexFastMode.multipliers`.
     /// We require the base model to exist in `base` so a typo in the
-    /// multiplier dict surfaces immediately rather than seeding zero
+    /// multiplier dict surfaces immediately rather than installing zero
     /// prices. Source URL points at the base model's pricing page (the
     /// Fast tier multipliers don't have their own canonical doc).
     private static let fastVariants: [PricingEntry] = {
@@ -322,7 +320,7 @@ enum PricingSeed {
                 note: "Codex Fast-Mode tier (= \(mul)× standard). Synthetic row used for turns recorded as Priority.",
                 sourceUrl: b.sourceUrl)
         }
-        // Sort so seeding is deterministic across launches / test runs.
+        // Sort so installation is deterministic across launches / test runs.
         .sorted { $0.modelId < $1.modelId }
     }()
 
@@ -352,16 +350,17 @@ enum PricingSeed {
 
 enum PricingService {
 
-    /// Idempotent seed write. Run once on app startup; cheap enough to re-run on every launch.
-    /// IMPORTANT: rows previously stamped `price_source = 'litellm'` or `'local'`
-    /// must NOT be reverted to seed values, otherwise a relaunch would erase the
-    /// LiteLLM refresh / user's edits. We INSERT new rows but only UPDATE when
-    /// price_source is still 'seed'.
+    /// Materializes the app's bundled catalog into SQLite. The app bundle is
+    /// the only supported pricing source, so every existing row is restored to
+    /// its shipped values on launch. Legacy provenance columns remain in the
+    /// schema for upgrade compatibility; they never select a rate, but a
+    /// non-bundled marker forces the one-time historical reprice needed when
+    /// upgrading from versions where local rows bypassed effective dates.
     @discardableResult
-    static func seedCatalog(in db: Database) throws -> Bool {
+    static func installBundledCatalog(in db: Database) throws -> Bool {
         let now = ISO8601.fractional.string(from: Date())
         var pricingChanged = false
-        for entry in PricingSeed.entries {
+        for entry in BundledPricingCatalog.entries {
             let existing = try Row.fetchOne(db, sql: """
                 SELECT input_price_per_million,
                        cached_input_price_per_million,
@@ -374,7 +373,7 @@ enum PricingService {
                 """, arguments: [entry.modelId])
             if existing == nil {
                 pricingChanged = true
-            } else if existing?["price_source"] as String? == "seed" {
+            } else {
                 let calculationChanged =
                     existing?["input_price_per_million"] as Double?
                         != entry.inputPricePerMillion
@@ -386,6 +385,7 @@ enum PricingService {
                         != entry.cacheCreationPricePerMillion
                     || existing?["effective_model_id"] as String?
                         != entry.effectiveModelId
+                    || existing?["price_source"] as String? != "bundled"
                 pricingChanged = pricingChanged || calculationChanged
             }
             try db.execute(sql: """
@@ -393,8 +393,9 @@ enum PricingService {
                   (model_id, display_name, input_price_per_million,
                    cached_input_price_per_million, output_price_per_million,
                    cache_creation_price_per_million,
-                   effective_model_id, is_official, note, source_url, updated_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                   effective_model_id, is_official, note, source_url,
+                   price_source, updated_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,'bundled',?)
                 ON CONFLICT(model_id) DO UPDATE SET
                   display_name = excluded.display_name,
                   input_price_per_million = excluded.input_price_per_million,
@@ -405,8 +406,13 @@ enum PricingService {
                   is_official = excluded.is_official,
                   note = excluded.note,
                   source_url = excluded.source_url,
-                  updated_at = excluded.updated_at
-                WHERE pricing_catalog.price_source = 'seed'
+                  updated_at = excluded.updated_at,
+                  above_200k_input_price_per_million = NULL,
+                  above_200k_output_price_per_million = NULL,
+                  max_input_tokens = NULL,
+                  max_output_tokens = NULL,
+                  price_source = 'bundled',
+                  fetched_at = NULL
                 """, arguments: [
                     entry.modelId,
                     entry.displayName,
@@ -422,274 +428,6 @@ enum PricingService {
                 ])
         }
         return pricingChanged
-    }
-
-    private struct CodexCatalogPriceAdjustment {
-        let modelId: String
-        let oldInputPricePerMillion: Double
-        let oldOutputPricePerMillion: Double
-        let newInputPricePerMillion: Double
-        let newCachedInputPricePerMillion: Double
-        let newOutputPricePerMillion: Double
-    }
-
-    /// Updates only stale LiteLLM-owned GPT-5.6 rows whose rates still match
-    /// the known launch prices. A user-local row, a current LiteLLM row, or a
-    /// future catalog revision remains untouched.
-    @discardableResult
-    static func migrateGPT56LiteLLMPrices(in db: Database) throws -> Int {
-        let now = ISO8601.fractional.string(from: Date())
-        var updated = 0
-        for adjustment in gpt56LiteLLMPriceAdjustments {
-            try db.execute(sql: """
-                UPDATE pricing_catalog
-                SET input_price_per_million = ?,
-                    cached_input_price_per_million = ?,
-                    output_price_per_million = ?,
-                    updated_at = ?
-                WHERE model_id = ?
-                  AND price_source = 'litellm'
-                  AND ABS(input_price_per_million - ?) < 0.000001
-                  AND ABS(output_price_per_million - ?) < 0.000001
-                """, arguments: [
-                    adjustment.newInputPricePerMillion,
-                    adjustment.newCachedInputPricePerMillion,
-                    adjustment.newOutputPricePerMillion,
-                    now,
-                    adjustment.modelId,
-                    adjustment.oldInputPricePerMillion,
-                    adjustment.oldOutputPricePerMillion
-                ])
-            updated += db.changesCount
-        }
-        return updated
-    }
-
-    private static let gpt56LiteLLMPriceAdjustments: [CodexCatalogPriceAdjustment] = {
-        let currentEntries = Dictionary(
-            uniqueKeysWithValues: PricingSeed.entries.map { ($0.modelId, $0) })
-        let launchPrices: [(String, Double, Double)] = [
-            ("gpt-5.6-terra", 2.50, 15.00),
-            ("gpt-5.6-luna", 1.00, 6.00),
-        ]
-
-        return launchPrices.flatMap { modelId, input, output in
-            var variants: [(String, Double)] = [(modelId, 1.0)]
-            if let multiplier = CodexFastMode.multipliers[modelId] {
-                variants.append((modelId + CodexFastMode.suffix, multiplier))
-            }
-            if let multiplier = CodexFlexMode.multipliers[modelId] {
-                variants.append((modelId + CodexFlexMode.suffix, multiplier))
-            }
-            return variants.compactMap { (variantId, multiplier) -> CodexCatalogPriceAdjustment? in
-                guard let current = currentEntries[variantId] else { return nil }
-                return CodexCatalogPriceAdjustment(
-                    modelId: variantId,
-                    oldInputPricePerMillion: input * multiplier,
-                    oldOutputPricePerMillion: output * multiplier,
-                    newInputPricePerMillion: current.inputPricePerMillion,
-                    newCachedInputPricePerMillion: current.cachedInputPricePerMillion,
-                    newOutputPricePerMillion: current.outputPricePerMillion)
-            }
-        }
-    }()
-
-    private static let gpt56LiteLLMPriceAdjustmentsByModel = Dictionary(
-        uniqueKeysWithValues: gpt56LiteLLMPriceAdjustments.map {
-            ($0.modelId, $0)
-        })
-
-    /// LiteLLM can continue returning a known pre-cutover GPT-5.6 payload
-    /// after OpenAI has reduced its public rates. Normalize that payload on
-    /// every refresh so a one-time migration cannot be undone later.
-    private static func normalizedGPT56LiteLLMPrice(
-        modelId: String,
-        input: Double,
-        cached: Double,
-        output: Double
-    ) -> (input: Double, cached: Double, output: Double) {
-        guard let adjustment = gpt56LiteLLMPriceAdjustmentsByModel[modelId],
-              abs(input - adjustment.oldInputPricePerMillion) < 0.000001,
-              abs(output - adjustment.oldOutputPricePerMillion) < 0.000001
-        else {
-            return (input, cached, output)
-        }
-        return (
-            adjustment.newInputPricePerMillion,
-            adjustment.newCachedInputPricePerMillion,
-            adjustment.newOutputPricePerMillion)
-    }
-
-    /// Apply a LiteLLM fetch result to `pricing_catalog`.
-    ///
-    /// Behavior:
-    ///   - Only rows already in the catalog are touched (we don't auto-add new
-    ///     models — Phase 2 handles unknown providers).
-    ///   - Rows whose `price_source = 'local'` are skipped (user edits win).
-    ///   - For matched rows we overwrite input/cached/output prices, plus the
-    ///     LiteLLM-only fields (cache_creation, above_200k tiers, max tokens),
-    ///     and stamp `price_source='litellm'`, `fetched_at=now`.
-    ///
-    /// Returns the number of rows actually updated.
-    @discardableResult
-    static func applyLiteLLMUpdate(
-        entries: [LiteLLMEntry],
-        in db: Database,
-        codexFastModeBilling: Bool = false
-    ) throws -> Int {
-        let now = ISO8601.fractional.string(from: Date())
-
-        let existingIds = try String.fetchAll(db, sql:
-            "SELECT model_id FROM pricing_catalog WHERE price_source != 'local'")
-        let allowed = Set(existingIds)
-
-        // index entries by model id (LiteLLM occasionally lists the same model
-        // under prefixed aliases like "openai/gpt-4o"; we match on the bare id
-        // we have in our catalog).
-        var byId: [String: LiteLLMEntry] = [:]
-        for entry in entries {
-            byId[entry.modelId] = entry
-            // Also index without provider prefix ("openai/gpt-4o" -> "gpt-4o").
-            if let slash = entry.modelId.firstIndex(of: "/") {
-                let bare = String(entry.modelId[entry.modelId.index(after: slash)...])
-                if byId[bare] == nil { byId[bare] = entry }
-            }
-        }
-
-        var updated = 0
-        for modelId in allowed {
-            guard let entry = byId[modelId] else { continue }
-            // Need at least input + output to be meaningful.
-            guard let rawInP = entry.perMillionInput,
-                  let rawOutP = entry.perMillionOutput else { continue }
-
-            // cached read price: LiteLLM's cache_read_input_token_cost; if
-            // missing, fall back to the existing seed cached price (read it
-            // first so we don't blow it away).
-            let existingCached = try Double.fetchOne(db, sql:
-                "SELECT cached_input_price_per_million FROM pricing_catalog WHERE model_id = ?",
-                arguments: [modelId]) ?? 0
-            let rawCachedP = entry.perMillionCacheRead ?? existingCached
-            let normalized = normalizedGPT56LiteLLMPrice(
-                modelId: modelId,
-                input: rawInP,
-                cached: rawCachedP,
-                output: rawOutP)
-            let inP = normalized.input
-            let cachedP = normalized.cached
-            let outP = normalized.output
-
-            try db.execute(sql: """
-                UPDATE pricing_catalog
-                SET input_price_per_million = ?,
-                    cached_input_price_per_million = ?,
-                    output_price_per_million = ?,
-                    cache_creation_price_per_million = ?,
-                    above_200k_input_price_per_million = ?,
-                    above_200k_output_price_per_million = ?,
-                    max_input_tokens = ?,
-                    max_output_tokens = ?,
-                    price_source = 'litellm',
-                    fetched_at = ?,
-                    updated_at = ?,
-                    is_official = 1
-                WHERE model_id = ? AND price_source != 'local'
-                """, arguments: [
-                    inP,
-                    cachedP,
-                    outP,
-                    entry.perMillionCacheCreation ?? 0,
-                    entry.perMillionAbove200kInput,
-                    entry.perMillionAbove200kOutput,
-                    entry.maxInputTokens,
-                    entry.maxOutputTokens,
-                    now,
-                    now,
-                    modelId
-                ])
-            updated += db.changesCount
-
-            // If this base model has a Fast-Mode variant, keep its
-            // synthetic `<model>-fast` row in sync. We re-derive the
-            // Fast prices from the *just-updated* base prices so a
-            // LiteLLM refresh that bumps gpt-5.5 also bumps
-            // gpt-5.5-fast (no drift between Standard and Fast).
-            // price_source on the fast row stays 'litellm' so a
-            // subsequent Restore Defaults won't blow it away unless
-            // the user truly intends that.
-            if let mul = CodexFastMode.multipliers[modelId] {
-                let fastId = modelId + CodexFastMode.suffix
-                try db.execute(sql: """
-                    UPDATE pricing_catalog
-                    SET input_price_per_million = ?,
-                        cached_input_price_per_million = ?,
-                        output_price_per_million = ?,
-                        cache_creation_price_per_million = ?,
-                        above_200k_input_price_per_million = ?,
-                        above_200k_output_price_per_million = ?,
-                        max_input_tokens = ?,
-                        max_output_tokens = ?,
-                        price_source = 'litellm',
-                        fetched_at = ?,
-                        updated_at = ?
-                    WHERE model_id = ? AND price_source != 'local'
-                    """, arguments: [
-                        inP * mul,
-                        cachedP * mul,
-                        outP * mul,
-                        (entry.perMillionCacheCreation ?? 0) * mul,
-                        entry.perMillionAbove200kInput.map { $0 * mul },
-                        entry.perMillionAbove200kOutput.map { $0 * mul },
-                        entry.maxInputTokens,
-                        entry.maxOutputTokens,
-                        now,
-                        now,
-                        fastId
-                    ])
-                updated += db.changesCount
-            }
-
-            // Flex rows are also derived from the refreshed base rates. Keep
-            // them synchronized so a LiteLLM update cannot leave stale Flex
-            // prices behind.
-            if let mul = CodexFlexMode.multipliers[modelId] {
-                let flexId = modelId + CodexFlexMode.suffix
-                try db.execute(sql: """
-                    UPDATE pricing_catalog
-                    SET input_price_per_million = ?,
-                        cached_input_price_per_million = ?,
-                        output_price_per_million = ?,
-                        cache_creation_price_per_million = ?,
-                        above_200k_input_price_per_million = ?,
-                        above_200k_output_price_per_million = ?,
-                        max_input_tokens = ?,
-                        max_output_tokens = ?,
-                        price_source = 'litellm',
-                        fetched_at = ?,
-                        updated_at = ?
-                    WHERE model_id = ? AND price_source != 'local'
-                    """, arguments: [
-                        inP * mul,
-                        cachedP * mul,
-                        outP * mul,
-                        (entry.perMillionCacheCreation ?? 0) * mul,
-                        entry.perMillionAbove200kInput.map { $0 * mul },
-                        entry.perMillionAbove200kOutput.map { $0 * mul },
-                        entry.maxInputTokens,
-                        entry.maxOutputTokens,
-                        now,
-                        now,
-                        flexId
-                    ])
-                updated += db.changesCount
-            }
-        }
-
-        if updated > 0 {
-            try backfillAllValues(in: db,
-                                  codexFastModeBilling: codexFastModeBilling)
-        }
-        return updated
     }
 
     /// One-shot UPDATE that recalculates value_usd for every usage_event whose model
@@ -889,8 +627,7 @@ enum PricingService {
     }
 
     /// Selects a fixed historical list price when an event predates a known
-    /// adjustment. Current events and locally edited catalog rows keep using
-    /// the selected Standard/Fast/Flex catalog row.
+    /// adjustment. Current events use the bundled Standard/Fast/Flex row.
     private static func codexPricePerMillionSQL(
         component: CodexPriceComponent
     ) -> String {
@@ -914,7 +651,6 @@ enum PricingService {
                    AND usage_events.model_id = '\(period.modelId)'
                    \(lowerBound)
                    AND usage_events.timestamp < '\(period.endsBefore)'
-                   AND pc.price_source != 'local'
                 THEN \(component.price(in: period)) * (\(tierMultiplier))
             """
         }.joined(separator: "\n")

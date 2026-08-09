@@ -511,7 +511,7 @@ qm_write_computer_qa_brief() {
         printf '%s\n' '- Dashboard: verify Forecast, Trends, and Composition render with fixture data; when the selected window is populated, confirm the fixed 7/30-day cache summaries and daily cache trend are readable.'
         printf '%s\n' '- Sessions: switch to Sessions, search "Show Codex reset cards" to see real session titles, then search "billing-api" to see the project-name fallback row without an "Untitled session" label.'
         printf '%s\n' '- History: switch to History, select a populated day, and verify rollups plus per-session details are readable.'
-        printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, database path, pricing catalog, export, and updater controls are visible. Do not run uninstall.'
+        printf '%s\n' '- Settings: inspect General and Advanced tabs. Verify language, provider toggles, quota display, Dock icon, poll interval, Developer Mode, and updater controls are visible; confirm pricing synchronization and local price override controls are absent. Do not run uninstall.'
         printf '%s\n' '- Menu bar: open the menu-bar popover, verify Codex and Claude fixture totals or the expected enabled-provider state, and test Open Dashboard / Settings navigation.'
         printf '%s\n' '- Menu-bar help: verify the help window is visible, readable, and can be closed without quitting the app.'
         printf '%s\n' "- What's New: verify image and video pages, Back / Next / Done, page count, silent playback, window resizing, and the Settings/menu-popover reopen entries. With Reduce Motion enabled, verify the poster appears instead of autoplay."
@@ -565,7 +565,7 @@ qm_write_real_data_computer_qa_brief() {
         printf '%s\n' '- Dashboard: verify real-data Forecast, Trends, Activity, and Composition render without blank primary panels; confirm the fixed 7/30-day cache summaries and daily cache trend respond to the date and Provider filters.'
         printf '%s\n' '- Sessions: search real session titles/models, switch sort modes, open details, and inspect token/cost/event rows.'
         printf '%s\n' '- History: select populated days and inspect rollups plus per-session details.'
-        printf '%s\n' '- Settings: inspect General and Advanced controls, but do not run uninstall, export, reveal, updater, or pricing sync actions.'
+        printf '%s\n' '- Settings: inspect General and Advanced controls, but do not run uninstall, export, reveal, or updater actions.'
         printf '%s\n' "- What's New: manually reopen the showcase, verify image/video pages and silent playback, then close it and confirm the real-data preferences remain unchanged."
         printf '%s\n' '- Visual pass: note clipped text, overlapping controls, blank charts, missing icons, and mixed-language formatting.'
     } >"$brief_path"
@@ -709,7 +709,6 @@ qm_write_boundary_manifest() {
         printf '      "uninstall",\n'
         printf '      "export CSV",\n'
         printf '      "reveal files",\n'
-        printf '      "sync pricing",\n'
         printf '      "check for updates",\n'
         printf '      "change system settings",\n'
         printf '      "transmit credentials"\n'
@@ -720,9 +719,7 @@ qm_write_boundary_manifest() {
         printf '    "ratelimits.poll*",\n'
         printf '    "claude_usage.poll*",\n'
         printf '    "claude_credentials*",\n'
-        printf '    "claude_cli*",\n'
-        printf '    "pricing.refresh_if_stale.refresh",\n'
-        printf '    "pricing.litellm_refresh"\n'
+        printf '    "claude_cli*"\n'
         printf '  ]\n'
         printf '}\n'
     } >"$manifest_path"
@@ -806,15 +803,6 @@ qm_assert_boundary_manifest_contract() {
         echo "error: Computer Use uninstall approval boundary missing" >&2
         return 1
     }
-    grep -q '"sync pricing"' "$manifest" || {
-        echo "error: Computer Use pricing approval boundary missing" >&2
-        return 1
-    }
-    grep -q '"pricing.litellm_refresh"' "$manifest" || {
-        echo "error: forbidden pricing event missing from boundary manifest" >&2
-        return 1
-    }
-
     if [[ "$expected_mode" == "real-data-shadow" ]]; then
         qm_assert_plutil_equals "$manifest" "dataBoundary.quotaMonitorDatabase" "shadow-copy"
         local source_db shadow_db
@@ -1032,7 +1020,7 @@ qm_assert_no_external_data_source_events() {
     local dev_log="${artifacts}/quotamonitor-dev.log"
     [[ -f "$dev_log" ]] || return 0
 
-    if grep -E '"event":"(appserver\.|ratelimits\.poll|claude_usage\.poll|claude_credentials|claude_cli|pricing\.refresh_if_stale\.refresh|pricing\.litellm_refresh")' "$dev_log" >&2; then
+    if grep -E '"event":"(appserver\.|ratelimits\.poll|claude_usage\.poll|claude_credentials|claude_cli)' "$dev_log" >&2; then
         echo "error: QA run touched live external data sources" >&2
         return 1
     fi

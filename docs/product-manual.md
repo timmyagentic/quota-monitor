@@ -154,7 +154,7 @@ Advanced 适合需要调整更新、轮询或诊断选项的用户：
 - `Reveal Log File`：在 Finder 中打开诊断日志位置。
 - `Uninstall Quota Monitor...`：删除 Quota Monitor 的数据库、设置和缓存，并把 App 移到废纸篓。`~/.codex` 和 `~/.claude` 不会被删除。点击后会出现确认弹窗。
 
-数据库位置、CSV 导出和价格目录管理属于内部维护能力，不再显示在 Advanced 设置中；这次界面精简不会改变应用日常的数据读取、汇总和计价行为。
+数据库位置与 CSV 导出属于内部维护能力，不再显示在 Advanced 设置中。费用估算只使用当前 Quota Monitor 版本内置的价格目录，不会联网同步价格，也不提供本地价格覆盖；内置费率变化时，应用会按用量发生时间保留历史计价。
 
 ## 菜单栏图标帮助
 
@@ -198,6 +198,18 @@ Advanced 适合需要调整更新、轮询或诊断选项的用户：
 5. 不把实现细节写进用户说明；实现、命令和 QA 证据只放在维护记录里。
 
 ## 更新记录
+
+### 2026-08-09 · Unreleased · 29d1f30
+
+费用估算现在只使用 Quota Monitor 随包价格；在线同步和本地价格覆盖已移除，按事件时间保留历史价格的行为不变。Advanced 原本已不显示价格管理区块，因此本次没有新的可见布局变化。
+
+维护记录：
+
+- 在 `29d1f30` 上运行 `QUOTAMONITOR_QA_STEPS=open-dashboard,open-settings,wait,snapshot ./qa/prepare-computer-use-fixture-smoke.sh`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`，构建元数据中的 commit 同为 `29d1f30`。
+- QA artifact 为 `.build/qa-artifacts/20260809T142213Z-computer-use-fixture-smoke`；隔离 HOME、独立 UserDefaults、fixture 数据库、未复制凭据和禁用 live external sources 的边界均有效。
+- 使用 Computer Use 检查 Settings → Advanced 的完整可访问性树，确认只显示 Updates、Codex CLI、Claude Code、Developer Mode 和 Uninstall，且没有 Pricing、LiteLLM、同步、恢复默认或本地价格覆盖入口，也没有残留空白区块。
+- `./qa/check-artifacts.sh .build/qa-artifacts/20260809T142213Z-computer-use-fixture-smoke en open-dashboard,open-settings,wait,snapshot` 通过；Developer Mode 日志中没有价格目录或同步事件。
+- `./qa/run-static.sh` 通过，包含 178 个工具测试和 880 个 Swift 测试；界面与现有 Advanced 截图一致，因此没有新增重复截图。
 
 ### 2026-07-25 · Unreleased · 8a25241
 

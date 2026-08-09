@@ -48,5 +48,5 @@ Use this skill from the current `quota-monitor` checkout root when the user asks
 ## Boundaries
 
 - Do not use real Codex or Claude credentials in QA.
-- Ask before clicking destructive or external-side-effect actions: uninstall, export CSV, reveal files, sync pricing, check updates, changing system settings, or transmitting credentials.
+- Ask before clicking destructive or external-side-effect actions: uninstall, export CSV, reveal files, check updates, changing system settings, or transmitting credentials.
 - If a page cannot be safely exercised, document the expected user-facing behavior from source and mark the evidence source in the maintenance record.

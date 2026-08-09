@@ -390,10 +390,6 @@ test_write_boundary_manifest_documents_fixture_policy() {
     qm_assert_plutil_equals "$manifest" "mode" "fixture"
     qm_assert_plutil_equals "$manifest" "liveExternalSourcesAllowed" "false"
     qm_assert_plutil_equals "$manifest" "dataBoundary.quotaMonitorDatabase" "fixture-db"
-    grep -q '"pricing.litellm_refresh"' "$manifest" \
-        || fail "pricing live source guard missing from boundary manifest"
-    grep -q '"sync pricing"' "$manifest" \
-        || fail "Computer Use pricing approval boundary missing from manifest"
 }
 
 test_assert_boundary_manifest_contract_rejects_wrong_mode() {
@@ -1167,22 +1163,6 @@ test_rejects_external_data_source_events() {
     fi
 }
 
-test_rejects_live_pricing_refresh_events() {
-    local dir
-    dir="$(mktemp -d "${TMPDIR:-/tmp}/qm-live-pricing-artifacts.XXXXXX")"
-    trap 'rm -rf "$dir"' RETURN
-
-    printf '{"event":"pricing.litellm_refresh","result":"success"}\n' >"$dir/quotamonitor-dev.log"
-
-    if qm_assert_no_external_data_source_events "$dir" >/dev/null 2>&1; then
-        fail "live pricing refresh event was accepted"
-    fi
-
-    printf '{"event":"pricing.litellm_refresh.skip","result":"skipped"}\n' >"$dir/quotamonitor-dev.log"
-    qm_assert_no_external_data_source_events "$dir" \
-        || fail "local QA pricing skip event should be accepted"
-}
-
 test_write_defaults
 test_write_defaults_can_enable_codex_sidebar_quota
 test_refuses_installed_app_defaults_suite
@@ -1229,5 +1209,4 @@ test_rejects_real_provider_path_leak
 test_rejects_source_home_provider_path_leak
 test_source_home_takes_precedence_for_provider_path_leak
 test_rejects_external_data_source_events
-test_rejects_live_pricing_refresh_events
 echo "common_tests: ok"

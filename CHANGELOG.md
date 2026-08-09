@@ -43,6 +43,7 @@ window copy.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
+- Cost estimates now come only from the pricing catalog included with Quota Monitor, while earlier usage keeps the price that applied when it occurred.
 - Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
 - Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
@@ -85,7 +86,7 @@ window copy.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
 - **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background or when Codex tracking is disabled, avoids a duplicate launch request, preserves the last good quota during refreshes, filters expired reset cards, retries data loading without requiring a restart, and restores the previous hover detail card with usage, progress, and reset timing.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
-- **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.
+- **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage is priced directly by the app instead of remaining at `$0`.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 - **Fresh Dashboard after minimizing.** Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.
@@ -93,6 +94,7 @@ window copy.
 
 ### Changed
 
+- **Bundled-only pricing.** Cost estimates now use only the versioned catalog shipped inside Quota Monitor, with effective dates preserving historical GPT-5.6 costs when bundled rates change.
 - **Lighter localized date formatting.** Repeated menu-popover and Session renders now reuse language- and time-zone-aware date formatters while preserving English and Simplified Chinese output.
 - **Smoother heatmap hover.** Token Activity tooltips now reuse the already prepared yearly grid while the pointer moves, avoiding repeated full-year work without changing levels, month labels, or responsive layouts.
 - **Faster Trends scrubbing.** The chart, selected-day tooltip, and legend now share one derived provider/model series until its source data, range, grouping, calendar, or language changes, avoiding repeated filtering and aggregation without changing displayed totals or ordering.
@@ -116,6 +118,7 @@ window copy.
 
 ### Removed
 
+- **Live pricing synchronization.** Background and manual LiteLLM catalog fetches, local price overrides, and the unused pricing-management interface have been removed.
 - **Legacy Codex injection lifecycle.** The bundled Opsail helper, Chromium debugging-port integration, renderer injection, and automatic Codex relaunch path are gone; the widget no longer modifies or controls the Codex process.
 - **Auto-update help text.** The caption under the automatic update check toggle in Advanced settings is gone; the toggle and the Check Now button behave exactly as before.
 

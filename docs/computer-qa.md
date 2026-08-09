@@ -123,7 +123,7 @@ configure the QA app with isolated data and an isolated profile.
 
 For real-data shadow QA, the data is real but the profile is still isolated.
 Treat the source database path as read-only evidence and avoid any Computer Use
-actions that reveal files, export CSV, sync pricing, check for updates, or run
+actions that reveal files, export CSV, check for updates, or run
 uninstall unless the user explicitly approves that exact action.
 
 If `qa/check-artifacts.sh` sees Developer Mode events from live Codex/Claude data

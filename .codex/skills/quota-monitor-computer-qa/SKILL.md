@@ -82,7 +82,7 @@ Use this project skill for QuotaMonitor local QA and visible-behavior checks in
   realistic path should show `copied_user_defaults=true` and
   `safety_overrides=none` while still keeping credentials not copied.
 - Do not use real Codex or Claude credentials.
-- Ask before uninstall, export CSV, reveal files, sync pricing, check updates,
+- Ask before uninstall, export CSV, reveal files, check updates,
   changing system settings, accepting permission prompts, uploading files, or
   transmitting credentials.
 - `screen.png` is a full-screen artifact and may show another foreground app.
@@ -95,8 +95,8 @@ Use this project skill for QuotaMonitor local QA and visible-behavior checks in
   the exact app target from the brief, and activate or raise the QA window before
   treating it as a product failure.
 - If artifacts show `appserver.*`, `ratelimits.poll*`, `claude_usage.poll*`,
-  `claude_credentials*`, `claude_cli*`, or `pricing.litellm_refresh`, treat the
-  run as a QA boundary failure.
+  `claude_credentials*`, or `claude_cli*`, treat the run as a QA boundary
+  failure.
 - If an installed QuotaMonitor process is also running, do not kill it while
   cleaning up QA. The QA cleanup targets only processes launched with the QA
   config argument, then restores the installed app if the run had displaced it.
