@@ -160,7 +160,7 @@ struct MainWindowLayoutTests {
     func dashboardTrendsOnlyExposesStackedBarMode() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift")
 
-        #expect(source.contains("private var stackedBars: some View"))
+        #expect(source.contains("private func stackedBars("))
         #expect(!source.contains("K-line"))
         #expect(!source.contains("kline"))
         #expect(!source.contains("TrendMode"))
@@ -173,7 +173,8 @@ struct MainWindowLayoutTests {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift")
 
         #expect(source.contains(".chartXScale(domain: xDomain)"))
-        #expect(source.contains("TrendSeriesBuilder.collapsedModelSeries(raw)"))
+        #expect(source.contains("TrendSeriesBuilder.collapsedModelSeries("))
+        #expect(source.contains("TrendSeriesDerivationCache"))
         #expect(source.contains("static let otherKey = \"__other__\""))
         #expect(source.contains("@State private var range: TrendRange = .last30d"))
         #expect(!source.contains("private var cacheTrend: some View"))
@@ -213,7 +214,7 @@ struct MainWindowLayoutTests {
         let domain = try Self.sourceSlice(
             source,
             from: "private var xDomain",
-            to: "private var selectedTrendSelection")
+            to: "private func selectedTrendSelection")
 
         #expect(domain.contains("TrendChartDomain.domain"))
         #expect(domain.contains("for: windowedDaily.map(\\.date)"))
