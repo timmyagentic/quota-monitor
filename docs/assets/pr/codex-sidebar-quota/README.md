@@ -2,14 +2,14 @@
 
 `summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
 isolated real-data QA build at source commit
-`9b7b4c220006e3bc8b33b44747990dd6ee446dd3`. It shows the current weekly-only
-summary rendering the same compact text as the menu bar (`7d 53%` for the
+`d266b52aca2cc3095ee6ec5c6576dbb0ae44810d`. It shows the current weekly-only
+summary rendering the same compact text as the menu bar (`7d 55%` for the
 captured shadow snapshot), with no additional health dot. The crop is the
 native 84 x 25 point overlay window and contains no account identity or
 conversation content.
 
 SHA-256:
-`fddacf9ddc8840145605613d9a0c3ad0480404c87a22cd344809b399e79770ca`
+`b5cc4f9d44be600647da79777a8c8a310c838a4c339964b394ca6a51fa10a251`
 
 `native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
 screenshots from the isolated real-data QA build. They show the
