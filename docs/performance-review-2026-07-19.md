@@ -1,11 +1,13 @@
 # Performance review — 2026-07-19
 
-Baseline commit: `87b99f5`. This document anchors the performance-optimization work:
+Original audit baseline: `87b99f5`. This document anchors the performance-optimization work:
 it records every finding from a full four-track audit (import/scan plane, storage/analytics
 read side, background services, UI/main-actor), ranked by impact, each with file references,
 cost analysis, and a fix direction. Follow-up fixes landed as independently reviewed PRs;
-the status snapshot below links the merged work back to each original finding. Line numbers
-in the detailed findings are as of the baseline commit and will drift.
+the status snapshot below links the merged work back to each original finding. The detailed
+problem statements preserve the baseline failure modes, while the status table and refresh
+notes are checked against the named current `main` commit. Baseline line numbers in the
+detailed findings are historical and will drift.
 
 The recurring theme: several hot paths do work proportional to **total history size** where
 the work needed is proportional to **the delta since last time**. A months-old install pays
@@ -27,30 +29,45 @@ menu-bar open otherwise.
 
 ---
 
-## Delivery status — refreshed 2026-07-25
+## Delivery status — refreshed 2026-08-09
 
-Status was checked against `origin/main` at `90b48a3`. The original 20 findings
-are **not all complete**: **6 are delivered, 4 are partially delivered, and 10
-remain open**. “Delivered” means the
-referenced merge commit is an ancestor of that exact main head. “Partial” means a
-material part shipped, but the original cost described below still exists.
+Status was checked against `origin/main` at `797237d`. The original 20 findings
+are **not all complete**: **6 are delivered, 5 are partially delivered, and 9
+remain open**. “Delivered” means the referenced merge commit is an ancestor of
+that exact main head. “Partial” means a material part shipped, but the original
+cost described below still exists.
 
 | Finding | Status | Current evidence |
 | --- | --- | --- |
 | P0.1 full-history repricing | Delivered | PR #135 scopes incremental pricing to changed events. |
-| P0.2 repeated Dashboard scans | Partial | PR #144 removes the redundant 14-day daily scan by deriving it from the 365-day result; PR #132 consolidates menu-bar provider totals and PR #129 reduces initial History/Sessions loading. The provider/model breakdowns, monthly totals, model shares, and unbounded activity read remain independent passes. |
+| P0.2 repeated Dashboard scans | Partial | PR #144 removes the redundant 14-day daily scan by deriving it from the 365-day result. `loadDashboard` still performs independent overview, daily, two breakdown, monthly, three model-share, provider-share, and all-time activity reads. |
 | P0.3 full Codex rollout reparsing | Delivered | PR #121 adds validated incremental checkpoints and tail parsing. |
-| P0.4 unconditional session-tree and metadata walks | Partial | PR #133 skips the heavy refresh path after no-op scans and gates tree reconciliation on imported sessions; metadata backfill and changed-scan reconciliation still traverse broad session state. |
+| P0.4 broad session-tree and metadata walks | Partial | PR #133 skips the heavy tree refresh after no-op scans and gates reconciliation on imported sessions; metadata backfill and changed-scan reconciliation still traverse broad session state. |
 | P1.1 synchronous login-shell discovery | Partial | PR #124 prefers the CLI bundled with ChatGPT before shell probing, but the remaining fallback path is still synchronous. |
-| P1.2 per-file popover progress invalidation | Open | No dedicated fix has merged. |
+| P1.2 per-file popover progress invalidation | Partial | PR #155 keeps routine scans on a compact activity indicator, so those renders no longer read per-file `scanProgress`. Launch/onboarding imports still publish every file on MainActor and invalidate the parent popover view. |
 | P1.3 redundant status-item title renders | Delivered | PR #136 caches visible rows, style, and localization state before assigning the native title. |
 | P1.4 per-line rollout decoder allocation | Delivered | PR #137 reuses rollout JSON decoders. |
 | P1.5 repeated environment snapshots | Open | `LocalQAEnvironment` still defaults many calls to `ProcessInfo.processInfo.environment`. |
-| P2.1–P2.3 | Open | Keychain wait, Claude cross-day lookup batching, and bulk transaction batching remain follow-ups. |
+| P2.1 Keychain busy-wait | Open | The Claude credential fallback still polls `/usr/bin/security` with `Thread.sleep` from an actor method. |
+| P2.2 Claude cross-day lookup batching | Open | `crossDaySnapshotResolution` still queries stored rows separately for each parsed event. |
+| P2.3 bulk import transactions | Open | Both importers still commit one write transaction per changed file. |
 | P2.4 unindexed import-state session lookup | Delivered | PR #138 adds and tests the `import_state(session_id)` index. |
 | P2.5 catalog seeding on every Codex scan | Delivered | PR #121 removed scan-time seeding; catalog setup remains in database initialization and explicit pricing flows. |
 | P2.6 unbounded Sessions aggregation before limit | Partial | PR #129 adds request-driven 50-row pagination and PR #134 debounces search; the aggregate query still groups matching events before applying `LIMIT`. |
-| P2.7–P2.11 | Open | No dedicated fix has merged for the remaining render, formatter, model-share, and small read-path costs. |
+| P2.7 heatmap model rebuild on hover | Open | PR #164 makes the year layout responsive, but `ActivityHeatmap.body` still constructs `HeatmapModel` from `daily` on every hover-driven body evaluation. |
+| P2.8 repeated Trends series derivation | Open | `activeSeries` is still recomputed by chart, selection, and legend paths. |
+| P2.9 per-render formatter allocation | Open | Menu-bar and Sessions rows still allocate relative/date formatters during rendering. |
+| P2.10 model-share index coverage | Open | Current usage-event indexes still omit `model_id` from the timestamp-leading covering indexes. |
+| P2.11 small read, network, and logging costs | Open | The two Dashboard/BillingBlocks reads, monthly session sets, separate reset-credit request, developer-log file churn, and other small items remain. |
+
+### Delta since the 2026-07-25 refresh
+
+- `main` advanced by 25 commits from `90b48a3` to `797237d`.
+- PR #155 moves P1.2 from Open to Partial by removing detailed per-file progress from routine
+  refresh and file-watcher presentation. It does not coalesce progress publication itself.
+- PR #164 addresses heatmap width and scrolling. It does not cache `HeatmapModel`, so it does
+  not change P2.7's delivery status.
+- The other 19 findings keep their previous status after re-reading their current code paths.
 
 ---
 
@@ -73,27 +90,26 @@ material part shipped, but the original cost described below still exists.
   (`WHERE session_id IN (…)`). Keep the whole-table pass only for the genuinely global
   triggers: price edit, Fast-Mode toggle, LiteLLM refresh (`PricingService.swift:516-519`).
 
-### P0.2 `loadDashboard` performs ~6 independent full-window scans, one of them unbounded
+### P0.2 `loadDashboard` performs many independent full-window scans, including all-time reads
 
 - [ ] Fixed
-- **Where:** `Core/Analytics/AggregatorReports.swift:9-73`.
-- **Problem:** one `pool.read` sequentially runs `fetchDaily(14)`, `fetchDaily(365)`,
-  `fetchDailyBreakdown(.provider, 365)`, `fetchDailyBreakdown(.model, 365)`,
-  `fetchMonthly(12)`, three `fetchModelShares` windows, and `fetchActivity` — which has **no
-  timestamp bound at all** (`Core/Analytics/AggregatorActivity.swift:61-65`) and pulls the
-  entire lifetime table into memory to compute a scalar lifetime sum, a peak day, and streaks.
-  Each pass materializes GRDB `Row`s and buckets client-side with `parseTimestamp` +
-  `Calendar.startOfDay` per row. `fetchDaily(14)` is a strict subset of `fetchDaily(365)`;
-  the two breakdown calls scan the identical 365-day rows twice.
-- **Impact:** ≈1.5 M date parses + 1.5 M `startOfDay` calls + 1.5 M row materializations per
-  dashboard refresh at 300 k events — seconds of CPU, holding 1 of only 3 reader connections.
-  `fetchActivity` grows without bound as history accumulates. Triggered on dashboard open,
-  every price edit, provider-filter change, and scan completion while the dashboard is open.
-- **Fix direction:** fetch the 365-day window **once**, bucket in a single pass, derive
-  daily(14)/daily(365)/both breakdowns/monthly from it. Push `fetchActivity`'s lifetime sum
-  and peak day into SQL aggregates; fetch only distinct active-day markers for streaks; feed
-  the heatmap from the shared 365-day pass. (Client-side `Calendar` bucketing itself stays —
-  it is the DST-correctness convention; the problem is doing it five times.)
+- **Current evidence:** `Core/Analytics/AggregatorReports.swift:9-71` sequentially runs an
+  overview read, a 365-day daily read, two 365-day breakdown reads, a 12-month read, three
+  model-share reads, a 30-day provider-share read, and `fetchActivity`. The 14-day series is
+  now derived from the 365-day result (PR #144), but the remaining reads are independent.
+  `Core/Analytics/AggregatorActivity.swift:48-105` still loads every matching event for the
+  lifetime/activity calculation.
+- **Problem:** the daily and breakdown passes repeatedly materialize and parse overlapping
+  rows. The overview, lifetime model share, and activity paths also revisit all matching
+  history; activity brings the full raw result into Swift to compute a scalar lifetime total,
+  peak day, streaks, and the heatmap.
+- **Impact:** work still grows with total history and the same 365-day window is decoded three
+  times before monthly/share/activity work begins. The refresh is triggered on Dashboard open,
+  price edits, provider-filter changes, and scan completion while the Dashboard is visible.
+- **Fix direction:** treat this as a measured data-path project. Fetch the 365-day event window
+  once and derive daily/breakdown/monthly views without changing local-calendar/DST semantics.
+  Move only safe lifetime aggregates into SQL, fetch distinct active-day markers for streaks,
+  and add large-history regression fixtures before combining queries.
 
 ### P0.3 Codex re-parses the whole rollout file for any grown file
 
@@ -110,54 +126,49 @@ material part shipped, but the original cost described below still exists.
   because token counts are cumulative — needs persisted parser state (last cumulative totals)
   or tail re-process from the last known offset+state. Biggest single win, biggest change.
 
-### P0.4 `reconcileSessionTree` + metadata backfill walk **all** Codex sessions on every scan, even with zero changed files
+### P0.4 metadata backfill walks all Codex sessions on every scan; changed scans reconcile the full tree
 
 - [ ] Fixed
-- **Where:** `ImportEngine.swift:183` (unconditional call; impl `:443-473`) issues **one UPDATE
-  per Codex session** regardless of whether anything changed; `backfillCodexSessionMetadata`
-  (`:101`, impl `:225-268`) reads every Codex session row each scan;
-  `CodexSessionMetadataStore.load` (`:97`, impl `CodexSessionMetadataStore.swift:18-33,215-231`)
-  slurps `session_index.jsonl` line-by-line through `JSONSerialization` and opens Codex's
-  `state_5.sqlite` each scan.
-- **Impact:** thousands of sessions → thousands of UPDATEs inside a write transaction on every
-  menu-bar open, plus a full external-file re-parse, when usually nothing changed.
-- **Fix direction:** skip all three when `changed.isEmpty`; when files did change, reconcile
-  only the affected parent chains and gate the metadata store on an mtime check.
+- **Current evidence:** `ImportEngine.performScan` still calls `CodexSessionMetadataStore.load`
+  and `backfillCodexSessionMetadata` before it knows whether any rollout changed; the backfill
+  reads every Codex session. PR #133 correctly gates `reconcileSessionTree()` on
+  `importedSessions > 0`, but that function still reads and updates every Codex session when it
+  does run (`ImportEngine.swift:947-975`).
+- **Impact:** no-op scans avoid the full tree rewrite, but still pay metadata-store loading and
+  an all-session comparison. A one-session changed scan can still turn into a full-tree update.
+- **Fix direction:** cache/gate external metadata by file identity or mtime, select only missing
+  metadata rows, and reconcile affected ancestors/descendants instead of every session.
 
 ## P1 — significant, bounded or less frequent
 
 ### P1.1 Launch: synchronous login-shell spawn on the main thread
 
 - [ ] Fixed
-- **Where:** `Core/AppServer/AppServerClient.swift:43-56` — `init` → `resolveBinary()` →
-  `discoverViaLoginShell()` (`:98-117`) runs `$SHELL -ilc "command -v codex"` with
-  `process.waitUntilExit()`. `AppEnvironment.shared` (and thus the default `AppServerClient()`)
-  is first constructed on the main thread in `applicationDidFinishLaunching`.
-- **Impact:** an interactive login shell sources the full rc chain (nvm/conda/oh-my-zsh):
-  150–400 ms typical, 1–2 s on heavy dotfiles, as a hard main-thread stall before first frame.
-  `discoverViaLoginShell()` is evaluated eagerly as a call argument, so it runs even when the
-  `CODEX_BINARY` override would short-circuit. Separately, `loginShellPATH`
-  (`:131-155`) and `ClaudeCodeVersionDetector` (`Core/Claude/ClaudeUsageClient.swift:1043-1109`)
-  each spawn their own login shell — 3–4 spawns clustered at launch.
-- **Fix direction:** resolve the binary lazily/async off-main; compute the login-shell PATH
-  once and share it across AppServer + Claude detection; short-circuit before spawning when
-  the override or a hardcoded candidate hits.
+- **Current evidence:** PR #124 makes `AppServerClient.resolveBinary` short-circuit for an
+  explicit override or the ChatGPT-bundled Codex before evaluating the login-shell autoclosure.
+  On fallback installations, `AppServerClient()` is still created synchronously by
+  `AppEnvironment` and computes the login-shell PATH with a two-second bound. Claude version
+  detection separately performs its own login-shell PATH and `command -v claude` probes when
+  first requested.
+- **Impact:** the common ChatGPT-app path no longer pays this launch cost. CLI-only and
+  version-manager installations can still block initialization on shell startup, and the
+  duplicated Claude probe remains avoidable background work.
+- **Fix direction:** move fallback discovery off the main actor, check known executable paths
+  before shell startup, and share one cached login-shell environment between Codex and Claude.
 
 ### P1.2 Scan progress re-renders the entire popover once per file
 
 - [ ] Fixed
-- **Where:** importer progress callback hops to the main actor per file
-  (`App/ScanController.swift:144-147`) and reassigns `scanProgress`
-  (`:366-384`); `Features/MenuBar/ScanStatusView.swift:9` reads it, and it is spliced directly
-  into `MenuBarContentView.body` (`Features/MenuBar/MenuBarContentView.swift:86`) — making it
-  a body-level dependency of the whole popover (all quota rows, formatters, buttons).
-- **Impact:** dozens–hundreds of full-popover re-evals per scan; on cold-start imports,
-  thousands. The popover's `NSHostingController` is retained for process lifetime
-  (`App/StatusItemController.swift:56`); if AppKit keeps the hosted tree live while the popover
-  is closed, these re-renders also run invisibly during background watcher scans (needs an
-  Instruments confirmation pass — treat as plausible until measured).
-- **Fix direction:** move scan status into its own child view that independently reads
-  `env.scanProgress` so only it invalidates; coalesce progress publication to ~10 Hz.
+- **Current evidence:** each importer still calls the shared progress handler per file;
+  `ScanController.swift:150-153` hops each update to MainActor and
+  `handleScanProgressUpdate` logs and reassigns `scanProgress`. PR #155 changes routine scans
+  to `.compactActivity`, so the routine popover path no longer reads `scanProgress`; only
+  launch/onboarding imports show detailed file progress.
+- **Impact:** routine refresh and watcher UI invalidation is materially reduced, but cold-start
+  imports can still publish hundreds or thousands of parent-view updates and every scan still
+  pays the MainActor/logging work.
+- **Fix direction:** coalesce progress publication to about 10 Hz and move detailed progress
+  into a child view with its own observation boundary. Preserve exact final counts.
 
 ### P1.3 Menu-bar label rebuilds with no equality short-circuit, and over-subscribes to `dashboardSnapshot`
 
@@ -186,12 +197,11 @@ material part shipped, but the original cost described below still exists.
 ### P1.5 Logging/QA-config hot path copies the whole process environment per call
 
 - [ ] Fixed
-- **Where:** `DeveloperLog.eventRecord` guards on `SettingsStore.developerModeEnabledNonisolated`
-  (`Core/DeveloperFileLogger.swift:351`, `Core/Settings/SettingsStore.swift:640-643`), which
-  calls `LocalQAEnvironment.userDefaults()` — and `App/LocalQAEnvironment.swift:25-63,100-119,170-175`
-  caches nothing: each access snapshots `ProcessInfo.processInfo.environment` (fresh dictionary)
-  and `isQARequested` scans every env key. `SettingsStore.snapshot()` and
-  `allowsExternalDataSources()` pay the same cost per poll.
+- **Where:** `DeveloperLog.eventRecord` guards on `SettingsStore.developerModeEnabledNonisolated`,
+  which calls `LocalQAEnvironment.userDefaults()`. The default arguments throughout
+  `App/LocalQAEnvironment.swift:25-175` still copy `ProcessInfo.processInfo.environment`, and
+  `isQARequested` scans every key. `SettingsStore.snapshot()` and
+  `allowsExternalDataSources()` use the same uncached defaults.
 - **Impact:** modest per call but multiplied by log volume — every `eventRecord` on every hot
   path (including the per-file scan progress events) pays an env snapshot just to discard the
   record when dev mode is off.
@@ -201,57 +211,60 @@ material part shipped, but the original cost described below still exists.
 ## P2 — bounded, spiky, or cheap-to-fix
 
 - [ ] **P2.1 Keychain read busy-waits on the actor.**
-  `Core/Claude/ClaudeUsageClient.swift:781-826` polls `process.isRunning` with
-  `Thread.sleep(0.05)` up to 2 s inside an actor method — blocks a cooperative-pool thread and
-  serializes the client (a concurrent manual Refresh waits). Usually once per run; recurs per
-  poll on file-less machines. Fix: async pipe read / `Task.detached` + continuation.
+  `ClaudeUsageClient.readKeychainCredsIfAllowed()` invokes the synchronous
+  `readKeychainTokenOutcomeViaSecurityTool`, which polls `process.isRunning` with
+  `Thread.sleep(0.05)` for up to two seconds. Because the caller is an actor method, this blocks
+  a cooperative-pool thread and serializes other client work. Fix: run the bounded security-tool
+  operation in detached blocking work or replace it with an async process/pipe bridge.
 - [ ] **P2.2 Claude cross-day snapshot resolution issues one SELECT (with LIKE) per event.**
-  `Core/Importer/ClaudeImportEngine.swift:502-598`. Bounded for normal tail reads; per-event
-  across all history on forced full re-reads (migrations v6/v7/v8/v12). Fix: batch-fetch
-  message ids once per pass.
+  `ClaudeImportEngine.swift:523-529,604-623` still calls `storedClaudeEvents` for each parsed
+  message that can have persisted history. Bounded for normal tail reads; multiplied across all
+  history on a forced full read. Fix: batch-fetch the base/delta message ids once per file or
+  persist pass and resolve them from an in-memory map.
 - [ ] **P2.3 One write transaction per changed file (both engines).**
-  `ImportEngine.swift:159`, `ClaudeImportEngine.swift:219`. Pathological on first import /
-  forced-re-read migrations: thousands of tiny serialized transactions. Fix: batch N files per
-  transaction on the bulk path.
+  The Codex loop calls `persist` per candidate and the Claude loop calls `persist` or
+  `persistEmpty` per plan; each helper opens `database.pool.write`. This is pathological on first
+  import and forced-re-read migrations: thousands of tiny serialized transactions. Fix: batch a
+  bounded number of files per transaction on bulk paths while keeping per-file checkpoints.
 - [x] **P2.4 `import_state` prune by `session_id` is unindexed.** Fixed by PR #138.
-  `ImportEngine.swift:423-426`; table has only the `source_path` PK
-  (`Core/Storage/Migrations.swift:46-52`). Full `import_state` scan per changed Codex file.
-  Fix: add index on `import_state(session_id)`.
+  Migration v18 adds the partial `idx_import_state_session_id` index used by alias pruning.
 - [x] **P2.5 `seedCatalog` write transaction at the top of every Codex scan.** Fixed by PR #121.
-  `ImportEngine.swift:64-68`, already seeded in `DatabaseManager` init. Small but an
-  unnecessary write-lock acquisition per scan. Fix: seed once per launch.
-- [ ] **P2.6 `fetchSessions` aggregates all events before `LIMIT 500`.**
-  `Core/Analytics/AggregatorSessions.swift:19-66` — lifetime per-session totals force a full
-  join+GROUP BY per Sessions-tab load/search keystroke (debounced 200 ms). Fix: materialize
-  per-session totals at import time.
+  Catalog setup remains in database initialization and explicit pricing-catalog flows, not the
+  steady scan path.
+- [ ] **P2.6 `fetchSessions` aggregates all matching events before the page limit.**
+  `AggregatorSessions.swift:27-82` computes lifetime totals with a join and `GROUP BY` before
+  applying `LIMIT`. PR #129 reduced the requested page to 50 (+1 sentinel) and PR #134 debounces
+  search, but the database still aggregates every matching session. Fix: maintain/materialize
+  per-session totals, or select candidate session ids before joining when the chosen sort allows.
 - [ ] **P2.7 `ActivityHeatmap` rebuilds its model on every hover.**
-  `Features/Dashboard/Sections/ActivityHeatmap.swift:74,153-161` — `hoveredCell` is `@State`,
-  so each pointer move re-runs body → rebuilds `HeatmapModel` (sort + `DateFormatter` alloc at
-  `:254`) over ~365 days. Fix: derive the model once per `daily` change; hover in a child view.
+  `ActivityHeatmap.swift:106-109,276-336` keeps `hoveredCell` in `@State` and constructs
+  `HeatmapModel(daily:calendar:)` in `body`, including threshold sorting and a month
+  `DateFormatter`. PR #164 made the year layout responsive but left this dataflow unchanged.
+  Fix: cache the model by `daily`/language/calendar inputs and keep hover state in a child view.
 - [ ] **P2.8 `TrendsSection.activeSeries` recomputed 2–3× per body eval, per scrub frame.**
-  `Features/Dashboard/Sections/TrendsSection.swift:223-231,248,266,84`;
-  `.chartXSelection` (`:127`) re-evals body per pointer move. Fix: bind it once per body /
-  memoize `collapsedModelSeries` on (stackBy, range).
+  `TrendsSection.swift:95,359-366,384,403-404` reads the computed series from chart,
+  selection, and legend paths; the legend alone evaluates it twice. `.chartXSelection` causes
+  repeated body work while scrubbing. Fix: derive one immutable series per body evaluation or
+  cache `collapsedModelSeries` by breakdown/range/stack mode.
 - [ ] **P2.9 Per-render formatter allocations in rows.**
-  `Features/MenuBar/QuotaRow.swift:116-121` and
-  `Features/Sessions/SessionRowMetadataView.swift:53-59` build a fresh
-  `RelativeDateTimeFormatter` per row per render;
-  `Features/MenuBar/CodexResetCreditsRow.swift:56-70` declares formatters as **computed**
-  `static var` — every access allocates. Fix: `static let` caches keyed by active language.
+  `QuotaRow.swift:116-120` and `SessionRowMetadataView.swift:53-58` build a fresh
+  `RelativeDateTimeFormatter`; `CodexResetCreditsRow.swift:56-69` uses computed static vars that
+  allocate each access. Fix: cache formatters by active language or use value-style formatting.
 - [ ] **P2.10 Windowed model-share queries `GROUP BY model_id` without index support.**
-  `AggregatorReports.swift:297-376` — covering index lacks `model_id`, so each matching row
-  bounces to the table. 30-day windows are bounded; lifetime variant is a full scan. Fix
-  (optional): index `(timestamp, model_id, value_usd, total_tokens)`.
+  `AggregatorReports.swift:308-385` groups both lifetime and windowed reads by `model_id`.
+  Current timestamp-leading covering indexes omit `model_id`, so matching index rows still need
+  table lookups. The 30-day windows are bounded; lifetime is not. Fix only after `EXPLAIN QUERY
+  PLAN` and representative measurement: consider a covering index beginning with timestamp
+  (and provider for filtered views) that includes `model_id`, value, and tokens.
 - [ ] **P2.11 Small singles.** `refreshDashboard` opens two read transactions
-  (`App/AppEnvironment.swift:1266,1275-1277` — fold `BillingBlocks` into `loadDashboard`);
-  `fetchMonthly` retains a `Set<String>` of all session ids across 12 months
-  (`AggregatorReports.swift:272-282`); `sessions.parent_session_id`/`provider` unindexed
-  (small table, only if it grows); Codex reset-credits GET wakes the network separately from
-  the poller (`AppEnvironment.swift:346-348`); `DeveloperFileLogger.append` open/seek/close +
-  stat per record (`DeveloperFileLogger.swift:224-246`, dev-mode only); launch refresh fan-out
-  queues one redundant menu-bar refresh (absorbed by coalescing);
-  `ISO8601DateFormatter.date(from:)` (two-attempt slow parse) in `ClaudeRolloutParser`
-  day-bucketing loops (`ClaudeImportEngine.swift:931-1012`).
+  (`AppEnvironment.swift:1320-1334`; fold `BillingBlocks` into `loadDashboard` or return both from
+  one pool read); `fetchMonthly` retains per-month `Set<String>` values for every session id in
+  the 12-month window; `sessions.parent_session_id`/`provider` remain unindexed (small table,
+  only act if it grows); Codex reset credits still use a separate GET from the account/rate-limit
+  pollers; `DeveloperFileLogger.append` still stats and open/seek/closes per record (developer
+  mode only); launch intentionally requests a menu snapshot before the scan tail requests
+  another, relying on coalescing; Claude cross-day bucketing still calls shared
+  `ISO8601DateFormatter` parsing repeatedly in message loops.
 
 ## Verified healthy (checked; do not "fix")
 
@@ -281,27 +294,33 @@ material part shipped, but the original cost described below still exists.
 
 ## Suggested fix order
 
-1. **Quick wins, big wins** — P0.1 (scope the backfill), P0.4 (guard the per-scan walks),
-   P1.3 (label short-circuit), P1.4 (decoder hoist), P2.4/P2.5 (index + seed gate).
-2. **Read-side consolidation** — P0.2 (single-pass dashboard + bounded activity), P2.11's
-   read-transaction merge alongside it.
-3. **Launch + UI responsiveness** — P1.1 (async binary resolution), P1.2 (progress
-   throttle/isolation), P2.7–P2.9.
-4. **The big one** — P0.3 (Codex incremental tail parsing), with P2.2/P2.3 batched into the
-   same importer work.
+1. **Finish the bounded scan-progress win** — complete P1.2 with publication coalescing and a
+   child observation boundary. PR #155 already removed the routine-render risk, so the
+   remaining change can stay narrow and measurable.
+2. **Remove repeated UI derivation** — P2.7 heatmap-model caching, then P2.8 Trends-series
+   reuse. These have small correctness surfaces and direct interaction-level measurements.
+3. **Cheap allocation cleanups** — cache launch-time QA configuration (P1.5) and row formatters
+   (P2.9), preserving runtime language changes in the cache key.
+4. **Measure before consolidating Dashboard reads** — benchmark P0.2 with a large, DST-spanning
+   fixture; then combine compatible 365-day passes and fold P2.11's BillingBlocks read into the
+   same transaction without changing provider/model semantics.
+5. **Narrow broad scan work** — scope P0.4 metadata/tree reconciliation and move P1.1 fallback
+   shell discovery off the main actor.
+6. **Batch only with importer invariants locked down** — P2.1–P2.3, P2.6, and P2.10 should
+   follow targeted contention/query-plan measurements rather than their priority labels alone.
 
 Each fix should land with a measurement note (Instruments trace, `os_signpost`, or timed log
 delta) against a realistic fixture — several months of history, an active multi-hundred-MB
 rollout — so the win is demonstrated, not assumed.
 
-## Document verification — 2026-07-25
+## Document verification — 2026-08-09
 
-- Synced the PR branch with `origin/main` at `90b48a3`.
-- Confirmed the merge commits for PRs #121, #124, #129, #132–#138, and #144 are ancestors of
-  that main head before assigning the statuses above.
-- Re-read the current implementation for all 20 findings, including the
-  individual sub-items grouped under P2.11. Partial and open items remain
-  unchecked in the detailed findings.
+- Synced the PR branch with `origin/main` at `797237d063ee5a6f292d1631cca3501b0dc953f5`.
+- Re-read the current implementation for all 20 original findings, including each P2.11
+  sub-item, and inspected the 25 commits added since the previous `90b48a3` refresh.
+- Confirmed PR #155 changes the presentation side of P1.2 but not progress publication, and
+  confirmed PR #164 changes heatmap layout without caching `HeatmapModel`.
+- Recounted the matrix from the individual rows: 6 Delivered, 5 Partial, 9 Open.
 - This PR changes documentation and changelog text only. Product runtime E2E is
-  therefore not applicable; the appropriate gate is rendered-document review,
-  link/status freshness, repository validation, and GitHub CI.
+  therefore not applicable; the appropriate gate is Markdown review, status/commit freshness,
+  repository validation, and GitHub CI.
