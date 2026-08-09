@@ -3,9 +3,9 @@
 All captures use deterministic or synthetic data and exclude account names,
 credentials, conversation content, and local usage history.
 
-- `codex-window-quotas.en.png` is an English native SwiftUI render of the
-  exact summary and detail views merged in PR #175. The Chinese counterpart
-  is the verified native fixture committed with that PR.
+- `codex-window-quotas.*.png` are native SwiftUI renders of the exact summary
+  and detail views from PR #175, refreshed after PR #178 added the adaptive
+  widget background.
 - `glance-to-dashboard.mp4` is the existing short, silent H.264 walkthrough;
   `dashboard-performance.jpg` is its synthetic Dashboard poster.
 - `pricing-history.en.jpg` was captured from the isolated English fixture QA
@@ -16,8 +16,8 @@ credentials, conversation content, and local usage history.
 
 SHA-256:
 
-- `codex-window-quotas.en.png`: `01eaeef12ba8854b2cead2bfdadeab00f9b7cd35e489900a679ac01c23a04f48`
-- `codex-window-quotas.zh-Hans.png`: `737b4f2b6e648d5b6e6f8d54a035fbbe334394259aeba676fa97551320d1822d`
+- `codex-window-quotas.en.png`: `158aaa498dae497ed6c38bf32a07decd8346427666388a46a59e24e0d4a7b693`
+- `codex-window-quotas.zh-Hans.png`: `e9b73ae602939c4d6a48246e8741c542900cbd297ea556de32fe5dbde4704f9d`
 - `dashboard-performance.jpg`: `a49a29bda07c82870e50d44a5bd2eec3f9c6c83b5479a05e46a4fe4875cce1a0`
 - `glance-to-dashboard.mp4`: `12acb3c7334a24e7ccda18b5a2bc8f0be75085ff19c7bb9a3464d0c791566d54`
 - `pricing-history.en.jpg`: `b90fa33b7a8aae950fbac79c37127c42adca876186be614ab760ed78f8b11d6b`
