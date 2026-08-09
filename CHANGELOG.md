@@ -69,6 +69,7 @@ window copy.
 
 ### Added
 
+- **Current performance audit.** The scan, pricing, Dashboard, launch, and menu-bar performance review now revalidates every original finding against the current main branch, distinguishes delivered, partial, and open work, and reprioritizes the remaining improvements without changing app behavior.
 - **Private Beta update channel.** Holding Option while clicking Check Now reveals one-time-code enrollment only for an invited Mac; after authorization it can switch between Stable and Private Beta and receive authenticated Sparkle updates while everyone else sees only the normal update controls and Beta files remain outside public GitHub releases and feeds.
 - **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and a permanent reopen action in Settings; fresh installs continue directly through onboarding without a second tour.
 - **Dashboard cache hit-rate trends.** The headline now pairs today's result with fixed 7- and 30-day weighted summaries, and the cache hit-rate line connects adjacent observations across unavailable days without treating them as 0%; provider and date filters update both views together.
