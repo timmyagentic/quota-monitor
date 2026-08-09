@@ -102,11 +102,90 @@ struct ActivityHeatmap: View {
     /// Trailing daily series, oldest first, zero-filled (one entry per day).
     let daily: [DailyPoint]
     let tokenLocale: Locale
+    private let calendar: Calendar
+    private let language: LocalizationStore.Language
 
-    @State private var hoveredCell: (col: Int, row: Int, cell: HeatmapModel.Cell)?
+    private let hoverState: HeatmapHoverState?
+    private let onModelBuild: (() -> Void)?
+
+    init(
+        daily: [DailyPoint],
+        tokenLocale: Locale,
+        calendar: Calendar = .current,
+        language: LocalizationStore.Language = LocalizationStore.activeLanguage,
+        hoverState: HeatmapHoverState? = nil,
+        onModelBuild: (() -> Void)? = nil
+    ) {
+        self.daily = daily
+        self.tokenLocale = tokenLocale
+        self.calendar = calendar
+        self.language = language
+        self.hoverState = hoverState
+        self.onModelBuild = onModelBuild
+    }
 
     var body: some View {
-        let model = HeatmapModel(daily: daily, calendar: .current)
+        InteractiveActivityHeatmap(
+            model: buildModel(),
+            tokenLocale: tokenLocale,
+            hoverState: hoverState)
+    }
+
+    private func buildModel() -> HeatmapModel {
+        onModelBuild?()
+        return HeatmapModel(
+            daily: daily,
+            calendar: calendar,
+            language: language)
+    }
+}
+
+@MainActor
+@Observable
+final class HeatmapHoverState {
+    struct HoveredCell {
+        let col: Int
+        let row: Int
+        let cell: HeatmapModel.Cell
+    }
+
+    private(set) var hoveredCell: HoveredCell?
+
+    func update(
+        hovering: Bool,
+        cell: HeatmapModel.Cell,
+        col: Int,
+        row: Int
+    ) {
+        if hovering && cell.point != nil {
+            hoveredCell = HoveredCell(col: col, row: row, cell: cell)
+        } else if !hovering,
+                  hoveredCell?.col == col,
+                  hoveredCell?.row == row {
+            hoveredCell = nil
+        }
+    }
+}
+
+/// Owns hover-only state so pointer movement invalidates this subtree without
+/// asking `ActivityHeatmap` to rebuild its calendar-derived model.
+private struct InteractiveActivityHeatmap: View {
+    let model: HeatmapModel
+    let tokenLocale: Locale
+
+    @State private var hoverState: HeatmapHoverState
+
+    init(
+        model: HeatmapModel,
+        tokenLocale: Locale,
+        hoverState: HeatmapHoverState?
+    ) {
+        self.model = model
+        self.tokenLocale = tokenLocale
+        _hoverState = State(initialValue: hoverState ?? HeatmapHoverState())
+    }
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ViewThatFits(in: .horizontal) {
                 heatmapCanvas(model, layout: .regular)
@@ -128,8 +207,13 @@ struct ActivityHeatmap: View {
                 grid(model, layout: layout)
                 monthLabels(model, layout: layout)
             }
-            if let (col, row, cell) = hoveredCell, let point = cell.point {
-                tooltipOverlay(for: point, col: col, row: row, layout: layout)
+            if let hoveredCell = hoverState.hoveredCell,
+               let point = hoveredCell.cell.point {
+                tooltipOverlay(
+                    for: point,
+                    col: hoveredCell.col,
+                    row: hoveredCell.row,
+                    layout: layout)
             }
         }
         // Give the tooltip room to appear above the first row without being
@@ -218,13 +302,11 @@ struct ActivityHeatmap: View {
             .padding(layout.gap / 2)
             .contentShape(Rectangle())
             .onHover { hovering in
-                if hovering && entry.point != nil {
-                    hoveredCell = (col, row, entry)
-                } else if !hovering {
-                    if hoveredCell?.col == col && hoveredCell?.row == row {
-                        hoveredCell = nil
-                    }
-                }
+                hoverState.update(
+                    hovering: hovering,
+                    cell: entry,
+                    col: col,
+                    row: row)
             }
     }
 
@@ -285,7 +367,11 @@ struct HeatmapModel {
     /// each month present in the range.
     let monthMarkers: [(column: Int, label: String)]
 
-    init(daily: [DailyPoint], calendar: Calendar) {
+    init(
+        daily: [DailyPoint],
+        calendar: Calendar,
+        language: LocalizationStore.Language
+    ) {
         // 1. Bucket each day's token count into intensity levels.
         let values = daily.map { Double($0.tokens) }
         let thresholds = HeatmapModel.thresholds(values: values)
@@ -326,7 +412,7 @@ struct HeatmapModel {
         //    new month.
         let monthFormatter = DateFormatter()
         monthFormatter.calendar = calendar
-        monthFormatter.locale = LocalizationStore.activeLanguage == .simplifiedChinese
+        monthFormatter.locale = language == .simplifiedChinese
             ? Locale(identifier: "zh_Hans")
             : Locale(identifier: "en_US")
         monthFormatter.setLocalizedDateFormatFromTemplate("MMM")
