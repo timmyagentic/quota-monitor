@@ -199,6 +199,18 @@ Advanced 适合需要调整更新、轮询或诊断选项的用户：
 
 ## 更新记录
 
+### 2026-08-09 · Unreleased · 29d1f30
+
+费用估算现在只使用 Quota Monitor 随包价格；在线同步和本地价格覆盖已移除，按事件时间保留历史价格的行为不变。Advanced 原本已不显示价格管理区块，因此本次没有新的可见布局变化。
+
+维护记录：
+
+- 在 `29d1f30` 上运行 `QUOTAMONITOR_QA_STEPS=open-dashboard,open-settings,wait,snapshot ./qa/prepare-computer-use-fixture-smoke.sh`，精确 App target 为当前 worktree 的 `.build/QuotaMonitor.app`，构建元数据中的 commit 同为 `29d1f30`。
+- QA artifact 为 `.build/qa-artifacts/20260809T142213Z-computer-use-fixture-smoke`；隔离 HOME、独立 UserDefaults、fixture 数据库、未复制凭据和禁用 live external sources 的边界均有效。
+- 使用 Computer Use 检查 Settings → Advanced 的完整可访问性树，确认只显示 Updates、Codex CLI、Claude Code、Developer Mode 和 Uninstall，且没有 Pricing、LiteLLM、同步、恢复默认或本地价格覆盖入口，也没有残留空白区块。
+- `./qa/check-artifacts.sh .build/qa-artifacts/20260809T142213Z-computer-use-fixture-smoke en open-dashboard,open-settings,wait,snapshot` 通过；Developer Mode 日志中没有价格目录或同步事件。
+- `./qa/run-static.sh` 通过，包含 178 个工具测试和 880 个 Swift 测试；界面与现有 Advanced 截图一致，因此没有新增重复截图。
+
 ### 2026-07-25 · Unreleased · 8a25241
 
 Advanced 设置截图已与当前界面同步；`Check for updates automatically` 下方不再显示已经删除的说明文字。
