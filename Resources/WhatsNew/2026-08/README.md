@@ -22,5 +22,5 @@ SHA-256:
 - `glance-to-dashboard.mp4`: `12acb3c7334a24e7ccda18b5a2bc8f0be75085ff19c7bb9a3464d0c791566d54`
 - `pricing-history.en.jpg`: `b90fa33b7a8aae950fbac79c37127c42adca876186be614ab760ed78f8b11d6b`
 - `pricing-history.zh-Hans.jpg`: `a5120adf740725eb90412174b390a0e566cda07817643962cb29aa6ceaa04b95`
-- `update-highlights.en.png`: `cd66d11ea3a56ccb099a8e1b6e3687719119b5695a95e1ebf79d7ffde5447d5a`
-- `update-highlights.zh-Hans.png`: `7b853067b629f4a5ce8f232ad9163669b5cefff710251c101e0955d8bc51872d`
+- `update-highlights.en.png`: `3a372aa585e3deb001f54b46141ae3f790ee9814894d7e4cf2db398f3b6908ce`
+- `update-highlights.zh-Hans.png`: `964232d533daa27f561515d1ca0aad3c7e81ecddec2d3ede0cdac72ea54fd302`
