@@ -1,3 +1,49 @@
+# Codex quota widget semantic-background design QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/4f/qnyg3l7d66v_4k0vzwx69jk40000gn/T/codex-clipboard-ec1617eb-8d4f-4e12-8cf4-58218b593f4b.png`, together with the user's direction to preserve the existing content while replacing the dark slab with a Codex-like semantic background and light border.
+- Supporting upstream reference: `docs/assets/pr/codex-sidebar-quota/opsail-v0.2.0-reference.png`; its compact summary uses the host list-hover background token and light-border token rather than a standalone material surface.
+- Implementation screenshots: `docs/assets/pr/codex-widget-background/semantic-background-light.png` and `docs/assets/pr/codex-widget-background/semantic-background-dark.png`.
+- Focused same-state comparison: `docs/assets/pr/codex-widget-background/semantic-background-comparison.png` (before on the left, implementation on the right).
+- Source pixels: 792 x 80. Implementation pixels: 790 x 80 for a 395 x 40 point native SwiftUI canvas rendered at 2x density. The focused comparison normalizes both to matching 240 x 80 pixel crops.
+- State: macOS light and dark appearances, weekly-only quota, `7d 55%`, pointer not hovering.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the requested background-only change.
+
+- Fonts and typography: unchanged. The implementation uses the same native compact label, semibold weight, monospaced percentage digits, and text hierarchy as the supplied state.
+- Spacing and layout rhythm: unchanged. The 84 x 25 point capsule, 8 point continuous radius, internal spacing, and account-row placement remain intact.
+- Colors and visual tokens: passed. The supplied capture's surrounding surface sampled at `rgb(252,252,252)`, while the old fill sampled at `rgb(216,216,216)`, a 36-level separation that reads as a gray slab. The implementation uses adaptive `.primary` opacity directly over the host surface: its light fixture sampled at base `rgb(255,255,255)`, fill `rgb(247,247,247)`, and border `rgb(235,235,235)`, while its dark fixture sampled at base `rgb(30,30,30)`, fill `rgb(37,37,37)`, and border `rgb(48,48,48)`. Both appearances keep the fill close to the host surface and let the light semantic border preserve the capsule boundary.
+- Image quality and asset fidelity: passed. The implementation evidence is a 2x native SwiftUI render of the shipping view; no placeholder, generated image, SVG, or approximate asset is used.
+- Copy and content: unchanged. The dot, `7d` label, `55%` value, dimensions, shadow, and interactions were deliberately left outside this change.
+
+The single 84 x 25 point capsule is fully readable in the focused comparison, so an additional crop would not expose more fidelity detail.
+
+## Comparison history
+
+1. Initial state: the translucent material layer introduced a P2 foreground/background balance mismatch in light Codex, visibly separating the widget from the account-row base.
+2. Fix: removed the standalone material layer, retained a low-opacity adaptive semantic fill, and reduced the border from 12/20% to 8/12% opacity for normal/hover states.
+3. Post-fix evidence: the focused comparison shows the capsule blending into the Codex-like base while retaining a visible light outline; no typography, spacing, copy, or status-color drift is visible.
+
+## Implementation checklist
+
+- [x] Replace the gray material slab with an adaptive semantic tint.
+- [x] Keep a visible but light border in normal and hover states.
+- [x] Preserve the dot, text, percentage, dimensions, shadow, and interactions.
+- [x] Verify the exact native view at 2x density in light appearance.
+- [x] Verify the same adaptive treatment at 2x density in dark appearance.
+- [x] Compare the supplied state and implementation in one focused image.
+
+## Follow-up polish
+
+None required for this scoped background change.
+
+final result: passed
+
+---
+
 # Codex hover-card title design QA
 
 ## Evidence
