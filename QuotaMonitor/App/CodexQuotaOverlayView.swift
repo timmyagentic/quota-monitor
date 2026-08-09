@@ -240,15 +240,11 @@ struct CodexQuotaOverlayDetailsView: View {
                 Text(title)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                Text(L10n.codexOverlayRemaining(metric.remainingPercent))
+                Text(metric.localizedPercentLabel)
                     .fontWeight(.semibold)
                     .foregroundStyle(.primary)
             }
             .font(.system(size: 11))
-
-            Text(L10n.codexOverlayUsed(metric.usedPercent))
-                .font(.system(size: 10.5))
-                .foregroundStyle(.secondary)
 
             Text(resetCountdown(for: metric, now: now))
                 .font(.system(size: 9.5).monospacedDigit())
@@ -269,13 +265,12 @@ struct CodexQuotaOverlayDetailsView: View {
                         .fill(progressAccent)
                         .frame(
                             width: geometry.size.width
-                                * CGFloat(metric.remainingPercent) / 100)
+                                * CGFloat(metric.percent) / 100)
                 }
             }
             .frame(height: 4)
             .accessibilityElement()
-            .accessibilityLabel(
-                L10n.codexOverlayRemaining(metric.remainingPercent))
+            .accessibilityLabel(metric.localizedPercentLabel)
         }
     }
 

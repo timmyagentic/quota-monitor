@@ -44,6 +44,7 @@ struct CodexQuotaOverlayTests {
         #expect(used.fiveHour?.percent == 37)
         #expect(used.fiveHour?.usedPercent == 37)
         #expect(used.fiveHour?.remainingPercent == 63)
+        #expect(used.fiveHour?.displayMode == .used)
         #expect(used.fiveHour?.resetAt == now.addingTimeInterval(3_600))
         #expect(used.weekly?.percent == 83)
         #expect(used.fiveHour?.severity == .healthy)
@@ -56,6 +57,18 @@ struct CodexQuotaOverlayTests {
             now: now)
         #expect(remaining.fiveHour?.percent == 63)
         #expect(remaining.weekly?.percent == 17)
+        #expect(remaining.fiveHour?.displayMode == .remaining)
+
+        let usedLabel = LocalizationTestSupport.withLanguage(.english) {
+            used.fiveHour?.localizedPercentLabel
+        }
+        let remainingLabel = LocalizationTestSupport.withLanguage(
+            .simplifiedChinese
+        ) {
+            remaining.fiveHour?.localizedPercentLabel
+        }
+        #expect(usedLabel == "37% used")
+        #expect(remainingLabel == "剩余 63%")
     }
 
     @Test("Last-good quota remains visible while it is stale")
@@ -208,17 +221,17 @@ struct CodexQuotaOverlayTests {
 
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: nil) == 199)
+            resetCredits: nil) == 167)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: resetCredits) == 296)
+            resetCredits: resetCredits) == 264)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            contentHeight: 296) == CGRect(
+            contentHeight: 264) == CGRect(
                 x: 12,
                 y: 45,
                 width: 464,
-                height: 296))
+                height: 264))
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
