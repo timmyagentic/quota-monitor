@@ -69,16 +69,12 @@ struct CodexQuotaOverlayView: View {
                 height: CodexQuotaOverlayLayout.size.height)
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Material.ultraThin)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(.primary.opacity(isHovering ? 0.075 : 0.035))
-                    }
+                    .fill(.primary.opacity(isHovering ? 0.075 : 0.035))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(
-                        .primary.opacity(isHovering ? 0.20 : 0.12),
+                        .primary.opacity(isHovering ? 0.12 : 0.08),
                         lineWidth: 0.75)
             }
             .shadow(

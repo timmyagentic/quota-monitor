@@ -439,6 +439,11 @@ struct CodexQuotaOverlayTests {
         #expect(viewSource.contains("Text(Branding.appDisplayName)"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
+        #expect(!viewSource.contains(".fill(Material.ultraThin)"))
+        #expect(viewSource.contains(
+            ".fill(.primary.opacity(isHovering ? 0.075 : 0.035))"))
+        #expect(viewSource.contains(
+            ".primary.opacity(isHovering ? 0.12 : 0.08)"))
         let pollingStart = try #require(
             appDelegate.range(of: "env.startBackgroundPolling()"))
         let overlayStart = try #require(
