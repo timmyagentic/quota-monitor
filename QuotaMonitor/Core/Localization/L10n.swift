@@ -71,102 +71,36 @@ enum L10n {
     }
     static var codexCapsuleSettingsHelp: String {
         t(
-            en: "Adds 5-hour and weekly limits inside the Codex account row. "
-                + "\(Branding.appDisplayName) connects only when Codex has a loopback debugging "
-                + "port. Keep using the normal Codex icon; automatic restore prepares the widget "
-                + "before the newly launched window appears.",
-            zh: "在 Codex 账户行内显示 5 小时和每周额度。\(Branding.appDisplayName) "
-                + "只连接带本机调试端口的 Codex。你仍可从原来的图标打开 Codex；自动恢复会在"
-                + "刚启动的窗口出现前准备好挂件。")
+            en: "Shows the latest 5-hour and weekly quota in the Codex account row. "
+                + "The widget follows the Codex window, hides when Codex is in the background, "
+                + "and never restarts or modifies Codex.",
+            zh: "在 Codex 账户行内显示最新的 5 小时和每周额度。挂件会跟随 Codex 窗口，"
+                + "Codex 位于后台时自动隐藏，并且不会重启或修改 Codex。")
     }
-    static var codexCapsuleAutoRestoreLabel: String {
-        t(
-            en: "Keep the widget when opening Codex normally",
-            zh: "正常打开 Codex 时保留挂件")
+    static var codexOverlayDisabledStatus: String {
+        t(en: "The widget is off.", zh: "挂件已关闭。")
     }
-    static var codexCapsuleAutoRestoreHelp: String {
-        t(
-            en: "Before a normal launch can show its window, Quota Monitor sends a standard quit "
-                + "signal only to that newly launched process, then immediately reopens it with "
-                + "the widget. Existing or ambiguous sessions are left untouched; Codex is never "
-                + "force-quit.",
-            zh: "正常启动的窗口出现前，Quota Monitor 只会向这个刚启动的进程发送标准退出信号，"
-                + "随后立即用挂件模式重新打开。已经运行或无法明确识别的会话都不会被触碰，"
-                + "也绝不会强制退出 Codex。")
+    static var codexOverlayWaitingStatus: String {
+        t(en: "Ready — switch to Codex and the widget will appear automatically.",
+          zh: "已就绪；切换到 Codex 后，挂件会自动出现。")
     }
-    static var codexCapsuleAttachingStatus: String {
-        t(en: "Connecting to the running Codex…", zh: "正在连接当前运行的 Codex…")
+    static var codexOverlayActiveStatus: String {
+        t(en: "Visible in Codex with current quota data.",
+          zh: "已在 Codex 中显示当前额度。")
     }
-    static var codexCapsuleNeedsQuitStatus: String {
-        t(
-            en: "This Codex session cannot accept the widget yet. Choose Restart Codex to send "
-                + "this one session a standard quit signal and immediately reopen it with the "
-                + "widget; Codex is never force-quit.",
-            zh: "当前 Codex 会话还无法接入挂件。选择“重新打开 Codex”后，Quota Monitor "
-                + "只会向这一个会话发送标准退出信号，并立即用挂件模式重新打开；"
-                + "绝不会强制退出 Codex。")
+    static var codexOverlayCachedStatus: String {
+        t(en: "Visible in Codex with the last saved quota while fresh data loads.",
+          zh: "正在 Codex 中显示上次额度，并自动获取最新数据。")
     }
-    static var codexCapsuleMultipleInstancesStatus: String {
-        t(
-            en: "More than one Codex or ChatGPT instance is running. Close the extra instances, "
-                + "then try again. Quota Monitor will not choose or quit a session while it "
-                + "cannot identify a single one safely.",
-            zh: "检测到多个 Codex 或 ChatGPT 实例。请先关闭多余实例，再重新检测。"
-                + "Quota Monitor 无法安全确认唯一会话时，不会擅自选择或退出任何一个实例。")
+    static var codexOverlayQuotaUnavailableStatus: String {
+        t(en: "Visible in Codex; quota data is not available yet and will retry automatically.",
+          zh: "挂件已显示；额度暂不可用，稍后会自动重试。")
     }
-    static var codexCapsuleReadyToLaunchStatus: String {
-        t(
-            en: "Codex is closed. Open it from here to enable the native quota widget.",
-            zh: "Codex 已退出；请从这里打开并启用原生额度挂件。")
+    static var codexOverlayWeeklyCompact: String {
+        t(en: "7d", zh: "周")
     }
-    static var codexCapsuleLaunchingStatus: String {
-        t(en: "Opening Codex with the native quota widget…",
-          zh: "正在打开 Codex 并加载原生额度挂件…")
-    }
-    static var codexCapsuleActiveStatus: String {
-        t(en: "Connected — the native quota widget is active.",
-          zh: "已连接，原生额度挂件正在运行。")
-    }
-    static var codexCapsuleUnavailableStatus: String {
-        t(en: "Not connected. The existing Codex session was left untouched; you can try again.",
-          zh: "暂未连接；当前 Codex 会话未被触碰，可以再次尝试。")
-    }
-    static var codexCapsuleEnableButton: String {
-        t(en: "Enable widget and automatic restore", zh: "启用挂件与自动恢复")
-    }
-    static var codexCapsuleLaunchButton: String {
-        t(en: "Open Codex and enable widget", zh: "打开 Codex 并启用挂件")
-    }
-    static var codexCapsuleRestartButton: String {
-        t(en: "Restart Codex with widget", zh: "重新打开 Codex 并启用挂件")
-    }
-    static var codexCapsuleMultipleInstancesRetryButton: String {
-        t(en: "Close extras, then retry", zh: "关闭多余实例后重试")
-    }
-    static var codexCapsuleRetryButton: String {
-        t(en: "Try again", zh: "再次尝试")
-    }
-    static var codexCapsuleDisableButton: String {
-        t(en: "Remove widget", zh: "移除挂件")
-    }
-    static var codexCapsuleCancelButton: String {
-        t(en: "Cancel", zh: "取消")
-    }
-    static var codexCapsuleWeekly: String { t(en: "weekly", zh: "每周") }
-    static var codexCapsuleTitle: String { t(en: "Codex weekly", zh: "Codex 每周额度") }
-    static func codexCapsuleRemaining(_ percent: Int) -> String {
-        t(en: "\(percent)% left", zh: "剩余 \(percent)%")
-    }
-    static func codexCapsuleUsed(_ percent: Int) -> String {
-        t(en: "\(percent)% used", zh: "已用 \(percent)%")
-    }
-    static var codexCapsuleResets: String { t(en: "Resets", zh: "重置于") }
-    static var codexCapsuleLive: String { t(en: "Live", zh: "实时") }
-    static var codexCapsuleStale: String { t(en: "Stale", zh: "已过期") }
-    static var codexCapsuleUnavailable: String { t(en: "Unavailable", zh: "暂不可用") }
-    static var codexCapsuleUnavailableHelp: String {
-        t(en: "Weekly quota is not available yet. Refresh Quota Monitor after signing in to Codex.",
-          zh: "暂未取得每周额度。登录 Codex 后刷新 Quota Monitor。")
+    static var codexOverlayUnavailableCompact: String {
+        t(en: "Quota unavailable", zh: "额度暂不可用")
     }
 
     // MARK: - menu-bar label style

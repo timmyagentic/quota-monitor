@@ -73,20 +73,26 @@ struct GeneralSettingsTab: View {
 
             if DistributionChannel.current != .appStore {
                 Section(L10n.codexCapsuleSettingsSection) {
-                    Text(L10n.codexCapsuleSettingsLabel)
-                        .font(.body.weight(.medium))
+                    Toggle(
+                        L10n.codexCapsuleSettingsLabel,
+                        isOn: Binding(
+                            get: { settings.codexSidebarQuotaEnabled },
+                            set: { isEnabled in
+                                settings.codexSidebarQuotaEnabled = isEnabled
+                                settings.codexSidebarQuotaStatus = isEnabled
+                                    ? .waitingForCodex
+                                    : .disabled
+                                if isEnabled,
+                                   !settings.enabledProviders.contains("codex") {
+                                    _ = settings.setProviderEnabled("codex", enabled: true)
+                                    env.applyEnabledProviders()
+                                }
+                            }))
                     Text(L10n.codexCapsuleSettingsHelp)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if settings.codexSidebarQuotaEnabled {
-                        Toggle(
-                            L10n.codexCapsuleAutoRestoreLabel,
-                            isOn: $settings.codexSidebarQuotaAutoRestoreEnabled)
-                        Text(L10n.codexCapsuleAutoRestoreHelp)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                         Label(
                             codexSidebarStatusText,
                             systemImage: codexSidebarStatusIcon)
@@ -98,13 +104,6 @@ struct GeneralSettingsTab: View {
                             .background(
                                 codexSidebarStatusColor.opacity(0.1),
                                 in: RoundedRectangle(cornerRadius: 8))
-                        codexSidebarActions
-                    } else {
-                        Button(L10n.codexCapsuleEnableButton) {
-                            settings.codexSidebarQuotaAutoRestoreEnabled = true
-                            OpsailCodexRefitActions.requestExplicitLaunch()
-                        }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
             }
@@ -248,35 +247,31 @@ struct GeneralSettingsTab: View {
 
     private var codexSidebarStatusText: String {
         switch settings.codexSidebarQuotaStatus {
-        case .disabled, .unavailable:
-            L10n.codexCapsuleUnavailableStatus
-        case .attaching:
-            L10n.codexCapsuleAttachingStatus
-        case .needsCodexQuit:
-            L10n.codexCapsuleNeedsQuitStatus
-        case .multipleCodexInstances:
-            L10n.codexCapsuleMultipleInstancesStatus
-        case .readyToLaunch:
-            L10n.codexCapsuleReadyToLaunchStatus
-        case .launching:
-            L10n.codexCapsuleLaunchingStatus
+        case .disabled:
+            L10n.codexOverlayDisabledStatus
+        case .waitingForCodex:
+            L10n.codexOverlayWaitingStatus
         case .active:
-            L10n.codexCapsuleActiveStatus
+            L10n.codexOverlayActiveStatus
+        case .showingCached:
+            L10n.codexOverlayCachedStatus
+        case .quotaUnavailable:
+            L10n.codexOverlayQuotaUnavailableStatus
         }
     }
 
     private var codexSidebarStatusIcon: String {
         switch settings.codexSidebarQuotaStatus {
-        case .attaching, .launching:
-            "arrow.triangle.2.circlepath"
-        case .needsCodexQuit, .multipleCodexInstances:
-            "hand.raised.fill"
-        case .readyToLaunch:
-            "play.circle.fill"
+        case .waitingForCodex:
+            "macwindow"
         case .active:
             "checkmark.circle.fill"
-        case .disabled, .unavailable:
+        case .showingCached:
+            "clock.fill"
+        case .quotaUnavailable:
             "exclamationmark.circle.fill"
+        case .disabled:
+            "circle"
         }
     }
 
@@ -284,70 +279,10 @@ struct GeneralSettingsTab: View {
         switch settings.codexSidebarQuotaStatus {
         case .active:
             .green
-        case .needsCodexQuit, .multipleCodexInstances:
+        case .showingCached:
             .orange
-        case .readyToLaunch:
-            .accentColor
-        case .disabled, .unavailable:
+        case .disabled, .waitingForCodex, .quotaUnavailable:
             .secondary
-        case .attaching, .launching:
-            .accentColor
-        }
-    }
-
-    @ViewBuilder
-    private var codexSidebarActions: some View {
-        switch settings.codexSidebarQuotaStatus {
-        case .readyToLaunch:
-            HStack {
-                Button(L10n.codexCapsuleLaunchButton) {
-                    OpsailCodexRefitActions.requestExplicitLaunch()
-                }
-                .buttonStyle(.borderedProminent)
-                Button(L10n.codexCapsuleCancelButton) {
-                    settings.codexSidebarQuotaEnabled = false
-                }
-            }
-        case .needsCodexQuit:
-            HStack {
-                Button(L10n.codexCapsuleRestartButton) {
-                    OpsailCodexRefitActions.requestExplicitLaunch()
-                }
-                .buttonStyle(.borderedProminent)
-                Button(L10n.codexCapsuleDisableButton) {
-                    settings.codexSidebarQuotaEnabled = false
-                }
-            }
-        case .multipleCodexInstances:
-            HStack {
-                Button(L10n.codexCapsuleMultipleInstancesRetryButton) {
-                    OpsailCodexRefitActions.requestExplicitLaunch()
-                }
-                .buttonStyle(.borderedProminent)
-                Button(L10n.codexCapsuleDisableButton) {
-                    settings.codexSidebarQuotaEnabled = false
-                }
-            }
-        case .unavailable:
-            HStack {
-                Button(L10n.codexCapsuleRetryButton) {
-                    OpsailCodexRefitActions.requestAttachRetry()
-                }
-                .buttonStyle(.borderedProminent)
-                Button(L10n.codexCapsuleDisableButton) {
-                    settings.codexSidebarQuotaEnabled = false
-                }
-            }
-        case .attaching, .launching:
-            Button(L10n.codexCapsuleCancelButton) {
-                settings.codexSidebarQuotaEnabled = false
-            }
-        case .active:
-            Button(L10n.codexCapsuleDisableButton) {
-                settings.codexSidebarQuotaEnabled = false
-            }
-        case .disabled:
-            EmptyView()
         }
     }
 
@@ -362,6 +297,10 @@ struct GeneralSettingsTab: View {
                     // mutate; the help text under the section explains
                     // why the click had no effect.
                     return
+                }
+                if id == "codex", !wantOn {
+                    settings.codexSidebarQuotaEnabled = false
+                    settings.codexSidebarQuotaStatus = .disabled
                 }
                 env.applyEnabledProviders()
             }

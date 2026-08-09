@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
     private var dailyActiveReporter: DailyActiveReporter?
-    private var codexSidebarQuotaController: OpsailCodexRefitController?
+    private var codexQuotaOverlayController: CodexQuotaOverlayController?
     private var whatsNewCoordinator: WhatsNewCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -76,12 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.statusItemController = controller
 
-        if DistributionChannel.current != .appStore,
-           !LocalQAEnvironment.isQARequested()
-        {
-            let sidebarQuotaController = OpsailCodexRefitController(settings: settings)
-            codexSidebarQuotaController = sidebarQuotaController
-            sidebarQuotaController.start()
+        if DistributionChannel.current != .appStore {
+            let overlayController = CodexQuotaOverlayController(
+                environment: env,
+                settings: settings)
+            codexQuotaOverlayController = overlayController
+            overlayController.start()
         }
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
@@ -185,7 +185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// default.
     func applicationShouldHandleReopen(_ sender: NSApplication,
                                        hasVisibleWindows: Bool) -> Bool {
-        if hasVisibleWindows { return true }   // bring the existing window forward
+        let hasVisibleProductWindow = hasVisibleWindows && NSApp.windows.contains {
+            $0.isVisible
+                && $0.identifier?.rawValue != CodexQuotaOverlayLayout.windowIdentifier
+        }
+        if hasVisibleProductWindow { return true }
         if whatsNewCoordinator?.presentPendingIfNeeded() == true {
             return false
         }
@@ -197,8 +201,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        codexSidebarQuotaController?.stop()
-        codexSidebarQuotaController = nil
+        codexQuotaOverlayController?.stop()
+        codexQuotaOverlayController = nil
         NSWorkspace.shared.notificationCenter.removeObserver(
             self, name: NSWorkspace.didWakeNotification, object: nil)
         statusItemController?.stop()

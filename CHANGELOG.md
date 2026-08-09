@@ -33,16 +33,13 @@ window copy.
 #### Summary
 
 - The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
-- The Codex sidebar widget can once again open or restart Codex directly from Quota Monitor, including when the current session cannot accept the widget.
+- Codex now shows 5-hour and weekly quota in a native window-following widget without requiring a debugging port or restarting Codex, while last-saved values remain visible until fresh data arrives.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
-- The Codex sidebar quota widget now follows Codex's English or Simplified Chinese language, with clearer weekly labels, shorter reset times, and a calmer compact layout.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
 - Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
 - Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
-- The Codex sidebar quota widget now stays available when you open Codex normally, without showing an extra open-then-reopen cycle or touching an existing session.
 - Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
-- Codex can now show its 5-hour and weekly limits directly inside the account row, with a polished widget that stays attached across navigation, theme changes, and renderer reloads in the current Codex session.
 - Private Beta updates can now be published reliably through the production service.
 - Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
 - Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
@@ -78,7 +75,7 @@ window copy.
 
 - **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
-- **Restored in-app Codex launch.** The widget setup prepares its helper assets before asking the single identified Codex session to restart, asks users to close extra instances when ownership is ambiguous, and keeps generic retries attach-only.
+- **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background, preserves the last good quota during refreshes, and retries data loading without requiring the user to restart either app.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
@@ -89,11 +86,9 @@ window copy.
 ### Changed
 
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
-- **Bilingual Codex quota hierarchy.** The sidebar summary now reads “Weekly · 32% left” or “本周 · 剩余 32%”, while details use localized quota terms, minute-level reset dates, and a single compact metadata line without repeating the visible used percentage or local-time note.
+- **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself over Codex's account row, follows window movement and Spaces, and passes every click through to Codex.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
-- **Seamless automatic Codex widget restoration.** After a separate opt-in, Quota Monitor intercepts only a unique just-launched Codex process before its window appears, then reopens it once with the native widget; existing, ambiguous, and custom debugging sessions remain untouched, and Codex is never force-quit.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
-- **Reliable Codex sidebar quota.** The opt-in integration uses Opsail's established Codex refit lifecycle to keep 5-hour and weekly limits in the account row, follow Codex theme tokens, refresh from its live rate-limit bridge, recover from renderer changes while Codex remains open, and cleanly remove the widget when disabled.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.
 - **Lower rollout parsing overhead.** Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.
 - **Timelier background update checks.** With automatic checks enabled, launching, waking, or returning to Quota Monitor now starts a silent update check when no prior check exists or the last one is more than six hours old; Check Now remains available when automatic checks are off.
@@ -108,6 +103,7 @@ window copy.
 
 ### Removed
 
+- **Legacy Codex injection lifecycle.** The bundled Opsail helper, Chromium debugging-port integration, renderer injection, and automatic Codex relaunch path are gone; the widget no longer modifies or controls the Codex process.
 - **Auto-update help text.** The caption under the automatic update check toggle in Advanced settings is gone; the toggle and the Check Now button behave exactly as before.
 
 ## [0.2.43] — 2026-07-20
