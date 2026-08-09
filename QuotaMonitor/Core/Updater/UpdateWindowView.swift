@@ -16,7 +16,7 @@ struct UpdateWindowView: View {
                 .padding(.top, 12)
         }
         .padding(20)
-        .frame(width: 480, height: 420)
+        .frame(width: 480, height: 520)
     }
 
     // MARK: - Content (phase-dependent)

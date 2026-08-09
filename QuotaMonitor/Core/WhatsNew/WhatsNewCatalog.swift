@@ -132,18 +132,56 @@ struct WhatsNewLocalizedText: Decodable, Equatable, Sendable {
     }
 }
 
+/// A bundled media path that can either be shared by every language or point
+/// at language-specific captures. Decoding a plain string keeps existing
+/// campaigns source-compatible; a localized object is used only when visible
+/// text inside the media needs to follow the app language.
+struct WhatsNewLocalizedResourcePath: Decodable, Equatable, Sendable {
+    let en: String
+    let zhHans: String
+
+    private enum CodingKeys: String, CodingKey {
+        case en
+        case zhHans = "zh-Hans"
+    }
+
+    init(from decoder: Decoder) throws {
+        if let sharedPath = try? decoder.singleValueContainer().decode(String.self) {
+            en = sharedPath
+            zhHans = sharedPath
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        en = try container.decode(String.self, forKey: .en)
+        zhHans = try container.decode(String.self, forKey: .zhHans)
+    }
+
+    func value(for language: LocalizationStore.Language) -> String {
+        switch language {
+        case .english: return en
+        case .simplifiedChinese: return zhHans
+        }
+    }
+
+    var resourcePaths: [String] {
+        en == zhHans ? [en] : [en, zhHans]
+    }
+}
+
 enum WhatsNewMedia: Decodable, Equatable, Sendable {
-    case image(path: String, accessibilityLabel: WhatsNewLocalizedText)
-    case video(path: String,
-               posterPath: String,
+    case image(path: WhatsNewLocalizedResourcePath,
+               accessibilityLabel: WhatsNewLocalizedText)
+    case video(path: WhatsNewLocalizedResourcePath,
+               posterPath: WhatsNewLocalizedResourcePath,
                accessibilityLabel: WhatsNewLocalizedText)
 
     var resourcePaths: [String] {
         switch self {
         case .image(let path, _):
-            return [path]
+            return path.resourcePaths
         case .video(let path, let posterPath, _):
-            return [path, posterPath]
+            return path.resourcePaths + posterPath.resourcePaths
         }
     }
 
@@ -158,7 +196,9 @@ enum WhatsNewMedia: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let type = try container.decode(MediaType.self, forKey: .type)
-        let path = try container.decode(String.self, forKey: .path)
+        let path = try container.decode(
+            WhatsNewLocalizedResourcePath.self,
+            forKey: .path)
         let label = try container.decode(
             WhatsNewLocalizedText.self,
             forKey: .accessibilityLabel)
@@ -168,7 +208,9 @@ enum WhatsNewMedia: Decodable, Equatable, Sendable {
         case .video:
             self = .video(
                 path: path,
-                posterPath: try container.decode(String.self, forKey: .posterPath),
+                posterPath: try container.decode(
+                    WhatsNewLocalizedResourcePath.self,
+                    forKey: .posterPath),
                 accessibilityLabel: label)
         }
     }

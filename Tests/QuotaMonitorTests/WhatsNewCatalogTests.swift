@@ -6,14 +6,19 @@ import Testing
 
 @Suite("What's New catalog")
 struct WhatsNewCatalogTests {
-    @Test("Bundled catalog resolves one image and one video campaign")
+    @Test("Bundled 1.0 campaign resolves four image and video highlights")
     func loadsFeaturedCampaignAndMedia() throws {
         let content = try WhatsNewCatalog.load(
             from: Self.repositoryRoot.appendingPathComponent("Resources"))
 
-        #expect(content.campaign.id == "2026-07-product-highlights")
+        #expect(content.campaign.id == "2026-08-v1-product-highlights")
         #expect(content.campaign.autoPresent)
-        #expect(content.campaign.pages.count == 3)
+        #expect(content.campaign.pages.map(\.id) == [
+            "codex-quotas-where-you-work",
+            "large-histories-stay-light",
+            "accurate-costs-over-time",
+            "updates-without-interruption"
+        ])
         #expect(content.campaign.pages.contains {
             if case .image = $0.media { return true }
             return false
@@ -40,9 +45,9 @@ struct WhatsNewCatalogTests {
             let imagePaths: [String]
             switch page.media {
             case .image(let path, _):
-                imagePaths = [path]
+                imagePaths = path.resourcePaths
             case .video(_, let posterPath, _):
-                imagePaths = [posterPath]
+                imagePaths = posterPath.resourcePaths
             }
             for path in imagePaths {
                 let url = try #require(content.resourceURL(for: path))
@@ -58,7 +63,9 @@ struct WhatsNewCatalogTests {
         let content = try WhatsNewCatalog.load(
             from: Self.repositoryRoot.appendingPathComponent("Resources"))
         let videoPath = try #require(content.campaign.pages.compactMap { page in
-            if case .video(let path, _, _) = page.media { return path }
+            if case .video(let path, _, _) = page.media {
+                return path.value(for: .english)
+            }
             return nil
         }.first)
         let url = try #require(content.resourceURL(for: videoPath))
@@ -80,13 +87,47 @@ struct WhatsNewCatalogTests {
             == kCMVideoCodecType_H264)
     }
 
+    @Test("Visible media can follow the selected app language")
+    func localizesVisibleMedia() throws {
+        let content = try WhatsNewCatalog.load(
+            from: Self.repositoryRoot.appendingPathComponent("Resources"))
+        let expectedPaths = [
+            "codex-quotas-where-you-work": (
+                "2026-08/codex-window-quotas.en.png",
+                "2026-08/codex-window-quotas.zh-Hans.png"),
+            "accurate-costs-over-time": (
+                "2026-08/pricing-history.en.jpg",
+                "2026-08/pricing-history.zh-Hans.jpg"),
+            "updates-without-interruption": (
+                "2026-08/update-highlights.en.png",
+                "2026-08/update-highlights.zh-Hans.png")
+        ]
+
+        for (pageID, expected) in expectedPaths {
+            let page = try #require(content.campaign.pages.first {
+                $0.id == pageID
+            })
+            guard case .image(let path, _) = page.media else {
+                Issue.record("Expected \(pageID) to use an image")
+                continue
+            }
+            #expect(path.value(for: .english) == expected.0)
+            #expect(path.value(for: .simplifiedChinese) == expected.1)
+            for resourcePath in path.resourcePaths {
+                #expect(content.resourceURL(for: resourcePath) != nil)
+            }
+        }
+    }
+
     @Test("Campaign copy resolves independently in both supported languages")
     func localizesCampaignCopy() throws {
         let content = try WhatsNewCatalog.load(
             from: Self.repositoryRoot.appendingPathComponent("Resources"))
 
-        #expect(content.campaign.title.value(for: .english) == "Product highlights")
-        #expect(content.campaign.title.value(for: .simplifiedChinese) == "近期新功能")
+        #expect(content.campaign.title.value(for: .english)
+            == "What’s new in Quota Monitor 1.0")
+        #expect(content.campaign.title.value(for: .simplifiedChinese)
+            == "Quota Monitor 1.0 新功能")
         #expect(content.campaign.subtitle.value(for: .english).isEmpty == false)
         #expect(content.campaign.subtitle.value(
             for: .simplifiedChinese).isEmpty == false)

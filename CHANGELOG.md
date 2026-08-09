@@ -32,28 +32,21 @@ window copy.
 
 #### Summary
 
-- The Codex window widget now matches the menu bar's 5h/7d labels, blends into Codex with an adaptive background and subtle border, and opens a clearly branded, narrower detail card that dismisses naturally.
-- Dates and times in Sessions, History, Activity, and Trends now match the language selected inside Quota Monitor.
-
-### Fixed
-
-- **Refined Codex quota widget.** The window widget and menu bar now share the same compact quota labels; its adaptive background and subtle border blend into Codex, while the anchored detail card starts with the Quota Monitor name, stays narrow, and closes after pointer exit or a click elsewhere instead of remaining pinned.
-- **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
-
-## [1.0.0] — 2026-08-09
+## [1.0.0] — 2026-08-10
 
 #### Summary
 
-- Codex now shows its 5-hour and weekly quota beside the active window, with clear used-or-remaining views, reset timing, and reset credits available on hover or click, without restarting Codex.
-- History, Sessions, Dashboard Trends, the yearly activity heatmap, search, and background refreshes now stay responsive even with large usage histories.
-- Built-in pricing now covers GPT-5.6 Terra and Luna price changes and Claude Opus 5 cache rates while preserving the prices that applied to earlier usage.
-- Updates are quieter and easier: automatic checks stay in the background, one click downloads and prepares an update, and important releases can be revisited in a visual What's New window.
+- Codex now puts compact 5-hour and 7-day quotas in an adaptive widget beside the active window, with reset timing and reset credits on hover—no restart required.
+- History, Sessions, Dashboard charts, the activity heatmap, and search stay responsive on large histories; visible dates follow the app language.
+- GPT-5.6 and Claude Opus 5 pricing is built in, while historical usage keeps the rate that applied at the time.
+- Updates check quietly, prepare in one click, and keep important highlights available in the replayable What's New guide.
 
 ### Added
 
 - **Current performance audit.** The scan, pricing, Dashboard, launch, and menu-bar performance review now revalidates every original finding against the current main branch, distinguishes delivered, partial, and open work, and reprioritizes the remaining improvements without changing app behavior.
 - **Private Beta update channel.** Holding Option while clicking Check Now reveals one-time-code enrollment only for an invited Mac; after authorization it can switch between Stable and Private Beta and receive authenticated Sparkle updates while everyone else sees only the normal update controls and Beta files remain outside public GitHub releases and feeds.
 - **Replayable What's New showcases.** Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and a permanent reopen action in Settings; fresh installs continue directly through onboarding without a second tour.
+- **Quota Monitor 1.0 product tour.** Existing users receive a four-page bilingual guide to the new Codex window widget, faster large-history paths, effective-date pricing, and quieter updates, with publication-safe media bundled for offline replay.
 - **Dashboard cache hit-rate trends.** The headline now pairs today's result with fixed 7- and 30-day weighted summaries, and the cache hit-rate line connects adjacent observations across unavailable days without treating them as 0%; provider and date filters update both views together.
 - **Indexed and account Activity views.** When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.
 - **Daily cache hit rate in History.** Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.
@@ -61,7 +54,8 @@ window copy.
 
 ### Fixed
 
-- **Consistent Codex widget presentation.** The hover card now keeps one configured used-or-remaining percentage in its emphasized top-right position, matches the menu popover's typography and green/orange/red progress styling, and omits redundant refresh and local-time notes.
+- **Polished Codex widget presentation.** The adaptive widget blends into Codex, shares stable 5h/7d labels with the menu bar, and opens a narrow branded card with matched typography, semantic progress colors, one configured percentage, and natural pointer-exit or click-away dismissal.
+- **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
 - **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
 - **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background or when Codex tracking is disabled, avoids a duplicate launch request, preserves the last good quota during refreshes, filters expired reset cards, retries data loading without requiring a restart, and restores the previous hover detail card with usage, progress, and reset timing.

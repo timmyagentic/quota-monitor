@@ -166,6 +166,67 @@ class ValidatePRChangelogTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("PR changelog ok: 1.2.3", result.stdout)
 
+    def test_accepts_release_page_refresh_without_second_version_bump(self):
+        tmp, repo, base = self.make_repo()
+        with tmp:
+            (repo / "README.md").write_text("Release page refresh\n", encoding="utf-8")
+            (repo / "CHANGELOG.md").write_text(
+                textwrap.dedent(
+                    """
+                    # Changelog
+
+                    ## [Unreleased]
+
+                    #### Summary
+
+                    ## [1.2.2] - 2026-06-04
+
+                    #### Summary
+                    - The release page explains the most important changes
+
+                    ### Added
+                    - **Release page.** A replayable product tour now introduces this version.
+                    """
+                ).strip() + "\n",
+                encoding="utf-8",
+            )
+            (repo / "CHANGELOG.zh-Hans.md").write_text(
+                textwrap.dedent(
+                    """
+                    # 更新日志
+
+                    ## [Unreleased]
+
+                    #### Summary
+
+                    ## [1.2.2] - 2026-06-04
+
+                    #### Summary
+                    - 版本页面会介绍最重要的变化
+
+                    ### 新增
+                    - **版本页面。** 可重看的产品导览现在会介绍这个版本。
+                    """
+                ).strip() + "\n",
+                encoding="utf-8",
+            )
+            notes = repo / "ReleaseNotes"
+            notes.mkdir()
+            (notes / "1.2.2.en.html").write_text("<p>English</p>\n", encoding="utf-8")
+            (notes / "1.2.2.zh-Hans.html").write_text("<p>中文</p>\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-m", "refresh release pages"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+
+            result = self.run_checker(repo, base)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PR changelog ok: 1.2.2", result.stdout)
+
     def test_allows_appcast_only_pr(self):
         tmp, repo, base = self.make_repo()
         with tmp:
@@ -176,7 +237,28 @@ class ValidatePRChangelogTests(unittest.TestCase):
             result = self.run_checker(repo, base)
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("appcast-only PR; changelog check skipped", result.stdout)
+        self.assertIn("appcast publication PR; changelog check skipped", result.stdout)
+
+    def test_allows_generated_appcast_pr_with_release_note_pages(self):
+        tmp, repo, base = self.make_repo()
+        with tmp:
+            (repo / "appcast.xml").write_text("<rss />\n", encoding="utf-8")
+            notes = repo / "ReleaseNotes"
+            notes.mkdir()
+            (notes / "1.2.2.en.html").write_text("<p>English</p>\n", encoding="utf-8")
+            (notes / "1.2.2.zh-Hans.html").write_text("<p>中文</p>\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=repo, check=True)
+            subprocess.run(
+                ["git", "commit", "-m", "publish appcast"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+            )
+
+            result = self.run_checker(repo, base)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("appcast publication PR; changelog check skipped", result.stdout)
 
 
 if __name__ == "__main__":
