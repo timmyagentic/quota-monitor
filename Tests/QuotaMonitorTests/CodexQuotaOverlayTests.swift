@@ -42,6 +42,9 @@ struct CodexQuotaOverlayTests {
             displayMode: .used,
             now: now)
         #expect(used.fiveHour?.percent == 37)
+        #expect(used.fiveHour?.usedPercent == 37)
+        #expect(used.fiveHour?.remainingPercent == 63)
+        #expect(used.fiveHour?.resetAt == now.addingTimeInterval(3_600))
         #expect(used.weekly?.percent == 83)
         #expect(used.fiveHour?.severity == .healthy)
         #expect(used.weekly?.severity == .warning)
@@ -170,6 +173,104 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
             == CGRect(x: -900, y: 212, width: 132, height: 25))
+
+        let weeklyOnly = CodexQuotaOverlayPresentation.make(
+            snapshot: snapshot(
+                primary: nil,
+                secondary: window(usedPercent: 20)),
+            displayMode: .used,
+            now: now)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            presentation: weeklyOnly) == CGRect(
+                x: 348,
+                y: 12,
+                width: 84,
+                height: 25))
+    }
+
+    @Test("Hover details occupy the sidebar above the established account row")
+    func hoverDetailsLayout() {
+        let rateLimits = snapshot(
+            primary: window(usedPercent: 37),
+            secondary: window(usedPercent: 18))
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: rateLimits,
+            displayMode: .used,
+            now: now)
+        let resetCredits = CodexQuotaOverlayResetCreditsPresentation(
+            availableCount: 3,
+            expirations: [
+                now.addingTimeInterval(86_400),
+                now.addingTimeInterval(172_800),
+                now.addingTimeInterval(259_200)
+            ])
+
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: presentation,
+            resetCredits: nil) == 199)
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: presentation,
+            resetCredits: resetCredits) == 296)
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            contentHeight: 296) == CGRect(
+                x: 12,
+                y: 45,
+                width: 464,
+                height: 296))
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
+            contentHeight: 300) == CGRect(
+                x: -1_188,
+                y: 245,
+                width: 464,
+                height: 263))
+    }
+
+    @Test("Reset-card details prefer expirations and fall back to a live count")
+    func resetCreditsPresentation() {
+        let expirations = [
+            now.addingTimeInterval(100),
+            now.addingTimeInterval(200),
+            now.addingTimeInterval(300),
+            now.addingTimeInterval(400)
+        ]
+        let snapshot = CodexResetCreditsSnapshot(
+            capturedAt: now,
+            availableCount: 4,
+            credits: expirations.map {
+                CodexResetCredit(grantedAt: nil, expiresAt: $0)
+            },
+            detailStatus: .complete)
+
+        let detailed = CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: snapshot,
+            fallbackAvailableCount: nil)
+        #expect(detailed?.availableCount == 4)
+        #expect(detailed?.expirations == Array(expirations.prefix(3)))
+
+        let countOnly = CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: nil,
+            fallbackAvailableCount: 2)
+        #expect(countOnly?.availableCount == 2)
+        #expect(countOnly?.expirations.isEmpty == true)
+        #expect(CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: nil,
+            fallbackAvailableCount: 0) == nil)
+    }
+
+    @Test("Reset countdowns stay compact and stop at the refresh boundary")
+    func compactResetCountdown() {
+        #expect(CodexQuotaOverlayTimeFormatting.countdown(
+            to: now.addingTimeInterval(60),
+            now: now) != nil)
+        #expect(CodexQuotaOverlayTimeFormatting.countdown(
+            to: now,
+            now: now) == nil)
+        #expect(CodexQuotaOverlayTimeFormatting.countdown(
+            to: now.addingTimeInterval(-1),
+            now: now) == nil)
     }
 
     @Test("The existing sidebar opt-in persists across the native migration")
@@ -203,6 +304,9 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("SIGTERM"))
         #expect(!source.contains("remote-debugging-port"))
         #expect(!source.contains("Process()"))
+        #expect(source.contains("panel.ignoresMouseEvents = false"))
+        #expect(source.contains("onHoverChanged"))
+        #expect(source.contains("detailsPanel"))
         #expect(!buildScript.localizedCaseInsensitiveContains("opsail"))
         #expect(!FileManager.default.fileExists(
             atPath: repositoryRoot.appendingPathComponent(

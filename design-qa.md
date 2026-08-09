@@ -1,3 +1,73 @@
+# Codex native quota widget design QA
+
+**Source visual truth**
+
+- `docs/assets/pr/codex-sidebar-quota/opsail-v0.2.0-reference.png`
+- Full source image: 2000 × 1408 px.
+- Expanded source focus crop: 520 × 540 px (approximately 260 × 270 pt at the source Retina density).
+- State: weekly-only quota, hover detail open, reset-credit rows visible, dark Codex appearance.
+
+**Rendered implementation**
+
+- Full screenshot: `.build/qa-artifacts/20260809-final-native-overlay/01-final-hover-full.png`
+- Focus screenshot: `.build/qa-artifacts/20260809-final-native-overlay/02-final-hover-closeup.png`
+- Side-by-side comparison: `.build/qa-artifacts/20260809-final-native-overlay/03-final-source-comparison.png`
+- Full implementation image: 3840 × 2160 px for a 1920 × 1080 pt macOS display at 2× density.
+- Focus implementation crop: 1040 × 680 px for a 520 × 340 pt region at 2× density.
+- State: weekly-only quota, hover detail open, two reset cards visible, light Codex appearance.
+- Runtime geometry: collapsed summary `(348, 1043, 84, 25)` pt; expanded detail card `(12, 842, 464, 193)` pt in Quartz coordinates.
+
+The source was captured with a narrower sidebar and dark appearance, while the current user's Codex sidebar is wider and uses light appearance. Density was kept at the native Retina scale; the comparison therefore evaluates hierarchy, component proportions, typography, spacing, and interaction structure without treating theme or responsive width as drift. There is no CSS viewport for this native AppKit/SwiftUI implementation.
+
+**Full-view comparison evidence**
+
+- The widget keeps the legacy right-side account-row anchor immediately before Codex's help control.
+- The detail card opens above the account row, stays inside the sidebar, and preserves the source order: remaining amount, used amount, reset countdown, absolute reset time, progress, reset-card rows, and local-time note.
+- The current card expands responsively across the wider current sidebar rather than retaining the narrower source screenshot's fixed pixel width.
+
+**Focused region comparison evidence**
+
+- `03-final-source-comparison.png` places the source and current hover states in one comparison image at their native Retina densities.
+- The privacy-cropped deliverables `docs/assets/pr/codex-sidebar-quota/native-overlay.png` and `docs/assets/pr/codex-sidebar-quota/native-overlay-expanded.png` confirm the final capsule and card without unrelated account or conversation content.
+
+**Required fidelity surfaces**
+
+- Fonts and typography: native San Francisco system fonts, compact UI optical sizes, semibold remaining value and section title, monospaced digits for timestamps and percentages, and no truncation in the verified state.
+- Spacing and layout rhythm: 12 pt sidebar inset, 8 pt card-to-summary gap, 12 pt continuous card radius, compact vertical metadata rhythm, and the same right-side account-row anchor as the source.
+- Colors and visual tokens: neutral capsule in the healthy state, semantic orange/red reserved for approaching limits, adaptive system material for the current Codex theme, and the source's pink remaining-progress accent.
+- Image and asset fidelity: no source illustration or product image is present in this component; the only icon is the native Codex help control outside the widget. No image asset was substituted or approximated.
+- Copy and content: localized weekly label, explicit remaining and used percentages, relative and absolute reset times, reset-card availability, expiration rows, stale-data notice, and local-time clarification.
+- Interaction and accessibility: hover opens the card, the pointer can move from capsule to card without dismissal, leaving both closes after 120 ms, clicking toggles a pinned state, and the summary exposes a button trait, label, hint, and default accessibility action without activating or restarting Codex.
+
+**Findings**
+
+- No actionable P0, P1, or P2 differences remain.
+- [P3] The source reference is dark and substantially narrower than the current user's light, wide Codex sidebar. This is an expected adaptive-theme and responsive-layout difference, not an implementation mismatch.
+
+**Comparison history**
+
+1. First comparison found two P2 hierarchy mismatches: the window reset countdown and absolute time were compressed onto one line, and reset-card countdowns appeared before expiration dates. The implementation restored separate reset lines and the source's date-left/countdown-right table order. Post-fix evidence: `.build/qa-artifacts/20260809T123458Z-computer-use-real-data/06-source-vs-revised-expanded.png`.
+2. The second comparison found a P2 density mismatch in weekly-only state: the capsule still reserved space for an unavailable `5h —` value. The implementation now omits missing windows and uses an 84 pt single-window capsule while preserving the same trailing anchor; two-window state still uses the 132 pt capsule. Post-fix evidence: `.build/qa-artifacts/20260809T123748Z-computer-use-real-data/07-source-vs-adaptive-expanded.png`.
+3. The final comparison found no actionable P0, P1, or P2 mismatch. Hover transfer retained both native overlay windows; moving outside reduced the visible overlay count from two to one, and the Codex PID remained unchanged.
+
+**Implementation checklist**
+
+- [x] Preserve the legacy account-row trailing anchor.
+- [x] Match the source's compact single-window summary behavior.
+- [x] Restore hover and click detail disclosure.
+- [x] Keep the detail card open during capsule-to-card pointer transfer.
+- [x] Restore the source information hierarchy and progress treatment.
+- [x] Verify adaptive light appearance and localized real-data content.
+- [x] Verify no Codex restart or renderer injection.
+
+**Follow-up polish**
+
+- Re-capture a dark-appearance current build if a future release needs a theme-identical marketing comparison; this is not required for functional or visual acceptance.
+
+final result: passed
+
+---
+
 # Quota Monitor Website Design QA
 
 ## Reference and implementation

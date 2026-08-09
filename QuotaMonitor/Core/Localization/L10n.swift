@@ -72,9 +72,11 @@ enum L10n {
     static var codexCapsuleSettingsHelp: String {
         t(
             en: "Shows the latest 5-hour and weekly quota in the Codex account row. "
+                + "Hover or click the widget for usage and reset details. "
                 + "The widget follows the Codex window, hides when Codex is in the background, "
                 + "and never restarts or modifies Codex.",
-            zh: "在 Codex 账户行内显示最新的 5 小时和每周额度。挂件会跟随 Codex 窗口，"
+            zh: "在 Codex 账户行内显示最新的 5 小时和每周额度；悬停或点击可查看用量与重置详情。"
+                + "挂件会跟随 Codex 窗口，"
                 + "Codex 位于后台时自动隐藏，并且不会重启或修改 Codex。")
     }
     static var codexOverlayDisabledStatus: String {
@@ -101,6 +103,30 @@ enum L10n {
     }
     static var codexOverlayUnavailableCompact: String {
         t(en: "Quota unavailable", zh: "额度暂不可用")
+    }
+    static var codexOverlayAccessibilityHint: String {
+        t(en: "Hover or press to show quota and reset details.",
+          zh: "悬停或按下可显示额度与重置详情。")
+    }
+    static var codexOverlayDetailsCachedNotice: String {
+        t(en: "Showing the last saved quota while refreshing",
+          zh: "正在刷新，暂时显示上次额度")
+    }
+    static func codexOverlayRemaining(_ percent: Int) -> String {
+        t(en: "\(percent)% remaining", zh: "剩余 \(percent)%")
+    }
+    static func codexOverlayUsed(_ percent: Int) -> String {
+        t(en: "\(percent)% used", zh: "已使用 \(percent)%")
+    }
+    static func codexOverlayResetsIn(_ duration: String) -> String {
+        t(en: "Resets in \(duration)", zh: "\(duration)后重置")
+    }
+    static var codexOverlayResetRefreshing: String {
+        t(en: "Resetting · refreshing", zh: "正在重置并刷新")
+    }
+    static var codexOverlayLocalTimeNote: String {
+        t(en: "Times use local time (24-hour clock).",
+          zh: "时间均为本地时间（24 小时制）。")
     }
 
     // MARK: - menu-bar label style

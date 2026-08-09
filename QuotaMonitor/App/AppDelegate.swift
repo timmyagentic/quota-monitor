@@ -187,7 +187,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                        hasVisibleWindows: Bool) -> Bool {
         let hasVisibleProductWindow = hasVisibleWindows && NSApp.windows.contains {
             $0.isVisible
-                && $0.identifier?.rawValue != CodexQuotaOverlayLayout.windowIdentifier
+                && !CodexQuotaOverlayLayout.isOverlayWindowIdentifier(
+                    $0.identifier?.rawValue)
         }
         if hasVisibleProductWindow { return true }
         if whatsNewCoordinator?.presentPendingIfNeeded() == true {

@@ -33,7 +33,7 @@ window copy.
 #### Summary
 
 - The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
-- Codex now shows 5-hour and weekly quota in a native window-following widget without requiring a debugging port or restarting Codex, while last-saved values remain visible until fresh data arrives.
+- Codex now shows 5-hour and weekly quota in a native window-following widget; hovering or clicking reveals remaining usage, reset times, and reset cards without requiring a debugging port or restarting Codex.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
@@ -75,7 +75,7 @@ window copy.
 
 - **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
-- **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background, preserves the last good quota during refreshes, and retries data loading without requiring the user to restart either app.
+- **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background, preserves the last good quota during refreshes, retries data loading without requiring a restart, and restores the previous hover detail card with usage, progress, and reset timing.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage no longer remains at `$0` when an online pricing refresh is unavailable.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
@@ -86,7 +86,7 @@ window copy.
 ### Changed
 
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
-- **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself in the established right-side account-row slot, follows window movement and Spaces, and passes every click through to Codex.
+- **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself in the established right-side account-row slot, follows window movement and Spaces, keeps the surrounding account controls unobstructed, and opens its detailed breakdown on hover or click.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
 - **Gentler one-click updates.** Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.
 - **Faster relocated-session lookup.** Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.

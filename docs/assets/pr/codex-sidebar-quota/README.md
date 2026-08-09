@@ -1,12 +1,16 @@
 # Codex sidebar quota evidence
 
-`native-overlay.png` is a privacy-cropped screenshot from the isolated
-real-data QA build. It shows the QuotaMonitor-owned, click-through native
-overlay in the established slot immediately before Codex's account-row help
-control; the account name and unrelated conversation content are excluded.
+`native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
+screenshots from the isolated real-data QA build. They show the
+QuotaMonitor-owned native widget in the established slot immediately before
+Codex's account-row help control and its hover detail card with remaining
+quota, reset timing, progress, and reset-card expirations. The account name
+and unrelated conversation content are excluded.
 
 SHA-256:
-`0c0315f996f01df6c1b5cbf9cd52ff48241f04208530fda62669db091d153177`
+
+- `native-overlay.png`: `62d8e1ac10e75ad64034085bcdede4cd114ecf6e74d4542533c4b311e1c52bd1`
+- `native-overlay-expanded.png`: `587d5ee2c44581ac9d749a7d14e1e780ef762c1b4f29766fdeb1b76f3ca60e08`
 
 ## Legacy reference
 

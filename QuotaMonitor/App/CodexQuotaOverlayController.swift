@@ -2,166 +2,6 @@ import AppKit
 import CoreGraphics
 import SwiftUI
 
-struct CodexQuotaOverlayMetric: Equatable {
-    enum Severity: Equatable {
-        case healthy
-        case warning
-        case critical
-    }
-
-    let percent: Int
-    let severity: Severity
-}
-
-struct CodexQuotaOverlayPresentation: Equatable {
-    let fiveHour: CodexQuotaOverlayMetric?
-    let weekly: CodexQuotaOverlayMetric?
-    let isCached: Bool
-
-    var hasQuota: Bool {
-        fiveHour != nil || weekly != nil
-    }
-
-    static func make(
-        snapshot: RateLimitSnapshot?,
-        displayMode: SettingsStore.QuotaDisplayMode,
-        now: Date = Date(),
-        staleAfter: TimeInterval = 15 * 60
-    ) -> CodexQuotaOverlayPresentation {
-        guard let snapshot else {
-            return CodexQuotaOverlayPresentation(
-                fiveHour: nil,
-                weekly: nil,
-                isCached: false)
-        }
-
-        let fiveHour = snapshot.primary.map {
-            metric(window: $0, displayMode: displayMode)
-        }
-        let weekly = snapshot.secondary.map {
-            metric(window: $0, displayMode: displayMode)
-        }
-        let age = max(0, now.timeIntervalSince(snapshot.capturedAt))
-        let containsExpiredWindow = [snapshot.primary, snapshot.secondary]
-            .compactMap { $0 }
-            .contains { $0.resetAt <= now }
-
-        return CodexQuotaOverlayPresentation(
-            fiveHour: fiveHour,
-            weekly: weekly,
-            isCached: age > staleAfter || containsExpiredWindow)
-    }
-
-    private static func metric(
-        window: RateLimitSnapshot.Window,
-        displayMode: SettingsStore.QuotaDisplayMode
-    ) -> CodexQuotaOverlayMetric {
-        let displayPercent = displayMode.displayPercent(
-            forUsedPercent: window.usedPercent)
-        let severity: CodexQuotaOverlayMetric.Severity
-        switch window.usedPercent {
-        case ..<60:
-            severity = .healthy
-        case ..<85:
-            severity = .warning
-        default:
-            severity = .critical
-        }
-        return CodexQuotaOverlayMetric(
-            percent: Int(displayPercent.rounded()),
-            severity: severity)
-    }
-}
-
-struct CodexWindowCandidate: Equatable {
-    let windowNumber: Int
-    let ownerPID: pid_t
-    let layer: Int
-    let alpha: Double
-    let bounds: CGRect
-}
-
-enum CodexWindowSelectionPolicy {
-    static let minimumWindowSize = CGSize(width: 480, height: 320)
-
-    /// `CGWindowListCopyWindowInfo` returns windows front-to-back. Keeping
-    /// that order selects the active Codex document when more than one is
-    /// open, while the size and layer checks reject Electron helper surfaces.
-    static func frontWindow(
-        for processIdentifier: pid_t,
-        candidates: [CodexWindowCandidate]
-    ) -> CodexWindowCandidate? {
-        candidates.first {
-            $0.ownerPID == processIdentifier
-                && $0.layer == 0
-                && $0.alpha > 0.01
-                && $0.bounds.width >= minimumWindowSize.width
-                && $0.bounds.height >= minimumWindowSize.height
-        }
-    }
-}
-
-struct CodexDisplayGeometry: Equatable {
-    let quartzFrame: CGRect
-    let appKitFrame: CGRect
-}
-
-enum CodexWindowFrameConverter {
-    /// Quartz window coordinates grow downward from each display's top edge;
-    /// AppKit coordinates grow upward. Map through the display containing the
-    /// largest part of the window so secondary displays and negative origins
-    /// behave the same as the primary display.
-    static func appKitFrame(
-        for quartzWindowFrame: CGRect,
-        displays: [CodexDisplayGeometry]
-    ) -> CGRect? {
-        guard let display = displays.max(by: {
-            intersectionArea(quartzWindowFrame, $0.quartzFrame)
-                < intersectionArea(quartzWindowFrame, $1.quartzFrame)
-        }), intersectionArea(quartzWindowFrame, display.quartzFrame) > 0 else {
-            return nil
-        }
-
-        let horizontalOffset = quartzWindowFrame.minX - display.quartzFrame.minX
-        let verticalOffsetFromTop = quartzWindowFrame.minY - display.quartzFrame.minY
-        return CGRect(
-            x: display.appKitFrame.minX + horizontalOffset,
-            y: display.appKitFrame.maxY
-                - verticalOffsetFromTop
-                - quartzWindowFrame.height,
-            width: quartzWindowFrame.width,
-            height: quartzWindowFrame.height)
-    }
-
-    private static func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
-        let intersection = lhs.intersection(rhs)
-        guard !intersection.isNull else { return 0 }
-        return intersection.width * intersection.height
-    }
-}
-
-enum CodexQuotaOverlayLayout {
-    static let size = CGSize(width: 132, height: 25)
-    static let windowIdentifier = "codex-quota-overlay"
-    private static let legacyAccountRowTrailingOffset: CGFloat = 432
-    private static let bottomInset: CGFloat = 12
-
-    /// Preserve the established injected-widget slot immediately before the
-    /// account-row help control. The native overlay is wider because it shows
-    /// both rolling windows, so anchor its trailing edge instead of placing it
-    /// directly after the account name.
-    static func frame(in codexWindowFrame: CGRect) -> CGRect {
-        let trailingX = min(
-            codexWindowFrame.minX + legacyAccountRowTrailingOffset,
-            codexWindowFrame.maxX - bottomInset)
-        return CGRect(
-            x: trailingX - size.width,
-            y: codexWindowFrame.minY + bottomInset,
-            width: size.width,
-            height: size.height)
-    }
-}
-
 @MainActor
 final class CodexQuotaOverlayController: NSObject {
     private static let supportedBundleIdentifiers: Set<String> = [
@@ -176,10 +16,16 @@ final class CodexQuotaOverlayController: NSObject {
     private let settings: SettingsStore
     private let workspace: NSWorkspace
     private var panel: CodexQuotaOverlayPanel?
+    private var detailsPanel: CodexQuotaOverlayPanel?
     private var trackingTimer: Timer?
     private var trackingInterval: TimeInterval?
     private var lastRefreshRequestAt: Date?
     private var lastFrontmostPID: pid_t?
+    private var lastCodexWindowFrame: CGRect?
+    private var isSummaryHovered = false
+    private var isDetailsHovered = false
+    private var isDetailsPinned = false
+    private var detailsCloseTask: Task<Void, Never>?
     private var isStarted = false
 
     init(
@@ -231,6 +77,7 @@ final class CodexQuotaOverlayController: NSObject {
         NotificationCenter.default.removeObserver(self)
         hideOverlay()
         panel = nil
+        detailsPanel = nil
         setStatus(.disabled)
     }
 
@@ -286,7 +133,9 @@ final class CodexQuotaOverlayController: NSObject {
             snapshot: environment.latestRateLimits,
             displayMode: settings.quotaDisplayMode,
             now: now)
-        showOverlay(at: CodexQuotaOverlayLayout.frame(in: appKitWindowFrame))
+        showOverlay(
+            in: appKitWindowFrame,
+            presentation: presentation)
         if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
         } else if presentation.isCached {
@@ -330,7 +179,14 @@ final class CodexQuotaOverlayController: NSObject {
         trackingTimer = timer
     }
 
-    private func showOverlay(at frame: CGRect) {
+    private func showOverlay(
+        in codexWindowFrame: CGRect,
+        presentation: CodexQuotaOverlayPresentation
+    ) {
+        lastCodexWindowFrame = codexWindowFrame
+        let frame = CodexQuotaOverlayLayout.frame(
+            in: codexWindowFrame,
+            presentation: presentation)
         let panel = panel ?? makePanel()
         if panel.frame != frame {
             panel.setFrame(frame, display: panel.isVisible)
@@ -338,10 +194,125 @@ final class CodexQuotaOverlayController: NSObject {
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
+        if detailsPanel?.isVisible == true {
+            if presentation.hasQuota {
+                updateDetailsPanelFrame(
+                    in: codexWindowFrame,
+                    presentation: presentation)
+            } else {
+                isDetailsPinned = false
+                closeDetails()
+            }
+        }
     }
 
     private func hideOverlay() {
+        detailsCloseTask?.cancel()
+        detailsCloseTask = nil
+        isSummaryHovered = false
+        isDetailsHovered = false
+        isDetailsPinned = false
+        lastCodexWindowFrame = nil
+        detailsPanel?.orderOut(nil)
         panel?.orderOut(nil)
+    }
+
+    private func summaryHoverChanged(_ hovering: Bool) {
+        isSummaryHovered = hovering
+        if hovering {
+            showDetails()
+        } else {
+            scheduleDetailsClose()
+        }
+    }
+
+    private func detailsHoverChanged(_ hovering: Bool) {
+        isDetailsHovered = hovering
+        if hovering {
+            detailsCloseTask?.cancel()
+            detailsCloseTask = nil
+        } else {
+            scheduleDetailsClose()
+        }
+    }
+
+    private func toggleDetails() {
+        if detailsPanel?.isVisible == true, isDetailsPinned {
+            isDetailsPinned = false
+            closeDetails()
+            return
+        }
+        isDetailsPinned = true
+        showDetails()
+    }
+
+    private func showDetails(now: Date = Date()) {
+        detailsCloseTask?.cancel()
+        detailsCloseTask = nil
+        guard panel?.isVisible == true,
+              let codexWindowFrame = lastCodexWindowFrame else {
+            return
+        }
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: environment.latestRateLimits,
+            displayMode: settings.quotaDisplayMode,
+            now: now)
+        guard presentation.hasQuota else { return }
+
+        let panel = detailsPanel ?? makeDetailsPanel()
+        updateDetailsPanelFrame(
+            in: codexWindowFrame,
+            presentation: presentation)
+        if !panel.isVisible {
+            panel.orderFrontRegardless()
+        }
+    }
+
+    private func scheduleDetailsClose() {
+        detailsCloseTask?.cancel()
+        guard !isDetailsPinned else { return }
+        detailsCloseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled,
+                  let self,
+                  !self.isSummaryHovered,
+                  !self.isDetailsHovered,
+                  !self.isDetailsPinned else {
+                return
+            }
+            self.closeDetails()
+        }
+    }
+
+    private func closeDetails() {
+        detailsCloseTask?.cancel()
+        detailsCloseTask = nil
+        detailsPanel?.orderOut(nil)
+    }
+
+    private func updateDetailsPanelFrame(
+        in codexWindowFrame: CGRect,
+        presentation: CodexQuotaOverlayPresentation
+    ) {
+        guard let detailsPanel else { return }
+        let resetCredits = resetCreditsPresentation()
+        let contentHeight = CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: presentation,
+            resetCredits: resetCredits)
+        let frame = CodexQuotaOverlayLayout.detailsFrame(
+            in: codexWindowFrame,
+            contentHeight: contentHeight)
+        if detailsPanel.frame != frame {
+            detailsPanel.setFrame(frame, display: detailsPanel.isVisible)
+        }
+    }
+
+    private func resetCreditsPresentation()
+        -> CodexQuotaOverlayResetCreditsPresentation? {
+        CodexQuotaOverlayResetCreditsPresentation.make(
+            snapshot: environment.latestCodexResetCredits,
+            fallbackAvailableCount: environment.latestRateLimits?
+                .resetCreditsAvailable)
     }
 
     private func setStatus(_ status: CodexSidebarQuotaStatus) {
@@ -355,24 +326,17 @@ final class CodexQuotaOverlayController: NSObject {
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false)
-        panel.isReleasedWhenClosed = false
-        panel.identifier = NSUserInterfaceItemIdentifier(
-            CodexQuotaOverlayLayout.windowIdentifier)
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = false
-        panel.ignoresMouseEvents = true
-        panel.hidesOnDeactivate = false
-        panel.isExcludedFromWindowsMenu = true
-        panel.level = .floating
-        panel.collectionBehavior = [
-            .canJoinAllSpaces,
-            .fullScreenAuxiliary,
-            .transient,
-            .ignoresCycle
-        ]
+        configure(
+            panel,
+            identifier: CodexQuotaOverlayLayout.windowIdentifier)
 
-        let rootView = CodexQuotaOverlayView()
+        let rootView = CodexQuotaOverlayView(
+            onHoverChanged: { [weak self] hovering in
+                self?.summaryHoverChanged(hovering)
+            },
+            onToggleDetails: { [weak self] in
+                self?.toggleDetails()
+            })
             .environment(environment)
             .environment(settings)
             .environment(LocalizationStore.shared)
@@ -382,6 +346,55 @@ final class CodexQuotaOverlayController: NSObject {
         panel.contentView = hostingView
         self.panel = panel
         return panel
+    }
+
+    private func makeDetailsPanel() -> CodexQuotaOverlayPanel {
+        let initialSize = CGSize(width: 464, height: 104)
+        let panel = CodexQuotaOverlayPanel(
+            contentRect: CGRect(origin: .zero, size: initialSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false)
+        configure(
+            panel,
+            identifier: CodexQuotaOverlayLayout.detailsWindowIdentifier)
+
+        let rootView = CodexQuotaOverlayDetailsView(
+            onHoverChanged: { [weak self] hovering in
+                self?.detailsHoverChanged(hovering)
+            })
+            .environment(environment)
+            .environment(settings)
+            .environment(LocalizationStore.shared)
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.frame = CGRect(origin: .zero, size: initialSize)
+        hostingView.autoresizingMask = [.width, .height]
+        panel.contentView = hostingView
+        self.detailsPanel = panel
+        return panel
+    }
+
+    private func configure(
+        _ panel: CodexQuotaOverlayPanel,
+        identifier: String
+    ) {
+        panel.isReleasedWhenClosed = false
+        panel.identifier = NSUserInterfaceItemIdentifier(identifier)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = false
+        panel.acceptsMouseMovedEvents = true
+        panel.hidesOnDeactivate = false
+        panel.isExcludedFromWindowsMenu = true
+        panel.level = .floating
+        panel.animationBehavior = .none
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .transient,
+            .ignoresCycle
+        ]
     }
 
     private static func frontWindow(for processIdentifier: pid_t) -> CodexWindowCandidate? {
@@ -424,92 +437,6 @@ final class CodexQuotaOverlayController: NSObject {
             return CodexDisplayGeometry(
                 quartzFrame: CGDisplayBounds(CGDirectDisplayID(number.uint32Value)),
                 appKitFrame: screen.frame)
-        }
-    }
-}
-
-private final class CodexQuotaOverlayPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
-
-private struct CodexQuotaOverlayView: View {
-    @Environment(AppEnvironment.self) private var environment
-    @Environment(SettingsStore.self) private var settings
-    @Environment(LocalizationStore.self) private var localization
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            let presentation = CodexQuotaOverlayPresentation.make(
-                snapshot: environment.latestRateLimits,
-                displayMode: settings.quotaDisplayMode,
-                now: context.date)
-
-            Group {
-                if presentation.hasQuota {
-                    HStack(spacing: 6) {
-                        metric("5h", presentation.fiveHour)
-                        Rectangle()
-                            .fill(.primary.opacity(0.14))
-                            .frame(width: 1, height: 11)
-                        metric(L10n.codexOverlayWeeklyCompact, presentation.weekly)
-                        if presentation.isCached {
-                            Image(systemName: "clock.fill")
-                                .font(.system(size: 7, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel(L10n.codexOverlayCachedStatus)
-                        }
-                    }
-                    .opacity(presentation.isCached ? 0.72 : 1)
-                } else {
-                    HStack(spacing: 5) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(L10n.codexOverlayUnavailableCompact)
-                            .lineLimit(1)
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 8)
-            .frame(
-                width: CodexQuotaOverlayLayout.size.width,
-                height: CodexQuotaOverlayLayout.size.height)
-            .background(.regularMaterial, in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(.primary.opacity(0.11), lineWidth: 0.5)
-            }
-            .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
-            .accessibilityElement(children: .combine)
-            .id(localization.currentLanguage)
-        }
-    }
-
-    private func metric(
-        _ label: String,
-        _ value: CodexQuotaOverlayMetric?
-    ) -> some View {
-        HStack(spacing: 3) {
-            Text(label)
-                .foregroundStyle(.secondary)
-            Text(value.map { "\($0.percent)%" } ?? "—")
-                .monospacedDigit()
-                .foregroundStyle(value.map(metricColor) ?? .secondary)
-        }
-        .font(.system(size: 10, weight: .semibold))
-        .lineLimit(1)
-    }
-
-    private func metricColor(_ metric: CodexQuotaOverlayMetric) -> Color {
-        switch metric.severity {
-        case .healthy:
-            .green
-        case .warning:
-            .orange
-        case .critical:
-            .red
         }
     }
 }
