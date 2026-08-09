@@ -45,6 +45,15 @@ components have different roles and dimensions.
 SHA-256:
 `ca129088ad3acab48c6c98db2fc72106b10baf7f465f0f8c3b7878bb50a7dec0`
 
+`no-scroll-expanded-zh-Hans.png` is a 2x native SwiftUI render of the exact
+summary and expanded detail views after removing the vertical scroll
+container. It uses synthetic quota and reset-card data to verify that the full
+ordinary expanded state remains visible without a scrollbar or clipped rows.
+No account identity, credential, or conversation content is included.
+
+SHA-256:
+`95386e29018a497e525230a92a9722c34ea888ee267fd7eec857cc124fabe5a2`
+
 ## Legacy reference
 
 These images document the superseded Chromium-injection implementation. They

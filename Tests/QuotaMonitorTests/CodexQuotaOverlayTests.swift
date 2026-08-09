@@ -437,6 +437,8 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("addGlobalMonitorForEvents"))
         #expect(!source.contains("isDetailsPinned"))
         #expect(viewSource.contains("Text(Branding.appDisplayName)"))
+        #expect(!viewSource.contains("ScrollView(.vertical)"))
+        #expect(!viewSource.contains(".scrollIndicators"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
         let pollingStart = try #require(

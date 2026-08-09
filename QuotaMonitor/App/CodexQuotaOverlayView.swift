@@ -172,46 +172,43 @@ struct CodexQuotaOverlayDetailsView: View {
                     .resetCreditsAvailable,
                 now: context.date)
 
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(Branding.appDisplayName)
-                        .font(.headline)
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
-                            alignment: .topLeading)
-                        .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(Branding.appDisplayName)
+                    .font(.headline)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
+                        alignment: .topLeading)
+                    .accessibilityAddTraits(.isHeader)
 
-                    if let fiveHour = presentation.fiveHour {
-                        quotaWindow(
-                            title: L10n.quotaCardTitle5h,
-                            metric: fiveHour,
-                            now: context.date)
-                    }
-                    if presentation.fiveHour != nil,
-                       presentation.weekly != nil {
-                        Divider()
-                            .padding(.vertical, 7)
-                    }
-                    if let weekly = presentation.weekly {
-                        quotaWindow(
-                            title: L10n.quotaCardTitle7d,
-                            metric: weekly,
-                            now: context.date)
-                    }
-
-                    if let resetCredits {
-                        Divider()
-                            .padding(.vertical, 8)
-                        resetCreditsSection(
-                            resetCredits,
-                            now: context.date)
-                    }
+                if let fiveHour = presentation.fiveHour {
+                    quotaWindow(
+                        title: L10n.quotaCardTitle5h,
+                        metric: fiveHour,
+                        now: context.date)
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                if presentation.fiveHour != nil,
+                   presentation.weekly != nil {
+                    Divider()
+                        .padding(.vertical, 7)
+                }
+                if let weekly = presentation.weekly {
+                    quotaWindow(
+                        title: L10n.quotaCardTitle7d,
+                        metric: weekly,
+                        now: context.date)
+                }
+
+                if let resetCredits {
+                    Divider()
+                        .padding(.vertical, 8)
+                    resetCreditsSection(
+                        resetCredits,
+                        now: context.date)
+                }
             }
-            .scrollIndicators(.hidden)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(.regularMaterial)
