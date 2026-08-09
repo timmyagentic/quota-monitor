@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import SQLite3
 
@@ -12,30 +13,96 @@ struct CodexSessionMetadata: Sendable, Equatable {
     }
 }
 
+struct CodexSessionMetadataSourceFingerprint: Equatable, Sendable {
+    enum FileState: Equatable, Sendable {
+        case missing
+        case present(
+            size: Int64,
+            device: Int64,
+            inode: Int64,
+            birthtimeNs: Int64,
+            modificationTimeNs: Int64,
+            changeTimeNs: Int64)
+    }
+
+    let files: [FileState]
+}
+
+struct CodexSessionMetadataLoadResult: Sendable {
+    let metadata: [String: CodexSessionMetadata]
+    let isComplete: Bool
+}
+
 enum CodexSessionMetadataStore {
     private static let sqliteErrorDomain = "CodexSessionMetadataStore.SQLite"
 
+    private struct StateDatabaseLoadResult {
+        let metadata: [String: CodexSessionMetadata]
+        let isComplete: Bool
+        let attempted: Bool
+        let firstError: Error?
+    }
+
     static func load(codexHome: URL) throws -> [String: CodexSessionMetadata] {
-        var result = (try? loadSessionIndex(codexHome: codexHome)) ?? [:]
+        loadResult(codexHome: codexHome).metadata
+    }
+
+    static func loadResult(codexHome: URL) -> CodexSessionMetadataLoadResult {
+        var result: [String: CodexSessionMetadata] = [:]
+        var isComplete = true
+
         do {
-            let stateMetadata = try loadStateDatabase(codexHome: codexHome)
-            for (id, state) in stateMetadata {
-                let existing = result[id]
-                result[id] = CodexSessionMetadata(
-                    title: existing?.title,
-                    cwd: existing?.cwd ?? state.cwd)
-            }
+            result = try loadSessionIndex(codexHome: codexHome)
         } catch {
-            Log.importer.warning("failed to read Codex state metadata: \(error.localizedDescription, privacy: .public)")
-            return result
+            isComplete = false
+            Log.importer.warning("failed to read Codex session index: \(error.localizedDescription, privacy: .public)")
         }
-        return result
+
+        let state = loadStateDatabaseResult(codexHome: codexHome)
+        if !state.isComplete, let error = state.firstError {
+            Log.importer.warning("failed to read Codex state metadata: \(error.localizedDescription, privacy: .public)")
+        }
+        isComplete = isComplete && state.isComplete
+        for (id, stateMetadata) in state.metadata {
+            let existing = result[id]
+            result[id] = CodexSessionMetadata(
+                title: existing?.title,
+                cwd: existing?.cwd ?? stateMetadata.cwd)
+        }
+
+        return CodexSessionMetadataLoadResult(
+            metadata: result,
+            isComplete: isComplete)
     }
 
     static func loadStateDatabase(codexHome: URL) throws -> [String: CodexSessionMetadata] {
+        let loadResult = loadStateDatabaseResult(codexHome: codexHome)
+        if loadResult.metadata.isEmpty,
+           loadResult.attempted,
+           let firstError = loadResult.firstError {
+            throw firstError
+        }
+        return loadResult.metadata
+    }
+
+    static func sourceFingerprint(
+        codexHome: URL
+    ) throws -> CodexSessionMetadataSourceFingerprint {
+        let sessionIndex = codexHome.appendingPathComponent("session_index.jsonl")
+        let stateFiles = stateDatabaseCandidates(codexHome: codexHome).flatMap { sqlite in
+            [sqlite, URL(fileURLWithPath: sqlite.path + "-wal")]
+        }
+        return CodexSessionMetadataSourceFingerprint(
+            files: try ([sessionIndex] + stateFiles).map(fileState))
+    }
+
+    private static func loadStateDatabaseResult(
+        codexHome: URL
+    ) -> StateDatabaseLoadResult {
         var result: [String: CodexSessionMetadata] = [:]
         var firstError: Error?
         var attempted = false
+        var isComplete = true
 
         for sqlite in stateDatabaseCandidates(codexHome: codexHome) {
             guard FileManager.default.fileExists(atPath: sqlite.path) else { continue }
@@ -50,13 +117,15 @@ enum CodexSessionMetadataStore {
                 }
             } catch {
                 firstError = firstError ?? error
+                isComplete = false
             }
         }
 
-        if result.isEmpty, attempted, let firstError {
-            throw firstError
-        }
-        return result
+        return StateDatabaseLoadResult(
+            metadata: result,
+            isComplete: isComplete,
+            attempted: attempted,
+            firstError: firstError)
     }
 
     private static func stateDatabaseCandidates(codexHome: URL) -> [URL] {
@@ -228,6 +297,39 @@ enum CodexSessionMetadataStore {
                 cwd: nil)
         }
         return result
+    }
+
+    private static func fileState(
+        _ url: URL
+    ) throws -> CodexSessionMetadataSourceFingerprint.FileState {
+        var value = Darwin.stat()
+        let status = url.path.withCString { path in
+            Darwin.lstat(path, &value)
+        }
+        guard status == 0 else {
+            let code = errno
+            if code == ENOENT {
+                return .missing
+            }
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(code),
+                userInfo: [
+                    NSLocalizedDescriptionKey: "lstat Codex metadata source failed: \(url.path)"
+                ])
+        }
+
+        return .present(
+            size: Int64(value.st_size),
+            device: Int64(value.st_dev),
+            inode: Int64(bitPattern: UInt64(value.st_ino)),
+            birthtimeNs: nanoseconds(value.st_birthtimespec),
+            modificationTimeNs: nanoseconds(value.st_mtimespec),
+            changeTimeNs: nanoseconds(value.st_ctimespec))
+    }
+
+    private static func nanoseconds(_ time: timespec) -> Int64 {
+        Int64(time.tv_sec) * 1_000_000_000 + Int64(time.tv_nsec)
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

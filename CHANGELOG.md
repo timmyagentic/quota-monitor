@@ -38,6 +38,7 @@ window copy.
 - Moving across the yearly Token Activity heatmap now keeps its tooltips smooth, even with a full year of history.
 - Scrubbing across Dashboard Trends now stays responsive while preserving the same chart, tooltip, and legend values.
 - Developer diagnostics and background settings reads now avoid repeatedly rescanning the unchanged launch environment, reducing routine overhead while runtime setting changes still take effect immediately.
+- Repeated Codex history refreshes now reuse unchanged session metadata and focus proactive corrections on sessions active in the latest seven days, reducing routine background work.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
@@ -93,6 +94,7 @@ window copy.
 - **Smoother heatmap hover.** Token Activity tooltips now reuse the already prepared yearly grid while the pointer moves, avoiding repeated full-year work without changing levels, month labels, or responsive layouts.
 - **Faster Trends scrubbing.** The chart, selected-day tooltip, and legend now share one derived provider/model series until its source data, range, grouping, calendar, or language changes, avoiding repeated filtering and aggregation without changing displayed totals or ordering.
 - **Lighter launch-environment checks.** Local QA routing is resolved once for normal process-backed reads, reducing recurring settings and diagnostics work without caching runtime preferences or changing QA isolation.
+- **Bounded Codex metadata refreshes.** Session titles and project metadata are reused while their source files remain unchanged; when metadata changes, proactive corrections cover sessions active in the latest seven days, while new or changed rollouts still receive current metadata.
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
 - **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself in the established right-side account-row slot, follows window movement and Spaces, keeps the surrounding account controls unobstructed, and opens its detailed breakdown on hover or click.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
