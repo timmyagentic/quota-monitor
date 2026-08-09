@@ -118,6 +118,27 @@ struct CodexQuotaOverlayTests {
             now: now).hasQuota)
     }
 
+    @Test("Widget and menu bar share stable compact window labels")
+    func compactWindowLabels() {
+        let english = LocalizationTestSupport.withLanguage(.english) {
+            [
+                QuotaWindowCompactLabel.fiveHour,
+                QuotaWindowCompactLabel.sevenDay
+            ]
+        }
+        let chinese = LocalizationTestSupport.withLanguage(
+            .simplifiedChinese
+        ) {
+            [
+                QuotaWindowCompactLabel.fiveHour,
+                QuotaWindowCompactLabel.sevenDay
+            ]
+        }
+
+        #expect(english == ["5h", "7d"])
+        #expect(chinese == english)
+    }
+
     @Test("Window selection rejects helper surfaces and preserves front order")
     func selectsFrontCodexWindow() {
         let pid: pid_t = 120
@@ -221,17 +242,17 @@ struct CodexQuotaOverlayTests {
 
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: nil) == 129)
+            resetCredits: nil) == 142)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: resetCredits) == 218)
+            resetCredits: resetCredits) == 222)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            contentHeight: 218) == CGRect(
-                x: 12,
-                y: 45,
-                width: 464,
-                height: 218))
+            contentHeight: 222) == CGRect(
+                x: 144,
+                y: 43,
+                width: 288,
+                height: 222))
 
         let cached = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -243,14 +264,26 @@ struct CodexQuotaOverlayTests {
         #expect(cached.isCached)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: cached,
-            resetCredits: nil) == 129)
+            resetCredits: nil) == 142)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
-                x: -1_188,
-                y: 245,
-                width: 464,
-                height: 263))
+                x: -1_056,
+                y: 243,
+                width: 288,
+                height: 265))
+    }
+
+    @Test("Mouse-down dismissal keeps only overlay-owned interactions open")
+    func clickAwayDismissalPolicy() {
+        #expect(!CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
+            afterMouseDownIn: CodexQuotaOverlayLayout.windowIdentifier))
+        #expect(!CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
+            afterMouseDownIn: CodexQuotaOverlayLayout.detailsWindowIdentifier))
+        #expect(CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
+            afterMouseDownIn: "codex-document"))
+        #expect(CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
+            afterMouseDownIn: nil))
     }
 
     @Test("Reset-card details prefer expirations and fall back to a live count")
@@ -383,6 +416,10 @@ struct CodexQuotaOverlayTests {
             contentsOf: repositoryRoot.appendingPathComponent(
                 "QuotaMonitor/App/CodexQuotaOverlayController.swift"),
             encoding: .utf8)
+        let viewSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "QuotaMonitor/App/CodexQuotaOverlayView.swift"),
+            encoding: .utf8)
         let buildScript = try String(
             contentsOf: repositoryRoot.appendingPathComponent("build.sh"),
             encoding: .utf8)
@@ -397,6 +434,11 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("panel.ignoresMouseEvents = false"))
         #expect(source.contains("onHoverChanged"))
         #expect(source.contains("detailsPanel"))
+        #expect(source.contains("addGlobalMonitorForEvents"))
+        #expect(!source.contains("isDetailsPinned"))
+        #expect(viewSource.contains("Text(Branding.appDisplayName)"))
+        #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
+        #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
         let pollingStart = try #require(
             appDelegate.range(of: "env.startBackgroundPolling()"))
         let overlayStart = try #require(

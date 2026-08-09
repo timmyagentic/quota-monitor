@@ -98,9 +98,6 @@ enum L10n {
         t(en: "Visible in Codex; quota data is not available yet and will retry automatically.",
           zh: "挂件已显示；额度暂不可用，稍后会自动重试。")
     }
-    static var codexOverlayWeeklyCompact: String {
-        t(en: "7d", zh: "周")
-    }
     static var codexOverlayUnavailableCompact: String {
         t(en: "Quota unavailable", zh: "额度暂不可用")
     }

@@ -23,6 +23,28 @@ conversation content is included.
 SHA-256:
 `36a5dc425352c2475fdaa58a06357117ac0048d3f0a3eecd9f5120814c496f43`
 
+`refined-widget-zh-Hans.png` is a native SwiftUI fixture render of the exact
+summary and detail views used by the isolated QA build. It shows the shared
+`5h` / `7d` compact labels, the refined segmented summary, and the branded
+288-point detail card with synthetic quota and reset-credit data. The detail
+card begins with the same `Quota Monitor` product title used by the menu-bar
+popover. No account identity, credential, or conversation content is included.
+The host-app interaction could not be captured through Computer Use because
+the safety layer does not permit controlling the Codex app that hosts the
+current task.
+
+SHA-256:
+`737b4f2b6e648d5b6e6f8d54a035fbbe334394259aeba676fa97551320d1822d`
+
+`refined-widget-title-comparison.png` is the focused visual comparison for the
+title change. The left crop is the supplied menu-bar reference; the right crop
+is the exact native hover-card render after the change. It intentionally
+compares only the requested product-title region because the two surrounding
+components have different roles and dimensions.
+
+SHA-256:
+`ca129088ad3acab48c6c98db2fc72106b10baf7f465f0f8c3b7878bb50a7dec0`
+
 ## Legacy reference
 
 These images document the superseded Chromium-injection implementation. They

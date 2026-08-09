@@ -1,4 +1,70 @@
-# Codex native quota widget design QA
+# Codex hover-card title design QA
+
+## Evidence
+
+- Source visual truth: `/var/folders/4f/qnyg3l7d66v_4k0vzwx69jk40000gn/T/codex-clipboard-e7eb2489-968d-40a7-a8d1-770f56f1c76a.png`
+- Implementation screenshot: `docs/assets/pr/codex-sidebar-quota/refined-widget-zh-Hans.png`
+- Focused comparison: `docs/assets/pr/codex-sidebar-quota/refined-widget-title-comparison.png`
+- Source pixels: 714 x 712; source component is a full menu-bar popover capture.
+- Implementation pixels: 640 x 546; SwiftUI canvas is 320 x 273 points at 2x density.
+- State: light appearance, Simplified Chinese, synthetic quota/reset-credit data, hover details open.
+
+## Findings
+
+No actionable P0, P1, or P2 differences remain for the requested title region.
+
+- Typography: the implementation now uses the exact `Quota Monitor` product
+  name and the app's native `.headline` style, matching the existing menu-bar
+  header's family, weight, and semantic hierarchy.
+- Spacing and layout rhythm: the 288-point detail card keeps its existing
+  12-point content inset and reserves a 27-point top header slot, leaving clear
+  separation before the first quota row without widening the card.
+- Colors and visual tokens: the title uses the native primary foreground on the
+  existing material card. Quota colors and the card background are unchanged.
+- Image quality and asset fidelity: both compared titles are native system text;
+  the implementation capture is rendered at 2x density. No raster replacement,
+  custom icon, or generated asset is involved.
+- Copy and content: the title comes from `Branding.appDisplayName`, so it stays
+  identical to the menu-bar popover and remains correct for branded variants.
+
+The full source and implementation components are intentionally not 1:1: the
+source is the complete menu-bar popover, while the implementation is a compact
+Codex-window hover card. The focused board isolates the requested upper-left
+title treatment, so surrounding controls do not create false mismatches.
+
+## Comparison history
+
+1. Initial state: the hover card began directly with the 5-hour quota row and
+   omitted the source's upper-left product title. This was a P2 hierarchy and
+   product-identification mismatch.
+2. Fix: added `Branding.appDisplayName` as an accessible native headline and
+   increased the calculated detail height by 27 points.
+3. Post-fix evidence: the focused comparison shows the `Quota Monitor` title in
+   the same upper-left role; the complete implementation screenshot shows no
+   clipping, overlap, wrapping, or quota-layout regression.
+
+## Implementation checklist
+
+- [x] Product title appears in the hover detail card.
+- [x] Title reuses the menu popover's branding source and headline hierarchy.
+- [x] Detail geometry accounts for the header at one- and two-window sizes.
+- [x] Simplified Chinese fixture screenshot renders without clipping.
+- [x] Focused source/implementation comparison contains no P0-P2 mismatch.
+
+## Follow-up polish
+
+None required for this scoped title change.
+
+final result: passed
+
+
+---
+
+# Codex native quota widget baseline design QA (historical)
+
+> This section preserves the initial native-overlay QA record for the earlier
+> 464-point, click-pinned card. The current 288-point hover-card treatment and
+> its latest title comparison are documented in the section above.
 
 **Source visual truth**
 

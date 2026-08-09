@@ -346,8 +346,8 @@ enum MenuBarTitleBuilder {
         for row: MenuBarLabelModel.Row
     ) -> [(label: String, value: String)] {
         let all = [
-            (label: "5h", value: row.fiveHour),
-            (label: "7d", value: row.sevenDay)
+            (label: QuotaWindowCompactLabel.fiveHour, value: row.fiveHour),
+            (label: QuotaWindowCompactLabel.sevenDay, value: row.sevenDay)
         ]
         let available = all.filter { $0.value != "--" }
         // Preserve the established two-placeholder readout while data is

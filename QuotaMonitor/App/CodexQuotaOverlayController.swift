@@ -24,8 +24,9 @@ final class CodexQuotaOverlayController: NSObject {
     private var lastCodexWindowFrame: CGRect?
     private var isSummaryHovered = false
     private var isDetailsHovered = false
-    private var isDetailsPinned = false
     private var detailsCloseTask: Task<Void, Never>?
+    private var localMouseDownMonitor: Any?
+    private var globalMouseDownMonitor: Any?
     private var isStarted = false
 
     init(
@@ -200,7 +201,6 @@ final class CodexQuotaOverlayController: NSObject {
                     in: codexWindowFrame,
                     presentation: presentation)
             } else {
-                isDetailsPinned = false
                 closeDetails()
             }
         }
@@ -211,9 +211,8 @@ final class CodexQuotaOverlayController: NSObject {
         detailsCloseTask = nil
         isSummaryHovered = false
         isDetailsHovered = false
-        isDetailsPinned = false
         lastCodexWindowFrame = nil
-        detailsPanel?.orderOut(nil)
+        closeDetails()
         panel?.orderOut(nil)
     }
 
@@ -236,13 +235,7 @@ final class CodexQuotaOverlayController: NSObject {
         }
     }
 
-    private func toggleDetails() {
-        if detailsPanel?.isVisible == true, isDetailsPinned {
-            isDetailsPinned = false
-            closeDetails()
-            return
-        }
-        isDetailsPinned = true
+    private func activateDetails() {
         showDetails()
     }
 
@@ -266,18 +259,17 @@ final class CodexQuotaOverlayController: NSObject {
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
+        installClickAwayMonitorsIfNeeded()
     }
 
     private func scheduleDetailsClose() {
         detailsCloseTask?.cancel()
-        guard !isDetailsPinned else { return }
         detailsCloseTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled,
                   let self,
                   !self.isSummaryHovered,
-                  !self.isDetailsHovered,
-                  !self.isDetailsPinned else {
+                  !self.isDetailsHovered else {
                 return
             }
             self.closeDetails()
@@ -287,7 +279,44 @@ final class CodexQuotaOverlayController: NSObject {
     private func closeDetails() {
         detailsCloseTask?.cancel()
         detailsCloseTask = nil
+        removeClickAwayMonitors()
         detailsPanel?.orderOut(nil)
+    }
+
+    private func installClickAwayMonitorsIfNeeded() {
+        if localMouseDownMonitor == nil {
+            localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            ) { [weak self] event in
+                guard let self else { return event }
+                let identifier = event.window?.identifier?.rawValue
+                if CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
+                    afterMouseDownIn: identifier) {
+                    self.closeDetails()
+                }
+                return event
+            }
+        }
+        if globalMouseDownMonitor == nil {
+            globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.closeDetails()
+                }
+            }
+        }
+    }
+
+    private func removeClickAwayMonitors() {
+        if let localMouseDownMonitor {
+            NSEvent.removeMonitor(localMouseDownMonitor)
+            self.localMouseDownMonitor = nil
+        }
+        if let globalMouseDownMonitor {
+            NSEvent.removeMonitor(globalMouseDownMonitor)
+            self.globalMouseDownMonitor = nil
+        }
     }
 
     private func updateDetailsPanelFrame(
@@ -334,8 +363,8 @@ final class CodexQuotaOverlayController: NSObject {
             onHoverChanged: { [weak self] hovering in
                 self?.summaryHoverChanged(hovering)
             },
-            onToggleDetails: { [weak self] in
-                self?.toggleDetails()
+            onActivate: { [weak self] in
+                self?.activateDetails()
             })
             .environment(environment)
             .environment(settings)
@@ -349,7 +378,9 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func makeDetailsPanel() -> CodexQuotaOverlayPanel {
-        let initialSize = CGSize(width: 464, height: 104)
+        let initialSize = CGSize(
+            width: CodexQuotaOverlayLayout.detailsWidth,
+            height: 88)
         let panel = CodexQuotaOverlayPanel(
             contentRect: CGRect(origin: .zero, size: initialSize),
             styleMask: [.borderless, .nonactivatingPanel],
