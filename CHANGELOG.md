@@ -34,42 +34,10 @@ window copy.
 
 #### Summary
 
-- Codex widget details now show either used or remaining quota in the same type, wording, progress style, and health colors as the menu popover, without duplicate values or redundant status notes.
-- Menu-popover resets, reset-credit expirations, and Session update times now stay responsive during repeated rendering while preserving their current localized wording.
-- The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
-- Codex now shows 5-hour and weekly quota in a native window-following widget; hovering or clicking reveals remaining usage, reset times, and reset cards without requiring a debugging port or restarting Codex.
-- Moving across the yearly Token Activity heatmap now keeps its tooltips smooth, even with a full year of history.
-- Scrubbing across Dashboard Trends now stays responsive while preserving the same chart, tooltip, and legend values.
-- Developer diagnostics and background settings reads now avoid repeatedly rescanning the unchanged launch environment, reducing routine overhead while runtime setting changes still take effect immediately.
-- Repeated Codex history refreshes now reuse unchanged session metadata and focus proactive corrections on sessions active in the latest seven days, reducing routine background work.
-- Private Beta updates now download reliably, including when an interrupted transfer resumes.
-- Private Beta builds now remain protected until they reach the authorized release service.
-- GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
-- Cost estimates now come only from the pricing catalog included with Quota Monitor, while earlier usage keeps the price that applied when it occurred.
-- Routine file updates now stay compact in the menu popover, using only a small activity icon while detailed scan progress remains reserved for the initial import.
-- Claude Opus 5 usage now receives the correct built-in cost estimate immediately, including prompt-cache reads and writes.
-- Background update checks now stay out of the way: an in-app icon starts the update in one click, shows compact progress, and asks to relaunch only when everything is ready.
-- Private Beta updates can now be published reliably through the production service.
-- Invited Macs can now opt into private Beta updates without exposing the channel, enrollment controls, or downloads to everyone else.
-- Important product updates can now introduce themselves in a focused What's New window with images and short videos, which remains available from Settings without occupying the menu popover.
-- Import refreshes now find prior session state with less local database work when rollout files move or are renamed.
-- Large Codex history files now avoid repeated decoder setup while their JSONL records are scanned.
-- History now opens with the latest three weeks while older records continue loading one week at a time.
-- Sessions now opens with a focused first batch and keeps loading more matches as you deliberately scroll, so histories beyond the old 500-row ceiling remain reachable.
-- Dashboard Activity can now switch between the existing indexed history and Codex account-wide totals without changing the rest of the Dashboard.
-- Fresh Claude quota windows no longer jump from about 1% usage to 100% in the menu popover or Dashboard.
-- When Anthropic provides a Fable 5 allowance for the account, Claude now shows it alongside the overall 5-hour and 7-day limits in both the menu popover and Dashboard.
-- With automatic update checks enabled, Quota Monitor now quietly checks after launch, wake, or returning to the foreground when its last check is more than six hours old.
-- The menu-bar readout now avoids redrawing when refreshed data produces the same visible values.
-- Session search now waits for typing to pause before refreshing results, keeping large histories responsive while a query is being entered.
-- Incremental history refreshes now price only newly added or updated usage, keeping refresh work proportional to the latest change even in long sessions.
-- Menu bar usage totals now refresh with less local database work while keeping every displayed value unchanged.
-- Background history checks now leave Dashboard and menu-bar summaries alone when imported data has not changed, reducing recurring work while Quota Monitor sits in the menu bar.
-- Restoring a minimized Dashboard now refreshes its charts and summaries before you continue.
-- Dock activation is now reconciled after app and update windows finish closing; Settings also explains that macOS may keep a separate Recent Apps shortcut that is not Quota Monitor's running Dock icon.
-- History now includes each selected day's cache hit rate in the top summary above its model usage.
-- Dashboard now shows today's cache hit rate alongside weighted 7- and 30-day rates, while the trend line stays continuous across days without a calculable rate.
-- Advanced settings now show the automatic update check toggle without an explanatory note beneath it.
+- Codex now shows its 5-hour and weekly quota beside the active window, with clear used-or-remaining views, reset timing, and reset credits available on hover or click, without restarting Codex.
+- History, Sessions, Dashboard Trends, the yearly activity heatmap, search, and background refreshes now stay responsive even with large usage histories.
+- Built-in pricing now covers GPT-5.6 Terra and Luna price changes and Claude Opus 5 cache rates while preserving the prices that applied to earlier usage.
+- Updates are quieter and easier: automatic checks stay in the background, one click downloads and prepares an update, and important releases can be revisited in a visual What's New window.
 
 ### Added
 
