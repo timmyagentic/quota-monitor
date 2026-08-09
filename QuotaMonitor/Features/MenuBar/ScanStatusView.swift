@@ -6,7 +6,8 @@ extension MenuBarContentView {
 
     @ViewBuilder
     var scanStatus: some View {
-        if let progress = env.scanProgress {
+        if env.scanPresentation == .detailedProgress,
+           let progress = env.scanProgress {
             VStack(alignment: .leading, spacing: 5) {
                 // Title + processed-count on the same row — they're
                 // small enough that splitting into two stacked lines

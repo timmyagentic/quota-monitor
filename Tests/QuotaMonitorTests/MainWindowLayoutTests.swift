@@ -34,12 +34,33 @@ struct MainWindowLayoutTests {
         #expect(badge.contains(".clipShape(Circle())"))
         #expect(badge.contains("red: 51.0 / 255.0"))
         #expect(badge.contains("green: 156.0 / 255.0"))
-        #expect(badge.contains(".help(L10n.updateBadgeHelp(version))"))
-        #expect(badge.contains(".accessibilityLabel(L10n.updateBadgeTitle(version))"))
+        #expect(badge.contains(".help(statusText)"))
+        #expect(badge.contains(".accessibilityLabel(statusText)"))
+        #expect(badge.contains("ProgressView()"))
+        #expect(badge.contains("case .downloading:"))
+        #expect(badge.contains("L10n.updateDownloading"))
         #expect(!badge.contains("L10n.updateEntryTitle"))
         #expect(!badge.contains(".orange"))
         #expect(windowManager.contains(".environment(updater)"))
         #expect(statusItemController.contains(".environment(updater)"))
+    }
+
+    @Test("Routine scans use only the compact popover header activity indicator")
+    func routineScansStayCompactInPopover() throws {
+        let menuBar = try Self.source(
+            named: "QuotaMonitor/Features/MenuBar/MenuBarContentView.swift")
+        let scanStatus = try Self.source(
+            named: "QuotaMonitor/Features/MenuBar/ScanStatusView.swift")
+        let onboarding = try Self.source(
+            named: "QuotaMonitor/Features/Onboarding/LanguageOnboardingView.swift")
+
+        #expect(menuBar.contains(
+            "env.isScanning && env.scanPresentation == .compactActivity"))
+        #expect(menuBar.contains(".accessibilityLabel(L10n.scanUpdatingFiles)"))
+        #expect(scanStatus.contains(
+            "env.scanPresentation == .detailedProgress"))
+        #expect(onboarding.contains(
+            "env.runScan(minInterval: 0, trigger: \"onboarding\")"))
     }
 
     @Test("Native status item stays unchanged when an update is available")
@@ -166,14 +187,22 @@ struct MainWindowLayoutTests {
         #expect(source.components(separatedBy: ".chartXSelection(value: $selectedDay)").count == 2)
     }
 
-    @Test("Dashboard headline shows fixed 7- and 30-day cache summaries")
+    @Test("Dashboard headline shows today, 7-day, and 30-day cache summaries")
     func dashboardHeadlineShowsCacheWindows() throws {
         let source = try Self.source(named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
+        let windows = try Self.source(
+            named: "QuotaMonitor/Features/Dashboard/DashboardCacheUsageWindows.swift")
 
         #expect(source.contains("ViewThatFits(in: .horizontal)"))
-        #expect(source.contains("cacheHitRateSummary(snapshot)"))
-        #expect(source.contains("snapshot.dailyExtended.suffix(7)"))
-        #expect(source.contains("snapshot.dailyExtended.suffix(30)"))
+        #expect(source.contains("TimelineView(.periodic(from: .now, by: 60))"))
+        #expect(source.contains("cacheHitRateSummary(snapshot, now: context.date)"))
+        #expect(source.contains("DashboardCacheUsageWindows("))
+        #expect(source.contains("daily: snapshot.dailyExtended"))
+        #expect(source.contains("now: now"))
+        #expect(windows.contains("calendar.isDate(point.date, inSameDayAs: todayStart)"))
+        #expect(windows.contains("value: -6, to: todayStart"))
+        #expect(windows.contains("value: -29, to: todayStart"))
+        #expect(source.contains("L10n.cacheHitRateToday"))
         #expect(source.contains("L10n.last7Days"))
         #expect(source.contains("L10n.last30Days"))
     }

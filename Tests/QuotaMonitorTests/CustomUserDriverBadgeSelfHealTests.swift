@@ -38,7 +38,7 @@ struct CustomUserDriverBadgeSelfHealTests {
 
         #expect(discovery.contains("internalVersion: appcastItem.versionString"))
         #expect(discovery.contains("displayVersion: appcastItem.displayVersionString"))
-        #expect(discovery.contains("userInitiated: state.userInitiated"))
+        #expect(discovery.contains("userInitiated: userState.userInitiated"))
         #expect(discovery.contains("presentation == .dismissSilently"))
         #expect(discovery.contains("updateAvailability.markSkipped()"))
         #expect(discovery.contains("updateAvailability.markLater()"))

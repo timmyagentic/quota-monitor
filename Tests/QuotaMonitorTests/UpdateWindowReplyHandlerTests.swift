@@ -132,6 +132,42 @@ struct UpdateWindowReplyHandlerTests {
         #expect(extraction.contains("state.onCancel = nil"))
     }
 
+    @Test("Background discovery stays quiet while manual discovery presents details")
+    func discoveryPresentationFollowsUserIntent() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/CustomUserDriver.swift")
+        let discovery = try Self.methodBody(
+            source, signature: "func showUpdateFound")
+
+        #expect(discovery.contains("if userState.userInitiated"))
+        #expect(discovery.contains("windowController.show()"))
+        #expect(discovery.contains("case .installAvailableUpdate:"))
+        #expect(discovery.contains("reply(.install)"))
+        #expect(discovery.contains("if userState.stage == .installing"))
+        #expect(discovery.contains("s.phase = .readyToInstall"))
+    }
+
+    @Test("Badge install skips details but ready-to-relaunch restores the prompt")
+    func badgeInstallAndReadyPromptAreSeparated() throws {
+        let source = try Self.source(
+            named: "QuotaMonitor/Core/Updater/CustomUserDriver.swift")
+        let install = try Self.methodBody(
+            source, signature: "func installAvailableUpdateIfPossible")
+        let ready = try Self.methodBody(
+            source, signature: "func showReady(toInstallAndRelaunch")
+
+        let availableCase = try Self.sourceSlice(
+            install, from: "case .updateAvailable:", to: "case .readyToInstall:")
+        #expect(availableCase.contains("state.fireInstall()"))
+        #expect(!availableCase.contains("windowController.show()"))
+
+        let readyCase = try Self.sourceSlice(
+            install, from: "case .readyToInstall:", to: "default:")
+        #expect(readyCase.contains("windowController.show()"))
+        #expect(!readyCase.contains("state.fireInstall()"))
+        #expect(ready.contains("windowController.show()"))
+    }
+
     private static func methodBody(_ source: String, signature: String) throws -> String {
         guard let start = source.range(of: signature) else {
             throw CocoaError(.formatting)
@@ -139,6 +175,21 @@ struct UpdateWindowReplyHandlerTests {
         let rest = source[start.upperBound...]
         let end = rest.range(of: "\n    func ")?.lowerBound ?? rest.endIndex
         return String(rest[..<end])
+    }
+
+    private static func sourceSlice(
+        _ source: String,
+        from start: String,
+        to end: String
+    ) throws -> String {
+        guard let startRange = source.range(of: start) else {
+            throw CocoaError(.formatting)
+        }
+        let suffix = source[startRange.lowerBound...]
+        guard let endRange = suffix.range(of: end) else {
+            throw CocoaError(.formatting)
+        }
+        return String(suffix[..<endRange.lowerBound])
     }
 
     private static func source(named relativePath: String) throws -> String {

@@ -20,6 +20,17 @@ extension Notification.Name {
         Notification.Name("dev.tjzhou.QuotaMonitor.onboardingCompleted")
 }
 
+enum CodexSidebarQuotaStatus: Equatable {
+    case disabled
+    case attaching
+    case needsCodexQuit
+    case multipleCodexInstances
+    case readyToLaunch
+    case launching
+    case active
+    case unavailable
+}
+
 @Observable
 @MainActor
 final class SettingsStore {
@@ -83,6 +94,22 @@ final class SettingsStore {
         didSet { defaults.set(showDockIconForWindows,
                               forKey: Keys.showDockIconForWindows) }
     }
+    /// Injects a native-looking quota capsule into the validated Codex sidebar
+    /// through Chromium's loopback DevTools protocol. Default OFF: this is an
+    /// intentional cross-app integration and requires an explicit new opt-in.
+    var codexSidebarQuotaEnabled: Bool {
+        didSet { defaults.set(codexSidebarQuotaEnabled,
+                              forKey: Keys.codexSidebarQuotaEnabled) }
+    }
+    /// Allows QuotaMonitor to hand off a normal Codex launch before its window
+    /// appears. Default OFF for existing users: enabling this permits a
+    /// graceful, one-time handoff of only a newly launched Codex process.
+    var codexSidebarQuotaAutoRestoreEnabled: Bool {
+        didSet { defaults.set(codexSidebarQuotaAutoRestoreEnabled,
+                              forKey: Keys.codexSidebarQuotaAutoRestoreEnabled) }
+    }
+    /// Runtime-only state for the one-shot Codex activation flow.
+    var codexSidebarQuotaStatus: CodexSidebarQuotaStatus = .disabled
     /// Which rolling window the menu bar uses for the headline
     /// `$X.XX · Yk tokens` line and the session-count chip. Default
     /// 7 days because most users want a "what did I do this week"
@@ -350,6 +377,10 @@ final class SettingsStore {
         // upgrading to this release (per the user-confirmed spec).
         self.showDockIconForWindows =
             defaults.bool(forKey: Keys.showDockIconForWindows)
+        self.codexSidebarQuotaEnabled =
+            defaults.bool(forKey: Keys.codexSidebarQuotaEnabled)
+        self.codexSidebarQuotaAutoRestoreEnabled =
+            defaults.bool(forKey: Keys.codexSidebarQuotaAutoRestoreEnabled)
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.quotaDisplayMode = (defaults.string(forKey: Keys.quotaDisplayMode)
@@ -702,6 +733,9 @@ final class SettingsStore {
         static let mirrorClaudeKeychainToFile = "settings.mirrorClaudeKeychainToFile"
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
+        static let codexSidebarQuotaEnabled = "settings.codexSidebarQuotaEnabled"
+        static let codexSidebarQuotaAutoRestoreEnabled =
+            "settings.codexSidebarQuotaAutoRestoreEnabled"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"

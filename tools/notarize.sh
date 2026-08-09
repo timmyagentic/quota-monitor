@@ -48,6 +48,11 @@ sign_code() {
 }
 
 SPARKLE_FRAMEWORK="${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+OPSAIL_HELPER="${APP_BUNDLE}/Contents/Helpers/opsail"
+if [[ -x "${OPSAIL_HELPER}" ]]; then
+    sign_code "${OPSAIL_HELPER}"
+fi
+
 if [[ -d "${SPARKLE_FRAMEWORK}" ]]; then
     while IFS= read -r nested_app; do
         sign_code "${nested_app}"

@@ -15,6 +15,7 @@ vi.mock("../src/release", async (importOriginal) => ({
 
 const RELEASE: ReleaseInfo = {
   version: "0.2.40",
+  buildVersion: "20409000",
   filename: "QuotaMonitor-0.2.40.dmg",
   size: 6_992_960,
   upstreamUrl:
@@ -183,8 +184,14 @@ function workerEnv(
     DAILY_ACTIVE_RATE_LIMITER: rateLimiter,
     DAILY_ACTIVE_COLO_RATE_LIMITER: coloRateLimiter,
     ADMIN_VERSION_STATS_RATE_LIMITER: adminRateLimiter,
+    PRIVATE_BETA_ENROLL_RATE_LIMITER: rateLimiter,
+    PRIVATE_BETA_RESOURCE_RATE_LIMITER: rateLimiter,
+    PRIVATE_BETA_ADMIN_RATE_LIMITER: adminRateLimiter,
     VERSION_STATS_DB: database,
+    PRIVATE_BETA_DB: database,
+    PRIVATE_BETA_BUCKET: {} as R2Bucket,
     VERSION_STATS_ADMIN_TOKEN: adminSecret ?? "",
+    PRIVATE_BETA_ADMIN_TOKEN: adminSecret ?? "",
   };
   return env;
 }

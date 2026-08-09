@@ -45,6 +45,27 @@ final class LocalQAController {
             case .openMenuBarHelp:
                 WindowManager.shared.show("menubar-help")
                 await pause(seconds: 0.8)
+            case .openWhatsNew:
+                WindowManager.shared.show("whats-new")
+                await pause(seconds: 0.8)
+            case .showCodexSidebarNeedsQuit:
+                let settings = SettingsStore.shared
+                settings.codexSidebarQuotaEnabled = true
+                settings.codexSidebarQuotaStatus = .needsCodexQuit
+                WindowManager.shared.show("settings")
+                await pause(seconds: 0.8)
+            case .showCodexSidebarMultipleInstances:
+                let settings = SettingsStore.shared
+                settings.codexSidebarQuotaEnabled = true
+                settings.codexSidebarQuotaStatus = .multipleCodexInstances
+                WindowManager.shared.show("settings")
+                await pause(seconds: 0.8)
+            case .showCodexSidebarReadyToLaunch:
+                let settings = SettingsStore.shared
+                settings.codexSidebarQuotaEnabled = true
+                settings.codexSidebarQuotaStatus = .readyToLaunch
+                WindowManager.shared.show("settings")
+                await pause(seconds: 0.8)
             case .showPopover:
                 statusItemController.showPopover()
                 await pause(seconds: 0.6)

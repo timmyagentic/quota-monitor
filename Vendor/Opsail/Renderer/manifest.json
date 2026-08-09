@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "assetVersion": "1.0.1",
+  "apiVersion": 1,
+  "files": [
+    {
+      "name": "opsail-refit-codex-dom-adapter.js",
+      "sha256": "dccb687965575e4b1bbda76aed9c20699e4ca62a4c849677194be2ed3a64ce61",
+      "bytes": 7530
+    },
+    {
+      "name": "opsail-refit-codex-renderer-control.js",
+      "sha256": "d6612f795610c4ee8b3ba2d6614f9020355eb29eb984d72f50c98a3d0a2ccaa1",
+      "bytes": 3886
+    },
+    {
+      "name": "opsail-refit-codex-usage-model.js",
+      "sha256": "dbfcfa56876754ae3eda7aab0b0ea82a3a44e7ef2001f87f3afa48bdb61f8a88",
+      "bytes": 21686
+    },
+    {
+      "name": "opsail-refit-codex-usage-runtime.js",
+      "sha256": "e6719851531fd311cdb784599e3092702ae8ec9acd5c45dea352ca37a9200f16",
+      "bytes": 41073
+    }
+  ]
+}

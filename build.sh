@@ -31,6 +31,11 @@ APP_BUNDLE=".build/${APP_NAME}.app"
 CONTENTS="${APP_BUNDLE}/Contents"
 PRIVACY_MANIFEST_SOURCE="Resources/PrivacyInfo.xcprivacy"
 APP_PRIVACY_MANIFEST="${CONTENTS}/Resources/PrivacyInfo.xcprivacy"
+WHATS_NEW_RESOURCES="Resources/WhatsNew"
+THIRD_PARTY_NOTICES="THIRD_PARTY_NOTICES.md"
+OPSAIL_LICENSE="LICENSES/Opsail-Apache-2.0.txt"
+OPSAIL_HELPER_FETCHER="tools/fetch-opsail-helper.sh"
+OPSAIL_RENDERER_ASSETS="Vendor/Opsail/Renderer"
 ENTITLEMENTS="Resources/QuotaMonitor.entitlements"
 if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
     ENTITLEMENTS="Resources/QuotaMonitor-AppStore.entitlements"
@@ -66,6 +71,44 @@ mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources"
 cp "${BIN_PATH}" "${CONTENTS}/MacOS/${APP_NAME}"
 cp Resources/Info.plist "${CONTENTS}/Info.plist"
 
+if [[ ! -f "${WHATS_NEW_RESOURCES}/catalog.json" ]]; then
+    echo "error: ${WHATS_NEW_RESOURCES}/catalog.json missing" >&2
+    exit 1
+fi
+echo "==> Embedding What's New media"
+cp -R "${WHATS_NEW_RESOURCES}" "${CONTENTS}/Resources/WhatsNew"
+
+if [[ ! -f "${THIRD_PARTY_NOTICES}" || ! -f "${OPSAIL_LICENSE}" ]]; then
+    echo "error: third-party notices or Opsail license missing" >&2
+    exit 1
+fi
+echo "==> Embedding third-party notices"
+mkdir -p "${CONTENTS}/Resources/Licenses"
+cp "${THIRD_PARTY_NOTICES}" "${CONTENTS}/Resources/THIRD_PARTY_NOTICES.md"
+cp "${OPSAIL_LICENSE}" "${CONTENTS}/Resources/Licenses/Opsail-Apache-2.0.txt"
+
+if [[ "${QM_DISTRIBUTION}" == "developer-id" ]]; then
+    if [[ ! -x "${OPSAIL_HELPER_FETCHER}" ]]; then
+        echo "error: ${OPSAIL_HELPER_FETCHER} missing or not executable" >&2
+        exit 1
+    fi
+    echo "==> Embedding verified Opsail helper"
+    OPSAIL_HELPER_SOURCE="$("${OPSAIL_HELPER_FETCHER}")"
+    if [[ ! -x "${OPSAIL_HELPER_SOURCE}" ]]; then
+        echo "error: verified Opsail helper is unavailable" >&2
+        exit 1
+    fi
+    mkdir -p "${CONTENTS}/Helpers"
+    cp "${OPSAIL_HELPER_SOURCE}" "${CONTENTS}/Helpers/opsail"
+    chmod 755 "${CONTENTS}/Helpers/opsail"
+    if [[ ! -f "${OPSAIL_RENDERER_ASSETS}/manifest.json" ]]; then
+        echo "error: ${OPSAIL_RENDERER_ASSETS}/manifest.json missing" >&2
+        exit 1
+    fi
+    echo "==> Embedding QuotaMonitor Opsail renderer assets"
+    cp -R "${OPSAIL_RENDERER_ASSETS}" "${CONTENTS}/Resources/OpsailRenderer"
+fi
+
 echo "==> Verifying and embedding PrivacyInfo.xcprivacy"
 python3 tools/verify-privacy-manifest.py "${PRIVACY_MANIFEST_SOURCE}"
 cp "${PRIVACY_MANIFEST_SOURCE}" "${APP_PRIVACY_MANIFEST}"
@@ -88,23 +131,46 @@ if [[ -z "${VERSION}" ]]; then
     echo "error: Resources/VERSION is empty" >&2
     exit 1
 fi
-# Both CFBundleShortVersionString AND CFBundleVersion get set to
-# VERSION (the dotted semver). Sparkle uses CFBundleVersion as the
-# "is this newer?" key and compares it against the appcast's
-# `sparkle:version` element — if the two don't match exactly, every
-# launch shows a spurious "update available" prompt to users who
-# already have the latest. We used to stuff the git short SHA into
-# CFBundleVersion for traceability, but Sparkle's version comparator
-# can't make sense of a hex string vs a dotted version and ends up
-# claiming the same release is newer than itself.
+QM_RELEASE_CHANNEL="${QM_RELEASE_CHANNEL:-stable}"
+if [[ "${QM_DISTRIBUTION}" == "app-store" \
+      && "${QM_RELEASE_CHANNEL}" != "stable" ]]; then
+    echo "error: App Store builds support only the stable release channel" >&2
+    exit 1
+fi
+if [[ "${QM_RELEASE_CHANNEL}" == "private-beta" ]]; then
+    if [[ -z "${QM_BETA_SEQUENCE:-}" ]]; then
+        echo "error: QM_BETA_SEQUENCE is required for private-beta builds" >&2
+        exit 1
+    fi
+    BUILD_NUMBER="$(python3 tools/build-number.py "${VERSION}" \
+        --channel private-beta --beta-sequence "${QM_BETA_SEQUENCE}")"
+    DISPLAY_VERSION="${VERSION}-beta.${QM_BETA_SEQUENCE}"
+elif [[ "${QM_RELEASE_CHANNEL}" == "stable" ]]; then
+    BUILD_NUMBER="$(python3 tools/build-number.py "${VERSION}" --channel stable)"
+    DISPLAY_VERSION="${VERSION}"
+else
+    echo "error: QM_RELEASE_CHANNEL must be stable or private-beta" >&2
+    exit 1
+fi
+if [[ "${QM_DISTRIBUTION}" == "app-store" ]]; then
+    # Apple's first CFBundleVersion component is limited to four digits.
+    # The App Store owns update ordering, so retain the existing conforming
+    # dotted semantic build number instead of Sparkle's single integer.
+    BUILD_NUMBER="${VERSION}"
+fi
+# CFBundleShortVersionString remains the user-facing semantic version.
+# CFBundleVersion is an independent numeric Sparkle ordering key computed by
+# tools/build-number.py for Developer ID builds. A stable build reserves offset
+# 9000, so it always supersedes every Private Beta (1...8999) for the same
+# semantic version. App Store builds retain a conforming dotted value.
 #
 # Git SHA traceability is preserved separately under the custom key
 # `BuildCommit` (see below) — readable via `defaults read` or
 # PlistBuddy without leaking into Sparkle's comparison path.
 BUILD_TAG="$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" \
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${DISPLAY_VERSION}" \
     "${CONTENTS}/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION}" \
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER}" \
     "${CONTENTS}/Info.plist"
 # Add or overwrite the BuildCommit key. `Add` errors out if the key
 # already exists (e.g. when re-running build.sh against the same
@@ -113,7 +179,7 @@ BUILD_TAG="$(git -C "$(pwd)" rev-parse --short HEAD 2>/dev/null || echo unknown)
     "${CONTENTS}/Info.plist" 2>/dev/null \
   || /usr/libexec/PlistBuddy -c "Set :BuildCommit ${BUILD_TAG}" \
     "${CONTENTS}/Info.plist"
-echo "    version=${VERSION} commit=${BUILD_TAG}"
+echo "    version=${DISPLAY_VERSION} build=${BUILD_NUMBER} commit=${BUILD_TAG}"
 
 /usr/libexec/PlistBuddy -c "Add :QMDistributionChannel string ${QM_DISTRIBUTION}" \
     "${CONTENTS}/Info.plist" 2>/dev/null \

@@ -71,6 +71,44 @@ struct GeneralSettingsTab: View {
                 }
             }
 
+            if DistributionChannel.current != .appStore {
+                Section(L10n.codexCapsuleSettingsSection) {
+                    Text(L10n.codexCapsuleSettingsLabel)
+                        .font(.body.weight(.medium))
+                    Text(L10n.codexCapsuleSettingsHelp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if settings.codexSidebarQuotaEnabled {
+                        Toggle(
+                            L10n.codexCapsuleAutoRestoreLabel,
+                            isOn: $settings.codexSidebarQuotaAutoRestoreEnabled)
+                        Text(L10n.codexCapsuleAutoRestoreHelp)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Label(
+                            codexSidebarStatusText,
+                            systemImage: codexSidebarStatusIcon)
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(codexSidebarStatusColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                codexSidebarStatusColor.opacity(0.1),
+                                in: RoundedRectangle(cornerRadius: 8))
+                        codexSidebarActions
+                    } else {
+                        Button(L10n.codexCapsuleEnableButton) {
+                            settings.codexSidebarQuotaAutoRestoreEnabled = true
+                            OpsailCodexRefitActions.requestExplicitLaunch()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                }
+            }
+
             Section(L10n.sectionLanguage) {
                 LabeledContent(L10n.languagePickerLabel) {
                     Picker("", selection: Binding(
@@ -175,6 +213,12 @@ struct GeneralSettingsTab: View {
                         WindowManager.shared.show("menubar-help")
                     }
                 }
+
+                LabeledContent(L10n.whatsNewSettingsRow) {
+                    Button(L10n.whatsNewOpen) {
+                        WindowManager.shared.show("whats-new")
+                    }
+                }
             }
 
             // Tracked tools — let users hide a CLI they don't have
@@ -200,6 +244,111 @@ struct GeneralSettingsTab: View {
         }
         .formStyle(.grouped)
         .padding(20)
+    }
+
+    private var codexSidebarStatusText: String {
+        switch settings.codexSidebarQuotaStatus {
+        case .disabled, .unavailable:
+            L10n.codexCapsuleUnavailableStatus
+        case .attaching:
+            L10n.codexCapsuleAttachingStatus
+        case .needsCodexQuit:
+            L10n.codexCapsuleNeedsQuitStatus
+        case .multipleCodexInstances:
+            L10n.codexCapsuleMultipleInstancesStatus
+        case .readyToLaunch:
+            L10n.codexCapsuleReadyToLaunchStatus
+        case .launching:
+            L10n.codexCapsuleLaunchingStatus
+        case .active:
+            L10n.codexCapsuleActiveStatus
+        }
+    }
+
+    private var codexSidebarStatusIcon: String {
+        switch settings.codexSidebarQuotaStatus {
+        case .attaching, .launching:
+            "arrow.triangle.2.circlepath"
+        case .needsCodexQuit, .multipleCodexInstances:
+            "hand.raised.fill"
+        case .readyToLaunch:
+            "play.circle.fill"
+        case .active:
+            "checkmark.circle.fill"
+        case .disabled, .unavailable:
+            "exclamationmark.circle.fill"
+        }
+    }
+
+    private var codexSidebarStatusColor: Color {
+        switch settings.codexSidebarQuotaStatus {
+        case .active:
+            .green
+        case .needsCodexQuit, .multipleCodexInstances:
+            .orange
+        case .readyToLaunch:
+            .accentColor
+        case .disabled, .unavailable:
+            .secondary
+        case .attaching, .launching:
+            .accentColor
+        }
+    }
+
+    @ViewBuilder
+    private var codexSidebarActions: some View {
+        switch settings.codexSidebarQuotaStatus {
+        case .readyToLaunch:
+            HStack {
+                Button(L10n.codexCapsuleLaunchButton) {
+                    OpsailCodexRefitActions.requestExplicitLaunch()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleCancelButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .needsCodexQuit:
+            HStack {
+                Button(L10n.codexCapsuleRestartButton) {
+                    OpsailCodexRefitActions.requestExplicitLaunch()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleDisableButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .multipleCodexInstances:
+            HStack {
+                Button(L10n.codexCapsuleMultipleInstancesRetryButton) {
+                    OpsailCodexRefitActions.requestExplicitLaunch()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleDisableButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .unavailable:
+            HStack {
+                Button(L10n.codexCapsuleRetryButton) {
+                    OpsailCodexRefitActions.requestAttachRetry()
+                }
+                .buttonStyle(.borderedProminent)
+                Button(L10n.codexCapsuleDisableButton) {
+                    settings.codexSidebarQuotaEnabled = false
+                }
+            }
+        case .attaching, .launching:
+            Button(L10n.codexCapsuleCancelButton) {
+                settings.codexSidebarQuotaEnabled = false
+            }
+        case .active:
+            Button(L10n.codexCapsuleDisableButton) {
+                settings.codexSidebarQuotaEnabled = false
+            }
+        case .disabled:
+            EmptyView()
+        }
     }
 
     @ViewBuilder

@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var localQAController: LocalQAController?
     private var updateWindowPreviewLauncher: UpdateWindowPreviewLauncher?
     private var dailyActiveReporter: DailyActiveReporter?
+    private var codexSidebarQuotaController: OpsailCodexRefitController?
+    private var whatsNewCoordinator: WhatsNewCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let env = AppEnvironment.shared
@@ -25,13 +27,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.applyLaunchAtLoginPreference()
 
         // Now that the migration has run (in QuotaMonitorApp.init), it's safe to
-        // let Sparkle read UserDefaults. AppKit owns the four app windows (see
+        // let Sparkle read UserDefaults. AppKit owns the five app windows (see
         // WindowManager); hand it the updater so Settings can wire "Check Now".
         updater = UpdaterController(
             onUpdateWindowClosed: {
                 AppEnvironment.shared.demoteToAccessory()
             })
-        WindowManager.shared.configure(updater: updater)
+        let whatsNewContent: WhatsNewContent?
+        if let resourceRoot = Bundle.main.resourceURL {
+            do {
+                whatsNewContent = try WhatsNewCatalog.load(from: resourceRoot)
+            } catch {
+                whatsNewContent = nil
+                Log.discover.error(
+                    "What's New catalog unavailable: \(error.localizedDescription, privacy: .public)")
+            }
+        } else {
+            whatsNewContent = nil
+        }
+        let onboardingNeeded = loc.needsOnboarding || settings.needsProviderOnboarding
+        let whatsNewCoordinator = WhatsNewCoordinator(
+            content: whatsNewContent,
+            defaults: LocalQAEnvironment.userDefaults() ?? .standard,
+            onboardingNeeded: onboardingNeeded,
+            isLocalQA: LocalQAEnvironment.isQARequested())
+        self.whatsNewCoordinator = whatsNewCoordinator
+        WindowManager.shared.configure(
+            updater: updater,
+            whatsNewContent: whatsNewContent,
+            onWhatsNewPresentationRequested: { [weak whatsNewCoordinator] in
+                whatsNewCoordinator?.recordPresentationRequested()
+            })
         updater.checkInBackgroundIfNeeded()
 
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -45,7 +71,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.onScreenChange = { [weak self] in
             self?.enforceClipFallback()
         }
+        controller.onUserRequestedPopover = { [weak whatsNewCoordinator] in
+            whatsNewCoordinator?.presentPendingIfNeeded() ?? false
+        }
         self.statusItemController = controller
+
+        if DistributionChannel.current != .appStore,
+           !LocalQAEnvironment.isQARequested()
+        {
+            let sidebarQuotaController = OpsailCodexRefitController(settings: settings)
+            codexSidebarQuotaController = sidebarQuotaController
+            sidebarQuotaController.start()
+        }
 
         // The recovery guide's "Re-check" button asks us to re-evaluate.
         NotificationCenter.default.addObserver(
@@ -69,7 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         closeStrayWindows()
 
         // Onboarding window on launch (previously MenuBarLabelView.task).
-        let onboardingNeeded = loc.needsOnboarding || settings.needsProviderOnboarding
         Log.discover.info("launch onboardingNeeded=\(onboardingNeeded, privacy: .public)")
         if onboardingNeeded {
             WindowManager.shared.show("onboarding")
@@ -150,6 +186,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication,
                                        hasVisibleWindows: Bool) -> Bool {
         if hasVisibleWindows { return true }   // bring the existing window forward
+        if whatsNewCoordinator?.presentPendingIfNeeded() == true {
+            return false
+        }
         let needsOnboarding = LocalizationStore.shared.needsOnboarding
             || SettingsStore.shared.needsProviderOnboarding
         // `show` already does activate-then-order-front.
@@ -158,10 +197,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        codexSidebarQuotaController?.stop()
+        codexSidebarQuotaController = nil
         NSWorkspace.shared.notificationCenter.removeObserver(
             self, name: NSWorkspace.didWakeNotification, object: nil)
         statusItemController?.stop()
         statusItemController = nil
+        whatsNewCoordinator = nil
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {

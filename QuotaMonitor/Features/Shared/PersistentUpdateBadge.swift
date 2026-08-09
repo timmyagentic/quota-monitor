@@ -10,20 +10,45 @@ struct PersistentUpdateBadge: View {
     @Environment(UpdaterController.self) private var updater
 
     private var version: String? { updater.updateAvailability.version }
+    private var activity: PersistentUpdateAvailability.Activity {
+        updater.updateAvailability.activity
+    }
 
     var body: some View {
         Button(action: install) {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 10, weight: .medium))
-                .symbolRenderingMode(.monochrome)
+            if updater.updateAvailability.isBusy {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(.white)
+            } else {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 10, weight: .medium))
+                    .symbolRenderingMode(.monochrome)
+            }
         }
         .buttonStyle(PersistentUpdateDownloadButtonStyle())
-        .help(L10n.updateBadgeHelp(version))
-        .accessibilityLabel(L10n.updateBadgeTitle(version))
+        .help(statusText)
+        .accessibilityLabel(statusText)
+        .disabled(updater.updateAvailability.isBusy)
     }
 
     private func install() {
         updater.installAvailableUpdate()
+    }
+
+    private var statusText: String {
+        switch activity {
+        case .idle:
+            L10n.updateBadgeHelp(version)
+        case .checking:
+            L10n.updateChecking
+        case .downloading:
+            L10n.updateDownloading
+        case .extracting:
+            L10n.updateExtracting
+        case .installing:
+            L10n.updateInstalling
+        }
     }
 }
 

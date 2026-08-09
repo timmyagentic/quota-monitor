@@ -78,6 +78,7 @@ final class AppEnvironment {
     var latestClaudeUsageCooldownUntil: Date?
     var lastScanReport: ImportEngine.ScanReport?
     var scanProgress: ScanProgress?
+    var scanPresentation: ScanPresentation = .compactActivity
     var dashboardSnapshot: DashboardSnapshot?
     var billingBlocks: BillingBlocks.Snapshot?
     /// Provider-agnostic snapshot for the menu bar.
@@ -270,7 +271,7 @@ final class AppEnvironment {
     /// then scans once at finish, so it uses the plain `reloadHistoryImportRoots`.)
     func reloadHistoryImportRootsAndRescan() {
         reloadHistoryImportRoots()
-        runScan(minInterval: 0)
+        runScan(minInterval: 0, trigger: "history-root-change")
     }
 
     /// Boot the background rate-limit poller. Idempotent.

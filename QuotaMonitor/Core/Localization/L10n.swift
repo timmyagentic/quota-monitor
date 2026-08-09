@@ -61,6 +61,114 @@ enum L10n {
     static var claudeCode: String { "Claude Code" }      // proper noun
     static var claude: String { "Claude" }               // proper noun
 
+    // MARK: - Codex sidebar quota capsule
+
+    static var codexCapsuleSettingsSection: String {
+        t(en: "Codex sidebar", zh: "Codex 侧栏")
+    }
+    static var codexCapsuleSettingsLabel: String {
+        t(en: "Native quota widget", zh: "原生额度挂件")
+    }
+    static var codexCapsuleSettingsHelp: String {
+        t(
+            en: "Adds 5-hour and weekly limits inside the Codex account row. "
+                + "\(Branding.appDisplayName) connects only when Codex has a loopback debugging "
+                + "port. Keep using the normal Codex icon; automatic restore prepares the widget "
+                + "before the newly launched window appears.",
+            zh: "在 Codex 账户行内显示 5 小时和每周额度。\(Branding.appDisplayName) "
+                + "只连接带本机调试端口的 Codex。你仍可从原来的图标打开 Codex；自动恢复会在"
+                + "刚启动的窗口出现前准备好挂件。")
+    }
+    static var codexCapsuleAutoRestoreLabel: String {
+        t(
+            en: "Keep the widget when opening Codex normally",
+            zh: "正常打开 Codex 时保留挂件")
+    }
+    static var codexCapsuleAutoRestoreHelp: String {
+        t(
+            en: "Before a normal launch can show its window, Quota Monitor sends a standard quit "
+                + "signal only to that newly launched process, then immediately reopens it with "
+                + "the widget. Existing or ambiguous sessions are left untouched; Codex is never "
+                + "force-quit.",
+            zh: "正常启动的窗口出现前，Quota Monitor 只会向这个刚启动的进程发送标准退出信号，"
+                + "随后立即用挂件模式重新打开。已经运行或无法明确识别的会话都不会被触碰，"
+                + "也绝不会强制退出 Codex。")
+    }
+    static var codexCapsuleAttachingStatus: String {
+        t(en: "Connecting to the running Codex…", zh: "正在连接当前运行的 Codex…")
+    }
+    static var codexCapsuleNeedsQuitStatus: String {
+        t(
+            en: "This Codex session cannot accept the widget yet. Choose Restart Codex to send "
+                + "this one session a standard quit signal and immediately reopen it with the "
+                + "widget; Codex is never force-quit.",
+            zh: "当前 Codex 会话还无法接入挂件。选择“重新打开 Codex”后，Quota Monitor "
+                + "只会向这一个会话发送标准退出信号，并立即用挂件模式重新打开；"
+                + "绝不会强制退出 Codex。")
+    }
+    static var codexCapsuleMultipleInstancesStatus: String {
+        t(
+            en: "More than one Codex or ChatGPT instance is running. Close the extra instances, "
+                + "then try again. Quota Monitor will not choose or quit a session while it "
+                + "cannot identify a single one safely.",
+            zh: "检测到多个 Codex 或 ChatGPT 实例。请先关闭多余实例，再重新检测。"
+                + "Quota Monitor 无法安全确认唯一会话时，不会擅自选择或退出任何一个实例。")
+    }
+    static var codexCapsuleReadyToLaunchStatus: String {
+        t(
+            en: "Codex is closed. Open it from here to enable the native quota widget.",
+            zh: "Codex 已退出；请从这里打开并启用原生额度挂件。")
+    }
+    static var codexCapsuleLaunchingStatus: String {
+        t(en: "Opening Codex with the native quota widget…",
+          zh: "正在打开 Codex 并加载原生额度挂件…")
+    }
+    static var codexCapsuleActiveStatus: String {
+        t(en: "Connected — the native quota widget is active.",
+          zh: "已连接，原生额度挂件正在运行。")
+    }
+    static var codexCapsuleUnavailableStatus: String {
+        t(en: "Not connected. The existing Codex session was left untouched; you can try again.",
+          zh: "暂未连接；当前 Codex 会话未被触碰，可以再次尝试。")
+    }
+    static var codexCapsuleEnableButton: String {
+        t(en: "Enable widget and automatic restore", zh: "启用挂件与自动恢复")
+    }
+    static var codexCapsuleLaunchButton: String {
+        t(en: "Open Codex and enable widget", zh: "打开 Codex 并启用挂件")
+    }
+    static var codexCapsuleRestartButton: String {
+        t(en: "Restart Codex with widget", zh: "重新打开 Codex 并启用挂件")
+    }
+    static var codexCapsuleMultipleInstancesRetryButton: String {
+        t(en: "Close extras, then retry", zh: "关闭多余实例后重试")
+    }
+    static var codexCapsuleRetryButton: String {
+        t(en: "Try again", zh: "再次尝试")
+    }
+    static var codexCapsuleDisableButton: String {
+        t(en: "Remove widget", zh: "移除挂件")
+    }
+    static var codexCapsuleCancelButton: String {
+        t(en: "Cancel", zh: "取消")
+    }
+    static var codexCapsuleWeekly: String { t(en: "weekly", zh: "每周") }
+    static var codexCapsuleTitle: String { t(en: "Codex weekly", zh: "Codex 每周额度") }
+    static func codexCapsuleRemaining(_ percent: Int) -> String {
+        t(en: "\(percent)% left", zh: "剩余 \(percent)%")
+    }
+    static func codexCapsuleUsed(_ percent: Int) -> String {
+        t(en: "\(percent)% used", zh: "已用 \(percent)%")
+    }
+    static var codexCapsuleResets: String { t(en: "Resets", zh: "重置于") }
+    static var codexCapsuleLive: String { t(en: "Live", zh: "实时") }
+    static var codexCapsuleStale: String { t(en: "Stale", zh: "已过期") }
+    static var codexCapsuleUnavailable: String { t(en: "Unavailable", zh: "暂不可用") }
+    static var codexCapsuleUnavailableHelp: String {
+        t(en: "Weekly quota is not available yet. Refresh Quota Monitor after signing in to Codex.",
+          zh: "暂未取得每周额度。登录 Codex 后刷新 Quota Monitor。")
+    }
+
     // MARK: - menu-bar label style
 
     static var menuBarStyleLabel: String { t(en: "Menu bar style", zh: "菜单栏样式") }
@@ -336,6 +444,9 @@ enum L10n {
     static var scanIndexingTitle: String {
         t(en: "Scanning local history", zh: "正在扫描本地记录")
     }
+    static var scanUpdatingFiles: String {
+        t(en: "Updating changed files", zh: "正在更新变更文件")
+    }
     static func scanProgressSummary(completed: Int, total: Int) -> String {
         if total > 0 {
             return t(en: "\(completed)/\(total) files processed",
@@ -522,6 +633,9 @@ enum L10n {
     static var dailyCacheHitRateTitle: String {
         t(en: "Daily cache hit rate", zh: "每日缓存命中率")
     }
+    static var cacheHitRateToday: String {
+        t(en: "Today", zh: "今日")
+    }
     static func cacheHitRateWeightedWindow(period: String, rate: String) -> String {
         t(en: "\(period) weighted · \(rate)",
           zh: "\(period)加权 · \(rate)")
@@ -535,8 +649,8 @@ enum L10n {
           zh: "按缓存读取 Token 总量除以可缓存输入 Token 总量计算，不是每日百分比的平均值。")
     }
     static var cacheHitRateCalendarWindowHelp: String {
-        t(en: "The 7- and 30-day periods include today and the previous 6 or 29 local calendar days. Today is partial up to now.",
-          zh: "近 7 天和近 30 天包含今天及此前 6 天或 29 个本地自然日；今天统计截至当前时刻。")
+        t(en: "Today covers the current local calendar day up to now. The 7- and 30-day periods include today and the previous 6 or 29 local calendar days.",
+          zh: "今日统计覆盖当前本地自然日截至此刻；近 7 天和近 30 天包含今天及此前 6 天或 29 个本地自然日。")
     }
     static func trendsTodayShort(_ usd: String) -> String {
         t(en: "Today \(usd)", zh: "今日 \(usd)")
@@ -756,6 +870,39 @@ enum L10n {
     static var updatesCheckNow: String { t(en: "Check Now", zh: "立即检查") }
     static var updatesLastCheckedLabel: String { t(en: "Last checked", zh: "上次检查") }
     static var updatesNeverChecked: String { t(en: "Never", zh: "从未检查") }
+    static var updateChannelLabel: String { t(en: "Update channel", zh: "更新渠道") }
+    static var updateChannelStable: String { t(en: "Stable", zh: "稳定版") }
+    static var updateChannelPrivateBeta: String {
+        t(en: "Private Beta", zh: "私有 Beta")
+    }
+    static var privateBetaEnrollmentCode: String {
+        t(en: "One-time enrollment code", zh: "一次性授权码")
+    }
+    static var privateBetaEnroll: String { t(en: "Enroll This Mac", zh: "授权此 Mac") }
+    static var privateBetaEnrolling: String { t(en: "Enrolling…", zh: "正在授权…") }
+    static var privateBetaEnrolled: String {
+        t(en: "This Mac is authorized for Private Beta updates.",
+          zh: "此 Mac 已获私有 Beta 更新权限。")
+    }
+    static var privateBetaLeave: String {
+        t(en: "Leave Private Beta", zh: "退出私有 Beta")
+    }
+    static var privateBetaEnrollmentRequired: String {
+        t(en: "Enter a valid one-time code before selecting Private Beta.",
+          zh: "选择私有 Beta 前，请输入有效的一次性授权码。")
+    }
+    static var privateBetaEnrollmentRejected: String {
+        t(en: "The enrollment code is invalid, expired, or already used.",
+          zh: "授权码无效、已过期或已经使用。")
+    }
+    static var privateBetaEnrollmentFailed: String {
+        t(en: "Private Beta enrollment returned an invalid response.",
+          zh: "私有 Beta 授权返回了无效响应。")
+    }
+    static var privateBetaEnrollmentSucceeded: String {
+        t(en: "Private Beta enabled. Checking for updates now.",
+          zh: "私有 Beta 已启用，正在检查更新。")
+    }
     static func updateBadgeTitle(_ version: String?) -> String {
         if let version, !version.isEmpty {
             return t(en: "Update to \(version)", zh: "更新到 \(version)")
@@ -826,6 +973,43 @@ enum L10n {
     }
     static var updateLoadingReleaseNotes: String {
         t(en: "Loading release notes\u{2026}", zh: "正在加载更新说明\u{2026}")
+    }
+
+    // MARK: - What's New showcase
+
+    static var whatsNewWindowTitle: String {
+        t(en: "What's New", zh: "近期新功能")
+    }
+    static var whatsNewMenuItem: String {
+        t(en: "What's New…", zh: "近期新功能…")
+    }
+    static var whatsNewMenuTooltip: String {
+        t(en: "See recent product highlights.", zh: "查看近期的重要功能。")
+    }
+    static var whatsNewSettingsRow: String {
+        t(en: "Product highlights", zh: "功能亮点")
+    }
+    static var whatsNewOpen: String {
+        t(en: "View What's New…", zh: "查看近期新功能…")
+    }
+    static func whatsNewVersion(_ version: String) -> String {
+        t(en: "Version \(version)", zh: "版本 \(version)")
+    }
+    static var whatsNewPrevious: String { t(en: "Back", zh: "上一页") }
+    static var whatsNewNext: String { t(en: "Next", zh: "下一页") }
+    static var whatsNewDone: String { t(en: "Done", zh: "完成") }
+    static func whatsNewPage(_ current: Int, of total: Int) -> String {
+        t(en: "Page \(current) of \(total)", zh: "第 \(current) 页，共 \(total) 页")
+    }
+    static var whatsNewMediaUnavailable: String {
+        t(en: "This preview isn't available.", zh: "此预览暂时无法显示。")
+    }
+    static var whatsNewPlayVideo: String {
+        t(en: "Play video", zh: "播放视频")
+    }
+    static var whatsNewReducedMotion: String {
+        t(en: "Automatic playback is off because Reduce Motion is enabled.",
+          zh: "已开启“减少动态效果”，因此不会自动播放。")
     }
 
     // language

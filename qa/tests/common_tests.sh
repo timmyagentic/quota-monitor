@@ -70,6 +70,19 @@ test_write_defaults() {
     [[ "$providers_done" == "1" ]] || fail "provider onboarding default was $providers_done"
 }
 
+test_write_defaults_can_enable_codex_sidebar_quota() {
+    local home
+    home="$(mktemp -d "${TMPDIR:-/tmp}/qm-qa-codex-capsule.XXXXXX")"
+    local domain="dev.tjzhou.QuotaMonitor.QACapsule.$RANDOM.$$"
+    trap 'HOME="$home" defaults delete "$domain" >/dev/null 2>&1 || true; rm -rf "$home"' RETURN
+
+    QM_QA_CODEX_SIDEBAR_QUOTA=1 qm_write_defaults "$home" "$domain"
+
+    local enabled
+    enabled="$(HOME="$home" defaults read "$domain" settings.codexSidebarQuotaEnabled)"
+    [[ "$enabled" == "1" ]] || fail "Codex sidebar quota QA override was $enabled"
+}
+
 test_refuses_installed_app_defaults_suite() {
     local source_home target_home source_domain report cleanup
     source_home="$(mktemp -d "${TMPDIR:-/tmp}/qm-source-prod-guard.XXXXXX")"
@@ -663,6 +676,8 @@ test_computer_qa_brief_includes_exact_app_target() {
         || fail "Computer Use brief must use the exact QA app path"
     grep -q 'cleanup-computer-use.sh' "$brief" \
         || fail "Computer Use cleanup command missing from target brief"
+    grep -q "What's New: verify image and video pages" "$brief" \
+        || fail "Computer Use brief missing What's New walkthrough"
 }
 
 test_real_data_computer_qa_brief_includes_exact_app_target() {
@@ -777,7 +792,7 @@ test_assert_artifact_contract_accepts_visual_fixture_steps() {
     "codexTokens": 290
   },
   "pid": 123,
-  "qaSteps": ["open-settings", "show-popover", "snapshot"],
+  "qaSteps": ["open-settings", "open-whats-new", "show-popover", "snapshot"],
   "settings": {
     "developerModeEnabled": true,
     "enabledProviders": ["claude", "codex"],
@@ -791,6 +806,7 @@ test_assert_artifact_contract_accepts_visual_fixture_steps() {
   "statusItemVisibility": "visible",
   "windows": [
     {"identifier": "dashboard", "isKeyWindow": false, "isVisible": true, "title": "Quota Monitor"},
+    {"identifier": "whats-new", "isKeyWindow": false, "isVisible": true, "title": "近期新功能"},
     {"identifier": "settings", "isKeyWindow": true, "isVisible": true, "title": "设置"}
   ]
 }
@@ -820,7 +836,21 @@ TEXT
         "/tmp/qm/.codex" \
         "/tmp/qm/Library/Application Support/QuotaMonitor/QAArtifacts"
 
-    qm_assert_artifact_contract "$dir" "zh-Hans" "open-settings,show-popover,snapshot"
+    qm_assert_artifact_contract \
+        "$dir" \
+        "zh-Hans" \
+        "open-settings,open-whats-new,show-popover,snapshot"
+
+    grep -v '"identifier": "whats-new"' "$dir/app-state.json" \
+        >"$dir/app-state-without-whats-new.json"
+    mv "$dir/app-state-without-whats-new.json" "$dir/app-state.json"
+    if qm_assert_artifact_contract \
+        "$dir" \
+        "zh-Hans" \
+        "open-settings,open-whats-new,show-popover,snapshot" \
+        >/dev/null 2>&1; then
+        fail "artifact contract accepted a missing requested What's New window"
+    fi
 }
 
 test_assert_artifact_contract_allows_incomplete_ax_with_warning() {
@@ -1125,6 +1155,7 @@ test_rejects_live_pricing_refresh_events() {
 }
 
 test_write_defaults
+test_write_defaults_can_enable_codex_sidebar_quota
 test_refuses_installed_app_defaults_suite
 test_accepts_custom_qa_defaults_suite
 test_write_real_data_defaults_copies_user_preferences_without_overrides

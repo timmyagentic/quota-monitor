@@ -20,6 +20,7 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     private let updateAvailability: PersistentUpdateAvailability
     private let onUpdateWindowClosed: @MainActor () -> Void
     private var installReplyIsActive = false
+    private var updateCheckIntent = UpdateCheckIntent()
     private lazy var windowController = UpdateWindowController(
         state: state,
         onWindowClosed: onUpdateWindowClosed)
@@ -43,15 +44,21 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     func installAvailableUpdateIfPossible() -> Bool {
         guard installReplyIsActive, state.onInstall != nil else { return false }
         switch state.phase {
-        case .updateAvailable, .readyToInstall:
-            windowController.show()
-            // `fireInstall()` consumes the sibling reply closures, so a window
-            // close right after this can't fire a second `.dismiss` reply.
+        case .updateAvailable:
+            updateAvailability.markCheckingForInstall()
             state.fireInstall()
+            return true
+        case .readyToInstall:
+            windowController.show()
             return true
         default:
             return false
         }
+    }
+
+    func prepareDirectInstallRediscovery() {
+        updateCheckIntent.requestDirectInstall()
+        updateAvailability.markCheckingForInstall()
     }
 
     private static let log = Logger(
@@ -90,20 +97,24 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         state.reset()
         state.phase = .checking
         state.onCancel = cancellation
-        windowController.show()
+        if updateCheckIntent.presentsCheckingUI {
+            windowController.show()
+        }
     }
 
     func showUpdateFound(
         with appcastItem: SUAppcastItem,
-        state: SPUUserUpdateState,
+        state userState: SPUUserUpdateState,
         reply: @escaping (SPUUserUpdateChoice) -> Void
     ) {
+        let discoveryAction = updateCheckIntent.consumeDiscovery()
         let presentation = updateAvailability.recordDiscovery(
             internalVersion: appcastItem.versionString,
             displayVersion: appcastItem.displayVersionString,
-            userInitiated: state.userInitiated)
+            userInitiated: userState.userInitiated)
         if presentation == .dismissSilently {
             installReplyIsActive = false
+            updateAvailability.clearActivity()
             reply(.dismiss)
             return
         }
@@ -118,6 +129,37 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         s.currentVersion = Bundle.main.infoDictionary?[
             "CFBundleShortVersionString"] as? String ?? "?"
         s.isCritical = appcastItem.isCriticalUpdate
+
+        // Recovered installing updates behave like a fast Install & Relaunch
+        // when Sparkle receives `.install`. Always restore the relaunch prompt
+        // first so a badge click never terminates the app without warning.
+        if userState.stage == .installing {
+            updateAvailability.markReadyToInstall(version: displayVersion)
+            s.phase = .readyToInstall
+            s.onInstall = { [weak self] in
+                self?.installReplyIsActive = false
+                reply(.install)
+            }
+            s.onDismiss = { [weak self, updateAvailability] in
+                self?.installReplyIsActive = false
+                updateAvailability.markLater()
+                reply(.dismiss)
+            }
+            if userState.userInitiated {
+                windowController.show()
+            }
+            return
+        }
+
+        switch discoveryAction {
+        case .installAvailableUpdate:
+            installReplyIsActive = false
+            updateAvailability.markCheckingForInstall()
+            reply(.install)
+            return
+        case .manual:
+            break
+        }
 
         // Build the full HTML document for the WKWebView — but only when the
         // appcast item actually carried a description. An empty/missing
@@ -152,7 +194,9 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
             reply(.dismiss)
         }
 
-        windowController.show()
+        if userState.userInitiated {
+            windowController.show()
+        }
     }
 
     func showUpdateReleaseNotes(with downloadData: SPUDownloadData) {
@@ -185,6 +229,7 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         _ error: Error,
         acknowledgement: @escaping () -> Void
     ) {
+        updateCheckIntent.reset()
         updateAvailability.clear()
         installReplyIsActive = false
         state.reset()
@@ -205,6 +250,8 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         _ error: Error,
         acknowledgement: @escaping () -> Void
     ) {
+        updateCheckIntent.reset()
+        updateAvailability.clearActivity()
         installReplyIsActive = false
         state.reset()
         state.phase = .error(error.localizedDescription)
@@ -213,6 +260,7 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     }
 
     func showDownloadInitiated(cancellation: @escaping () -> Void) {
+        updateAvailability.markDownloading()
         state.phase = .downloading
         state.totalBytes = 0
         state.downloadedBytes = 0
@@ -234,6 +282,7 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
         // until extraction begins. Drop it before entering the non-cancellable
         // phase so no later UI path can invoke an expired callback.
         state.onCancel = nil
+        updateAvailability.markExtracting()
         state.phase = .extracting
         state.extractionProgress = 0
     }
@@ -255,12 +304,14 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
             updateAvailability.markLater()
             reply(.dismiss)
         }
+        windowController.show()
     }
 
     func showInstallingUpdate(
         withApplicationTerminated applicationTerminated: Bool,
         retryTerminatingApplication: @escaping () -> Void
     ) {
+        updateAvailability.markInstalling()
         state.phase = .installing
     }
 
@@ -276,6 +327,8 @@ final class CustomUserDriver: NSObject, SPUUserDriver {
     }
 
     func dismissUpdateInstallation() {
+        updateCheckIntent.reset()
+        updateAvailability.clearActivity()
         installReplyIsActive = false
         state.reset()
         windowController.close()

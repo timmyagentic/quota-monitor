@@ -96,12 +96,9 @@ struct MenuBarContentView: View {
                 // whether `refreshClaudeUsage()` actually goes through,
                 // so spam-clicking can't earn a 429.
                 //
-                // Button busy state is bound to `env.isScanning` — same
-                // source of truth as `ScanStatusView`'s progress bar.
-                // That way the button label and the progress bar appear
-                // / disappear together: if there's a progress bar, the
-                // button says "Refreshing…"; if the button says
-                // "Refresh", there's no progress bar.
+                // Button busy state stays bound to the shared scan lifecycle.
+                // Launch/onboarding imports can show the detailed progress row;
+                // routine refreshes use only the compact header activity icon.
                 //
                 // We deliberately don't OR in `isRefreshingRateLimits`:
                 // that call is sub-second and has its own ProgressView
@@ -184,8 +181,14 @@ struct MenuBarContentView: View {
             if updater.updateAvailability.isVisible {
                 PersistentUpdateBadge()
             }
-            if env.isLoadingMenuBar {
-                ProgressView().controlSize(.small)
+            if env.isScanning && env.scanPresentation == .compactActivity {
+                ProgressView()
+                    .controlSize(.small)
+                    .help(L10n.scanUpdatingFiles)
+                    .accessibilityLabel(L10n.scanUpdatingFiles)
+            } else if env.isLoadingMenuBar {
+                ProgressView()
+                    .controlSize(.small)
             }
         }
     }

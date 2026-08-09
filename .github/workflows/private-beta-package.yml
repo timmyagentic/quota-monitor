@@ -1,0 +1,310 @@
+name: private-beta-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact commit on main to package
+        required: true
+        type: string
+      beta_sequence:
+        description: Private Beta sequence (1-8999)
+        required: true
+        type: number
+      recipient_certificate_base64:
+        description: Base64 PEM certificate for one-time package encryption
+        required: true
+        type: string
+
+# This workflow never publishes a release or a feed. It can only read source,
+# and its sole downloadable output is encrypted to a maintainer-owned one-time
+# certificate whose private key never enters GitHub.
+permissions:
+  contents: read
+
+concurrency:
+  group: private-beta-package-${{ inputs.source_sha }}-${{ inputs.beta_sequence }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - name: Validate required inputs and release secrets
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          BETA_SEQUENCE: ${{ inputs.beta_sequence }}
+          RECIPIENT_CERTIFICATE_BASE64: ${{ inputs.recipient_certificate_base64 }}
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::source_sha must be an exact 40-character commit SHA"
+            exit 2
+          fi
+          if [[ ! "${BETA_SEQUENCE}" =~ ^[0-9]+$ ]] \
+             || (( BETA_SEQUENCE < 1 || BETA_SEQUENCE > 8999 )); then
+            echo "::error::beta_sequence must be between 1 and 8999"
+            exit 2
+          fi
+
+          required=(
+            RECIPIENT_CERTIFICATE_BASE64
+            DEVELOPER_ID_CERTIFICATE_BASE64
+            DEVELOPER_ID_CERTIFICATE_PASSWORD
+            APPLE_ID
+            APPLE_TEAM_ID
+            APPLE_APP_SPECIFIC_PASSWORD
+          )
+          missing=0
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::required private Beta package input or secret ${name} is missing"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate source ownership and checkout exact commit
+        id: source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          normalized_sha="$(printf '%s' "${SOURCE_SHA}" | tr '[:upper:]' '[:lower:]')"
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git cat-file -e "${normalized_sha}^{commit}"
+          if ! git merge-base --is-ancestor "${normalized_sha}" origin/main; then
+            echo "::error::source_sha is not an ancestor of origin/main"
+            exit 1
+          fi
+          git checkout --detach "${normalized_sha}"
+          test "$(git rev-parse HEAD)" = "${normalized_sha}"
+          test -z "$(git status --porcelain)"
+          echo "sha=${normalized_sha}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Provision authenticated-encryption tooling
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! brew list --versions openssl@3 >/dev/null 2>&1; then
+            brew install openssl@3
+          fi
+          openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+          test -x "${openssl_bin}"
+          "${openssl_bin}" version | grep -E '^OpenSSL 3\.'
+
+      - name: Validate one-time recipient certificate
+        env:
+          RECIPIENT_CERTIFICATE_BASE64: ${{ inputs.recipient_certificate_base64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+          test -x "${openssl_bin}"
+          recipient_certificate="${RUNNER_TEMP}/private-beta-recipient.pem"
+          printf '%s' "${RECIPIENT_CERTIFICATE_BASE64}" | base64 -D > "${recipient_certificate}"
+          "${openssl_bin}" x509 -in "${recipient_certificate}" -noout >/dev/null
+          public_key_bits="$(
+            "${openssl_bin}" x509 -in "${recipient_certificate}" -pubkey -noout \
+              | "${openssl_bin}" pkey -pubin -text -noout \
+              | sed -n 's/.*Public-Key: (\([0-9][0-9]*\) bit).*/\1/p'
+          )"
+          if [[ -z "${public_key_bits}" ]] || (( public_key_bits < 3072 )); then
+            echo "::error::recipient certificate must contain an RSA key of at least 3072 bits"
+            exit 1
+          fi
+          chmod 600 "${recipient_certificate}"
+
+      - name: Import Developer ID certificate
+        id: signing
+        env:
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="${RUNNER_TEMP}/developer-id-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          certificate_path="${RUNNER_TEMP}/developer-id.p12"
+
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security list-keychains -d user -s "${keychain_path}"
+          security default-keychain -s "${keychain_path}"
+
+          printf '%s' "${DEVELOPER_ID_CERTIFICATE_BASE64}" | base64 -D > "${certificate_path}"
+          security import "${certificate_path}" \
+            -k "${keychain_path}" \
+            -P "${DEVELOPER_ID_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "${keychain_password}" "${keychain_path}"
+
+          security find-identity -v -p codesigning "${keychain_path}"
+          if [[ -n "${DEVELOPER_ID_APPLICATION}" ]] \
+             && ! security find-identity -v -p codesigning "${keychain_path}" \
+               | grep -Fq "${DEVELOPER_ID_APPLICATION}"; then
+            echo "::error::DEVELOPER_ID_APPLICATION does not match the imported identity"
+            exit 1
+          fi
+          echo "keychain_path=${keychain_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build, sign, and notarize Private Beta
+        env:
+          QM_RELEASE_CHANNEL: private-beta
+          QM_BETA_SEQUENCE: ${{ inputs.beta_sequence }}
+          QM_RELEASE_SIGNING: developer-id
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          NOTARYTOOL_TIMEOUT: 2h
+        run: ./tools/release.sh --force
+
+      - name: Verify exact packaged build
+        id: package
+        env:
+          BETA_SEQUENCE: ${{ inputs.beta_sequence }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < Resources/VERSION)"
+          display_version="${version}-beta.${BETA_SEQUENCE}"
+          build_number="$(python3 tools/build-number.py "${version}" \
+            --channel private-beta --beta-sequence "${BETA_SEQUENCE}")"
+          dmg="dist/QuotaMonitor-${display_version}.dmg"
+          checksum="${dmg}.sha256"
+          app_plist=".build/QuotaMonitor.app/Contents/Info.plist"
+
+          test -f "${dmg}"
+          test -f "${checksum}"
+          test "$(awk '{print $1}' "${checksum}")" = \
+            "$(shasum -a 256 "${dmg}" | awk '{print $1}')"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${app_plist}")" = \
+            "${display_version}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${app_plist}")" = \
+            "${build_number}"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :BuildCommit' "${app_plist}")" = \
+            "$(git rev-parse --short "${SOURCE_SHA}")"
+          codesign --verify --deep --strict --verbose=2 .build/QuotaMonitor.app
+          spctl --assess --type execute --verbose=2 .build/QuotaMonitor.app
+          xcrun stapler validate .build/QuotaMonitor.app
+          xcrun stapler validate "${dmg}"
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "display_version=${display_version}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${build_number}" >> "${GITHUB_OUTPUT}"
+          echo "dmg=${dmg}" >> "${GITHUB_OUTPUT}"
+          echo "plaintext_sha256=$(shasum -a 256 "${dmg}" | awk '{print $1}')" >> "${GITHUB_OUTPUT}"
+          echo "plaintext_bytes=$(stat -f '%z' "${dmg}")" >> "${GITHUB_OUTPUT}"
+
+      - name: Encrypt package for one-time recipient
+        id: encrypt
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DISPLAY_VERSION: ${{ steps.package.outputs.display_version }}
+          BUILD_NUMBER: ${{ steps.package.outputs.build_number }}
+          DMG: ${{ steps.package.outputs.dmg }}
+          PLAINTEXT_SHA256: ${{ steps.package.outputs.plaintext_sha256 }}
+          PLAINTEXT_BYTES: ${{ steps.package.outputs.plaintext_bytes }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          openssl_bin="$(brew --prefix openssl@3)/bin/openssl"
+          recipient_certificate="${RUNNER_TEMP}/private-beta-recipient.pem"
+          output_directory="${RUNNER_TEMP}/private-beta-encrypted-output"
+          ciphertext="${output_directory}/QuotaMonitor-${DISPLAY_VERSION}.dmg.cms"
+          metadata="${output_directory}/QuotaMonitor-${DISPLAY_VERSION}.json"
+          mkdir -p "${output_directory}"
+
+          "${openssl_bin}" cms -encrypt -binary -aes-256-gcm \
+            -in "${DMG}" \
+            -out "${ciphertext}" \
+            -outform DER \
+            "${recipient_certificate}"
+          "${openssl_bin}" cms -cmsout -inform DER -in "${ciphertext}" -print >/dev/null
+
+          export CIPHERTEXT_NAME="$(basename "${ciphertext}")"
+          export CIPHERTEXT_SHA256="$(shasum -a 256 "${ciphertext}" | awk '{print $1}')"
+          export RECIPIENT_CERTIFICATE_SHA256="$(
+            "${openssl_bin}" x509 -in "${recipient_certificate}" -outform DER \
+              | shasum -a 256 | awk '{print $1}'
+          )"
+          python3 - "${metadata}" <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          payload = {
+              "schemaVersion": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "sourceSHA": os.environ["SOURCE_SHA"],
+              "displayVersion": os.environ["DISPLAY_VERSION"],
+              "buildNumber": int(os.environ["BUILD_NUMBER"]),
+              "artifactName": Path(os.environ["DMG"]).name,
+              "plaintextSHA256": os.environ["PLAINTEXT_SHA256"],
+              "plaintextBytes": int(os.environ["PLAINTEXT_BYTES"]),
+              "ciphertextName": os.environ["CIPHERTEXT_NAME"],
+              "ciphertextSHA256": os.environ["CIPHERTEXT_SHA256"],
+              "encryption": "CMS AuthEnvelopedData AES-256-GCM",
+              "recipientCertificateSHA256": os.environ[
+                  "RECIPIENT_CERTIFICATE_SHA256"
+              ],
+          }
+          Path(sys.argv[1]).write_text(
+              json.dumps(payload, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+          test "$(find "${output_directory}" -maxdepth 1 -type f | wc -l | tr -d ' ')" = 2
+          test -z "$(find "${output_directory}" -maxdepth 1 -type f \
+            ! -name '*.cms' ! -name '*.json' -print)"
+          echo "ciphertext=${ciphertext}" >> "${GITHUB_OUTPUT}"
+          echo "metadata=${metadata}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload encrypted package only
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: private-beta-${{ steps.package.outputs.display_version }}-${{ steps.source.outputs.short_sha }}
+          path: |
+            ${{ steps.encrypt.outputs.ciphertext }}
+            ${{ steps.encrypt.outputs.metadata }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+          include-hidden-files: false
+
+      - name: Remove temporary signing material
+        if: ${{ always() }}
+        env:
+          KEYCHAIN_PATH: ${{ steps.signing.outputs.keychain_path }}
+        shell: bash
+        run: |
+          if [[ -n "${KEYCHAIN_PATH:-}" ]]; then
+            security delete-keychain "${KEYCHAIN_PATH}" || true
+          fi
+          rm -f \
+            "${RUNNER_TEMP}/developer-id.p12" \
+            "${RUNNER_TEMP}/private-beta-recipient.pem"

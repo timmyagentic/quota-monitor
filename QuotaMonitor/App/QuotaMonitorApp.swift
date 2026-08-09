@@ -3,7 +3,7 @@ import SwiftUI
 @main
 struct QuotaMonitorApp: App {
     // The AppDelegate owns the whole AppKit shell: the NSStatusItem (which
-    // replaced MenuBarExtra), the four app windows (via WindowManager), and the
+    // replaced MenuBarExtra), the five app windows (via WindowManager), and the
     // launch-time discoverability orchestration. Shared state is reached through
     // the `.shared` singletons directly (AppEnvironment / LocalizationStore /
     // SettingsStore) — WindowManager injects them into each window's
@@ -48,7 +48,8 @@ struct QuotaMonitorApp: App {
     var body: some Scene {
         // The whole shell is AppKit-owned: the menu-bar presence is an
         // `NSStatusItem` (`StatusItemController`), and the four real app
-        // windows — onboarding / dashboard / settings / menubar-help — are
+        // windows — onboarding / dashboard / settings / menubar-help /
+        // whats-new — are
         // `NSWindowController`s managed by `WindowManager`, hosting these same
         // SwiftUI views via `NSHostingController`. AppKit code and SwiftUI
         // views all open windows through `WindowManager.show(_:)`; there is no
