@@ -52,9 +52,6 @@ struct SessionRowMetadataView: View {
 
     private func formatRelative(_ iso: String) -> String {
         guard let date = ISO8601.parse(iso) else { return iso }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.locale = LocalizationStore.activeLanguage.locale
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return LocalizedDateFormatting.relativeString(for: date)
     }
 }
