@@ -14,6 +14,10 @@ actor ImportEngine {
     private let securityScopedAccess: any SecurityScopedResourceAccessing
     private let maxCheckpointBytes: Int
     private var warnedOversizedSources: Set<RolloutSourceIdentity> = []
+    private var cachedCodexSessionMetadata: (
+        fingerprint: CodexSessionMetadataSourceFingerprint,
+        metadata: [String: CodexSessionMetadata]
+    )?
 
     private struct ProbedSource {
         let file: SessionFile
@@ -154,13 +158,34 @@ actor ImportEngine {
         }
         var errors: [String] = []
 
+        let metadataFingerprint = try? CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
         let codexMetadata: [String: CodexSessionMetadata]
-        do {
-            codexMetadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
-        } catch {
-            codexMetadata = [:]
+        let updatedSessionMetadata: Int
+        let sessionMetadataCacheHit: Bool
+        if let metadataFingerprint,
+           let cached = cachedCodexSessionMetadata,
+           cached.fingerprint == metadataFingerprint {
+            codexMetadata = cached.metadata
+            updatedSessionMetadata = 0
+            sessionMetadataCacheHit = true
+        } else {
+            let loadResult = CodexSessionMetadataStore.loadResult(codexHome: codexHome)
+            codexMetadata = loadResult.metadata
+            updatedSessionMetadata = try await backfillCodexSessionMetadata(codexMetadata)
+            let fingerprintAfterLoad = try? CodexSessionMetadataStore.sourceFingerprint(
+                codexHome: codexHome)
+            if loadResult.isComplete,
+               let metadataFingerprint,
+               fingerprintAfterLoad == metadataFingerprint {
+                cachedCodexSessionMetadata = (
+                    fingerprint: metadataFingerprint,
+                    metadata: codexMetadata)
+            } else {
+                cachedCodexSessionMetadata = nil
+            }
+            sessionMetadataCacheHit = false
         }
-        let updatedSessionMetadata = try await backfillCodexSessionMetadata(codexMetadata)
 
         // Source paths of Codex sessions still missing project metadata —
         // re-parse them so the split metadata columns can be backfilled
@@ -376,6 +401,7 @@ actor ImportEngine {
                 "imported_events": .int(report.importedEvents),
                 "imported_rate_limit_samples": .int(report.importedRateLimitSamples),
                 "updated_session_metadata": .int(report.updatedSessionMetadata),
+                "session_metadata_cache_hit": .bool(sessionMetadataCacheHit),
                 "incremental_files": .int(report.incrementalFiles),
                 "source_bytes_read": .int(Int(report.sourceBytesRead)),
                 "errors": .int(report.errors.count)

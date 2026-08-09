@@ -205,6 +205,44 @@ struct SessionTitleProjectMetadataTests {
         #expect(metadata["s1"]?.title == "梳理项目现状")
     }
 
+    @Test("Codex metadata fingerprint detects index replacement and WAL changes")
+    func codexMetadataFingerprintTracksSourceChanges() throws {
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+
+        let missingFingerprint = try CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
+        let sessionIndex = codexHome.appendingPathComponent("session_index.jsonl")
+        try """
+        {"id":"s1","thread_name":"A"}
+        """.write(to: sessionIndex, atomically: true, encoding: .utf8)
+        let firstFingerprint = try CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
+        #expect(firstFingerprint != missingFingerprint)
+
+        try """
+        {"id":"s1","thread_name":"B"}
+        """.write(to: sessionIndex, atomically: true, encoding: .utf8)
+        let replacedFingerprint = try CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
+        #expect(replacedFingerprint != firstFingerprint)
+
+        let wal = URL(fileURLWithPath: stateDatabaseURL(codexHome: codexHome).path + "-wal")
+        try FileManager.default.createDirectory(
+            at: wal.deletingLastPathComponent(),
+            withIntermediateDirectories: true)
+        try Data([0x01]).write(to: wal)
+        let walFingerprint = try CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
+        #expect(walFingerprint != replacedFingerprint)
+
+        try Data([0x01, 0x02]).write(to: wal)
+        let changedWALFingerprint = try CodexSessionMetadataStore.sourceFingerprint(
+            codexHome: codexHome)
+        #expect(changedWALFingerprint != walFingerprint)
+    }
+
     @Test("Codex metadata store combines session_index title with state cwd")
     func codexMetadataCombinesSessionIndexTitleWithStateCwd() throws {
         let codexHome = FileManager.default.temporaryDirectory
@@ -356,8 +394,9 @@ struct SessionTitleProjectMetadataTests {
             try conn.execute(sql: "CREATE TABLE unrelated (id TEXT PRIMARY KEY)")
         }
 
-        let metadata = try CodexSessionMetadataStore.load(codexHome: codexHome)
-        #expect(metadata["s1"]?.title == "session index title")
+        let loadResult = CodexSessionMetadataStore.loadResult(codexHome: codexHome)
+        #expect(loadResult.metadata["s1"]?.title == "session index title")
+        #expect(!loadResult.isComplete)
     }
 
     @Test("Claude parser uses ai-title as session title and cwd as project metadata")
