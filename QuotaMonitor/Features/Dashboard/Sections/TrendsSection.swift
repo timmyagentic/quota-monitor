@@ -6,6 +6,8 @@ import Charts
 /// today / 7d / 30d so the panel remains useful for both tokens and cost.
 struct TrendsSection: View {
     @Environment(SettingsStore.self) private var settings
+    @Environment(LocalizationStore.self) private var localization
+    @Environment(\.calendar) private var calendar
 
     let dailyExtended: [DailyPoint]
     let providerBreakdown: [DailyBreakdownPoint]
@@ -14,6 +16,7 @@ struct TrendsSection: View {
     @State private var range: TrendRange = .last30d
     @State private var stackBy: TrendStack = .provider
     @State private var selectedDay: Date?
+    @State private var seriesDerivation = TrendSeriesDerivationCache()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -31,8 +34,10 @@ struct TrendsSection: View {
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, minHeight: 260)
             } else {
-                stackedBars
-                trendLegend
+                let activeSeries = seriesDerivation.series(
+                    for: seriesDerivationInput)
+                stackedBars(activeSeries: activeSeries)
+                trendLegend(activeSeries: activeSeries)
                 statline
             }
         }
@@ -90,7 +95,9 @@ struct TrendsSection: View {
 
     // MARK: - chart
 
-    private var stackedBars: some View {
+    private func stackedBars(
+        activeSeries: [DailyBreakdownPoint]
+    ) -> some View {
         Chart {
             ForEach(activeSeries) { point in
                 BarMark(
@@ -142,7 +149,7 @@ struct TrendsSection: View {
                 .accessibilityHidden(true)
             }
 
-            if let selection = selectedTrendSelection {
+            if let selection = selectedTrendSelection(in: activeSeries) {
                 RuleMark(x: .value(L10n.chartAxisDay, selection.date, unit: .day))
                     .foregroundStyle(Color.primary.opacity(0.22))
                     .annotation(
@@ -203,9 +210,11 @@ struct TrendsSection: View {
 
     // MARK: - legend + tooltips
 
-    private var trendLegend: some View {
+    private func trendLegend(
+        activeSeries: [DailyBreakdownPoint]
+    ) -> some View {
         VStack(spacing: 2) {
-            ForEach(legendRows) { row in
+            ForEach(legendRows(for: activeSeries)) { row in
                 HStack(spacing: 10) {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(row.color)
@@ -317,7 +326,6 @@ struct TrendsSection: View {
 
     private var selectedCacheDay: DailyPoint? {
         guard let selectedDay else { return nil }
-        let calendar = Calendar.current
         return windowedDaily.first {
             calendar.isDate($0.date, inSameDayAs: selectedDay)
         }
@@ -325,7 +333,6 @@ struct TrendsSection: View {
 
     private var selectedCacheTrendPoint: CacheTrendPoint? {
         guard let selectedDay else { return nil }
-        let calendar = Calendar.current
         return cacheTrendPoints.first {
             calendar.isDate($0.date, inSameDayAs: selectedDay)
         }
@@ -356,20 +363,22 @@ struct TrendsSection: View {
         ].joined(separator: " · ")
     }
 
-    private var activeSeries: [DailyBreakdownPoint] {
-        let calendar = Calendar.current
-        let days = Set(windowedDaily.map { calendar.startOfDay(for: $0.date) })
-        let raw = (stackBy == .provider ? providerBreakdown : modelBreakdown)
-            .filter { days.contains(calendar.startOfDay(for: $0.date)) }
-
-        guard stackBy == .model else { return raw }
-        return TrendSeriesBuilder.collapsedModelSeries(raw)
+    private var seriesDerivationInput: TrendSeriesDerivationInput {
+        TrendSeriesDerivationInput(
+            dailyExtended: dailyExtended,
+            providerBreakdown: providerBreakdown,
+            modelBreakdown: modelBreakdown,
+            rangeDays: range.days,
+            grouping: stackBy.grouping,
+            calendar: calendar,
+            activeLanguageIdentifier: localization.currentLanguage.rawValue,
+            otherLabel: L10n.trendsOtherSeries)
     }
 
     private var xDomain: ClosedRange<Date> {
         if let domain = TrendChartDomain.domain(
             for: windowedDaily.map(\.date),
-            calendar: .current
+            calendar: calendar
         ) {
             return domain
         }
@@ -377,9 +386,10 @@ struct TrendsSection: View {
         return now...now
     }
 
-    private var selectedTrendSelection: TrendSelection? {
+    private func selectedTrendSelection(
+        in activeSeries: [DailyBreakdownPoint]
+    ) -> TrendSelection? {
         guard let selectedDay else { return nil }
-        let calendar = Calendar.current
         let selectedStart = calendar.startOfDay(for: selectedDay)
         let rows = activeSeries
             .filter { calendar.isDate($0.date, inSameDayAs: selectedStart) }
@@ -399,7 +409,9 @@ struct TrendsSection: View {
             cacheUsage: selectedCacheDay?.cacheUsage ?? .zero)
     }
 
-    private var legendRows: [TrendLegendRow] {
+    private func legendRows(
+        for activeSeries: [DailyBreakdownPoint]
+    ) -> [TrendLegendRow] {
         let grouped = Dictionary(grouping: activeSeries, by: \.key)
         let total = max(activeSeries.reduce(Int64(0)) { $0 + $1.tokens }, 1)
         return grouped.map { key, rows in
@@ -493,8 +505,61 @@ enum TrendChartDomain {
     }
 }
 
+struct TrendSeriesDerivationInput: Equatable {
+    let dailyExtended: [DailyPoint]
+    let providerBreakdown: [DailyBreakdownPoint]
+    let modelBreakdown: [DailyBreakdownPoint]
+    let rangeDays: Int
+    let grouping: TrendBreakdownGrouping
+    let calendar: Calendar
+    let activeLanguageIdentifier: String
+    let otherLabel: String
+}
+
+final class TrendSeriesDerivationCache {
+    private var cachedInput: TrendSeriesDerivationInput?
+    private var cachedSeries: [DailyBreakdownPoint] = []
+    private(set) var derivationCount = 0
+
+    func series(
+        for input: TrendSeriesDerivationInput
+    ) -> [DailyBreakdownPoint] {
+        guard cachedInput != input else { return cachedSeries }
+
+        let series = TrendSeriesBuilder.activeSeries(for: input)
+        cachedInput = input
+        cachedSeries = series
+        derivationCount += 1
+        return series
+    }
+}
+
 enum TrendSeriesBuilder {
     static let otherKey = "__other__"
+
+    static func activeSeries(
+        for input: TrendSeriesDerivationInput
+    ) -> [DailyBreakdownPoint] {
+        let calendar = input.calendar
+        let days = Set(input.dailyExtended.suffix(input.rangeDays).map {
+            calendar.startOfDay(for: $0.date)
+        })
+        let breakdown: [DailyBreakdownPoint]
+        switch input.grouping {
+        case .provider:
+            breakdown = input.providerBreakdown
+        case .model:
+            breakdown = input.modelBreakdown
+        }
+        let raw = breakdown.filter {
+            days.contains(calendar.startOfDay(for: $0.date))
+        }
+
+        guard input.grouping == .model else { return raw }
+        return TrendSeriesBuilder.collapsedModelSeries(
+            raw,
+            otherLabel: input.otherLabel)
+    }
 
     static func collapsedModelSeries(
         _ raw: [DailyBreakdownPoint],
@@ -612,6 +677,13 @@ private enum TrendStack: CaseIterable, Identifiable {
     case model
 
     var id: Self { self }
+
+    var grouping: TrendBreakdownGrouping {
+        switch self {
+        case .provider: return .provider
+        case .model: return .model
+        }
+    }
 
     var label: String {
         switch self {
