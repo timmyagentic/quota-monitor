@@ -244,7 +244,9 @@ struct TrendsSection: View {
 
     private func trendTooltip(_ selection: TrendSelection) -> some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(selection.date.formatted(.dateTime.month(.abbreviated).day()))
+            Text(LocalizedDateFormatting.string(
+                from: selection.date,
+                style: .monthDay))
                 .font(.caption.weight(.semibold))
             Text(compactTokens(selection.totalTokens))
                 .font(.callout.monospacedDigit().weight(.semibold))
@@ -354,7 +356,9 @@ struct TrendsSection: View {
     }
 
     private func accessibilityDescription(for day: DailyPoint) -> String {
-        let date = day.date.formatted(.dateTime.month(.abbreviated).day())
+        let date = LocalizedDateFormatting.string(
+            from: day.date,
+            style: .monthDay)
         return [
             date,
             "\(L10n.kpiTokens) \(compactTokens(day.tokens))",

@@ -247,7 +247,9 @@ private struct DayRowView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack {
-                Text(day.date.formatted(.dateTime.weekday(.short).month(.abbreviated).day()))
+                Text(LocalizedDateFormatting.string(
+                    from: day.date,
+                    style: .abbreviatedWeekdayMonthDay))
                     .font(.body.weight(.medium))
                 Spacer()
                 Text(day.valueUSD.formatted(.currency(code: "USD")))
@@ -293,8 +295,9 @@ private struct DayDetailView: View {
             .percent.precision(.fractionLength(1))) ?? "—"
 
         return VStack(alignment: .leading, spacing: 6) {
-            Text(detail.summary.date.formatted(
-                .dateTime.weekday(.wide).month(.wide).day().year()))
+            Text(LocalizedDateFormatting.string(
+                from: detail.summary.date,
+                style: .fullWeekdayMonthDayYear))
                 .font(.title2.bold())
 
             HStack(spacing: 14) {
@@ -495,9 +498,14 @@ private struct ExpandableSessionRow: View {
         let s = ISO8601.parse(started)
         let e = ended.flatMap { ISO8601.parse($0) }
         guard let s else { return "" }
-        let sStr = s.formatted(.dateTime.hour().minute())
+        let sStr = LocalizedDateFormatting.string(
+            from: s,
+            style: .shortTime)
         if let e, e.timeIntervalSince(s) > 60 {
-            return "\(sStr) – \(e.formatted(.dateTime.hour().minute()))"
+            let eStr = LocalizedDateFormatting.string(
+                from: e,
+                style: .shortTime)
+            return "\(sStr) – \(eStr)"
         }
         return sStr
     }
