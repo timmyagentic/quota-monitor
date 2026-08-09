@@ -108,10 +108,6 @@ enum L10n {
         t(en: "Hover or press to show quota and reset details.",
           zh: "悬停或按下可显示额度与重置详情。")
     }
-    static var codexOverlayDetailsCachedNotice: String {
-        t(en: "Showing the last saved quota while refreshing",
-          zh: "正在刷新，暂时显示上次额度")
-    }
     static func codexOverlayRemaining(_ percent: Int) -> String {
         t(en: "\(percent)% remaining", zh: "剩余 \(percent)%")
     }
@@ -124,11 +120,6 @@ enum L10n {
     static var codexOverlayResetRefreshing: String {
         t(en: "Resetting · refreshing", zh: "正在重置并刷新")
     }
-    static var codexOverlayLocalTimeNote: String {
-        t(en: "Times use local time (24-hour clock).",
-          zh: "时间均为本地时间（24 小时制）。")
-    }
-
     // MARK: - menu-bar label style
 
     static var menuBarStyleLabel: String { t(en: "Menu bar style", zh: "菜单栏样式") }

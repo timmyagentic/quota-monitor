@@ -12,6 +12,17 @@ SHA-256:
 - `native-overlay.png`: `62d8e1ac10e75ad64034085bcdede4cd114ecf6e74d4542533c4b311e1c52bd1`
 - `native-overlay-expanded.png`: `587d5ee2c44581ac9d749a7d14e1e780ef762c1b4f29766fdeb1b76f3ca60e08`
 
+`single-percentage-used.png` is a privacy-cropped screenshot from the isolated
+fixture QA build. With the app-wide quota setting on Used, each detail row
+keeps only its configured percentage in the top-right position and matches the
+menu popover's caption hierarchy and green/orange/red progress styling. The
+shared progress bar follows the same display direction, while redundant
+refresh and local-time notes are omitted. No account identity or unrelated
+conversation content is included.
+
+SHA-256:
+`36a5dc425352c2475fdaa58a06357117ac0048d3f0a3eecd9f5120814c496f43`
+
 ## Legacy reference
 
 These images document the superseded Chromium-injection implementation. They

@@ -12,8 +12,18 @@ struct CodexQuotaOverlayMetric: Equatable {
     let percent: Int
     let usedPercent: Int
     let remainingPercent: Int
+    let displayMode: SettingsStore.QuotaDisplayMode
     let resetAt: Date
     let severity: Severity
+
+    var localizedPercentLabel: String {
+        switch displayMode {
+        case .used:
+            L10n.codexOverlayUsed(percent)
+        case .remaining:
+            L10n.codexOverlayRemaining(percent)
+        }
+    }
 }
 
 struct CodexQuotaOverlayPresentation: Equatable {
@@ -76,6 +86,7 @@ struct CodexQuotaOverlayPresentation: Equatable {
             percent: Int(displayPercent.rounded()),
             usedPercent: Int(usedPercent.rounded()),
             remainingPercent: Int(remainingPercent.rounded()),
+            displayMode: displayMode,
             resetAt: window.resetAt,
             severity: severity)
     }
@@ -274,26 +285,19 @@ enum CodexQuotaOverlayLayout {
         guard windowCount > 0 else { return 0 }
 
         var height: CGFloat = 28
-        if presentation.isCached {
-            height += 22
-        }
-        height += CGFloat(windowCount) * 66
+        height += CGFloat(windowCount) * 42
         height += CGFloat(max(0, windowCount - 1)) * 17
 
         if let resetCredits {
-            height += 21 + 14
+            height += 21 + 18
             if !resetCredits.expirations.isEmpty {
-                height += 8
-                height += CGFloat(resetCredits.expirations.count) * 14
-                height += CGFloat(max(0, resetCredits.expirations.count - 1)) * 6
+                height += 3
+                height += CGFloat(resetCredits.expirations.count) * 13
+                height += CGFloat(max(0, resetCredits.expirations.count - 1)) * 4
             } else {
-                height += 20
+                height += 16
             }
         }
-
-        // Every absolute timestamp in the card uses local time, so keep the
-        // same explanatory footer the previous inline widget provided.
-        height += 22
         return ceil(max(104, height))
     }
 

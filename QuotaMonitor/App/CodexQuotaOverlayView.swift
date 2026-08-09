@@ -141,11 +141,6 @@ struct CodexQuotaOverlayDetailsView: View {
 
     let onHoverChanged: (Bool) -> Void
 
-    private let progressAccent = Color(
-        red: 0.94,
-        green: 0.46,
-        blue: 0.77)
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             let presentation = CodexQuotaOverlayPresentation.make(
@@ -160,11 +155,6 @@ struct CodexQuotaOverlayDetailsView: View {
 
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
-                    if presentation.isCached {
-                        cachedNotice
-                            .padding(.bottom, 8)
-                    }
-
                     if let fiveHour = presentation.fiveHour {
                         quotaWindow(
                             title: L10n.quotaCardTitle5h,
@@ -190,11 +180,6 @@ struct CodexQuotaOverlayDetailsView: View {
                             resetCredits,
                             now: context.date)
                     }
-
-                    Text(L10n.codexOverlayLocalTimeNote)
-                        .font(.system(size: 9.5, weight: .regular))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 10)
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -220,87 +205,61 @@ struct CodexQuotaOverlayDetailsView: View {
         }
     }
 
-    private var cachedNotice: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "clock.fill")
-                .font(.system(size: 8, weight: .semibold))
-            Text(L10n.codexOverlayDetailsCachedNotice)
-                .font(.system(size: 10, weight: .medium))
-        }
-        .foregroundStyle(.secondary)
-    }
-
     private func quotaWindow(
         title: String,
         metric: CodexQuotaOverlayMetric,
         now: Date
     ) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 Text(title)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                Text(L10n.codexOverlayRemaining(metric.remainingPercent))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.primary)
+                    .font(.caption.weight(.medium))
+                Spacer()
+                Text("\(metric.percent)%")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(quotaTintColor(metric))
+                    .accessibilityLabel(metric.localizedPercentLabel)
             }
-            .font(.system(size: 11))
 
-            Text(L10n.codexOverlayUsed(metric.usedPercent))
-                .font(.system(size: 10.5))
-                .foregroundStyle(.secondary)
+            QuotaUsageProgressBar(
+                value: Double(metric.percent) / 100,
+                usedPercent: Double(metric.usedPercent),
+                accessibilityText: metric.localizedPercentLabel)
 
-            Text(resetCountdown(for: metric, now: now))
-                .font(.system(size: 9.5).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-
-            Text(CodexQuotaOverlayTimeFormatting.localDateTime(
-                metric.resetAt))
-            .font(.system(size: 9.5).monospacedDigit())
+            HStack(spacing: 4) {
+                Text(resetCountdown(for: metric, now: now))
+                Spacer(minLength: 8)
+                Text(CodexQuotaOverlayTimeFormatting.localDateTime(
+                    metric.resetAt))
+            }
+            .font(.caption2)
             .foregroundStyle(.secondary)
             .lineLimit(1)
-
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.primary.opacity(0.10))
-                    Capsule()
-                        .fill(progressAccent)
-                        .frame(
-                            width: geometry.size.width
-                                * CGFloat(metric.remainingPercent) / 100)
-                }
-            }
-            .frame(height: 4)
-            .accessibilityElement()
-            .accessibilityLabel(
-                L10n.codexOverlayRemaining(metric.remainingPercent))
         }
+        .padding(.vertical, 2)
     }
 
     private func resetCreditsSection(
         _ resetCredits: CodexQuotaOverlayResetCreditsPresentation,
         now: Date
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
                 Text(L10n.codexResetCardsTitle)
-                    .font(.system(size: 10.5, weight: .semibold))
-                Spacer(minLength: 8)
+                    .font(.caption.weight(.medium))
+                Spacer()
                 Text(L10n.codexResetCardsAvailable(
                     resetCredits.availableCount))
-                    .font(.system(size: 10, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.blue)
             }
 
             if resetCredits.expirations.isEmpty {
                 Text(L10n.codexResetCardsExpiryUnavailable)
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 6)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             } else {
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
                     ForEach(
                         Array(resetCredits.expirations.enumerated()),
                         id: \.offset
@@ -311,13 +270,18 @@ struct CodexQuotaOverlayDetailsView: View {
                             Spacer(minLength: 8)
                             Text(resetCountdown(to: expiration, now: now))
                         }
-                        .font(.system(size: 9.5).monospacedDigit())
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                     }
                 }
-                .padding(.top, 8)
             }
         }
+        .padding(.vertical, 2)
+    }
+
+    private func quotaTintColor(_ metric: CodexQuotaOverlayMetric) -> Color {
+        QuotaUsageStyle.tintColor(
+            forUsedPercent: Double(metric.usedPercent))
     }
 
     private func resetCountdown(

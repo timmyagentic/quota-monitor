@@ -53,8 +53,10 @@ struct QuotaRow: View {
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(tintColor)
             }
-            ProgressView(value: progressValue)
-                .tint(tintColor)
+            QuotaUsageProgressBar(
+                value: progressValue,
+                usedPercent: usedPercent,
+                accessibilityText: "\(Int(displayPercent))%")
             HStack(spacing: 4) {
                 Text(L10n.resetsRelative(relativeReset))
                     .font(.caption2)
@@ -91,11 +93,7 @@ struct QuotaRow: View {
     }
 
     private var tintColor: Color {
-        switch usedPercent {
-        case ..<60: .green
-        case ..<85: .orange
-        default: .red
-        }
+        QuotaUsageStyle.tintColor(forUsedPercent: usedPercent)
     }
 
     private var displayPercent: Double {
