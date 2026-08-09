@@ -11,8 +11,8 @@ credentials, conversation content, and local usage history.
 - `pricing-history.en.jpg` was captured from the isolated English fixture QA
   app. The Chinese counterpart is the existing isolated fixture capture.
 - `update-highlights.*.png` was captured from the isolated 1.0 update-window
-  preview in each app language after verifying all four highlight cards fit
-  without scrolling or clipping.
+  preview in each app language after verifying the complete 44-change release
+  edition, chapter navigation, scrolling, and localized controls.
 
 SHA-256:
 

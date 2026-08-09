@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum UpdateWindowLayout {
+    static let contentSize = CGSize(width: 820, height: 640)
+    static let minimumContentSize = CGSize(width: 680, height: 560)
+}
+
 /// The main SwiftUI view for the custom update window.  Displays different
 /// content depending on `state.phase` and provides Install / Skip / Later
 /// buttons that call through to the Sparkle reply closures stored on the
@@ -13,10 +18,25 @@ struct UpdateWindowView: View {
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             buttonBar
-                .padding(.top, 12)
         }
-        .padding(20)
-        .frame(width: 480, height: 520)
+        .background {
+            ZStack {
+                Color(nsColor: .windowBackgroundColor)
+                LinearGradient(
+                    colors: [
+                        Color.accentColor.opacity(0.045),
+                        Color.clear,
+                        Color.purple.opacity(0.025),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing)
+            }
+        }
+        .frame(
+            minWidth: UpdateWindowLayout.minimumContentSize.width,
+            idealWidth: UpdateWindowLayout.contentSize.width,
+            minHeight: UpdateWindowLayout.minimumContentSize.height,
+            idealHeight: UpdateWindowLayout.contentSize.height)
     }
 
     // MARK: - Content (phase-dependent)
@@ -48,27 +68,50 @@ struct UpdateWindowView: View {
     // MARK: - Header
 
     private var header: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             // App icon
             if let nsImage = NSApp.applicationIconImage {
                 Image(nsImage: nsImage)
                     .resizable()
-                    .frame(width: 48, height: 48)
+                    .frame(width: 52, height: 52)
+                    .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                if state.isCritical {
-                    criticalBadge
-                }
+            VStack(alignment: .leading, spacing: 5) {
                 Text(L10n.updateVersionAvailable(state.newVersion))
-                    .font(.headline)
-                Text(L10n.updateCurrentVersion(state.currentVersion))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 19, weight: .semibold))
+                HStack(spacing: 7) {
+                    Text(state.currentVersion)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .accessibilityHidden(true)
+                    Text(state.newVersion)
+                        .foregroundStyle(.primary)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
             }
             Spacer()
+            if state.isCritical {
+                criticalBadge
+            }
         }
-        .padding(.bottom, 12)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+        .background {
+            LinearGradient(
+                colors: [
+                    Color.accentColor.opacity(0.10),
+                    Color.mint.opacity(0.045),
+                    Color.clear,
+                ],
+                startPoint: .leading,
+                endPoint: .trailing)
+        }
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
     }
 
     private var criticalBadge: some View {
@@ -93,6 +136,7 @@ struct UpdateWindowView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private var updateAvailableView: some View {
@@ -122,6 +166,7 @@ struct UpdateWindowView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     /// Shown when an update has no release notes — a calm placeholder rather
@@ -138,6 +183,7 @@ struct UpdateWindowView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private var downloadingView: some View {
@@ -155,6 +201,7 @@ struct UpdateWindowView: View {
             .progressViewStyle(.linear)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private var extractingView: some View {
@@ -173,6 +220,7 @@ struct UpdateWindowView: View {
             }
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private var readyToInstallView: some View {
@@ -185,6 +233,7 @@ struct UpdateWindowView: View {
                 .font(.headline)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private var installingView: some View {
@@ -196,6 +245,7 @@ struct UpdateWindowView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private var upToDateView: some View {
@@ -208,6 +258,7 @@ struct UpdateWindowView: View {
                 .font(.headline)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     private func errorView(_ message: String) -> some View {
@@ -221,6 +272,7 @@ struct UpdateWindowView: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
+        .padding(.horizontal, 120)
     }
 
     // MARK: - Button bar
@@ -229,39 +281,65 @@ struct UpdateWindowView: View {
     private var buttonBar: some View {
         switch state.phase {
         case .updateAvailable, .readyToInstall:
-            actionButtons
+            actionShelf {
+                actionButtons
+            }
         case .error:
-            HStack {
-                Spacer()
-                Button(L10n.done) { state.fireAcknowledge() }
-                    .buttonStyle(.borderedProminent)
+            actionShelf {
+                HStack {
+                    Spacer()
+                    Button(L10n.done) { state.fireAcknowledge() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                }
             }
         case .downloading:
-            HStack {
-                Spacer()
-                Button(L10n.cancel) { state.fireCancel() }
-                    .buttonStyle(.bordered)
+            actionShelf {
+                HStack {
+                    Spacer()
+                    Button(L10n.cancel) { state.fireCancel() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                }
             }
         default:
             EmptyView()
         }
     }
 
+    private func actionShelf<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(.regularMaterial)
+            .overlay(alignment: .top) {
+                Divider()
+            }
+    }
+
     private var actionButtons: some View {
         HStack {
             if state.availableActions.contains(.skip) {
                 Button(L10n.updateSkipButton) { state.fireSkip() }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
             }
             Spacer()
             Button(L10n.updateLaterButton) { state.fireDismiss() }
                 .buttonStyle(.bordered)
+                .controlSize(.large)
             Button(state.phase == .readyToInstall
                    ? L10n.updateInstallAndRelaunch
                    : L10n.updateInstallButton) {
                 state.fireInstall()
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
         }
     }
 }

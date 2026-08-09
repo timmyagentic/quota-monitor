@@ -3,217 +3,458 @@
   --release-ink: var(--qm-text, #1d1d1f);
   --release-muted: var(--qm-secondary, #6e6e73);
   --release-accent: var(--qm-accent, #007aff);
-  --release-border: color-mix(in srgb, var(--release-accent), transparent 78%);
-  --release-panel: color-mix(in srgb, Canvas, var(--release-accent) 5%);
-  --release-panel-strong: color-mix(in srgb, Canvas, white 22%);
-  --release-green: #2fbf71;
-  --release-amber: #d39b20;
-  --release-coral: #e26d5a;
-  position: relative;
-  overflow: hidden;
+  --release-green: #22a966;
+  --release-amber: #c88b18;
+  --release-coral: #df6254;
+  --release-violet: #8b5cf6;
+  --release-line: color-mix(in srgb, var(--release-ink), transparent 88%);
+  --release-wash: color-mix(in srgb, var(--release-accent), transparent 94%);
   color: var(--release-ink);
-  padding: 2px;
-}
-.qm-release-page::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 84px;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg,
-      color-mix(in srgb, var(--release-accent), transparent 78%),
-      color-mix(in srgb, var(--release-green), transparent 82%),
-      transparent);
-  opacity: 0.7;
-  transform: translateY(-52px) skewY(-8deg);
-}
-.qm-release-hero,
-.qm-release-highlight {
-  position: relative;
-  border: 1px solid var(--release-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--release-panel), transparent 8%);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
+  padding: 0 2px 32px;
 }
 .qm-release-hero {
-  padding: 10px 12px 9px;
-  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(190px, .7fr);
+  gap: 28px;
+  align-items: end;
+  min-height: 236px;
+  padding: 32px 30px 28px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--release-line);
   background:
-    linear-gradient(135deg,
-      color-mix(in srgb, var(--release-accent), transparent 82%),
-      color-mix(in srgb, var(--release-green), transparent 88%) 46%,
-      color-mix(in srgb, var(--release-amber), transparent 90%)),
-    var(--release-panel-strong);
+    radial-gradient(circle at 88% 18%,
+      color-mix(in srgb, var(--release-violet), transparent 80%), transparent 35%),
+    linear-gradient(128deg,
+      color-mix(in srgb, var(--release-accent), transparent 88%),
+      color-mix(in srgb, var(--release-green), transparent 93%) 48%,
+      color-mix(in srgb, var(--release-amber), transparent 91%));
 }
-.qm-release-hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 0 36%,
-    rgba(255, 255, 255, 0.32) 48%,
-    transparent 61% 100%);
-  transform: translateX(-120%);
-  animation: qm-release-sheen 3.8s ease-in-out infinite;
-}
-.qm-release-hero-content {
-  position: relative;
-  z-index: 1;
-}
-.qm-release-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 5px;
+.qm-release-eyebrow,
+.qm-release-nav-label,
+.qm-release-chapter-number {
   color: var(--release-accent);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .12em;
   text-transform: uppercase;
 }
-.qm-release-eyebrow::before {
-  content: "";
-  width: 18px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--release-accent), var(--release-green));
-}
 .qm-release-title {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.15;
-  letter-spacing: 0;
+  max-width: 11em;
+  margin: 8px 0 0;
+  font-size: clamp(29px, 5vw, 42px);
+  line-height: .98;
+  letter-spacing: -.045em;
 }
 .qm-release-subtitle {
-  max-width: 34em;
+  max-width: 36em;
+  margin: 14px 0 0;
+  color: var(--release-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.qm-release-metrics {
+  display: flex;
+  gap: 18px;
+  margin-top: 22px;
+  color: var(--release-muted);
+  font-size: 11px;
+}
+.qm-release-metrics strong {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--release-ink);
+  font-size: 19px;
+  line-height: 1;
+}
+.qm-release-version {
+  justify-self: end;
+  text-align: right;
+}
+.qm-release-version span {
+  display: block;
+  margin-bottom: -5px;
+  color: var(--release-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.qm-release-version strong {
+  display: block;
+  max-width: 5.2em;
+  overflow-wrap: anywhere;
+  color: var(--release-accent);
+  background: linear-gradient(135deg,
+    var(--release-accent), var(--release-violet) 48%, var(--release-coral));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(58px, 10vw, 94px);
+  font-weight: 780;
+  line-height: .82;
+  letter-spacing: -.075em;
+}
+.qm-release-overview {
+  padding: 26px 30px 30px;
+  border-bottom: 1px solid var(--release-line);
+}
+.qm-release-section-title {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+.qm-release-section-hint {
   margin: 5px 0 0;
   color: var(--release-muted);
   font-size: 11.5px;
-  line-height: 1.4;
 }
-.qm-release-rhythm {
+.qm-release-summary {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  counter-reset: release-summary;
+}
+.qm-release-summary li {
   display: grid;
-  grid-template-columns: 1.4fr 0.8fr 1.1fr 0.55fr;
-  gap: 4px;
-  margin-top: 8px;
-  max-width: 210px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 13px 0;
+  border-top: 1px solid var(--release-line);
+  counter-increment: release-summary;
 }
-.qm-release-rhythm span {
-  height: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--release-accent), transparent 25%);
-  animation: qm-release-pulse 1.8s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 120ms);
+.qm-release-summary li::before {
+  content: counter(release-summary, decimal-leading-zero);
+  padding-top: 1px;
+  color: var(--release-accent);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .08em;
 }
-.qm-release-rhythm span:nth-child(2) { background: var(--release-green); }
-.qm-release-rhythm span:nth-child(3) { background: var(--release-amber); }
-.qm-release-rhythm span:nth-child(4) { background: var(--release-coral); }
-.qm-release-highlights {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-}
-.qm-release-highlight {
-  min-height: 70px;
-  padding: 8px 9px;
-}
-.qm-release-highlight::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--tone), transparent);
-}
-/* Tone palette cycles every four cards so Summary lists longer than four
-   still get a defined --tone after the upper bullet cap was removed. */
-.qm-release-highlight:nth-child(4n+1) { --tone: var(--release-accent); }
-.qm-release-highlight:nth-child(4n+2) { --tone: var(--release-green); }
-.qm-release-highlight:nth-child(4n+3) { --tone: var(--release-amber); }
-.qm-release-highlight:nth-child(4n) { --tone: var(--release-coral); }
-.qm-release-number {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-bottom: 5px;
-  border-radius: 7px;
-  color: white;
-  background: var(--tone);
-  font-size: 10.5px;
-  font-weight: 700;
-}
-.qm-release-highlight p {
+.qm-release-summary p {
   margin: 0;
-  color: var(--release-ink);
-  font-size: 11.5px;
-  line-height: 1.38;
+  font-size: 12.5px;
+  line-height: 1.48;
 }
+.qm-release-atlas {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 32px;
+  padding: 30px;
+}
+.qm-release-nav {
+  position: sticky;
+  top: 14px;
+  align-self: start;
+}
+.qm-release-nav-label {
+  margin: 0 0 10px;
+  color: var(--release-muted);
+}
+.qm-release-nav button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 8px 8px 11px;
+  border: 0;
+  border-left: 2px solid var(--release-line);
+  color: var(--release-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 180ms ease, border-color 180ms ease,
+              background 180ms ease;
+}
+.qm-release-nav button:hover,
+.qm-release-nav button[aria-current="true"] {
+  border-left-color: var(--release-accent);
+  color: var(--release-ink);
+  background: var(--release-wash);
+}
+.qm-release-nav-count {
+  color: var(--release-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qm-release-chapters-header {
+  padding: 0 0 22px;
+}
+.qm-release-chapter {
+  scroll-margin-top: 14px;
+  padding: 25px 0 12px;
+  border-top: 1px solid var(--release-line);
+}
+.qm-release-chapter:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+.qm-release-chapter-heading {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.qm-release-chapter-number {
+  color: var(--chapter-tone, var(--release-accent));
+}
+.qm-release-chapter h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+.qm-release-chapter-count {
+  color: var(--release-muted);
+  font-size: 10.5px;
+}
+.qm-release-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 46px;
+}
+.qm-release-change-list li {
+  padding: 12px 0;
+  border-top: 1px solid var(--release-line);
+  color: var(--release-muted);
+  font-size: 11.8px;
+  line-height: 1.5;
+}
+.qm-release-change-list b {
+  color: var(--release-ink);
+  font-size: 12.2px;
+  font-weight: 650;
+}
+.qm-release-chapter:nth-of-type(4n+1) { --chapter-tone: var(--release-accent); }
+.qm-release-chapter:nth-of-type(4n+2) { --chapter-tone: var(--release-green); }
+.qm-release-chapter:nth-of-type(4n+3) { --chapter-tone: var(--release-amber); }
+.qm-release-chapter:nth-of-type(4n) { --chapter-tone: var(--release-coral); }
 .release-animate {
   opacity: 0;
-  transform: translateY(10px);
-  animation: qm-release-enter 520ms cubic-bezier(.2, .8, .2, 1) forwards;
-  animation-delay: calc(var(--i) * 80ms);
+  transform: translateY(12px);
+  transition: opacity 420ms cubic-bezier(.2, .8, .2, 1),
+              transform 420ms cubic-bezier(.2, .8, .2, 1);
 }
-@keyframes qm-release-enter {
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes qm-release-sheen {
-  0%, 55% { transform: translateX(-120%); }
-  100% { transform: translateX(120%); }
-}
-@keyframes qm-release-pulse {
-  0%, 100% { transform: scaleX(0.72); opacity: 0.55; }
-  45% { transform: scaleX(1); opacity: 1; }
+.release-animate.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 @media (prefers-color-scheme: dark) {
   .qm-release-page {
-    --release-panel: rgba(34, 34, 38, 0.74);
-    --release-panel-strong: rgba(45, 45, 51, 0.86);
-  }
-  .qm-release-hero,
-  .qm-release-highlight {
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+    --release-line: color-mix(in srgb, var(--release-ink), transparent 84%);
+    --release-wash: color-mix(in srgb, var(--release-accent), transparent 88%);
   }
 }
+@media (max-width: 640px) {
+  .qm-release-hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .qm-release-version {
+    justify-self: start;
+    text-align: left;
+  }
+  .qm-release-version strong { font-size: 64px; }
+  .qm-release-atlas {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .qm-release-nav {
+    position: static;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+  .qm-release-nav-label { display: none; }
+  .qm-release-nav button {
+    flex: 0 0 auto;
+    width: auto;
+    border-left: 0;
+    border-bottom: 2px solid var(--release-line);
+  }
+  .qm-release-nav button:hover,
+  .qm-release-nav button[aria-current="true"] {
+    border-bottom-color: var(--release-accent);
+  }
+}
+@media (prefers-contrast: more) {
+  .qm-release-page { --release-line: currentColor; }
+  .qm-release-hero { background: transparent; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .qm-release-hero::after,
-  .qm-release-rhythm span,
   .release-animate {
-    animation: none;
     opacity: 1;
     transform: none;
+    transition: none;
   }
+  .qm-release-nav button { transition: none; }
 }
 </style>
 <section class="qm-release-page" aria-label="Release highlights">
-<div class="qm-release-hero release-animate" style="--i:0">
-<div class="qm-release-hero-content">
+<header class="qm-release-hero release-animate">
+<div>
 <p class="qm-release-eyebrow">Release highlights</p>
-<h2 class="qm-release-title">What's new in this update</h2>
-<p class="qm-release-subtitle">A quick look at the improvements included in this version.</p>
-<div class="qm-release-rhythm" aria-hidden="true">
-<span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span><span style="--i:3"></span>
+<h1 class="qm-release-title">A new chapter for QuotaMonitor.</h1>
+<p class="qm-release-subtitle">Start with the big picture, then explore every change in the release.</p>
+<div class="qm-release-metrics">
+<span><strong>44</strong>changes</span>
+<span><strong>4</strong>chapters</span>
 </div>
 </div>
+<div class="qm-release-version">
+<span>Version</span>
+<strong>1.0.0</strong>
 </div>
-<div class="qm-release-highlights">
-<article class="qm-release-highlight release-animate" style="--i:1">
-<span class="qm-release-number">1</span>
-<p>Codex now puts compact 5-hour and 7-day quotas in an adaptive widget beside the active window, with reset timing and reset credits on hover—no restart required.</p>
-</article>
-<article class="qm-release-highlight release-animate" style="--i:2">
-<span class="qm-release-number">2</span>
-<p>History, Sessions, Dashboard charts, the activity heatmap, and search stay responsive on large histories; visible dates follow the app language.</p>
-</article>
-<article class="qm-release-highlight release-animate" style="--i:3">
-<span class="qm-release-number">3</span>
-<p>GPT-5.6 and Claude Opus 5 pricing is built in, while historical usage keeps the rate that applied at the time.</p>
-</article>
-<article class="qm-release-highlight release-animate" style="--i:4">
-<span class="qm-release-number">4</span>
-<p>Updates check quietly, prepare in one click, and keep important highlights available in the replayable What's New guide.</p>
-</article>
+</header>
+<section class="qm-release-overview">
+<h2 class="qm-release-section-title">The release at a glance</h2>
+<p class="qm-release-section-hint">The shortest path through a release with much more beneath it.</p>
+<ol class="qm-release-summary">
+<li class="release-animate"><p>Codex now puts compact 5-hour and 7-day quotas in an adaptive widget beside the active window, with reset timing and reset credits on hover—no restart required.</p></li>
+<li class="release-animate"><p>History, Sessions, Dashboard charts, the activity heatmap, and search stay responsive on large histories; visible dates follow the app language.</p></li>
+<li class="release-animate"><p>GPT-5.6 and Claude Opus 5 pricing is built in, while historical usage keeps the rate that applied at the time.</p></li>
+<li class="release-animate"><p>Updates check quietly, prepare in one click, and keep important highlights available in the replayable What's New guide.</p></li>
+</ol>
+</section>
+<div class="qm-release-atlas">
+<nav class="qm-release-nav" aria-label="Release chapters">
+<p class="qm-release-nav-label">Release chapters</p>
+<button type="button" data-target="qm-release-chapter-1" aria-controls="qm-release-chapter-1" aria-current="true"><span>Added</span><span class="qm-release-nav-count">9</span></button>
+<button type="button" data-target="qm-release-chapter-2" aria-controls="qm-release-chapter-2" aria-current="false"><span>Fixed</span><span class="qm-release-nav-count">11</span></button>
+<button type="button" data-target="qm-release-chapter-3" aria-controls="qm-release-chapter-3" aria-current="false"><span>Changed</span><span class="qm-release-nav-count">21</span></button>
+<button type="button" data-target="qm-release-chapter-4" aria-controls="qm-release-chapter-4" aria-current="false"><span>Removed</span><span class="qm-release-nav-count">3</span></button>
+</nav>
+<main class="qm-release-chapters">
+<header class="qm-release-chapters-header release-animate">
+<h2 class="qm-release-section-title">Every change, organized</h2>
+<p class="qm-release-section-hint">Browse the complete release without losing your place.</p>
+</header>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-1">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">01</span>
+<h3>Added</h3>
+<span class="qm-release-chapter-count">9 changes</span>
 </div>
+<ul class="qm-release-change-list">
+<li><b>Current performance audit.</b> The scan, pricing, Dashboard, launch, and menu-bar performance review now revalidates every original finding against the current main branch, distinguishes delivered, partial, and open work, and reprioritizes the remaining improvements without changing app behavior.</li>
+<li><b>Private Beta update channel.</b> Holding Option while clicking Check Now reveals one-time-code enrollment only for an invited Mac; after authorization it can switch between Stable and Private Beta and receive authenticated Sparkle updates while everyone else sees only the normal update controls and Beta files remain outside public GitHub releases and feeds.</li>
+<li><b>Replayable What's New showcases.</b> Important releases can present a bilingual, offline product tour once on an existing user's next deliberate app interaction, with packaged images, muted video and poster fallbacks, Reduce Motion support, keyboard navigation, and a permanent reopen action in Settings; fresh installs continue directly through onboarding without a second tour.</li>
+<li><b>Quota Monitor 1.0 product tour.</b> Existing users receive a four-page bilingual guide to the new Codex window widget, faster large-history paths, effective-date pricing, and quieter updates, with publication-safe media bundled for offline replay.</li>
+<li><b>Complete 1.0 update edition.</b> The 1.0 update window replaces four highlight cards with a brighter release stage, a guided overview, chapter navigation, and every detailed change in both English and Simplified Chinese.</li>
+<li><b>Dashboard cache hit-rate trends.</b> The headline now pairs today's result with fixed 7- and 30-day weighted summaries, and the cache hit-rate line connects adjacent observations across unavailable days without treating them as 0%; provider and date filters update both views together.</li>
+<li><b>Indexed and account Activity views.</b> When the Dashboard is filtered to Codex, Activity can show the existing local metrics or load account-wide totals and the daily heatmap in the same card.</li>
+<li><b>Daily cache hit rate in History.</b> Selecting a day now adds its token-weighted cache hit rate to the top summary above the model breakdown.</li>
+<li><b>Fable 5 weekly quota.</b> When Anthropic provides the model-scoped weekly limit, Quota Monitor keeps it available after relaunch and labels the two weekly meters as Full and Fable 5.</li>
+</ul>
+</section>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-2">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">02</span>
+<h3>Fixed</h3>
+<span class="qm-release-chapter-count">11 changes</span>
+</div>
+<ul class="qm-release-change-list">
+<li><b>Polished Codex widget presentation.</b> The adaptive widget blends into Codex, shares stable 5h/7d labels with the menu bar, and opens a narrow branded card with matched typography, semantic progress colors, one configured percentage, and natural pointer-exit or click-away dismissal.</li>
+<li><b>Dates follow the app language.</b> Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.</li>
+<li><b>Responsive Token Activity heatmap.</b> The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.</li>
+<li><b>Private Beta range downloads.</b> Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact <code>Content-Range</code> even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.</li>
+<li><b>Stable native Codex quota.</b> The widget follows the active Codex window, hides automatically in the background or when Codex tracking is disabled, avoids a duplicate launch request, preserves the last good quota during refreshes, filters expired reset cards, retries data loading without requiring a restart, and restores the previous hover detail card with usage, progress, and reset timing.</li>
+<li><b>GPT-5.6 price history.</b> Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.</li>
+<li><b>Claude Opus 5 pricing.</b> The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage is priced directly by the app instead of remaining at <code>$0</code>.</li>
+<li><b>Reliable private Beta publication.</b> The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.</li>
+<li><b>Accurate low Claude percentages.</b> Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.</li>
+<li><b>Fresh Dashboard after minimizing.</b> Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.</li>
+<li><b>Accurate cache windows after midnight.</b> An open Dashboard now refreshes its Today, 7-day, and 30-day cache hit-rate windows as the local date changes, so yesterday's value is never relabeled as today's after midnight.</li>
+</ul>
+</section>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-3">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">03</span>
+<h3>Changed</h3>
+<span class="qm-release-chapter-count">21 changes</span>
+</div>
+<ul class="qm-release-change-list">
+<li><b>Bundled-only pricing.</b> Cost estimates now use only the versioned catalog shipped inside Quota Monitor, with effective dates preserving historical GPT-5.6 costs when bundled rates change.</li>
+<li><b>Lighter localized date formatting.</b> Repeated menu-popover and Session renders now reuse language- and time-zone-aware date formatters while preserving English and Simplified Chinese output.</li>
+<li><b>Smoother heatmap hover.</b> Token Activity tooltips now reuse the already prepared yearly grid while the pointer moves, avoiding repeated full-year work without changing levels, month labels, or responsive layouts.</li>
+<li><b>Faster Trends scrubbing.</b> The chart, selected-day tooltip, and legend now share one derived provider/model series until its source data, range, grouping, calendar, or language changes, avoiding repeated filtering and aggregation without changing displayed totals or ordering.</li>
+<li><b>Lighter launch-environment checks.</b> Local QA routing is resolved once for normal process-backed reads, reducing recurring settings and diagnostics work without caching runtime preferences or changing QA isolation.</li>
+<li><b>Bounded Codex metadata refreshes.</b> Session titles and project metadata are reused while their source files remain unchanged; when metadata changes, proactive corrections cover sessions active in the latest seven days, while new or changed rollouts still receive current metadata.</li>
+<li><b>Private Beta packaging privacy.</b> Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.</li>
+<li><b>Window-owned Codex widget.</b> Quota Monitor now renders the compact 5-hour and weekly readout itself in the established right-side account-row slot, follows window movement and Spaces, keeps the surrounding account controls unobstructed, and opens its detailed breakdown on hover or click.</li>
+<li><b>Quieter routine scans.</b> File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.</li>
+<li><b>Gentler one-click updates.</b> Automatic checks now surface only the existing in-app update icon; clicking it begins download and verification immediately, keeps progress compact, and opens the relaunch prompt only after the update is prepared, while Check Now still shows explicit results.</li>
+<li><b>Faster relocated-session lookup.</b> Import state now indexes associated session IDs, avoiding a full state-table scan when rollout files move while leaving unassociated rows out of the index.</li>
+<li><b>Lower rollout parsing overhead.</b> Each Codex rollout scan now reuses one local JSON decoder across records while preserving the same line-by-line decoding behavior.</li>
+<li><b>Timelier background update checks.</b> With automatic checks enabled, launching, waking, or returning to Quota Monitor now starts a silent update check when no prior check exists or the last one is more than six hours old; Check Now remains available when automatic checks are off.</li>
+<li><b>Quieter menu-bar updates.</b> Background state changes now rebuild and assign the native status-item title only when its visible rows, style, or language actually change.</li>
+<li><b>Responsive session search.</b> Rapid edits now cancel the pending search refresh and issue one database query after typing pauses instead of repeating the same full-session query for every keystroke.</li>
+<li><b>Focused incremental pricing.</b> Codex and Claude incremental imports now recalculate cost only for usage rows they insert or update, while full rebuilds and catalog-wide repricing retain complete coverage.</li>
+<li><b>Faster menu bar usage rollups.</b> Lifetime, 7-day, and 30-day provider totals now share one local history pass, reducing work during refreshes without changing their time windows or values.</li>
+<li><b>Quieter background refreshes.</b> Launch loads the menu-bar snapshot without preloading a hidden Dashboard, while frequent watcher scans skip summary work when imports are unchanged; opening the popover or choosing Refresh still updates time-dependent totals.</li>
+<li><b>Reliable window-scoped Dock state.</b> After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.</li>
+<li><b>Broader initial History view.</b> History loads the latest 21 calendar days on first open, then keeps the existing seven-day incremental pages for viewport fill and deliberate downward scrolling.</li>
+<li><b>Progressive Sessions loading.</b> Sessions loads 50 globally searched and sorted rows at a time, preserves stable recency, cost, and token ordering, and continues past the former 500-session limit without rendering the entire history up front.</li>
+</ul>
+</section>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-4">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">04</span>
+<h3>Removed</h3>
+<span class="qm-release-chapter-count">3 changes</span>
+</div>
+<ul class="qm-release-change-list">
+<li><b>Live pricing synchronization.</b> Background and manual LiteLLM catalog fetches, local price overrides, and the unused pricing-management interface have been removed.</li>
+<li><b>Legacy Codex injection lifecycle.</b> The bundled Opsail helper, Chromium debugging-port integration, renderer injection, and automatic Codex relaunch path are gone; the widget no longer modifies or controls the Codex process.</li>
+<li><b>Auto-update help text.</b> The caption under the automatic update check toggle in Advanced settings is gone; the toggle and the Check Now button behave exactly as before.</li>
+</ul>
+</section>
+</main>
+</div>
+<script class="qm-release-script">
+(function () {
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var animated = document.querySelectorAll('.release-animate');
+  if (reducedMotion || !('IntersectionObserver' in window)) {
+    animated.forEach(function (element) { element.classList.add('visible'); });
+  } else {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    animated.forEach(function (element) { revealObserver.observe(element); });
+  }
+
+  var buttons = Array.from(document.querySelectorAll('.qm-release-nav button'));
+  var chapters = Array.from(document.querySelectorAll('.qm-release-chapter'));
+  function selectChapter(id) {
+    buttons.forEach(function (button) {
+      button.setAttribute('aria-current', button.dataset.target === id ? 'true' : 'false');
+    });
+  }
+  buttons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      var chapter = document.getElementById(button.dataset.target);
+      if (!chapter) return;
+      selectChapter(button.dataset.target);
+      chapter.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+  if (chapters.length && 'IntersectionObserver' in window) {
+    var chapterObserver = new IntersectionObserver(function (entries) {
+      var visible = entries.filter(function (entry) { return entry.isIntersecting; });
+      if (visible.length) selectChapter(visible[0].target.id);
+    }, { rootMargin: '-10% 0px -68% 0px', threshold: 0 });
+    chapters.forEach(function (chapter) { chapterObserver.observe(chapter); });
+  }
+})();
+</script>
 </section>

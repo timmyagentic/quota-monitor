@@ -23,8 +23,9 @@ CHANGELOG.zh-Hans.md → zh-Hans), so the Chinese notes don't ship an English
 "Show full details" toggle.
 
 --format controls the output structure:
-  summary  – a rich, self-styled update page built from the ``#### Summary``
-             bullets. This is the default for the update window.
+  summary  – a self-styled release edition with a short opening sequence and
+             every detailed change organized into navigable chapters. This is
+             the default for the update window.
   full     – the original behaviour (all ``###`` sections, no summary).
   both     – compatibility mode: ``#### Summary`` items wrapped in
              ``<div class="release-summary">``, a toggle button, and
@@ -58,8 +59,18 @@ LABELS = {
         'show': 'Show full details',
         'hide': 'Hide details',
         'eyebrow': 'Release highlights',
-        'title': "What's new in this update",
-        'subtitle': 'A quick look at the improvements included in this version.',
+        'title': 'A new chapter for QuotaMonitor.',
+        'subtitle': 'Start with the big picture, then explore every change in the release.',
+        'version': 'Version',
+        'overview': 'The release at a glance',
+        'overview_hint': 'The shortest path through a release with much more beneath it.',
+        'chapters': 'Release chapters',
+        'all_changes': 'Every change, organized',
+        'all_changes_hint': 'Browse the complete release without losing your place.',
+        'change': 'change',
+        'changes': 'changes',
+        'chapter': 'chapter',
+        'chapter_plural': 'chapters',
         'fallback': "See {changelog} for what's new in {version}.",
     },
     'zh-Hans': {
@@ -68,8 +79,18 @@ LABELS = {
         'show': '查看完整变更',
         'hide': '收起详情',
         'eyebrow': '更新亮点',
-        'title': '这次更新带来了什么',
-        'subtitle': '下面是这次版本里最值得留意的改进。',
+        'title': '迈入 {version}，全新篇章。',
+        'subtitle': '先看这次版本的全貌，再按章节浏览每一项变化。',
+        'version': '版本',
+        'overview': '快速了解这次更新',
+        'overview_hint': '先抓住主线，下面还有完整变化可供浏览。',
+        'chapters': '更新章节',
+        'all_changes': '完整变化，分章呈现',
+        'all_changes_hint': '所有更新都在这里，浏览时不会迷失位置。',
+        'change': '项变化',
+        'changes': '项变化',
+        'chapter': '个章节',
+        'chapter_plural': '个章节',
         'fallback': '{version} 的更新内容详见 {changelog}。',
     },
 }
@@ -176,6 +197,46 @@ def render_bullets(lines: list[str], *,
     return '<ul>\n' + '\n'.join(items) + '\n</ul>'
 
 
+def parse_detail_sections(section: str) -> list[tuple[str, list[str]]]:
+    """Return ``###`` headings and their complete bullet text.
+
+    Changelog bullets may wrap on continuation lines. Keep the authored
+    ordering and join those lines so the release edition can expose every
+    detailed change, rather than stopping at the short Summary block.
+    """
+    sections: list[tuple[str, list[str]]] = []
+    heading: str | None = None
+    items: list[str] = []
+    item_buffer: list[str] = []
+
+    def flush_item() -> None:
+        if item_buffer:
+            items.append(' '.join(part.strip() for part in item_buffer))
+            item_buffer.clear()
+
+    def flush_section() -> None:
+        nonlocal items
+        flush_item()
+        if heading is not None and items:
+            sections.append((heading, items))
+        items = []
+
+    for line in section.split('\n'):
+        if line.startswith('### '):
+            flush_section()
+            heading = line[4:].strip()
+        elif line.startswith('- ') and heading is not None:
+            flush_item()
+            item_buffer.append(line[2:])
+        elif line.startswith('  ') and item_buffer:
+            item_buffer.append(line)
+        elif not line.strip():
+            flush_item()
+
+    flush_section()
+    return sections
+
+
 def rich_summary_style() -> str:
     """Self-contained visual styling for appcast release notes.
 
@@ -188,224 +249,436 @@ def rich_summary_style() -> str:
   --release-ink: var(--qm-text, #1d1d1f);
   --release-muted: var(--qm-secondary, #6e6e73);
   --release-accent: var(--qm-accent, #007aff);
-  --release-border: color-mix(in srgb, var(--release-accent), transparent 78%);
-  --release-panel: color-mix(in srgb, Canvas, var(--release-accent) 5%);
-  --release-panel-strong: color-mix(in srgb, Canvas, white 22%);
-  --release-green: #2fbf71;
-  --release-amber: #d39b20;
-  --release-coral: #e26d5a;
-  position: relative;
-  overflow: hidden;
+  --release-green: #22a966;
+  --release-amber: #c88b18;
+  --release-coral: #df6254;
+  --release-violet: #8b5cf6;
+  --release-line: color-mix(in srgb, var(--release-ink), transparent 88%);
+  --release-wash: color-mix(in srgb, var(--release-accent), transparent 94%);
   color: var(--release-ink);
-  padding: 2px;
-}
-.qm-release-page::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 84px;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg,
-      color-mix(in srgb, var(--release-accent), transparent 78%),
-      color-mix(in srgb, var(--release-green), transparent 82%),
-      transparent);
-  opacity: 0.7;
-  transform: translateY(-52px) skewY(-8deg);
-}
-.qm-release-hero,
-.qm-release-highlight {
-  position: relative;
-  border: 1px solid var(--release-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--release-panel), transparent 8%);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
+  padding: 0 2px 32px;
 }
 .qm-release-hero {
-  padding: 10px 12px 9px;
-  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(190px, .7fr);
+  gap: 28px;
+  align-items: end;
+  min-height: 236px;
+  padding: 32px 30px 28px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--release-line);
   background:
-    linear-gradient(135deg,
-      color-mix(in srgb, var(--release-accent), transparent 82%),
-      color-mix(in srgb, var(--release-green), transparent 88%) 46%,
-      color-mix(in srgb, var(--release-amber), transparent 90%)),
-    var(--release-panel-strong);
+    radial-gradient(circle at 88% 18%,
+      color-mix(in srgb, var(--release-violet), transparent 80%), transparent 35%),
+    linear-gradient(128deg,
+      color-mix(in srgb, var(--release-accent), transparent 88%),
+      color-mix(in srgb, var(--release-green), transparent 93%) 48%,
+      color-mix(in srgb, var(--release-amber), transparent 91%));
 }
-.qm-release-hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(110deg, transparent 0 36%,
-    rgba(255, 255, 255, 0.32) 48%,
-    transparent 61% 100%);
-  transform: translateX(-120%);
-  animation: qm-release-sheen 3.8s ease-in-out infinite;
-}
-.qm-release-hero-content {
-  position: relative;
-  z-index: 1;
-}
-.qm-release-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 5px;
+.qm-release-eyebrow,
+.qm-release-nav-label,
+.qm-release-chapter-number {
   color: var(--release-accent);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .12em;
   text-transform: uppercase;
 }
-.qm-release-eyebrow::before {
-  content: "";
-  width: 18px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, var(--release-accent), var(--release-green));
-}
 .qm-release-title {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.15;
-  letter-spacing: 0;
+  max-width: 11em;
+  margin: 8px 0 0;
+  font-size: clamp(29px, 5vw, 42px);
+  line-height: .98;
+  letter-spacing: -.045em;
 }
 .qm-release-subtitle {
-  max-width: 34em;
+  max-width: 36em;
+  margin: 14px 0 0;
+  color: var(--release-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.qm-release-metrics {
+  display: flex;
+  gap: 18px;
+  margin-top: 22px;
+  color: var(--release-muted);
+  font-size: 11px;
+}
+.qm-release-metrics strong {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--release-ink);
+  font-size: 19px;
+  line-height: 1;
+}
+.qm-release-version {
+  justify-self: end;
+  text-align: right;
+}
+.qm-release-version span {
+  display: block;
+  margin-bottom: -5px;
+  color: var(--release-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.qm-release-version strong {
+  display: block;
+  max-width: 5.2em;
+  overflow-wrap: anywhere;
+  color: var(--release-accent);
+  background: linear-gradient(135deg,
+    var(--release-accent), var(--release-violet) 48%, var(--release-coral));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(58px, 10vw, 94px);
+  font-weight: 780;
+  line-height: .82;
+  letter-spacing: -.075em;
+}
+.qm-release-overview {
+  padding: 26px 30px 30px;
+  border-bottom: 1px solid var(--release-line);
+}
+.qm-release-section-title {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+.qm-release-section-hint {
   margin: 5px 0 0;
   color: var(--release-muted);
   font-size: 11.5px;
-  line-height: 1.4;
 }
-.qm-release-rhythm {
+.qm-release-summary {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  counter-reset: release-summary;
+}
+.qm-release-summary li {
   display: grid;
-  grid-template-columns: 1.4fr 0.8fr 1.1fr 0.55fr;
-  gap: 4px;
-  margin-top: 8px;
-  max-width: 210px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 13px 0;
+  border-top: 1px solid var(--release-line);
+  counter-increment: release-summary;
 }
-.qm-release-rhythm span {
-  height: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--release-accent), transparent 25%);
-  animation: qm-release-pulse 1.8s ease-in-out infinite;
-  animation-delay: calc(var(--i) * 120ms);
+.qm-release-summary li::before {
+  content: counter(release-summary, decimal-leading-zero);
+  padding-top: 1px;
+  color: var(--release-accent);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .08em;
 }
-.qm-release-rhythm span:nth-child(2) { background: var(--release-green); }
-.qm-release-rhythm span:nth-child(3) { background: var(--release-amber); }
-.qm-release-rhythm span:nth-child(4) { background: var(--release-coral); }
-.qm-release-highlights {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 7px;
-}
-.qm-release-highlight {
-  min-height: 70px;
-  padding: 8px 9px;
-}
-.qm-release-highlight::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--tone), transparent);
-}
-/* Tone palette cycles every four cards so Summary lists longer than four
-   still get a defined --tone after the upper bullet cap was removed. */
-.qm-release-highlight:nth-child(4n+1) { --tone: var(--release-accent); }
-.qm-release-highlight:nth-child(4n+2) { --tone: var(--release-green); }
-.qm-release-highlight:nth-child(4n+3) { --tone: var(--release-amber); }
-.qm-release-highlight:nth-child(4n) { --tone: var(--release-coral); }
-.qm-release-number {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  margin-bottom: 5px;
-  border-radius: 7px;
-  color: white;
-  background: var(--tone);
-  font-size: 10.5px;
-  font-weight: 700;
-}
-.qm-release-highlight p {
+.qm-release-summary p {
   margin: 0;
-  color: var(--release-ink);
-  font-size: 11.5px;
-  line-height: 1.38;
+  font-size: 12.5px;
+  line-height: 1.48;
 }
+.qm-release-atlas {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 32px;
+  padding: 30px;
+}
+.qm-release-nav {
+  position: sticky;
+  top: 14px;
+  align-self: start;
+}
+.qm-release-nav-label {
+  margin: 0 0 10px;
+  color: var(--release-muted);
+}
+.qm-release-nav button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 8px 8px 11px;
+  border: 0;
+  border-left: 2px solid var(--release-line);
+  color: var(--release-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 180ms ease, border-color 180ms ease,
+              background 180ms ease;
+}
+.qm-release-nav button:hover,
+.qm-release-nav button[aria-current="true"] {
+  border-left-color: var(--release-accent);
+  color: var(--release-ink);
+  background: var(--release-wash);
+}
+.qm-release-nav-count {
+  color: var(--release-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qm-release-chapters-header {
+  padding: 0 0 22px;
+}
+.qm-release-chapter {
+  scroll-margin-top: 14px;
+  padding: 25px 0 12px;
+  border-top: 1px solid var(--release-line);
+}
+.qm-release-chapter:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+.qm-release-chapter-heading {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.qm-release-chapter-number {
+  color: var(--chapter-tone, var(--release-accent));
+}
+.qm-release-chapter h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+.qm-release-chapter-count {
+  color: var(--release-muted);
+  font-size: 10.5px;
+}
+.qm-release-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 46px;
+}
+.qm-release-change-list li {
+  padding: 12px 0;
+  border-top: 1px solid var(--release-line);
+  color: var(--release-muted);
+  font-size: 11.8px;
+  line-height: 1.5;
+}
+.qm-release-change-list b {
+  color: var(--release-ink);
+  font-size: 12.2px;
+  font-weight: 650;
+}
+.qm-release-chapter:nth-of-type(4n+1) { --chapter-tone: var(--release-accent); }
+.qm-release-chapter:nth-of-type(4n+2) { --chapter-tone: var(--release-green); }
+.qm-release-chapter:nth-of-type(4n+3) { --chapter-tone: var(--release-amber); }
+.qm-release-chapter:nth-of-type(4n) { --chapter-tone: var(--release-coral); }
 .release-animate {
   opacity: 0;
-  transform: translateY(10px);
-  animation: qm-release-enter 520ms cubic-bezier(.2, .8, .2, 1) forwards;
-  animation-delay: calc(var(--i) * 80ms);
+  transform: translateY(12px);
+  transition: opacity 420ms cubic-bezier(.2, .8, .2, 1),
+              transform 420ms cubic-bezier(.2, .8, .2, 1);
 }
-@keyframes qm-release-enter {
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes qm-release-sheen {
-  0%, 55% { transform: translateX(-120%); }
-  100% { transform: translateX(120%); }
-}
-@keyframes qm-release-pulse {
-  0%, 100% { transform: scaleX(0.72); opacity: 0.55; }
-  45% { transform: scaleX(1); opacity: 1; }
+.release-animate.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 @media (prefers-color-scheme: dark) {
   .qm-release-page {
-    --release-panel: rgba(34, 34, 38, 0.74);
-    --release-panel-strong: rgba(45, 45, 51, 0.86);
-  }
-  .qm-release-hero,
-  .qm-release-highlight {
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+    --release-line: color-mix(in srgb, var(--release-ink), transparent 84%);
+    --release-wash: color-mix(in srgb, var(--release-accent), transparent 88%);
   }
 }
+@media (max-width: 640px) {
+  .qm-release-hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .qm-release-version {
+    justify-self: start;
+    text-align: left;
+  }
+  .qm-release-version strong { font-size: 64px; }
+  .qm-release-atlas {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .qm-release-nav {
+    position: static;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+  .qm-release-nav-label { display: none; }
+  .qm-release-nav button {
+    flex: 0 0 auto;
+    width: auto;
+    border-left: 0;
+    border-bottom: 2px solid var(--release-line);
+  }
+  .qm-release-nav button:hover,
+  .qm-release-nav button[aria-current="true"] {
+    border-bottom-color: var(--release-accent);
+  }
+}
+@media (prefers-contrast: more) {
+  .qm-release-page { --release-line: currentColor; }
+  .qm-release-hero { background: transparent; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .qm-release-hero::after,
-  .qm-release-rhythm span,
   .release-animate {
-    animation: none;
     opacity: 1;
     transform: none;
+    transition: none;
   }
+  .qm-release-nav button { transition: none; }
 }
 </style>
 """.strip()
 
 
-def render_summary(lines: list[str], *, labels: dict[str, str], version: str) -> str:
-    cards = []
-    for idx, line in enumerate(lines, start=1):
-        cards.append(
-            f'<article class="qm-release-highlight release-animate" '
-            f'style="--i:{idx}">\n'
-            f'<span class="qm-release-number">{idx}</span>\n'
-            f'<p>{inline_md(line.strip())}</p>\n'
-            f'</article>'
-        )
+def release_edition_script() -> str:
+    return """
+<script class="qm-release-script">
+(function () {
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var animated = document.querySelectorAll('.release-animate');
+  if (reducedMotion || !('IntersectionObserver' in window)) {
+    animated.forEach(function (element) { element.classList.add('visible'); });
+  } else {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    animated.forEach(function (element) { revealObserver.observe(element); });
+  }
 
-    if not cards:
+  var buttons = Array.from(document.querySelectorAll('.qm-release-nav button'));
+  var chapters = Array.from(document.querySelectorAll('.qm-release-chapter'));
+  function selectChapter(id) {
+    buttons.forEach(function (button) {
+      button.setAttribute('aria-current', button.dataset.target === id ? 'true' : 'false');
+    });
+  }
+  buttons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      var chapter = document.getElementById(button.dataset.target);
+      if (!chapter) return;
+      selectChapter(button.dataset.target);
+      chapter.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+  if (chapters.length && 'IntersectionObserver' in window) {
+    var chapterObserver = new IntersectionObserver(function (entries) {
+      var visible = entries.filter(function (entry) { return entry.isIntersecting; });
+      if (visible.length) selectChapter(visible[0].target.id);
+    }, { rootMargin: '-10% 0px -68% 0px', threshold: 0 });
+    chapters.forEach(function (chapter) { chapterObserver.observe(chapter); });
+  }
+})();
+</script>
+""".strip()
+
+
+def render_summary(lines: list[str], details: str, *,
+                   labels: dict[str, str], version: str) -> str:
+    if not lines:
         return ""
+
+    sections = parse_detail_sections(details)
+    change_count = sum(len(items) for _, items in sections)
+    change_word = labels['change'] if change_count == 1 else labels['changes']
+    chapter_count = len(sections)
+    chapter_word = labels['chapter'] if chapter_count == 1 else labels['chapter_plural']
+
+    summary_items = [
+        '<li class="release-animate"><p>' + inline_md(line.strip()) + '</p></li>'
+        for line in lines
+    ]
+
+    nav_items: list[str] = []
+    chapters: list[str] = []
+    for index, (heading, items) in enumerate(sections, start=1):
+        chapter_id = f'qm-release-chapter-{index}'
+        current = 'true' if index == 1 else 'false'
+        nav_items.append(
+            f'<button type="button" data-target="{chapter_id}" '
+            f'aria-controls="{chapter_id}" aria-current="{current}">'
+            f'<span>{esc(heading)}</span>'
+            f'<span class="qm-release-nav-count">{len(items)}</span>'
+            f'</button>'
+        )
+        change_items = '\n'.join(
+            f'<li>{inline_md(item)}</li>' for item in items
+        )
+        chapters.append('\n'.join([
+            f'<section class="qm-release-chapter release-animate" id="{chapter_id}">',
+            '<div class="qm-release-chapter-heading">',
+            f'<span class="qm-release-chapter-number">{index:02d}</span>',
+            f'<h3>{esc(heading)}</h3>',
+            f'<span class="qm-release-chapter-count">{len(items)} {esc(labels["changes"])}</span>',
+            '</div>',
+            '<ul class="qm-release-change-list">',
+            change_items,
+            '</ul>',
+            '</section>',
+        ]))
+
+    atlas = ''
+    if sections:
+        atlas = '\n'.join([
+            '<div class="qm-release-atlas">',
+            '<nav class="qm-release-nav" aria-label="' + esc(labels['chapters']) + '">',
+            f'<p class="qm-release-nav-label">{esc(labels["chapters"])}</p>',
+            '\n'.join(nav_items),
+            '</nav>',
+            '<main class="qm-release-chapters">',
+            '<header class="qm-release-chapters-header release-animate">',
+            f'<h2 class="qm-release-section-title">{esc(labels["all_changes"])}</h2>',
+            f'<p class="qm-release-section-hint">{esc(labels["all_changes_hint"])}</p>',
+            '</header>',
+            '\n'.join(chapters),
+            '</main>',
+            '</div>',
+        ])
 
     return "\n".join([
         rich_summary_style(),
-        '<section class="qm-release-page" aria-label="Release highlights">',
-        '<div class="qm-release-hero release-animate" style="--i:0">',
-        '<div class="qm-release-hero-content">',
+        '<section class="qm-release-page" aria-label="' + esc(labels['eyebrow']) + '">',
+        '<header class="qm-release-hero release-animate">',
+        '<div>',
         f'<p class="qm-release-eyebrow">{esc(labels["eyebrow"])}</p>',
-        f'<h2 class="qm-release-title">{esc(labels["title"])}</h2>',
+        f'<h1 class="qm-release-title">{esc(labels["title"].format(version=version))}</h1>',
         f'<p class="qm-release-subtitle">{esc(labels["subtitle"])}</p>',
-        '<div class="qm-release-rhythm" aria-hidden="true">',
-        '<span style="--i:0"></span><span style="--i:1"></span>'
-        '<span style="--i:2"></span><span style="--i:3"></span>',
+        '<div class="qm-release-metrics">',
+        f'<span><strong>{change_count}</strong>{esc(change_word)}</span>',
+        f'<span><strong>{chapter_count}</strong>{esc(chapter_word)}</span>',
         '</div>',
         '</div>',
+        '<div class="qm-release-version">',
+        f'<span>{esc(labels["version"])}</span>',
+        f'<strong>{esc(version)}</strong>',
         '</div>',
-        '<div class="qm-release-highlights">',
-        "\n".join(cards),
-        '</div>',
+        '</header>',
+        '<section class="qm-release-overview">',
+        f'<h2 class="qm-release-section-title">{esc(labels["overview"])}</h2>',
+        f'<p class="qm-release-section-hint">{esc(labels["overview_hint"])}</p>',
+        '<ol class="qm-release-summary">',
+        '\n'.join(summary_items),
+        '</ol>',
+        '</section>',
+        atlas,
+        release_edition_script(),
         '</section>',
     ])
 
@@ -463,7 +736,8 @@ def main() -> int:
 
     if fmt == 'summary':
         if has_summary:
-            print(render_summary(summary_lines, labels=labels, version=version))
+            print(render_summary(
+                summary_lines, remainder, labels=labels, version=version))
         else:
             # Fallback: render full as summary (first 3 bullets only).
             print(render_full(section))
