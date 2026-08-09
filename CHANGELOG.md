@@ -32,7 +32,7 @@ window copy.
 
 #### Summary
 
-- Repeated Codex history refreshes now reuse unchanged session titles and project metadata, reducing routine background work.
+- Repeated Codex history refreshes now reuse unchanged session metadata and focus proactive corrections on sessions active in the latest seven days, reducing routine background work.
 - The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
 - The Codex sidebar widget can once again open or restart Codex directly from Quota Monitor, including when the current session cannot accept the widget.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
@@ -89,7 +89,7 @@ window copy.
 
 ### Changed
 
-- **Cheaper unchanged metadata refreshes.** Codex session titles and project metadata are reused while their source files remain unchanged, with a full reread whenever a source changes or cannot be verified.
+- **Bounded Codex metadata refreshes.** Session titles and project metadata are reused while their source files remain unchanged; when metadata changes, proactive corrections cover sessions active in the latest seven days, while new or changed rollouts still receive current metadata.
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
 - **Bilingual Codex quota hierarchy.** The sidebar summary now reads “Weekly · 32% left” or “本周 · 剩余 32%”, while details use localized quota terms, minute-level reset dates, and a single compact metadata line without repeating the visible used percentage or local-time note.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.

@@ -654,7 +654,7 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
 
-    @Test("Codex scan backfills late session_index titles without reparsing")
+    @Test("Codex scan backfills recent late session_index titles without reparsing")
     func codexScanBackfillsLateSessionIndexTitle() async throws {
         let db = try makeDatabase()
         let codexHome = FileManager.default.temporaryDirectory
@@ -686,6 +686,14 @@ struct SessionTitleProjectMetadataTests {
         #expect(before["project_name"] as String? == "emomo")
         #expect(before["cwd"] as String? == "/Volumes/SamsungDisk/Code/emomo")
 
+        let recentActivity = ISO8601.fractional.string(
+            from: Date().addingTimeInterval(-60 * 60))
+        try await db.pool.write { conn in
+            try conn.execute(
+                sql: "UPDATE sessions SET updated_at = ? WHERE session_id = 's1'",
+                arguments: [recentActivity])
+        }
+
         try writeCodexStateDatabase(
             codexHome: codexHome,
             id: "s1",
@@ -716,12 +724,14 @@ struct SessionTitleProjectMetadataTests {
         #expect(after["cwd"] as String? == "/Volumes/SamsungDisk/Code/emomo")
     }
 
-    @Test("Codex metadata backfill replaces project fallback titles without reparsing")
+    @Test("Codex metadata backfill replaces recent project fallback titles without reparsing")
     func codexBackfillReplacesProjectFallbackTitleWithoutReparsing() async throws {
         let db = try makeDatabase()
         let codexHome = FileManager.default.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
+        let recentActivity = ISO8601.fractional.string(
+            from: Date().addingTimeInterval(-60 * 60))
         try await db.pool.write { conn in
             try conn.execute(sql: """
                 INSERT INTO sessions
@@ -737,6 +747,9 @@ struct SessionTitleProjectMetadataTests {
                    NULL, NULL, 'gpt-5.5', NULL, 0,
                    '2026-06-18T14:27:39Z', '2026-06-18T14:27:39Z', 'codex')
                 """)
+            try conn.execute(
+                sql: "UPDATE sessions SET updated_at = ? WHERE session_id = 's1'",
+                arguments: [recentActivity])
         }
         try """
         {"id":"s1","thread_name":"更新 main 并梳理 Agent 结构","updated_at":"2026-06-16T15:14:31Z"}
@@ -764,6 +777,100 @@ struct SessionTitleProjectMetadataTests {
         #expect(row["title"] as String? == "更新 main 并梳理 Agent 结构")
         #expect(row["project_name"] as String? == "xianyu-seller-agent")
         #expect(row["cwd"] as String? == "/Volumes/SamsungDisk/Code/xianyu-seller-agent")
+    }
+
+    @Test("Codex metadata refresh leaves inactive history best effort until rollout changes")
+    func codexMetadataRefreshLeavesInactiveHistoryBestEffort() async throws {
+        let db = try makeDatabase()
+        let codexHome = FileManager.default.temporaryDirectory
+            .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
+        let sessionsDir = codexHome.appendingPathComponent(
+            "sessions/2026/08/01",
+            isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+
+        let oldActivity = Date().addingTimeInterval(-8 * 24 * 60 * 60)
+        let oldSessionTimestamp = ISO8601.fractional.string(from: oldActivity)
+        let oldTurnTimestamp = ISO8601.fractional.string(
+            from: oldActivity.addingTimeInterval(60))
+        let oldUsageTimestamp = ISO8601.fractional.string(
+            from: oldActivity.addingTimeInterval(120))
+        let rollout = sessionsDir.appendingPathComponent(
+            "rollout-2026-08-01T10-00-00-s-old.jsonl")
+        try """
+        {"timestamp":"\(oldSessionTimestamp)","type":"session_meta","payload":{"id":"s-old","cwd":"/Volumes/SamsungDisk/Code/quota-monitor"}}
+        {"timestamp":"\(oldTurnTimestamp)","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"\(oldUsageTimestamp)","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let engine = ImportEngine(database: db, codexHome: codexHome)
+        _ = try await engine.performScan()
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE sessions
+                SET title = 'stored historical title', project_name = NULL, cwd = NULL
+                WHERE session_id = 's-old'
+                """)
+            try conn.execute(sql: """
+                UPDATE import_state
+                SET metadata_probe_complete = 0
+                WHERE session_id = 's-old'
+                """)
+        }
+        try """
+        {"id":"s-old","thread_name":"new historical title"}
+        """.write(
+            to: codexHome.appendingPathComponent("session_index.jsonl"),
+            atomically: true,
+            encoding: .utf8)
+
+        let metadataOnlyReport = try await engine.performScan()
+        #expect(metadataOnlyReport.changedFiles == 0)
+        #expect(metadataOnlyReport.importedSessions == 0)
+        #expect(metadataOnlyReport.updatedSessionMetadata == 0)
+        #expect(!metadataOnlyReport.didChangeReadModel)
+
+        let unchanged = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's-old'
+                """)
+        })
+        #expect(unchanged["title"] as String? == "stored historical title")
+        #expect(unchanged["project_name"] as String? == nil)
+        #expect(unchanged["cwd"] as String? == nil)
+        let storedProbeComplete: Bool? = try await db.pool.read { conn in
+            try Bool.fetchOne(conn, sql: """
+                SELECT metadata_probe_complete
+                FROM import_state
+                WHERE session_id = 's-old'
+                """)
+        }
+        #expect(storedProbeComplete == false)
+
+        let recentUsageTimestamp = ISO8601.fractional.string(from: Date())
+        try """
+        {"timestamp":"\(oldSessionTimestamp)","type":"session_meta","payload":{"id":"s-old","cwd":"/Volumes/SamsungDisk/Code/quota-monitor"}}
+        {"timestamp":"\(oldTurnTimestamp)","type":"turn_context","payload":{"model":"gpt-5.5"}}
+        {"timestamp":"\(oldUsageTimestamp)","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}
+        {"timestamp":"\(recentUsageTimestamp)","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":30}}}}
+        """.write(to: rollout, atomically: true, encoding: .utf8)
+
+        let changedRolloutReport = try await engine.performScan()
+        #expect(changedRolloutReport.changedFiles == 1)
+        #expect(changedRolloutReport.importedSessions == 1)
+
+        let refreshed = try #require(try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT title, project_name, cwd
+                FROM sessions
+                WHERE session_id = 's-old'
+                """)
+        })
+        #expect(refreshed["title"] as String? == "new historical title")
+        #expect(refreshed["project_name"] as String? == "quota-monitor")
+        #expect(refreshed["cwd"] as String? == "/Volumes/SamsungDisk/Code/quota-monitor")
     }
 
     @Test("Codex scan preserves ambiguous project-matching title without metadata")
