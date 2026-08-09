@@ -242,17 +242,17 @@ struct CodexQuotaOverlayTests {
 
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: nil) == 115)
+            resetCredits: nil) == 142)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: resetCredits) == 195)
+            resetCredits: resetCredits) == 222)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            contentHeight: 195) == CGRect(
+            contentHeight: 222) == CGRect(
                 x: 144,
                 y: 43,
                 width: 288,
-                height: 195))
+                height: 222))
 
         let cached = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -264,7 +264,7 @@ struct CodexQuotaOverlayTests {
         #expect(cached.isCached)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: cached,
-            resetCredits: nil) == 115)
+            resetCredits: nil) == 142)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
@@ -436,6 +436,7 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("detailsPanel"))
         #expect(source.contains("addGlobalMonitorForEvents"))
         #expect(!source.contains("isDetailsPinned"))
+        #expect(viewSource.contains("Text(Branding.appDisplayName)"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
         let pollingStart = try #require(

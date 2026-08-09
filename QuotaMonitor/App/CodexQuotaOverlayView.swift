@@ -174,6 +174,14 @@ struct CodexQuotaOverlayDetailsView: View {
 
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
+                    Text(Branding.appDisplayName)
+                        .font(.headline)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
+                            alignment: .topLeading)
+                        .accessibilityAddTraits(.isHeader)
+
                     if let fiveHour = presentation.fiveHour {
                         quotaWindow(
                             title: L10n.quotaCardTitle5h,

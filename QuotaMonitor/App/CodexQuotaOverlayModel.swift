@@ -232,6 +232,7 @@ enum CodexQuotaOverlayLayout {
     static let size = CGSize(width: 132, height: 25)
     static let singleWindowWidth: CGFloat = 84
     static let detailsWidth: CGFloat = 288
+    static let detailsHeaderHeight: CGFloat = 27
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
     private static let legacyAccountRowTrailingOffset: CGFloat = 432
@@ -284,7 +285,7 @@ enum CodexQuotaOverlayLayout {
             .count
         guard windowCount > 0 else { return 0 }
 
-        var height: CGFloat = 24
+        var height: CGFloat = 24 + detailsHeaderHeight
         height += CGFloat(windowCount) * 38
         height += CGFloat(max(0, windowCount - 1)) * 15
 
