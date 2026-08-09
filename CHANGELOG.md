@@ -32,8 +32,10 @@ window copy.
 
 #### Summary
 
+- Menu-popover resets, reset-credit expirations, and Session update times now stay responsive during repeated rendering while preserving their current localized wording.
 - The yearly Token Activity heatmap now fits cleanly at the Dashboard's default size, keeps its final month readable, and scrolls only in narrower windows.
 - Codex now shows 5-hour and weekly quota in a native window-following widget; hovering or clicking reveals remaining usage, reset times, and reset cards without requiring a debugging port or restarting Codex.
+- Moving across the yearly Token Activity heatmap now keeps its tooltips smooth, even with a full year of history.
 - Private Beta updates now download reliably, including when an interrupted transfer resumes.
 - Private Beta builds now remain protected until they reach the authorized release service.
 - GPT-5.6 Terra and Luna costs now follow OpenAI's July 30 reductions without rewriting earlier usage at the new rates.
@@ -85,6 +87,8 @@ window copy.
 
 ### Changed
 
+- **Lighter localized date formatting.** Repeated menu-popover and Session renders now reuse language- and time-zone-aware date formatters while preserving English and Simplified Chinese output.
+- **Smoother heatmap hover.** Token Activity tooltips now reuse the already prepared yearly grid while the pointer moves, avoiding repeated full-year work without changing levels, month labels, or responsive layouts.
 - **Private Beta packaging privacy.** Maintainers can package an exact merged source revision with Developer ID signing and notarization while only a one-time-recipient-encrypted artifact leaves the build runner; public releases and feeds remain untouched.
 - **Window-owned Codex widget.** Quota Monitor now renders the compact 5-hour and weekly readout itself in the established right-side account-row slot, follows window movement and Spaces, keeps the surrounding account controls unobstructed, and opens its detailed breakdown on hover or click.
 - **Quieter routine scans.** File-watch and everyday refresh scans now use a small activity icon in the popover header instead of expanding a detailed progress row; launch and onboarding imports still show full progress.
