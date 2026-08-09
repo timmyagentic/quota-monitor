@@ -231,13 +231,13 @@ enum CodexWindowFrameConverter {
 enum CodexQuotaOverlayLayout {
     static let size = CGSize(width: 132, height: 25)
     static let singleWindowWidth: CGFloat = 84
+    static let detailsWidth: CGFloat = 288
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
     private static let legacyAccountRowTrailingOffset: CGFloat = 432
     private static let bottomInset: CGFloat = 12
     private static let detailsLeftInset: CGFloat = 12
-    private static let detailsRightOffset: CGFloat = 476
-    private static let detailsGap: CGFloat = 8
+    private static let detailsGap: CGFloat = 6
     private static let detailsTopInset: CGFloat = 12
 
     /// Preserve the established injected-widget slot immediately before the
@@ -284,21 +284,21 @@ enum CodexQuotaOverlayLayout {
             .count
         guard windowCount > 0 else { return 0 }
 
-        var height: CGFloat = 28
-        height += CGFloat(windowCount) * 42
-        height += CGFloat(max(0, windowCount - 1)) * 17
+        var height: CGFloat = 24
+        height += CGFloat(windowCount) * 38
+        height += CGFloat(max(0, windowCount - 1)) * 15
 
         if let resetCredits {
-            height += 21 + 18
+            height += 17 + 16
             if !resetCredits.expirations.isEmpty {
                 height += 3
-                height += CGFloat(resetCredits.expirations.count) * 13
+                height += CGFloat(resetCredits.expirations.count) * 12
                 height += CGFloat(max(0, resetCredits.expirations.count - 1)) * 4
             } else {
                 height += 16
             }
         }
-        return ceil(max(104, height))
+        return ceil(max(72, height))
     }
 
     static func detailsFrame(
@@ -306,15 +306,20 @@ enum CodexQuotaOverlayLayout {
         contentHeight: CGFloat
     ) -> CGRect {
         let summaryFrame = frame(in: codexWindowFrame)
-        let width = min(
-            detailsRightOffset - detailsLeftInset,
-            max(1, codexWindowFrame.width - detailsLeftInset * 2))
+        let width = min(detailsWidth, max(
+            1,
+            codexWindowFrame.width - detailsLeftInset * 2))
+        let preferredOriginX = summaryFrame.maxX - width
+        let minimumOriginX = codexWindowFrame.minX + detailsLeftInset
+        let maximumOriginX = codexWindowFrame.maxX - detailsLeftInset - width
         let originY = summaryFrame.maxY + detailsGap
         let availableHeight = max(
             1,
             codexWindowFrame.maxY - originY - detailsTopInset)
         return CGRect(
-            x: codexWindowFrame.minX + detailsLeftInset,
+            x: max(
+                minimumOriginX,
+                min(preferredOriginX, maximumOriginX)),
             y: originY,
             width: width,
             height: min(contentHeight, availableHeight))
@@ -322,5 +327,13 @@ enum CodexQuotaOverlayLayout {
 
     static func isOverlayWindowIdentifier(_ rawValue: String?) -> Bool {
         rawValue == windowIdentifier || rawValue == detailsWindowIdentifier
+    }
+}
+
+enum CodexQuotaOverlayInteractionPolicy {
+    static func shouldDismissDetails(
+        afterMouseDownIn windowIdentifier: String?
+    ) -> Bool {
+        !CodexQuotaOverlayLayout.isOverlayWindowIdentifier(windowIdentifier)
     }
 }

@@ -23,6 +23,17 @@ conversation content is included.
 SHA-256:
 `36a5dc425352c2475fdaa58a06357117ac0048d3f0a3eecd9f5120814c496f43`
 
+`refined-widget-zh-Hans.png` is a native SwiftUI fixture render of the exact
+summary and detail views used by the isolated QA build. It shows the shared
+`5h` / `7d` compact labels, the refined segmented summary, and the 288-point
+detail card with synthetic quota and reset-credit data. No account identity,
+credential, or conversation content is included. The host-app interaction
+could not be captured through Computer Use because the safety layer does not
+permit controlling the Codex app that hosts the current task.
+
+SHA-256:
+`1d091ad1bd210c64a6ca58f5fa0784000d03ce2dc950a8ba7ddaa6f3558de0a6`
+
 ## Legacy reference
 
 These images document the superseded Chromium-injection implementation. They

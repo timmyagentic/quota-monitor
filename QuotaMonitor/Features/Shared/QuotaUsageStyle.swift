@@ -1,5 +1,10 @@
 import SwiftUI
 
+enum QuotaWindowCompactLabel {
+    static let fiveHour = "5h"
+    static let sevenDay = "7d"
+}
+
 enum QuotaUsageStyle {
     static func tintColor(forUsedPercent usedPercent: Double) -> Color {
         switch usedPercent {
