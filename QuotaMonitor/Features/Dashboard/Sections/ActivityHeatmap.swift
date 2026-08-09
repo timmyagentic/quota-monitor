@@ -233,7 +233,9 @@ private struct InteractiveActivityHeatmap: View {
         row: Int,
         layout: HeatmapLayout
     ) -> some View {
-        let date = point.date.formatted(.dateTime.year().month(.abbreviated).day())
+        let date = LocalizedDateFormatting.string(
+            from: point.date,
+            style: .yearMonthDay)
         let tokens = point.tokens.formatted(
             .number.notation(.compactName).locale(tokenLocale))
         let anchor = HeatmapGeometry.tooltipAnchor(

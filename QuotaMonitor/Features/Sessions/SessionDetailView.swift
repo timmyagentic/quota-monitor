@@ -179,7 +179,9 @@ struct SessionDetailView: View {
 
     private func shortDate(_ iso: String) -> String {
         guard let d = ISO8601.parse(iso) else { return iso }
-        return d.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        return LocalizedDateFormatting.string(
+            from: d,
+            style: .monthDayShortTime)
     }
 }
 
@@ -449,6 +451,8 @@ struct EventRow: View {
 
     private var timestampShort: String {
         guard let d = ISO8601.parse(event.timestamp) else { return event.timestamp }
-        return d.formatted(.dateTime.hour().minute().second())
+        return LocalizedDateFormatting.string(
+            from: d,
+            style: .timeWithSeconds)
     }
 }

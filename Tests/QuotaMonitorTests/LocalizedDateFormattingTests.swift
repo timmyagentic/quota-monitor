@@ -58,22 +58,73 @@ struct LocalizedDateFormattingTests {
                     relativeTo: referenceDate,
                     language: language,
                     timeZone: utc)
-                _ = cache.string(
-                    from: referenceDate,
-                    style: .mediumDateShortTime,
-                    language: language,
-                    timeZone: utc)
-                _ = cache.string(
-                    from: referenceDate,
-                    style: .mediumDateMediumTime,
-                    language: language,
-                    timeZone: utc)
+                for style in LocalizedDateFormatting.AbsoluteStyle.allCases {
+                    _ = cache.string(
+                        from: referenceDate,
+                        style: style,
+                        language: language,
+                        timeZone: utc)
+                }
             }
         }
 
         #expect(cache.constructionCounts.relative == 2)
-        #expect(cache.constructionCounts.absolute == 4)
-        #expect(cache.constructionCounts.total == 6)
+        #expect(cache.constructionCounts.absolute ==
+            LocalizedDateFormatting.AbsoluteStyle.allCases.count * 2)
+        #expect(cache.constructionCounts.total ==
+            LocalizedDateFormatting.AbsoluteStyle.allCases.count * 2 + 2)
+    }
+
+    @Test("component styles follow the requested app language")
+    func componentStylesFollowAppLanguage() {
+        let styles: [(LocalizedDateFormatting.AbsoluteStyle, String)] = [
+            (.monthDayShortTime, "MMMdhm"),
+            (.timeWithSeconds, "hms"),
+            (.abbreviatedWeekdayMonthDay, "EEEMMMd"),
+            (.fullWeekdayMonthDayYear, "EEEEMMMMdyyyy"),
+            (.shortTime, "hm"),
+            (.yearMonthDay, "yyyyMMMd"),
+            (.monthDay, "MMMd"),
+        ]
+
+        for (style, template) in styles {
+            let english = LocalizationTestSupport.withLanguage(.english) {
+                LocalizedDateFormatting.string(
+                    from: referenceDate,
+                    style: style,
+                    timeZone: utc)
+            }
+            let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+                LocalizedDateFormatting.string(
+                    from: referenceDate,
+                    style: style,
+                    timeZone: utc)
+            }
+
+            #expect(english == localizedTemplate(
+                template,
+                language: .english))
+            #expect(chinese == localizedTemplate(
+                template,
+                language: .simplifiedChinese))
+            #expect(english != chinese)
+        }
+    }
+
+    @Test("date-heavy surfaces use the app-language formatter")
+    func dateHeavySurfacesUseAppLanguageFormatter() throws {
+        let paths = [
+            "QuotaMonitor/Features/Sessions/SessionDetailView.swift",
+            "QuotaMonitor/Features/History/HistoryView.swift",
+            "QuotaMonitor/Features/Dashboard/Sections/ActivityHeatmap.swift",
+            "QuotaMonitor/Features/Dashboard/Sections/TrendsSection.swift",
+        ]
+
+        for path in paths {
+            let source = try sourceFile(path)
+            #expect(source.contains("LocalizedDateFormatting.string"))
+            #expect(!source.contains(".formatted(.dateTime"))
+        }
     }
 
     @Test("formatter caches follow the requested time zone")
@@ -161,5 +212,28 @@ struct LocalizedDateFormattingTests {
             formatter.calendar = calendar
         }
         return formatter.localizedString(for: formattedDate, relativeTo: referenceDate)
+    }
+
+    private func localizedTemplate(
+        _ template: String,
+        language: LocalizationStore.Language
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = language.locale
+        formatter.timeZone = utc
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter.string(from: referenceDate)
+    }
+
+    private func sourceFile(_ relativePath: String) throws -> String {
+        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while directory.path != "/" {
+            let candidate = directory.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            directory.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }

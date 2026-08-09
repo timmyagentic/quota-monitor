@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Dates and times in Sessions, History, Activity, and Trends now match the language selected inside Quota Monitor.
+
+### Fixed
+
+- **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
+
 ## [1.0.0] — 2026-08-09
 
 #### Summary

@@ -5,9 +5,16 @@ import Foundation
 /// time-zone changes never reuse a formatter with stale presentation settings.
 @MainActor
 enum LocalizedDateFormatting {
-    enum AbsoluteStyle: Hashable, Sendable {
+    enum AbsoluteStyle: CaseIterable, Hashable, Sendable {
         case mediumDateShortTime
         case mediumDateMediumTime
+        case monthDayShortTime
+        case timeWithSeconds
+        case abbreviatedWeekdayMonthDay
+        case fullWeekdayMonthDayYear
+        case shortTime
+        case yearMonthDay
+        case monthDay
     }
 
     private static let cache = LocalizedDateFormatterCache()
@@ -103,12 +110,27 @@ final class LocalizedDateFormatterCache {
             formatter = DateFormatter()
             formatter.locale = language.locale
             formatter.timeZone = timeZone
-            formatter.dateStyle = .medium
             switch style {
             case .mediumDateShortTime:
+                formatter.dateStyle = .medium
                 formatter.timeStyle = .short
             case .mediumDateMediumTime:
+                formatter.dateStyle = .medium
                 formatter.timeStyle = .medium
+            case .monthDayShortTime:
+                formatter.setLocalizedDateFormatFromTemplate("MMMdhm")
+            case .timeWithSeconds:
+                formatter.setLocalizedDateFormatFromTemplate("hms")
+            case .abbreviatedWeekdayMonthDay:
+                formatter.setLocalizedDateFormatFromTemplate("EEEMMMd")
+            case .fullWeekdayMonthDayYear:
+                formatter.setLocalizedDateFormatFromTemplate("EEEEMMMMdyyyy")
+            case .shortTime:
+                formatter.setLocalizedDateFormatFromTemplate("hm")
+            case .yearMonthDay:
+                formatter.setLocalizedDateFormatFromTemplate("yyyyMMMd")
+            case .monthDay:
+                formatter.setLocalizedDateFormatFromTemplate("MMMd")
             }
             absoluteFormatters[key] = formatter
             constructionCounts.absolute += 1
