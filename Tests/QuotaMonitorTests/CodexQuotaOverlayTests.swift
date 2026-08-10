@@ -288,7 +288,7 @@ struct CodexQuotaOverlayTests {
             candidates: Array(candidates.dropFirst())) == nil)
     }
 
-    @Test("Overlay follows help control and falls back to a 150-point leading slot")
+    @Test("Overlay follows help control and scales the 150-of-490 fallback slot")
     func accountRowLayout() {
         let minimumWindow = CGRect(x: 0, y: 0, width: 480, height: 700)
         #expect(CodexQuotaOverlayLayout.frame(
@@ -316,17 +316,17 @@ struct CodexQuotaOverlayTests {
             == CGRect(x: 514, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: widerWindow)
-            == CGRect(x: 18, y: 12, width: 132, height: 25))
+            == CGRect(x: 88, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700),
             helpControlLeadingX: -240)
             == CGRect(x: -406, y: 212, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
-            == CGRect(x: -1_182, y: 212, width: 132, height: 25))
+            == CGRect(x: -1_026, y: 212, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: 20, y: 200, width: 120, height: 700))
-            == CGRect(x: -4, y: 212, width: 132, height: 25))
+            == CGRect(x: 32, y: 212, width: 132, height: 25))
 
         let weeklyOnly = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -344,7 +344,7 @@ struct CodexQuotaOverlayTests {
                 height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: widerWindow,
-            presentation: weeklyOnly).maxX == 150)
+            presentation: weeklyOnly).maxX == 220)
         #expect(CodexQuotaOverlayLayout.frame(
             in: widerWindow,
             presentation: weeklyOnly,
@@ -390,7 +390,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             contentHeight: 222) == CGRect(
-                x: 12,
+                x: 300,
                 y: 43,
                 width: 288,
                 height: 222))
