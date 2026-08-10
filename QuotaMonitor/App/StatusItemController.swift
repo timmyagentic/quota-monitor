@@ -300,8 +300,6 @@ enum MenuBarTitleBuilder {
         }
     }
 
-    private static let thinSpace = "\u{2009}"
-
     // MARK: emphasis — rounded design, mixed weights
 
     private static func emphasis(_ rows: [MenuBarLabelModel.Row]) -> NSAttributedString {
@@ -317,7 +315,9 @@ enum MenuBarTitleBuilder {
             if multi { out.append(run("\(r.tag) ", tagFont)) }
             for (segmentIndex, segment) in visibleSegments(for: r).enumerated() {
                 if segmentIndex > 0 { out.append(run("  ·  ", sepFont)) }
-                out.append(run("\(segment.label)\(thinSpace)", labelFont))
+                out.append(run(
+                    "\(segment.label)\(QuotaWindowCompactLabel.separator(for: .emphasis))",
+                    labelFont))
                 out.append(run(segment.value, valueFont))
             }
         }
@@ -333,7 +333,12 @@ enum MenuBarTitleBuilder {
         for r in rows {
             let tag = multi ? "\(r.tag) " : ""
             let windows = visibleSegments(for: r)
-                .map { "\($0.label) \($0.value)" }
+                .map {
+                    QuotaWindowCompactLabel.segment(
+                        label: $0.label,
+                        value: $0.value,
+                        style: .native)
+                }
                 .joined(separator: " · ")
             parts.append("\(tag)\(windows)")
         }

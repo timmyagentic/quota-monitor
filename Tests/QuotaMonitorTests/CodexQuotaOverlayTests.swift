@@ -137,6 +137,14 @@ struct CodexQuotaOverlayTests {
 
         #expect(english == ["5h", "7d"])
         #expect(chinese == english)
+        #expect(QuotaWindowCompactLabel.segment(
+            label: QuotaWindowCompactLabel.sevenDay,
+            value: "51%",
+            style: .native) == "7d 51%")
+        #expect(QuotaWindowCompactLabel.segment(
+            label: QuotaWindowCompactLabel.sevenDay,
+            value: "51%",
+            style: .emphasis) == "7d\u{2009}51%")
     }
 
     @Test("Window selection rejects helper surfaces and preserves front order")
@@ -439,6 +447,9 @@ struct CodexQuotaOverlayTests {
         #expect(viewSource.contains("Text(Branding.appDisplayName)"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
+        #expect(viewSource.contains("Text(QuotaWindowCompactLabel.segment("))
+        #expect(viewSource.contains("style: settings.menuBarLabelStyle"))
+        #expect(!viewSource.contains("private func metricAccent"))
         #expect(!viewSource.contains(".fill(Material.ultraThin)"))
         #expect(viewSource.contains(
             ".fill(.primary.opacity(isHovering ? 0.075 : 0.035))"))
