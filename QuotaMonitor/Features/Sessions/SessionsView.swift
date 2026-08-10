@@ -43,7 +43,7 @@ struct SessionsView: View {
                 }
             }
             guard !Task.isCancelled else { return }
-            // Search and sort reset the list prefix, but keep the inspected
+            // Search and sort reset the page cursor, but keep the inspected
             // session open. List filtering should not dismiss useful detail.
             pagination.reset(query: query)
         }
@@ -54,7 +54,8 @@ struct SessionsView: View {
                 let page = try await env.fetchSessionsPage(
                     sort: request.query.sort,
                     search: request.query.search,
-                    limit: request.limit,
+                    after: request.cursor,
+                    pageSize: request.pageSize,
                     trigger: request.trigger)
                 try Task.checkCancellation()
                 let desiredQuery = SessionsPaginationState.Query(

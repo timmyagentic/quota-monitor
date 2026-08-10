@@ -254,6 +254,9 @@ struct PricingValueBackfillTests {
             .init(modelId: "claude-opus-5",
                   input: 5.00, cached: 0.50, cacheCreation: 6.25,
                   output: 25.00, isOfficial: true),
+            .init(modelId: "claude-sonnet-5",
+                  input: 3.00, cached: 0.30, cacheCreation: 3.75,
+                  output: 15.00, isOfficial: true),
             .init(modelId: "claude-fable-5",
                   input: 10.00, cached: 1.00, cacheCreation: 12.50,
                   output: 50.00, isOfficial: false),
@@ -282,6 +285,7 @@ struct PricingValueBackfillTests {
                 FROM pricing_catalog
                 WHERE model_id IN (
                   'claude-opus-5',
+                  'claude-sonnet-5',
                   'claude-fable-5',
                   'claude-opus-4-8',
                   'claude-sonnet-4-5-20250929',
@@ -304,6 +308,54 @@ struct PricingValueBackfillTests {
             #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - item.output) < 1e-6)
             #expect((row?["is_official"] as Bool?) == item.isOfficial)
         }
+    }
+
+    @Test("Claude Sonnet 5 usage uses the standard list price")
+    func claudeSonnet5UsesStandardListPrice() throws {
+        let db = try makeDatabase()
+        // Simulate a user whose existing catalog retained the introductory
+        // rate. Installing the bundled catalog must normalize that history.
+        try db.pool.write { conn in
+            try conn.execute(sql: """
+                UPDATE pricing_catalog
+                SET input_price_per_million = 2,
+                    cached_input_price_per_million = 0.2,
+                    cache_creation_price_per_million = 2.5,
+                    output_price_per_million = 10,
+                    price_source = 'local'
+                WHERE model_id = 'claude-sonnet-5'
+                """)
+        }
+        try insertUsageEvent(
+            in: db,
+            provider: "claude",
+            modelId: "claude-sonnet-5",
+            input: 1_000_000,
+            cached: 1_000_000,
+            output: 1_000_000,
+            cacheCreation: 2_000_000,
+            cacheCreation5m: 1_000_000,
+            cacheCreation1h: 1_000_000,
+            seedValueUSD: 0)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+        let introductoryValue = try #require(valueUSD(in: db).first)
+        #expect(abs(introductoryValue - 18.70) < 1e-6)
+
+        let repaired = try db.pool.write { conn in
+            let changed = try PricingService.installBundledCatalog(in: conn)
+            try PricingService.backfillAllValues(in: conn)
+            return changed
+        }
+
+        let values = try valueUSD(in: db)
+        let value = try #require(values.first)
+        // Standard input/read/5m-write/1h-write/output rates:
+        // 3 + 0.30 + 3.75 + 6 + 15 = 28.05.
+        #expect(repaired)
+        #expect(abs(value - 28.05) < 1e-6)
     }
 
     // MARK: - rows without a matching catalog row are left alone

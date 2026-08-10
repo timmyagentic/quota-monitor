@@ -16,17 +16,19 @@ struct SessionsPaginationState {
         let id: UUID
         let trigger: SessionPageLoadTrigger
         let query: Query
-        let limit: Int
+        let cursor: SessionPageCursor?
+        let pageSize: Int
     }
 
     private(set) var rows: [SessionRow] = []
-    private(set) var hasMore = false
-    private(set) var loadedLimit = 0
+    private(set) var nextCursor: SessionPageCursor?
     private(set) var initialFailure: Failure?
     private(set) var paginationFailure: Failure?
     private(set) var inFlightRequest: Request?
     private(set) var currentQuery: Query?
 
+    var hasMore: Bool { nextCursor != nil }
+    var loadedCount: Int { rows.count }
     var isLoadingInitial: Bool { inFlightRequest?.trigger == .initial }
     var isLoadingNextPage: Bool {
         guard let trigger = inFlightRequest?.trigger else { return false }
@@ -42,10 +44,10 @@ struct SessionsPaginationState {
             id: requestID,
             trigger: .initial,
             query: query,
-            limit: Self.pageSize)
+            cursor: nil,
+            pageSize: Self.pageSize)
         rows = []
-        hasMore = false
-        loadedLimit = 0
+        nextCursor = nil
         initialFailure = nil
         paginationFailure = nil
         currentQuery = query
@@ -69,7 +71,8 @@ struct SessionsPaginationState {
             id: requestID,
             trigger: trigger,
             query: currentQuery,
-            limit: loadedLimit + Self.pageSize)
+            cursor: nextCursor,
+            pageSize: Self.pageSize)
         inFlightRequest = request
         return request
     }
@@ -79,9 +82,15 @@ struct SessionsPaginationState {
         guard inFlightRequest == request, currentQuery == request.query else {
             return false
         }
-        rows = page.rows
-        hasMore = page.hasMore
-        loadedLimit = request.limit
+        if request.trigger == .initial {
+            rows = page.rows
+        } else {
+            let loadedIDs = Set(rows.map(\.sessionId))
+            rows.append(contentsOf: page.rows.filter {
+                !loadedIDs.contains($0.sessionId)
+            })
+        }
+        nextCursor = page.nextCursor
         if request.trigger == .initial {
             initialFailure = nil
         } else {

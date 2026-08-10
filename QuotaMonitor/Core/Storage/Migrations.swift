@@ -425,5 +425,195 @@ enum Migrations {
             _ = try PricingService.installBundledCatalog(in: db)
             try PricingService.backfillAllValues(in: db)
         }
+
+        // v20: Sessions pages read pre-aggregated totals and advance with an
+        // indexed keyset cursor. Triggers keep the summary exact for every
+        // insert, update, move, and delete of a usage event, including pricing
+        // backfills, so list queries never need to aggregate usage_events.
+        migrator.registerMigration("v20-session-summaries-keyset") { db in
+            try db.execute(sql: """
+                CREATE TABLE session_summaries (
+                    session_id TEXT NOT NULL PRIMARY KEY
+                        REFERENCES sessions(session_id) ON DELETE CASCADE,
+                    activity_at TEXT NOT NULL DEFAULT '',
+                    total_value_usd DOUBLE NOT NULL DEFAULT 0,
+                    total_tokens INTEGER NOT NULL DEFAULT 0,
+                    event_count INTEGER NOT NULL DEFAULT 0,
+                    has_inferred_model BOOLEAN NOT NULL DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO session_summaries (
+                    session_id,
+                    activity_at,
+                    total_value_usd,
+                    total_tokens,
+                    event_count,
+                    has_inferred_model
+                )
+                SELECT
+                    s.session_id,
+                    COALESCE(s.updated_at, s.started_at, ''),
+                    COALESCE(SUM(ue.value_usd), 0),
+                    COALESCE(SUM(ue.total_tokens), 0),
+                    COUNT(ue.id),
+                    COALESCE(MAX(ue.model_inferred), 0)
+                FROM sessions s
+                LEFT JOIN usage_events ue ON ue.session_id = s.session_id
+                GROUP BY s.session_id
+                """)
+
+            try db.execute(sql: """
+                CREATE INDEX idx_session_summaries_value_page
+                ON session_summaries(total_value_usd DESC, session_id ASC)
+                """)
+            try db.execute(sql: """
+                CREATE INDEX idx_session_summaries_tokens_page
+                ON session_summaries(total_tokens DESC, session_id ASC)
+                """)
+            try db.execute(sql: """
+                CREATE INDEX idx_session_summaries_recent_page
+                ON session_summaries(activity_at DESC, session_id ASC)
+                """)
+
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_after_session_insert
+                AFTER INSERT ON sessions
+                BEGIN
+                    INSERT OR IGNORE INTO session_summaries(session_id, activity_at)
+                    VALUES (
+                        NEW.session_id,
+                        COALESCE(NEW.updated_at, NEW.started_at, '')
+                    );
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_after_session_activity_update
+                AFTER UPDATE OF updated_at, started_at ON sessions
+                WHEN OLD.updated_at IS NOT NEW.updated_at
+                  OR OLD.started_at IS NOT NEW.started_at
+                BEGIN
+                    UPDATE session_summaries
+                    SET activity_at = COALESCE(
+                        NEW.updated_at,
+                        NEW.started_at,
+                        ''
+                    )
+                    WHERE session_id = NEW.session_id;
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_after_usage_insert
+                AFTER INSERT ON usage_events
+                BEGIN
+                    UPDATE session_summaries
+                    SET total_value_usd = total_value_usd + NEW.value_usd,
+                        total_tokens = total_tokens + NEW.total_tokens,
+                        event_count = event_count + 1,
+                        has_inferred_model = CASE
+                            WHEN NEW.model_inferred <> 0 THEN 1
+                            ELSE has_inferred_model
+                        END
+                    WHERE session_id = NEW.session_id;
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_after_usage_delete
+                AFTER DELETE ON usage_events
+                BEGIN
+                    UPDATE session_summaries
+                    SET total_value_usd = CASE
+                            WHEN event_count <= 1 THEN 0
+                            ELSE total_value_usd - OLD.value_usd
+                        END,
+                        total_tokens = CASE
+                            WHEN event_count <= 1 THEN 0
+                            ELSE total_tokens - OLD.total_tokens
+                        END,
+                        event_count = CASE
+                            WHEN event_count <= 1 THEN 0
+                            ELSE event_count - 1
+                        END,
+                        has_inferred_model = CASE
+                            WHEN event_count <= 1 THEN 0
+                            WHEN OLD.model_inferred = 0 THEN has_inferred_model
+                            ELSE COALESCE((
+                                SELECT MAX(model_inferred)
+                                FROM usage_events
+                                WHERE session_id = OLD.session_id
+                            ), 0)
+                        END
+                    WHERE session_id = OLD.session_id;
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_after_usage_update
+                AFTER UPDATE OF session_id, value_usd, total_tokens, model_inferred
+                ON usage_events
+                WHEN OLD.session_id = NEW.session_id
+                 AND (OLD.value_usd IS NOT NEW.value_usd
+                      OR OLD.total_tokens IS NOT NEW.total_tokens
+                      OR OLD.model_inferred IS NOT NEW.model_inferred)
+                BEGIN
+                    UPDATE session_summaries
+                    SET total_value_usd = total_value_usd
+                            + NEW.value_usd - OLD.value_usd,
+                        total_tokens = total_tokens
+                            + NEW.total_tokens - OLD.total_tokens,
+                        has_inferred_model = CASE
+                            WHEN OLD.model_inferred = NEW.model_inferred
+                                THEN has_inferred_model
+                            WHEN NEW.model_inferred <> 0 THEN 1
+                            ELSE COALESCE((
+                                SELECT MAX(model_inferred)
+                                FROM usage_events
+                                WHERE session_id = NEW.session_id
+                            ), 0)
+                        END
+                    WHERE session_id = NEW.session_id;
+                END
+                """)
+            try db.execute(sql: """
+                CREATE TRIGGER session_summaries_after_usage_move
+                AFTER UPDATE OF session_id, value_usd, total_tokens, model_inferred
+                ON usage_events
+                WHEN OLD.session_id <> NEW.session_id
+                BEGIN
+                    UPDATE session_summaries
+                    SET total_value_usd = CASE
+                            WHEN event_count <= 1 THEN 0
+                            ELSE total_value_usd - OLD.value_usd
+                        END,
+                        total_tokens = CASE
+                            WHEN event_count <= 1 THEN 0
+                            ELSE total_tokens - OLD.total_tokens
+                        END,
+                        event_count = CASE
+                            WHEN event_count <= 1 THEN 0
+                            ELSE event_count - 1
+                        END,
+                        has_inferred_model = CASE
+                            WHEN event_count <= 1 THEN 0
+                            WHEN OLD.model_inferred = 0 THEN has_inferred_model
+                            ELSE COALESCE((
+                                SELECT MAX(model_inferred)
+                                FROM usage_events
+                                WHERE session_id = OLD.session_id
+                            ), 0)
+                        END
+                    WHERE session_id = OLD.session_id;
+
+                    UPDATE session_summaries
+                    SET total_value_usd = total_value_usd + NEW.value_usd,
+                        total_tokens = total_tokens + NEW.total_tokens,
+                        event_count = event_count + 1,
+                        has_inferred_model = CASE
+                            WHEN NEW.model_inferred <> 0 THEN 1
+                            ELSE has_inferred_model
+                        END
+                    WHERE session_id = NEW.session_id;
+                END
+                """)
+        }
     }
 }
