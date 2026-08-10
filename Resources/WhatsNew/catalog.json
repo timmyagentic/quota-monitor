@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "featuredCampaignID": "2026-07-product-highlights",
+  "featuredCampaignID": "2026-08-v1-product-highlights",
   "campaigns": [
     {
       "id": "2026-07-product-highlights",
@@ -69,6 +69,106 @@
             "accessibilityLabel": {
               "en": "Quota Monitor Dashboard with synthetic Forecast and Trends data.",
               "zh-Hans": "Quota Monitor Dashboard，展示合成的 Forecast 与 Trends 数据。"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "2026-08-v1-product-highlights",
+      "autoPresent": true,
+      "title": {
+        "en": "What’s new in Quota Monitor 1.0",
+        "zh-Hans": "Quota Monitor 1.0 新功能"
+      },
+      "subtitle": {
+        "en": "Live quotas, faster insights, and costs that stay accurate",
+        "zh-Hans": "实时额度、更快洞察，以及始终准确的费用"
+      },
+      "pages": [
+        {
+          "id": "codex-quotas-where-you-work",
+          "title": {
+            "en": "Codex quotas, right where you work",
+            "zh-Hans": "Codex 额度，就在当前窗口"
+          },
+          "body": {
+            "en": "See 5-hour and 7-day usage beside the active Codex window. Hover or click for reset times and reset credits; the compact detail card closes naturally when you move on.",
+            "zh-Hans": "在当前 Codex 窗口旁直接查看 5 小时与 7 天额度；悬停或点击即可展开重置时间与主动重置卡，移开后详情会自然收起。"
+          },
+          "media": {
+            "type": "image",
+            "path": {
+              "en": "2026-08/codex-window-quotas.en.png",
+              "zh-Hans": "2026-08/codex-window-quotas.zh-Hans.png"
+            },
+            "accessibilityLabel": {
+              "en": "Compact 5-hour and 7-day Codex quota widget with its branded detail card and synthetic reset data.",
+              "zh-Hans": "紧凑的 Codex 5 小时与 7 天额度挂件，以及使用合成重置数据的品牌详情卡。"
+            }
+          }
+        },
+        {
+          "id": "large-histories-stay-light",
+          "title": {
+            "en": "A large history still feels light",
+            "zh-Hans": "历史再多，操作依然轻快"
+          },
+          "body": {
+            "en": "Sessions now use truly bounded database pages, while search, Dashboard charts, and the year heatmap reuse work and routine refreshes stay quiet in the background.",
+            "zh-Hans": "会话现在会使用真正有边界的数据库分页，搜索、Dashboard 图表与全年热图会复用结果，日常刷新也会在后台安静完成。"
+          },
+          "media": {
+            "type": "video",
+            "path": "2026-08/glance-to-dashboard.mp4",
+            "posterPath": "2026-08/dashboard-performance.jpg",
+            "accessibilityLabel": {
+              "en": "Silent walkthrough from the synthetic menu-bar quota view to Dashboard charts.",
+              "zh-Hans": "从合成菜单栏额度视图进入 Dashboard 图表的静音演示。"
+            }
+          }
+        },
+        {
+          "id": "accurate-costs-over-time",
+          "title": {
+            "en": "Accurate costs, then and now",
+            "zh-Hans": "历史与现在，费用都准确"
+          },
+          "body": {
+            "en": "Bundled pricing now covers GPT-5.6, Claude Opus 5, and Claude Sonnet 5, while historical usage keeps the rate that applied on the day it happened.",
+            "zh-Hans": "随包价格现在覆盖 GPT-5.6、Claude Opus 5 与 Claude Sonnet 5，历史用量仍会保留发生当天真正适用的费率。"
+          },
+          "media": {
+            "type": "image",
+            "path": {
+              "en": "2026-08/pricing-history.en.jpg",
+              "zh-Hans": "2026-08/pricing-history.zh-Hans.jpg"
+            },
+            "accessibilityLabel": {
+              "en": "Synthetic History view showing token-weighted cache rate, models, sessions, and calculated costs.",
+              "zh-Hans": "使用合成数据展示 Token 加权缓存命中率、模型、会话与计算费用的历史页面。"
+            }
+          }
+        },
+        {
+          "id": "updates-without-interruption",
+          "title": {
+            "en": "Updates without the interruption",
+            "zh-Hans": "更新更安静，重点不错过"
+          },
+          "body": {
+            "en": "Background checks stay quiet; one click downloads and prepares the update, and this visual guide remains available whenever you want to revisit the highlights.",
+            "zh-Hans": "后台检查保持安静，一次点击即可下载并准备更新；这份图文导览也会一直保留，方便随时重看重点。"
+          },
+          "media": {
+            "type": "image",
+            "path": {
+              "en": "2026-08/update-highlights.en.png",
+              "zh-Hans": "2026-08/update-highlights.zh-Hans.png"
+            },
+            "accessibilityLabel": {
+              "en": "Quota Monitor 1.0 update edition with a release stage, guided overview, chapter navigation, and the complete English changelog.",
+              "zh-Hans": "包含版本主视觉、快速导览、章节导航与完整中文更新记录的 Quota Monitor 1.0 更新窗口。"
             }
           }
         }

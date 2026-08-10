@@ -34,11 +34,14 @@ final class UpdateWindowController: NSObject, NSWindowDelegate {
     func show() {
         if window == nil {
             let newWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 420),
-                styleMask: [.titled, .closable],
+                contentRect: NSRect(
+                    origin: .zero,
+                    size: UpdateWindowLayout.contentSize),
+                styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false)
             newWindow.title = L10n.updateWindowTitle
+            newWindow.contentMinSize = UpdateWindowLayout.minimumContentSize
             newWindow.isReleasedWhenClosed = false
             newWindow.center()
             newWindow.delegate = self

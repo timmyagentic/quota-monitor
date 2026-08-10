@@ -14,13 +14,16 @@ struct WhatsNewMediaView: View {
             switch page.media {
             case .image(let path, let accessibilityLabel):
                 image(
-                    at: content.resourceURL(for: path),
+                    at: content.resourceURL(for: path.value(
+                        for: localization.currentLanguage)),
                     accessibilityLabel: accessibilityLabel.value(
                         for: localization.currentLanguage))
             case .video(let path, let posterPath, let accessibilityLabel):
                 WhatsNewVideoView(
-                    videoURL: content.resourceURL(for: path),
-                    posterURL: content.resourceURL(for: posterPath),
+                    videoURL: content.resourceURL(for: path.value(
+                        for: localization.currentLanguage)),
+                    posterURL: content.resourceURL(for: posterPath.value(
+                        for: localization.currentLanguage)),
                     accessibilityLabel: accessibilityLabel.value(
                         for: localization.currentLanguage))
             }

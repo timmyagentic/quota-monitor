@@ -11,6 +11,16 @@ enum ReleaseNotesNavigationPolicy {
     }
 }
 
+struct ReleaseNotesDocumentLoadState {
+    private var loadedHTML: String?
+
+    mutating func shouldLoad(_ html: String) -> Bool {
+        guard loadedHTML != html else { return false }
+        loadedHTML = html
+        return true
+    }
+}
+
 /// An `NSViewRepresentable` that wraps a `WKWebView` for rendering the
 /// animated release-notes HTML.  All CSS + JS is injected inline — no
 /// external resources are loaded.  Navigation is blocked for security
@@ -35,23 +45,24 @@ struct AnimatedReleaseNotesView: NSViewRepresentable {
         // through (macOS WKWebView uses `underPageBackgroundColor`).
         webView.underPageBackgroundColor = .clear
 
-        loadHTML(webView)
+        context.coordinator.load(htmlContent, into: webView)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        loadHTML(webView)
-    }
-
-    // MARK: - Private
-
-    private func loadHTML(_ webView: WKWebView) {
-        webView.loadHTMLString(htmlContent, baseURL: nil)
+        context.coordinator.load(htmlContent, into: webView)
     }
 
     // MARK: - Coordinator
 
     class Coordinator: NSObject, WKNavigationDelegate {
+        private var loadState = ReleaseNotesDocumentLoadState()
+
+        func load(_ html: String, into webView: WKWebView) {
+            guard loadState.shouldLoad(html) else { return }
+            webView.loadHTMLString(html, baseURL: nil)
+        }
+
         /// Block all navigation requests — the release notes are fully
         /// self-contained and should never trigger a page load.
         @MainActor

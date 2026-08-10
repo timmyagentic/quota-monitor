@@ -31,15 +31,29 @@ final class UpdateWindowPreviewLauncher {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         arguments: [String] = ProcessInfo.processInfo.arguments
     ) -> Configuration? {
-        guard LocalQAEnvironment.isActive(
+        guard arguments.contains(where: {
+            $0 == htmlArgument || $0.hasPrefix("\(htmlArgument)=")
+        }) else {
+            return nil
+        }
+
+        let localQAIsActive = LocalQAEnvironment.isActive(
             environment: environment,
-            arguments: arguments) else {
+            arguments: arguments)
+        guard localQAIsActive else {
+            Log.discover.error(
+                "Ignoring update-window preview outside Local QA")
             return nil
         }
 
         guard let htmlPath = value(after: htmlArgument, in: arguments) else {
+            Log.discover.error(
+                "Ignoring update-window preview without an HTML path")
             return nil
         }
+
+        Log.discover.info(
+            "Preparing Local QA update-window preview")
 
         return Configuration(
             htmlPath: htmlPath,
@@ -81,6 +95,7 @@ final class UpdateWindowPreviewLauncher {
         state.onDismiss = { [weak self] in self?.windowController.close() }
 
         windowController.show()
+        Log.discover.info("Presented Local QA update-window preview")
     }
 
     private func showError(_ message: String) {

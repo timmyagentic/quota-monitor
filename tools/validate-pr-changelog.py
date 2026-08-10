@@ -3,8 +3,10 @@
 
 Normal feature/fix PRs update ``## [Unreleased]`` in both changelog files.
 Release PRs bump ``Resources/VERSION`` and move those entries into the
-versioned section, so they validate that version instead. Appcast-only PRs are
-generated after a release and only publish the already-authored notes.
+versioned section, so they validate that version instead. A late release-page
+refresh may instead add both localized ``ReleaseNotes/<version>`` HTML files;
+that explicit pair validates the already-selected current version without a
+second version bump. Generated Appcast publication PRs remain exempt.
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ import sys
 
 
 REQUIRED_CHANGELOGS = {"CHANGELOG.md", "CHANGELOG.zh-Hans.md"}
-APPCAST_ONLY_FILES = {"appcast.xml"}
+APPCAST_FILE = "appcast.xml"
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,15 +58,36 @@ def changed_files(repo: pathlib.Path, base: str, head: str) -> set[str]:
     return {line.strip() for line in output.splitlines() if line.strip()}
 
 
-def target_version(repo: pathlib.Path, files: set[str]) -> str:
-    if "Resources/VERSION" not in files:
-        return "Unreleased"
-
+def current_version(repo: pathlib.Path) -> str:
     version = (repo / "Resources" / "VERSION").read_text(encoding="utf-8").strip()
     if not version:
         print("Resources/VERSION is empty", file=sys.stderr)
         raise SystemExit(1)
     return version
+
+
+def release_note_files(version: str) -> set[str]:
+    return {
+        f"ReleaseNotes/{version}.en.html",
+        f"ReleaseNotes/{version}.zh-Hans.html",
+    }
+
+
+def is_appcast_publication(files: set[str]) -> bool:
+    return APPCAST_FILE in files and all(
+        path == APPCAST_FILE or path.startswith("ReleaseNotes/")
+        for path in files
+    )
+
+
+def target_version(repo: pathlib.Path, files: set[str]) -> str:
+    version = current_version(repo)
+    if (
+        "Resources/VERSION" in files
+        or release_note_files(version).issubset(files)
+    ):
+        return version
+    return "Unreleased"
 
 
 def validate_release_notes(repo: pathlib.Path, version: str) -> None:
@@ -97,8 +120,8 @@ def main() -> int:
         print("No changed files detected; changelog check skipped")
         return 0
 
-    if files.issubset(APPCAST_ONLY_FILES):
-        print("appcast-only PR; changelog check skipped")
+    if is_appcast_publication(files):
+        print("appcast publication PR; changelog check skipped")
         return 0
 
     missing = sorted(REQUIRED_CHANGELOGS - files)

@@ -7,6 +7,12 @@ import Testing
 @Suite("Update window controller lifecycle")
 struct UpdateWindowControllerTests {
 
+    @Test("Release notes use a roomy, resizable canvas")
+    func releaseEditionLayout() {
+        #expect(UpdateWindowLayout.contentSize == CGSize(width: 820, height: 640))
+        #expect(UpdateWindowLayout.minimumContentSize == CGSize(width: 680, height: 560))
+    }
+
     @Test
     func windowCloseDefersLifecycleCallback() async {
         var events = ["windowWillClose"]
