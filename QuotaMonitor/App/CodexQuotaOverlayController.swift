@@ -27,6 +27,7 @@ final class CodexQuotaOverlayController: NSObject {
     private var detailsCloseTask: Task<Void, Never>?
     private var localMouseDownMonitor: Any?
     private var globalMouseDownMonitor: Any?
+    private var shouldShowDetailsForLocalQA = false
     private var isStarted = false
 
     init(
@@ -84,6 +85,7 @@ final class CodexQuotaOverlayController: NSObject {
 
     func showDetailsForLocalQA() {
         guard LocalQAEnvironment.isQARequested() else { return }
+        shouldShowDetailsForLocalQA = true
         refreshOverlay()
         showDetails()
     }
@@ -143,6 +145,9 @@ final class CodexQuotaOverlayController: NSObject {
         showOverlay(
             in: appKitWindowFrame,
             presentation: presentation)
+        if shouldShowDetailsForLocalQA {
+            showDetails(now: now)
+        }
         if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
         } else if presentation.isCached {
