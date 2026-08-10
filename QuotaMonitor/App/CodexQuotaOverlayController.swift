@@ -86,8 +86,7 @@ final class CodexQuotaOverlayController: NSObject {
     func showDetailsForLocalQA() {
         guard LocalQAEnvironment.isQARequested() else { return }
         shouldShowDetailsForLocalQA = true
-        refreshOverlay()
-        showDetails(installClickAwayMonitors: false)
+        refreshLocalQAOverlay()
     }
 
     @objc private func workspaceStateDidChange(_ notification: Notification) {
@@ -104,6 +103,10 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func refreshOverlay(now: Date = Date()) {
         guard isStarted else { return }
+        if shouldShowDetailsForLocalQA {
+            refreshLocalQAOverlay(now: now)
+            return
+        }
         guard settings.shouldShowCodexSidebarQuota else {
             lastFrontmostPID = nil
             hideOverlay()
@@ -145,9 +148,6 @@ final class CodexQuotaOverlayController: NSObject {
         showOverlay(
             in: appKitWindowFrame,
             presentation: presentation)
-        if shouldShowDetailsForLocalQA {
-            showDetails(now: now, installClickAwayMonitors: false)
-        }
         if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
         } else if presentation.isCached {
@@ -155,6 +155,20 @@ final class CodexQuotaOverlayController: NSObject {
         } else {
             setStatus(.active)
         }
+        updateTrackingInterval(Self.foregroundTrackingInterval)
+    }
+
+    private func refreshLocalQAOverlay(now: Date = Date()) {
+        guard let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else {
+            return
+        }
+        let qaFrame = screenFrame.insetBy(dx: 24, dy: 24)
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: environment.latestRateLimits,
+            displayMode: settings.quotaDisplayMode,
+            now: now)
+        showOverlay(in: qaFrame, presentation: presentation)
+        showDetails(now: now, installClickAwayMonitors: false)
         updateTrackingInterval(Self.foregroundTrackingInterval)
     }
 
