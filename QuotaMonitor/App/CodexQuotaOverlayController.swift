@@ -82,6 +82,12 @@ final class CodexQuotaOverlayController: NSObject {
         setStatus(.disabled)
     }
 
+    func showDetailsForLocalQA() {
+        guard LocalQAEnvironment.isQARequested() else { return }
+        refreshOverlay()
+        showDetails()
+    }
+
     @objc private func workspaceStateDidChange(_ notification: Notification) {
         refreshOverlay()
     }
