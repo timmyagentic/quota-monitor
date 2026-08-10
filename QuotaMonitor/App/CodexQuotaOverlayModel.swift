@@ -356,11 +356,13 @@ enum CodexQuotaOverlayLayout {
             }
             return leadingX - helpControlGap
         }
-        let fallbackTrailingX = min(
-            codexWindowFrame.minX + fallbackAccountRowTrailingOffset,
-            codexWindowFrame.maxX - bottomInset)
-        let preferredTrailingX = discoveredTrailingX ?? fallbackTrailingX
-        let preferredOriginX = preferredTrailingX - width
+        guard let discoveredTrailingX else {
+            return fixedFallbackFrame(
+                in: codexWindowFrame,
+                width: width)
+        }
+
+        let preferredOriginX = discoveredTrailingX - width
         let minimumOriginX = codexWindowFrame.minX + bottomInset
         let maximumOriginX = max(
             minimumOriginX,
@@ -370,6 +372,23 @@ enum CodexQuotaOverlayLayout {
             min(preferredOriginX, maximumOriginX))
         return CGRect(
             x: originX,
+            y: codexWindowFrame.minY + bottomInset,
+            width: width,
+            height: size.height)
+    }
+
+    /// This is the pre-help-anchor layout with only the horizontal slot
+    /// constant changed from 416 pt to 150 pt. Keep the full frame calculation
+    /// intact so the fallback preserves the original bottom baseline too.
+    private static func fixedFallbackFrame(
+        in codexWindowFrame: CGRect,
+        width: CGFloat
+    ) -> CGRect {
+        let trailingX = min(
+            codexWindowFrame.minX + fallbackAccountRowTrailingOffset,
+            codexWindowFrame.maxX - bottomInset)
+        return CGRect(
+            x: trailingX - width,
             y: codexWindowFrame.minY + bottomInset,
             width: width,
             height: size.height)

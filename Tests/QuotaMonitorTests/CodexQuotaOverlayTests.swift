@@ -324,6 +324,9 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
             == CGRect(x: -1_182, y: 212, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: 20, y: 200, width: 120, height: 700))
+            == CGRect(x: -4, y: 212, width: 132, height: 25))
 
         let weeklyOnly = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(

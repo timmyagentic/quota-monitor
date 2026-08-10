@@ -220,10 +220,12 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func refreshLocalQAOverlay(now: Date = Date()) {
-        guard let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else {
+        guard let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.frame else {
             return
         }
-        let qaFrame = screenFrame.insetBy(dx: 24, dy: 24)
+        // Match a full-screen Codex window so fallback screenshots retain the
+        // shipping layout's original 12 pt bottom baseline.
+        let qaFrame = screenFrame
         let presentation = CodexQuotaOverlayPresentation.make(
             snapshot: environment.latestRateLimits,
             displayMode: settings.quotaDisplayMode,
