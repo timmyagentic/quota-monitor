@@ -229,6 +229,9 @@ struct CodexQuotaOverlayTests {
                 y: 12,
                 width: 84,
                 height: 25))
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
+            presentation: weeklyOnly,
+            resetCredits: nil) == 97)
     }
 
     @Test("Hover details occupy the sidebar above the established account row")
@@ -250,10 +253,10 @@ struct CodexQuotaOverlayTests {
 
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: nil) == 142)
+            resetCredits: nil) == 158)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
-            resetCredits: resetCredits) == 222)
+            resetCredits: resetCredits) == 238)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             contentHeight: 222) == CGRect(
@@ -272,7 +275,7 @@ struct CodexQuotaOverlayTests {
         #expect(cached.isCached)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: cached,
-            resetCredits: nil) == 142)
+            resetCredits: nil) == 158)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
