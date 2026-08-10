@@ -306,28 +306,30 @@ enum CodexQuotaOverlayLayout {
     static let detailsHeaderHeight: CGFloat = 27
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
-    // Codex keeps the help control centered 24 pt inside the window's trailing
-    // edge. Reserve its 32 pt hit target plus the existing 34 pt visual gap so
-    // the quota widget follows that control without covering its interaction
-    // area as the Codex window changes width.
-    private static let helpControlCenterTrailingInset: CGFloat = 24
-    private static let helpControlHitTargetWidth: CGFloat = 32
     private static let helpControlGap: CGFloat = 34
+    private static let fallbackAccountRowTrailingOffset: CGFloat = 150
     private static let bottomInset: CGFloat = 12
     private static let detailsLeftInset: CGFloat = 12
     private static let detailsGap: CGFloat = 6
     private static let detailsTopInset: CGFloat = 12
 
-    /// Keep the widget immediately before the account-row help control. Both
-    /// summary widths share one trailing anchor, so switching between one and
-    /// two quota windows never changes the help-control spacing.
-    static func frame(in codexWindowFrame: CGRect) -> CGRect {
-        frame(in: codexWindowFrame, width: size.width)
+    /// Prefer the discovered account-row help control. If Accessibility cannot
+    /// provide it, keep the widget's trailing edge 150 pt from the Codex
+    /// window's leading edge, matching the original fixed-slot algorithm.
+    static func frame(
+        in codexWindowFrame: CGRect,
+        helpControlLeadingX: CGFloat? = nil
+    ) -> CGRect {
+        frame(
+            in: codexWindowFrame,
+            width: size.width,
+            helpControlLeadingX: helpControlLeadingX)
     }
 
     static func frame(
         in codexWindowFrame: CGRect,
-        presentation: CodexQuotaOverlayPresentation
+        presentation: CodexQuotaOverlayPresentation,
+        helpControlLeadingX: CGFloat? = nil
     ) -> CGRect {
         let visibleWindowCount = [presentation.fiveHour, presentation.weekly]
             .compactMap { $0 }
@@ -335,18 +337,30 @@ enum CodexQuotaOverlayLayout {
         let width = visibleWindowCount == 1
             ? singleWindowWidth
             : size.width
-        return frame(in: codexWindowFrame, width: width)
+        return frame(
+            in: codexWindowFrame,
+            width: width,
+            helpControlLeadingX: helpControlLeadingX)
     }
 
     private static func frame(
         in codexWindowFrame: CGRect,
-        width: CGFloat
+        width: CGFloat,
+        helpControlLeadingX: CGFloat?
     ) -> CGRect {
-        let helpControlCenterX = codexWindowFrame.maxX
-            - helpControlCenterTrailingInset
-        let helpControlLeadingX = helpControlCenterX
-            - helpControlHitTargetWidth / 2
-        let preferredOriginX = helpControlLeadingX - helpControlGap - width
+        let discoveredTrailingX: CGFloat? = helpControlLeadingX.flatMap { leadingX in
+            guard leadingX.isFinite,
+                  leadingX >= codexWindowFrame.minX,
+                  leadingX <= codexWindowFrame.maxX else {
+                return nil
+            }
+            return leadingX - helpControlGap
+        }
+        let fallbackTrailingX = min(
+            codexWindowFrame.minX + fallbackAccountRowTrailingOffset,
+            codexWindowFrame.maxX - bottomInset)
+        let preferredTrailingX = discoveredTrailingX ?? fallbackTrailingX
+        let preferredOriginX = preferredTrailingX - width
         let minimumOriginX = codexWindowFrame.minX + bottomInset
         let maximumOriginX = max(
             minimumOriginX,
@@ -392,9 +406,12 @@ enum CodexQuotaOverlayLayout {
 
     static func detailsFrame(
         in codexWindowFrame: CGRect,
-        contentHeight: CGFloat
+        contentHeight: CGFloat,
+        helpControlLeadingX: CGFloat? = nil
     ) -> CGRect {
-        let summaryFrame = frame(in: codexWindowFrame)
+        let summaryFrame = frame(
+            in: codexWindowFrame,
+            helpControlLeadingX: helpControlLeadingX)
         let width = min(detailsWidth, max(
             1,
             codexWindowFrame.width - detailsLeftInset * 2))

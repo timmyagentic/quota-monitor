@@ -24,6 +24,7 @@ final class CodexQuotaOverlayController: NSObject {
     private var trackedCodexPID: pid_t?
     private var lastCodexWindowNumber: Int?
     private var lastCodexWindowFrame: CGRect?
+    private var helpControlAnchor: CodexHelpControlAnchor?
     private var isCodexFrontmost = false
     private var isSummaryHovered = false
     private var isDetailsHovered = false
@@ -186,9 +187,19 @@ final class CodexQuotaOverlayController: NSObject {
                 above: window.windowNumber,
                 candidates: onScreenWindows)
         } ?? false
+        if isCodexFrontmost,
+           becameFrontmost || lastCodexWindowNumber != window.windowNumber,
+           let trackedCodexPID {
+            helpControlAnchor = CodexHelpControlAccessibility.anchor(
+                for: trackedCodexPID,
+                in: window.bounds)
+        }
+        let helpControlLeadingX = helpControlAnchor?.leadingX(
+            in: appKitWindowFrame)
         showOverlay(
             in: appKitWindowFrame,
             presentation: presentation,
+            helpControlLeadingX: helpControlLeadingX,
             placement: placement,
             relativeTo: window.windowNumber,
             shouldRaise: becameFrontmost
@@ -220,6 +231,7 @@ final class CodexQuotaOverlayController: NSObject {
         showOverlay(
             in: qaFrame,
             presentation: presentation,
+            helpControlLeadingX: nil,
             placement: .foreground,
             relativeTo: nil,
             shouldRaise: true)
@@ -263,6 +275,7 @@ final class CodexQuotaOverlayController: NSObject {
     private func showOverlay(
         in codexWindowFrame: CGRect,
         presentation: CodexQuotaOverlayPresentation,
+        helpControlLeadingX: CGFloat?,
         placement: CodexQuotaOverlayPlacement,
         relativeTo codexWindowNumber: Int?,
         shouldRaise: Bool
@@ -271,7 +284,8 @@ final class CodexQuotaOverlayController: NSObject {
         lastCodexWindowFrame = codexWindowFrame
         let frame = CodexQuotaOverlayLayout.frame(
             in: codexWindowFrame,
-            presentation: presentation)
+            presentation: presentation,
+            helpControlLeadingX: helpControlLeadingX)
         let panel = panel ?? makePanel()
         if panel.frame != frame {
             panel.setFrame(frame, display: panel.isVisible)
@@ -309,6 +323,7 @@ final class CodexQuotaOverlayController: NSObject {
         isDetailsHovered = false
         lastCodexWindowNumber = nil
         lastCodexWindowFrame = nil
+        helpControlAnchor = nil
         closeDetails()
         panel?.orderOut(nil)
     }
@@ -446,7 +461,9 @@ final class CodexQuotaOverlayController: NSObject {
             resetCredits: resetCredits)
         let frame = CodexQuotaOverlayLayout.detailsFrame(
             in: codexWindowFrame,
-            contentHeight: contentHeight)
+            contentHeight: contentHeight,
+            helpControlLeadingX: helpControlAnchor?.leadingX(
+                in: codexWindowFrame))
         if detailsPanel.frame != frame {
             detailsPanel.setFrame(frame, display: detailsPanel.isVisible)
         }
