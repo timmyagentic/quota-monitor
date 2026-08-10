@@ -145,7 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let qaController = LocalQAController(
                 configuration: qa,
                 environment: env,
-                statusItemController: controller)
+                statusItemController: controller,
+                codexQuotaOverlayController: codexQuotaOverlayController)
             localQAController = qaController
             qaController.start()
         }

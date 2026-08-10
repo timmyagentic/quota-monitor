@@ -27,6 +27,7 @@ final class CodexQuotaOverlayController: NSObject {
     private var detailsCloseTask: Task<Void, Never>?
     private var localMouseDownMonitor: Any?
     private var globalMouseDownMonitor: Any?
+    private var shouldShowDetailsForLocalQA = false
     private var isStarted = false
 
     init(
@@ -82,6 +83,12 @@ final class CodexQuotaOverlayController: NSObject {
         setStatus(.disabled)
     }
 
+    func showDetailsForLocalQA() {
+        guard LocalQAEnvironment.isQARequested() else { return }
+        shouldShowDetailsForLocalQA = true
+        refreshLocalQAOverlay()
+    }
+
     @objc private func workspaceStateDidChange(_ notification: Notification) {
         refreshOverlay()
     }
@@ -96,6 +103,10 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func refreshOverlay(now: Date = Date()) {
         guard isStarted else { return }
+        if shouldShowDetailsForLocalQA {
+            refreshLocalQAOverlay(now: now)
+            return
+        }
         guard settings.shouldShowCodexSidebarQuota else {
             lastFrontmostPID = nil
             hideOverlay()
@@ -144,6 +155,20 @@ final class CodexQuotaOverlayController: NSObject {
         } else {
             setStatus(.active)
         }
+        updateTrackingInterval(Self.foregroundTrackingInterval)
+    }
+
+    private func refreshLocalQAOverlay(now: Date = Date()) {
+        guard let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else {
+            return
+        }
+        let qaFrame = screenFrame.insetBy(dx: 24, dy: 24)
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: environment.latestRateLimits,
+            displayMode: settings.quotaDisplayMode,
+            now: now)
+        showOverlay(in: qaFrame, presentation: presentation)
+        showDetails(now: now, installClickAwayMonitors: false)
         updateTrackingInterval(Self.foregroundTrackingInterval)
     }
 
@@ -239,7 +264,10 @@ final class CodexQuotaOverlayController: NSObject {
         showDetails()
     }
 
-    private func showDetails(now: Date = Date()) {
+    private func showDetails(
+        now: Date = Date(),
+        installClickAwayMonitors: Bool = true
+    ) {
         detailsCloseTask?.cancel()
         detailsCloseTask = nil
         guard panel?.isVisible == true,
@@ -259,7 +287,9 @@ final class CodexQuotaOverlayController: NSObject {
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
-        installClickAwayMonitorsIfNeeded()
+        if installClickAwayMonitors {
+            installClickAwayMonitorsIfNeeded()
+        }
     }
 
     private func scheduleDetailsClose() {

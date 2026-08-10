@@ -286,7 +286,10 @@ enum CodexQuotaOverlayLayout {
         guard windowCount > 0 else { return 0 }
 
         var height: CGFloat = 24 + detailsHeaderHeight
-        height += CGFloat(windowCount) * 38
+        // The rendered quota row includes two caption lines, the progress
+        // track, and vertical padding. Keep the model height above its actual
+        // SwiftUI fitting height so ordinary cards select the static branch.
+        height += CGFloat(windowCount) * 46
         height += CGFloat(max(0, windowCount - 1)) * 15
 
         if let resetCredits {

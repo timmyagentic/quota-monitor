@@ -2,14 +2,14 @@
 
 `summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
 isolated real-data QA build at source commit
-`be6b0f0823ab0279b9d186aba119c2116deb16c5`. It shows the current weekly-only
+`40996a3622f38e2b7f837345170c1f02f0dae22f`. It shows the final weekly-only
 summary after integrating the semantic-background change, rendering the same
-compact text as the menu bar (`7d 63%` for the captured shadow snapshot), with
+compact text as the menu bar (`7d 64%` for the captured shadow snapshot), with
 no additional health dot. The crop is the native 84 x 25 point overlay window
 and contains no account identity or conversation content.
 
 SHA-256:
-`6a2b9cc74fe35c7d98256da923c44036ee6738f1634e9d9d2d984847078a8722`
+`7745c78db4b0f792984a8c68b727e99312b965fcfbd4604fdad73b8b016305bf`
 
 `native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
 screenshots from the isolated real-data QA build. They show the
@@ -52,6 +52,18 @@ components have different roles and dimensions.
 
 SHA-256:
 `ca129088ad3acab48c6c98db2fc72106b10baf7f465f0f8c3b7878bb50a7dec0`
+
+`no-scroll-expanded-zh-Hans.png` is a direct 2x capture from the isolated
+real-data QA build at source commit
+`c08994ea5670d5d1281a672a3babb27383dcb3cb`. It shows the final weekly-only
+detail card at its measured ordinary-content height, with every row visible
+and no scrollbar. The final
+implementation uses `ViewThatFits` to retain a hidden-indicator scroll fallback
+only when the available Codex window height is genuinely constrained. No
+account identity, credential, or conversation content is included.
+
+SHA-256:
+`5e5e58b5dfe7202c8cd32791b05522eeaa45e70d419452a8c942957f478235c2`
 
 ## Legacy reference
 

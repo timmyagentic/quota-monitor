@@ -159,46 +159,21 @@ struct CodexQuotaOverlayDetailsView: View {
                     .resetCreditsAvailable,
                 now: context.date)
 
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(Branding.appDisplayName)
-                        .font(.headline)
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
-                            alignment: .topLeading)
-                        .accessibilityAddTraits(.isHeader)
+            ViewThatFits(in: .vertical) {
+                detailsContent(
+                    presentation: presentation,
+                    resetCredits: resetCredits,
+                    now: context.date)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                    if let fiveHour = presentation.fiveHour {
-                        quotaWindow(
-                            title: L10n.quotaCardTitle5h,
-                            metric: fiveHour,
-                            now: context.date)
-                    }
-                    if presentation.fiveHour != nil,
-                       presentation.weekly != nil {
-                        Divider()
-                            .padding(.vertical, 7)
-                    }
-                    if let weekly = presentation.weekly {
-                        quotaWindow(
-                            title: L10n.quotaCardTitle7d,
-                            metric: weekly,
-                            now: context.date)
-                    }
-
-                    if let resetCredits {
-                        Divider()
-                            .padding(.vertical, 8)
-                        resetCreditsSection(
-                            resetCredits,
-                            now: context.date)
-                    }
+                ScrollView(.vertical) {
+                    detailsContent(
+                        presentation: presentation,
+                        resetCredits: resetCredits,
+                        now: context.date)
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(.regularMaterial)
@@ -217,6 +192,50 @@ struct CodexQuotaOverlayDetailsView: View {
             .accessibilityElement(children: .contain)
             .id(localization.currentLanguage)
         }
+    }
+
+    private func detailsContent(
+        presentation: CodexQuotaOverlayPresentation,
+        resetCredits: CodexQuotaOverlayResetCreditsPresentation?,
+        now: Date
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(Branding.appDisplayName)
+                .font(.headline)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
+                    alignment: .topLeading)
+                .accessibilityAddTraits(.isHeader)
+
+            if let fiveHour = presentation.fiveHour {
+                quotaWindow(
+                    title: L10n.quotaCardTitle5h,
+                    metric: fiveHour,
+                    now: now)
+            }
+            if presentation.fiveHour != nil,
+               presentation.weekly != nil {
+                Divider()
+                    .padding(.vertical, 7)
+            }
+            if let weekly = presentation.weekly {
+                quotaWindow(
+                    title: L10n.quotaCardTitle7d,
+                    metric: weekly,
+                    now: now)
+            }
+
+            if let resetCredits {
+                Divider()
+                    .padding(.vertical, 8)
+                resetCreditsSection(
+                    resetCredits,
+                    now: now)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private func quotaWindow(

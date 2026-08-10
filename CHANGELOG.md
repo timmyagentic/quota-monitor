@@ -32,12 +32,12 @@ window copy.
 
 #### Summary
 
-- The Codex window widget now mirrors the menu bar's compact 5h/7d readout without an extra status dot, blends into Codex with an adaptive background and subtle border, and opens a clearly branded, narrower detail card that dismisses naturally.
+- The Codex window widget now mirrors the menu bar's compact 5h/7d readout without an extra status dot, blends into Codex with an adaptive background and subtle border, and opens a clearly branded, narrower detail card without an unnecessary scroll bar at normal window sizes.
 - Dates and times in Sessions, History, Activity, and Trends now match the language selected inside Quota Monitor.
 
 ### Fixed
 
-- **Refined Codex quota widget.** The window widget now uses the same compact quota text as the menu bar without an extra status dot; its adaptive background and subtle border blend into Codex, while the anchored detail card starts with the Quota Monitor name, stays narrow, and closes after pointer exit or a click elsewhere instead of remaining pinned.
+- **Refined Codex quota widget.** The window widget now uses the same compact quota text as the menu bar without an extra status dot; its adaptive background and subtle border blend into Codex, while the anchored detail card starts with the Quota Monitor name, stays narrow, scrolls only when a short window would otherwise clip content, and closes after pointer exit or a click elsewhere instead of remaining pinned.
 - **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
 
 ## [1.0.0] — 2026-08-09
