@@ -186,6 +186,62 @@ struct CodexQuotaOverlayTests {
         #expect(CodexWindowSelectionPolicy.frontWindow(
             for: pid,
             candidates: candidates)?.windowNumber == 4)
+        #expect(CodexWindowSelectionPolicy.trackedWindow(
+            for: pid,
+            lastWindowNumber: 5,
+            codexIsFrontmost: false,
+            candidates: candidates)?.windowNumber == 5)
+        #expect(CodexWindowSelectionPolicy.trackedWindow(
+            for: pid,
+            lastWindowNumber: 99,
+            codexIsFrontmost: false,
+            candidates: candidates) == nil)
+        #expect(CodexWindowSelectionPolicy.trackedWindow(
+            for: pid,
+            lastWindowNumber: 5,
+            codexIsFrontmost: true,
+            candidates: candidates)?.windowNumber == 4)
+        #expect(CodexWindowSelectionPolicy.isWindow(
+            1,
+            above: 4,
+            candidates: candidates))
+        #expect(!CodexWindowSelectionPolicy.isWindow(
+            5,
+            above: 4,
+            candidates: candidates))
+        #expect(!CodexWindowSelectionPolicy.isWindow(
+            99,
+            above: 4,
+            candidates: candidates))
+    }
+
+    @Test("A visible widget stays with Codex in the background without reopening")
+    func backgroundVisibilityPolicy() {
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: true,
+            trackedWindowIsOnScreen: true,
+            overlayIsVisible: false) == .foreground)
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: false,
+            trackedWindowIsOnScreen: true,
+            overlayIsVisible: true) == .background)
+        #expect(!CodexQuotaOverlayPlacement.background.allowsDetails)
+        #expect(!CodexQuotaOverlayPlacement.background.allowsInteraction)
+    }
+
+    @Test("Background tracking never summons a hidden or off-screen widget")
+    func backgroundVisibilityRequiresExistingOnScreenWidget() {
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: false,
+            trackedWindowIsOnScreen: true,
+            overlayIsVisible: false) == .hidden)
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: false,
+            trackedWindowIsOnScreen: false,
+            overlayIsVisible: true) == .hidden)
+        #expect(CodexQuotaOverlayPlacement.foreground.allowsDetails)
+        #expect(CodexQuotaOverlayPlacement.foreground.allowsInteraction)
+        #expect(!CodexQuotaOverlayPlacement.hidden.allowsInteraction)
     }
 
     @Test("Quartz window frames map onto primary and secondary AppKit screens")
@@ -442,7 +498,15 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("SIGTERM"))
         #expect(!source.contains("remote-debugging-port"))
         #expect(!source.contains("Process()"))
-        #expect(source.contains("panel.ignoresMouseEvents = false"))
+        #expect(source.contains(
+            "panel.ignoresMouseEvents = !placement.allowsInteraction"))
+        #expect(source.contains("ignoresMouseEvents: false"))
+        #expect(source.contains(
+            "panel.ignoresMouseEvents = ignoresMouseEvents"))
+        #expect(source.contains("panel.level = .normal"))
+        #expect(!source.contains("panel.level = .floating"))
+        #expect(source.contains(
+            "panel.order(.above, relativeTo: codexWindowNumber)"))
         #expect(source.contains("onHoverChanged"))
         #expect(source.contains("detailsPanel"))
         #expect(source.contains("addGlobalMonitorForEvents"))

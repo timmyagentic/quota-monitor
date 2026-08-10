@@ -179,13 +179,84 @@ enum CodexWindowSelectionPolicy {
         for processIdentifier: pid_t,
         candidates: [CodexWindowCandidate]
     ) -> CodexWindowCandidate? {
-        candidates.first {
-            $0.ownerPID == processIdentifier
-                && $0.layer == 0
-                && $0.alpha > 0.01
-                && $0.bounds.width >= minimumWindowSize.width
-                && $0.bounds.height >= minimumWindowSize.height
+        candidates.first { candidate in
+            isEligibleWindow(candidate, for: processIdentifier)
         }
+    }
+
+    static func trackedWindow(
+        for processIdentifier: pid_t,
+        lastWindowNumber: Int?,
+        codexIsFrontmost: Bool,
+        candidates: [CodexWindowCandidate]
+    ) -> CodexWindowCandidate? {
+        if codexIsFrontmost {
+            return frontWindow(
+                for: processIdentifier,
+                candidates: candidates)
+        }
+        guard let lastWindowNumber else { return nil }
+        return candidates.first { candidate in
+            candidate.windowNumber == lastWindowNumber
+                && isEligibleWindow(candidate, for: processIdentifier)
+        }
+    }
+
+    static func isWindow(
+        _ upperWindowNumber: Int,
+        above lowerWindowNumber: Int,
+        candidates: [CodexWindowCandidate]
+    ) -> Bool {
+        guard let upperIndex = candidates.firstIndex(where: {
+            $0.windowNumber == upperWindowNumber
+        }), let lowerIndex = candidates.firstIndex(where: {
+            $0.windowNumber == lowerWindowNumber
+        }) else {
+            return false
+        }
+        return upperIndex < lowerIndex
+    }
+
+    private static func isEligibleWindow(
+        _ candidate: CodexWindowCandidate,
+        for processIdentifier: pid_t
+    ) -> Bool {
+        candidate.ownerPID == processIdentifier
+            && candidate.layer == 0
+            && candidate.alpha > 0.01
+            && candidate.bounds.width >= minimumWindowSize.width
+            && candidate.bounds.height >= minimumWindowSize.height
+    }
+}
+
+enum CodexQuotaOverlayPlacement: Equatable {
+    case hidden
+    case foreground
+    case background
+
+    var allowsDetails: Bool {
+        self == .foreground
+    }
+
+    var allowsInteraction: Bool {
+        self == .foreground
+    }
+}
+
+enum CodexQuotaOverlayVisibilityPolicy {
+    /// A visible widget may remain attached after Codex loses focus, but a
+    /// background Codex window must never summon a new overlay above the app
+    /// the user is currently working in.
+    static func placement(
+        codexIsFrontmost: Bool,
+        trackedWindowIsOnScreen: Bool,
+        overlayIsVisible: Bool
+    ) -> CodexQuotaOverlayPlacement {
+        guard trackedWindowIsOnScreen else { return .hidden }
+        if codexIsFrontmost {
+            return .foreground
+        }
+        return overlayIsVisible ? .background : .hidden
     }
 }
 
