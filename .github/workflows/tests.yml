@@ -277,7 +277,16 @@ jobs:
         # whitespace checks, and the Swift test suite. This must not launch
         # a QuotaMonitor.app instance. Visible UI validation is explicit:
         # run an interactive QA setup locally, then use Computer Use.
-        run: ./qa/run-static.sh
+        run: ./qa/run-static.sh --force
+
+      - name: Upload Swift test log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: swift-test-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .build/qa-logs/swift-test-*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: swift build -c release (smoke)
         # Belt-and-suspenders check: tests run in debug, but release

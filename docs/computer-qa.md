@@ -16,7 +16,9 @@ window lifecycle, or any workflow that is hard to trust from unit tests alone.
 
 ## Workflow
 
-Run the static suite first:
+While implementation is changing, run only the affected Swift suites. Once
+the code, tests, and QA scripts are stable, run the static suite once before
+starting the final Computer Use pass:
 
 ```sh
 ./qa/run-static.sh

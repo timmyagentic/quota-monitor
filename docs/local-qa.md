@@ -9,7 +9,7 @@ launched, isolated QA build.
 
 | Responsibility | Command | Launches app? | What it owns |
 | --- | --- | --- | --- |
-| Static gate | `./qa/run-static.sh` or `./qa/run-all.sh` | No | Shell/Python helper tests, release-note format, whitespace checks, and Swift tests. |
+| Static gate | `./qa/run-static.sh` | No | Final shell/Python helper tests, release-note format, whitespace checks, and a fresh or content-matched Swift result. |
 | Computer Use setup | `./qa/prepare-computer-use-real-data.sh` or `./qa/prepare-computer-use-fixture-smoke.sh` | Yes, isolated QA build only | Build the latest app, prepare real-data-shadow or deterministic fixture-smoke state, verify the artifact boundary, and write the Computer Use brief. |
 | Computer Use walkthrough | Computer Use using the exact app target from `computer-use-qa.md` | Uses the running QA build | User-facing Dashboard, Sessions, History, Settings, menu bar, help, and visual checks. |
 | Artifact replay | `./qa/check-artifacts.sh .build/qa-artifacts/<timestamp>` | No | Re-check an existing artifact directory without rebuilding or relaunching the app. |
@@ -25,18 +25,22 @@ Run only the shell harness tests:
 ./qa/tests/common_tests.sh
 ```
 
-Run the Swift test suite:
+While iterating, run only the affected Swift suite or test:
 
 ```sh
-swift test --disable-keychain
+swift test --disable-keychain --filter SuiteName
 ```
 
-Run the default non-GUI gate:
+After code, tests, and QA scripts are stable, run the non-GUI PR gate once:
 
 ```sh
 ./qa/run-static.sh
-./qa/run-all.sh
 ```
+
+Do not run an unfiltered `swift test` first, do not pair the command with a
+separate `git diff --check`, and do not invoke both `run-static.sh` and its
+`run-all.sh` compatibility alias. CI uses `./qa/run-static.sh --force` to
+require a fresh Swift run.
 
 Launch the real-data shadow setup and keep it open for Computer Use. Use this
 for local test-version checks that should resemble the installed app:
@@ -82,6 +86,19 @@ The Codex desktop Run action is wired to `./script/build_and_run.sh` through
 - release-note format validation for `Resources/VERSION`
 - `git diff --check`
 - `swift test --disable-keychain`
+
+The inexpensive checks above run on every invocation. The full Swift suite is
+content-cached per worktree under `.build/qa-state/`: a previous passing result
+is reused when source, tests, QA/tool scripts, package inputs, bundled
+resources, and the Swift toolchain are unchanged. Staging or committing the
+same file content does not invalidate it. Documentation and changelog-only
+changes keep the Swift result valid while their release-note and whitespace
+checks still rerun.
+
+Fresh Swift runs capture their complete output under `.build/qa-logs/`. A
+successful run prints only the final test summary and log path; a failed run
+prints the complete retained log. `--force` bypasses reuse, and is intended for
+CI or an explicitly requested fresh run rather than normal iteration.
 
 ## What Computer Use Setup Prepares
 
