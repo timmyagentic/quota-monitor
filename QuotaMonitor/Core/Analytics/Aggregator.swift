@@ -400,17 +400,24 @@ enum SessionSort: String, CaseIterable, Identifiable, Sendable {
         case .tokens: return L10n.sortTokens
         }
     }
+}
 
-    var orderClause: String {
+enum SessionPageCursor: Sendable, Equatable {
+    case recent(activityAt: String, sessionId: String)
+    case value(totalValueUSD: Double, sessionId: String)
+    case tokens(totalTokens: Int64, sessionId: String)
+
+    var sort: SessionSort {
         switch self {
-        case .recent:
-            return "COALESCE(s.updated_at, s.started_at) DESC, s.session_id ASC"
-        case .value:
-            return "total_value DESC, s.session_id ASC"
-        case .tokens:
-            return "total_tokens DESC, s.session_id ASC"
+        case .recent: return .recent
+        case .value: return .value
+        case .tokens: return .tokens
         }
     }
+}
+
+enum SessionPaginationError: Error, Equatable {
+    case cursorSortMismatch
 }
 
 enum SessionPageLoadTrigger: String, Sendable, Equatable {
@@ -421,7 +428,9 @@ enum SessionPageLoadTrigger: String, Sendable, Equatable {
 
 struct SessionPage: Sendable, Equatable {
     let rows: [SessionRow]
-    let hasMore: Bool
+    let nextCursor: SessionPageCursor?
+
+    var hasMore: Bool { nextCursor != nil }
 }
 
 struct SessionDetail: Sendable, Equatable {

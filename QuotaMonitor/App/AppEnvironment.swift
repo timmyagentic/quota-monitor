@@ -76,6 +76,11 @@ final class AppEnvironment {
     /// the button looks unresponsive.
     var latestClaudeUsageCooldownUntil: Date?
     var lastScanReport: ImportEngine.ScanReport?
+    /// Monotonic invalidation token for list views backed by session
+    /// summaries. A background import can move an unloaded session across a
+    /// keyset cursor, so Sessions must restart from page one after any read-
+    /// model change instead of continuing with a stale cursor.
+    var sessionsDataGeneration = 0
     var scanProgress: ScanProgress?
     var scanPresentation: ScanPresentation = .compactActivity
     var dashboardSnapshot: DashboardSnapshot?

@@ -3,6 +3,11 @@ import GRDB
 
 // Sessions list, session detail, and direct-child subagent queries.
 
+private struct SessionPageCandidate {
+    let row: SessionRow
+    let cursor: SessionPageCursor
+}
+
 extension Aggregator {
 
     static func fetchSessionsPage(
@@ -10,18 +15,22 @@ extension Aggregator {
         sort: SessionSort = .recent,
         search: String = "",
         provider: ProviderFilter = .all,
-        limit: Int = 50
+        after cursor: SessionPageCursor? = nil,
+        pageSize: Int = 50
     ) throws -> SessionPage {
-        precondition(limit > 0 && limit < Int.max)
-        let candidates = try fetchSessions(
+        precondition(pageSize > 0 && pageSize < Int.max)
+        let candidates = try fetchSessionCandidates(
             db: db,
             sort: sort,
             search: search,
             provider: provider,
-            limit: limit + 1)
+            after: cursor,
+            limit: pageSize + 1)
+        let hasMore = candidates.count > pageSize
+        let pageCandidates = Array(candidates.prefix(pageSize))
         return SessionPage(
-            rows: Array(candidates.prefix(limit)),
-            hasMore: candidates.count > limit)
+            rows: pageCandidates.map(\.row),
+            nextCursor: hasMore ? pageCandidates.last?.cursor : nil)
     }
 
     static func fetchSessions(
@@ -31,38 +40,55 @@ extension Aggregator {
         provider: ProviderFilter = .all,
         limit: Int = 500
     ) throws -> [SessionRow] {
-        let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasSearch = !trimmed.isEmpty
-        let pattern = "%\(trimmed.lowercased())%"
+        precondition(limit > 0)
+        return try fetchSessionCandidates(
+            db: db,
+            sort: sort,
+            search: search,
+            provider: provider,
+            after: nil,
+            limit: limit
+        ).map(\.row)
+    }
 
-        var sql = """
-        SELECT
-          s.session_id,
-          s.title,
-          s.project_name,
-          s.cwd,
-          s.agent_nickname,
-          s.last_model_id,
-          s.started_at,
-          s.updated_at,
-          s.contains_subagents,
-          COALESCE(SUM(ue.value_usd), 0)        AS total_value,
-          COALESCE(SUM(ue.total_tokens), 0)     AS total_tokens,
-          COUNT(ue.id)                          AS event_count,
-          COALESCE(MAX(ue.model_inferred), 0)   AS has_inferred_model
-        FROM sessions s
-        LEFT JOIN usage_events ue ON ue.session_id = s.session_id
-        """
-        var args: [(any DatabaseValueConvertible)?] = []
-        // Stitch together the provider + search WHERE clauses.
-        var predicates: [String] = []
+    static func makeSessionsPageQuery(
+        sort: SessionSort,
+        search: String,
+        provider: ProviderFilter,
+        after cursor: SessionPageCursor?,
+        limit: Int
+    ) throws -> (sql: String, arguments: StatementArguments) {
+        precondition(limit > 0)
+        guard cursor == nil || cursor?.sort == sort else {
+            throw SessionPaginationError.cursorSortMismatch
+        }
+
+        let trimmed = search.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = "%\(trimmed.lowercased())%"
+        let searchArguments = Array(repeating: pattern, count: 6)
+
+        let pageIndex: String
+        let orderClause: String
+        switch sort {
+        case .recent:
+            pageIndex = "idx_session_summaries_recent_page"
+            orderClause = "activity_at DESC, session_id ASC"
+        case .value:
+            pageIndex = "idx_session_summaries_value_page"
+            orderClause = "total_value DESC, session_id ASC"
+        case .tokens:
+            pageIndex = "idx_session_summaries_tokens_page"
+            orderClause = "total_tokens DESC, session_id ASC"
+        }
+
+        var basePredicates: [String] = []
         switch provider {
         case .all: break
-        case .codex:  predicates.append("s.provider = 'codex'")
-        case .claude: predicates.append("s.provider = 'claude'")
+        case .codex: basePredicates.append("s.provider = 'codex'")
+        case .claude: basePredicates.append("s.provider = 'claude'")
         }
-        if hasSearch {
-            predicates.append("""
+        if !trimmed.isEmpty {
+            basePredicates.append("""
                 (LOWER(COALESCE(s.title,''))          LIKE ?
               OR LOWER(COALESCE(s.project_name,''))   LIKE ?
               OR LOWER(COALESCE(s.cwd,''))            LIKE ?
@@ -70,35 +96,146 @@ extension Aggregator {
               OR LOWER(COALESCE(s.last_model_id,''))  LIKE ?
               OR LOWER(s.session_id)                  LIKE ?)
             """)
-            args.append(contentsOf: Array(repeating: pattern, count: 6))
         }
-        if !predicates.isEmpty {
-            sql += "\nWHERE " + predicates.joined(separator: " AND ")
+
+        func selectBranch(cursorPredicate: String? = nil) -> String {
+            var predicates = basePredicates
+            if let cursorPredicate {
+                predicates.append(cursorPredicate)
+            }
+            let whereClause = predicates.isEmpty
+                ? ""
+                : "\nWHERE " + predicates.joined(separator: " AND ")
+            return """
+                SELECT
+                  ss.session_id AS session_id,
+                  s.title,
+                  s.project_name,
+                  s.cwd,
+                  s.agent_nickname,
+                  s.last_model_id,
+                  s.started_at,
+                  s.updated_at,
+                  s.contains_subagents,
+                  ss.activity_at                       AS activity_at,
+                  ss.total_value_usd                   AS total_value,
+                  ss.total_tokens                      AS total_tokens,
+                  ss.event_count                       AS event_count,
+                  ss.has_inferred_model                AS has_inferred_model
+                FROM session_summaries ss INDEXED BY \(pageIndex)
+                JOIN sessions s ON s.session_id = ss.session_id\(whereClause)
+                """
         }
-        sql += """
 
-        GROUP BY s.session_id
-        ORDER BY \(sort.orderClause)
-        LIMIT \(limit)
-        """
+        var args: [(any DatabaseValueConvertible)?] = []
+        let sql: String
+        if let cursor {
+            let lowerPredicate: String
+            let tiedPredicate: String
+            if !trimmed.isEmpty {
+                args.append(contentsOf: searchArguments)
+            }
+            switch cursor {
+            case .recent(let activityAt, let sessionId):
+                lowerPredicate = "ss.activity_at < ?"
+                tiedPredicate = "ss.activity_at = ? AND ss.session_id > ?"
+                args.append(activityAt)
+                if !trimmed.isEmpty {
+                    args.append(contentsOf: searchArguments)
+                }
+                args.append(activityAt)
+                args.append(sessionId)
+            case .value(let totalValueUSD, let sessionId):
+                lowerPredicate = "ss.total_value_usd < ?"
+                tiedPredicate = "ss.total_value_usd = ? AND ss.session_id > ?"
+                args.append(totalValueUSD)
+                if !trimmed.isEmpty {
+                    args.append(contentsOf: searchArguments)
+                }
+                args.append(totalValueUSD)
+                args.append(sessionId)
+            case .tokens(let totalTokens, let sessionId):
+                lowerPredicate = "ss.total_tokens < ?"
+                tiedPredicate = "ss.total_tokens = ? AND ss.session_id > ?"
+                args.append(totalTokens)
+                if !trimmed.isEmpty {
+                    args.append(contentsOf: searchArguments)
+                }
+                args.append(totalTokens)
+                args.append(sessionId)
+            }
+            sql = """
+                \(selectBranch(cursorPredicate: lowerPredicate))
+                UNION ALL
+                \(selectBranch(cursorPredicate: tiedPredicate))
+                ORDER BY \(orderClause)
+                LIMIT ?
+                """
+        } else {
+            if !trimmed.isEmpty {
+                args.append(contentsOf: searchArguments)
+            }
+            sql = """
+                \(selectBranch())
+                ORDER BY \(orderClause)
+                LIMIT ?
+                """
+        }
+        args.append(limit)
+        return (sql, StatementArguments(args))
+    }
 
-        return try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+    private static func fetchSessionCandidates(
+        db: Database,
+        sort: SessionSort,
+        search: String,
+        provider: ProviderFilter,
+        after cursor: SessionPageCursor?,
+        limit: Int
+    ) throws -> [SessionPageCandidate] {
+        let query = try makeSessionsPageQuery(
+            sort: sort,
+            search: search,
+            provider: provider,
+            after: cursor,
+            limit: limit)
+        return try Row.fetchAll(db, sql: query.sql, arguments: query.arguments)
             .map { row in
-                SessionRow(
-                    sessionId: row["session_id"] ?? "",
-                    title: row["title"],
-                    projectName: row["project_name"],
-                    cwd: row["cwd"],
-                    agentNickname: row["agent_nickname"],
-                    lastModelId: row["last_model_id"],
-                    startedAt: row["started_at"],
-                    updatedAt: row["updated_at"],
-                    totalValueUSD: row["total_value"] ?? 0,
-                    totalTokens: row["total_tokens"] ?? 0,
-                    eventCount: row["event_count"] ?? 0,
-                    containsSubagents: row["contains_subagents"] ?? false,
-                    subagentCount: nil,
-                    hasInferredModel: row["has_inferred_model"] ?? false)
+                let sessionId: String = row["session_id"] ?? ""
+                let totalValueUSD: Double = row["total_value"] ?? 0
+                let totalTokens: Int64 = row["total_tokens"] ?? 0
+                let pageCursor: SessionPageCursor
+                switch sort {
+                case .recent:
+                    pageCursor = .recent(
+                        activityAt: row["activity_at"] ?? "",
+                        sessionId: sessionId)
+                case .value:
+                    pageCursor = .value(
+                        totalValueUSD: totalValueUSD,
+                        sessionId: sessionId)
+                case .tokens:
+                    pageCursor = .tokens(
+                        totalTokens: totalTokens,
+                        sessionId: sessionId)
+                }
+                return SessionPageCandidate(
+                    row: SessionRow(
+                        sessionId: sessionId,
+                        title: row["title"],
+                        projectName: row["project_name"],
+                        cwd: row["cwd"],
+                        agentNickname: row["agent_nickname"],
+                        lastModelId: row["last_model_id"],
+                        startedAt: row["started_at"],
+                        updatedAt: row["updated_at"],
+                        totalValueUSD: totalValueUSD,
+                        totalTokens: totalTokens,
+                        eventCount: row["event_count"] ?? 0,
+                        containsSubagents: row["contains_subagents"] ?? false,
+                        subagentCount: nil,
+                        hasInferredModel: row["has_inferred_model"] ?? false),
+                    cursor: pageCursor)
             }
     }
 
