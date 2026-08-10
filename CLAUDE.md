@@ -9,9 +9,9 @@ QuotaMonitor is a **macOS-only Swift 6 menu-bar app** (SwiftPM, no Xcode project
 The system Command Line Tools SwiftPM can be mismatched on newer macOS; `build.sh` and `qa/run-static.sh` source `~/.swiftly/env.sh` to prefer a Swiftly toolchain. Run `swift` commands through those scripts, or source that env first if invoking `swift` directly.
 
 ```bash
-swift test --disable-keychain                 # full test suite (always pass --disable-keychain)
-swift test --filter SuiteName                 # one suite/test while iterating
-./qa/run-static.sh                            # THE PR gate — run before publishing any PR (see below)
+swift test --disable-keychain --filter SuiteName  # affected suite/test while iterating
+./qa/run-static.sh                                # final PR gate; run once after changes stabilize
+./qa/run-static.sh --force                        # fresh full Swift run; reserved for CI/explicit need
 ./build.sh                                    # debug build → .build/QuotaMonitor.app (+ local/ad-hoc sign)
 CONFIG=release ./build.sh                     # release-style build
 open .build/QuotaMonitor.app                  # run it
@@ -19,7 +19,9 @@ open .build/QuotaMonitor.app                  # run it
 ./tools/release.sh                            # full pipeline; Developer ID when configured, else ad-hoc
 ```
 
-`--disable-keychain` is mandatory for `swift test` — it prevents test runs from stalling on / touching the real login keychain. `qa/run-static.sh` runs: bash QA tests (`qa/tests/common_tests.sh`), Python tool tests (`python3 -m unittest discover tools/tests`), release-note validation (`tools/validate-release-notes.py`), `git diff --check`, then `swift test --disable-keychain`. There is also `qa/run-all.sh`, which additionally drives the **GUI QA harness** — **not** the PR gate. That harness is opt-in via env vars read by `LocalQAConfiguration`/`LocalQAEnvironment` (`App/`): setting `QUOTAMONITOR_QA_MODE=1` (plus `QUOTAMONITOR_QA_HOME` / `_DEFAULTS_SUITE` / `_OUTPUT_DIR` / `_STEPS`) redirects HOME, the `UserDefaults` suite, and history roots to throwaway fixture dirs so the real app runs against fixtures instead of `~/.codex`/`~/.claude`, runs scripted `LocalQAStep`s, and writes a `LocalQAReport`. Use these same isolation hooks when a test must avoid real local data.
+`--disable-keychain` is mandatory for direct `swift test` commands — it prevents test runs from stalling on or touching the real login keychain. During implementation, run only affected suites. `qa/run-static.sh` is the single final PR gate: it runs bash QA tests (`qa/tests/common_tests.sh`), Python tool tests (`python3 -m unittest discover tools/tests`), release-note validation (`tools/validate-release-notes.py`), `git diff --check`, then the Swift suite. It always reruns the inexpensive checks, but reuses a passing Swift result when code/test/QA/tool inputs and the Swift toolchain are unchanged. Successful Swift output is reduced to one summary and the full log is retained under `.build/qa-logs/`; failures print the retained log. Do not run an unfiltered `swift test` or a separate `git diff --check` before this gate. `qa/run-all.sh` is only a compatibility alias for the same static gate; it does not launch the GUI harness.
+
+Visible QA is opt-in through `qa/prepare-computer-use-real-data.sh` or `qa/prepare-computer-use-fixture-smoke.sh`. Their isolation hooks are read by `LocalQAConfiguration`/`LocalQAEnvironment` (`App/`): setting `QUOTAMONITOR_QA_MODE=1` (plus `QUOTAMONITOR_QA_HOME` / `_DEFAULTS_SUITE` / `_OUTPUT_DIR` / `_STEPS`) redirects HOME, the `UserDefaults` suite, and history roots to throwaway fixture dirs so the real app runs against fixtures instead of `~/.codex`/`~/.claude`, runs scripted `LocalQAStep`s, and writes a `LocalQAReport`. Use these same isolation hooks when a test must avoid real local data.
 
 Tests use **Swift Testing** (`@Suite`/`@Test`, not XCTest); fixtures live in `Tests/QuotaMonitorTests/Fixtures/` and load via `Bundle.module`. Name tests by behavior.
 
@@ -55,6 +57,6 @@ UI strings live in `Core/Localization/L10n.swift` (compile-time-checked static d
 
 ## Contribution workflow
 
-Changes go in via **PR only — never push to `main`** (enforced by a GitHub ruleset; see the `no-direct-push-to-main` memory). Per `AGENTS.md`: branch from latest `origin/main` in an isolated worktree on a `codex/` branch, don't edit the primary checkout or `main` directly. Non-appcast PRs must update **both** `CHANGELOG.md` and `CHANGELOG.zh-Hans.md`. Run `./qa/run-static.sh` before publishing. Keep Swift 6 strict concurrency clean, four-space indent, small domain-named types.
+Changes go in via **PR only — never push to `main`** (enforced by a GitHub ruleset; see the `no-direct-push-to-main` memory). Per `AGENTS.md`: branch from latest `origin/main` in an isolated worktree on a `codex/` branch, don't edit the primary checkout or `main` directly. Non-appcast PRs must update **both** `CHANGELOG.md` and `CHANGELOG.zh-Hans.md`. Iterate with affected suites, then run `./qa/run-static.sh` once after the candidate is stable and before publishing. Keep Swift 6 strict concurrency clean, four-space indent, small domain-named types.
 
 For runtime debugging: OSLog subsystem `dev.tjzhou.QuotaMonitor` (`log stream --predicate 'subsystem == "dev.tjzhou.QuotaMonitor"'`), or enable **Settings → Advanced → Developer Mode** for JSONL diagnostics at `~/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log`.

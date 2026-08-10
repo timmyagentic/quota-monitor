@@ -39,6 +39,7 @@ window copy.
 
 ### Changed
 
+- **Leaner contributor test runs.** Local development now limits iteration to affected suites, reuses unchanged passing Swift results, and keeps successful full-suite output concise without weakening the final PR gate.
 - **Adaptive Dashboard opening size.** A first-time Dashboard now scales to the usable workspace of the display where it was opened and starts centered there, while later openings continue restoring the user's saved size and position.
 
 ### Fixed
