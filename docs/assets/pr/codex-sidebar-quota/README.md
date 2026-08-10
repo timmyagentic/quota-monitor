@@ -53,17 +53,17 @@ components have different roles and dimensions.
 SHA-256:
 `ca129088ad3acab48c6c98db2fc72106b10baf7f465f0f8c3b7878bb50a7dec0`
 
-`no-scroll-expanded-zh-Hans.png` is a 2x native SwiftUI render from the initial
-static-content implementation at `20959cb3462e6e41866d0f3db6d52db7442ff278`.
-It documents the ordinary fully fitting state; the final implementation uses
-`ViewThatFits` to preserve the same no-scroll presentation when the rendered
-content fits and falls back to a hidden-indicator scroll view when it does not.
-The final-build summary is captured above, while the rendered-fit and fallback
-selection are covered by the source-level regression contract. No account
-identity, credential, or conversation content is included.
+`no-scroll-expanded-zh-Hans.png` is a direct 2x capture from the isolated
+real-data QA build at source commit
+`5cabd5122e04cdfe250364e3083d6bea964c83d0`. It shows the final weekly-only
+detail card at its measured ordinary-content height, with every row visible
+and no scrollbar, together with the compact summary below it. The final
+implementation uses `ViewThatFits` to retain a hidden-indicator scroll fallback
+only when the available Codex window height is genuinely constrained. No
+account identity, credential, or conversation content is included.
 
 SHA-256:
-`95386e29018a497e525230a92a9722c34ea888ee267fd7eec857cc124fabe5a2`
+`439a258ad075a4a9c214c7ee646e3bf72b44456ad18e2e071932dfa59f4b6ce1`
 
 ## Legacy reference
 
