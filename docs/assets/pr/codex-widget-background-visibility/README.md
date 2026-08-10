@@ -34,3 +34,13 @@ unrelated windows.
 
 SHA-256:
 `741181af16433a00b9c36af7c6aa67c2378c1d4330aaaa02bf6eca74a526e7bc`
+
+`details-hover-f7678e7.png` is a direct window capture from the final isolated
+real-data shadow build at source commit `f7678e7`. After opening the card from
+the compact summary, the pointer moved into the details window and remained
+there for one second, well beyond the 120 ms close delay. The details window
+remained visible and closed only after the pointer moved outside both overlay
+windows, verifying that the details panel accepts mouse events.
+
+SHA-256:
+`328ec0c438607d864774304d14932f6274a8457f062302a04be06e925322b000`
