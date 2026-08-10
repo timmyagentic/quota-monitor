@@ -183,6 +183,9 @@ extension AppEnvironment {
                 }
                 await MainActor.run {
                     self.lastScanReport = merged
+                    if merged.didChangeReadModel {
+                        self.sessionsDataGeneration &+= 1
+                    }
                     self.lastScanAtByScope[throttleKey] = Date()
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.

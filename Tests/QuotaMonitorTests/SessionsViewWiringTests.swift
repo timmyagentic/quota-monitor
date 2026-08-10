@@ -20,8 +20,12 @@ struct SessionsViewWiringTests {
 
         #expect(source.contains("let query = SessionsPaginationState.Query(sort: sort, search: search)"))
         #expect(source.contains("let pageRequest = pagination.inFlightRequest"))
+        #expect(source.contains("let sessionsDataGeneration = env.sessionsDataGeneration"))
         #expect(source.contains(".task(id: query)"))
         #expect(source.contains("pagination.reset(query: query)"))
+        #expect(source.contains(".task(id: sessionsDataGeneration)"))
+        #expect(source.contains("guard sessionsDataGeneration > 0 else { return }"))
+        #expect(source.contains("A summary update can move an unloaded session across the saved"))
         #expect(source.contains(".task(id: pageRequest?.id)"))
         #expect(source.contains("guard let request = pageRequest else { return }"))
         #expect(source.contains("sort: request.query.sort"))
