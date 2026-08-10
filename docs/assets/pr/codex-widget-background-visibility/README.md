@@ -19,3 +19,18 @@ unrelated windows.
 
 SHA-256:
 `41908bee75706abd9f4d469189050e25897c3a48f76e0b86e6747faf0ea32466`
+
+`background-click-through-dbaf309.png` is the final privacy-cropped 2x
+Computer QA capture from the isolated real-data shadow build at source commit
+`dbaf309`. Calculator is active above the idle widget and Codex account row.
+The Window Server order was Calculator, the Quota Monitor overlay, then
+ChatGPT. A direct click at the overlay center changed the frontmost bundle from
+`com.apple.calculator` to `com.openai.codex`; the details panel then appeared,
+proving that background clicks pass through while foreground interaction is
+restored.
+
+The crop excludes the account name, conversation content, credentials, and
+unrelated windows.
+
+SHA-256:
+`741181af16433a00b9c36af7c6aa67c2378c1d4330aaaa02bf6eca74a526e7bc`
