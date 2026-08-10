@@ -30,7 +30,7 @@ assert.equal(report.length, 1);
 const actualFiles = report[0].files.map((file) => file.path).sort();
 assert.deepEqual(actualFiles, expectedFiles);
 assert.equal(report[0].name, "quotamonitor");
-assert.equal(report[0].version, "0.1.0");
+assert.equal(report[0].version, "0.1.1");
 assert.equal(report[0].files.find((file) => file.path === "bin/quotamonitor.js").mode, 493);
 
 console.log(`Package contents verified (${actualFiles.length} files)`);
