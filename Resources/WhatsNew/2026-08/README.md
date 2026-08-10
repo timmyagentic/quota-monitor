@@ -11,7 +11,7 @@ credentials, conversation content, and local usage history.
 - `pricing-history.en.jpg` was captured from the isolated English fixture QA
   app. The Chinese counterpart is the existing isolated fixture capture.
 - `update-highlights.*.png` was captured from the isolated 1.0 update-window
-  preview in each app language after verifying the complete 44-change release
+  preview in each app language after verifying the complete 48-change release
   edition, chapter navigation, scrolling, and localized controls.
 
 SHA-256:
@@ -22,5 +22,5 @@ SHA-256:
 - `glance-to-dashboard.mp4`: `12acb3c7334a24e7ccda18b5a2bc8f0be75085ff19c7bb9a3464d0c791566d54`
 - `pricing-history.en.jpg`: `b90fa33b7a8aae950fbac79c37127c42adca876186be614ab760ed78f8b11d6b`
 - `pricing-history.zh-Hans.jpg`: `a5120adf740725eb90412174b390a0e566cda07817643962cb29aa6ceaa04b95`
-- `update-highlights.en.png`: `3a372aa585e3deb001f54b46141ae3f790ee9814894d7e4cf2db398f3b6908ce`
-- `update-highlights.zh-Hans.png`: `964232d533daa27f561515d1ca0aad3c7e81ecddec2d3ede0cdac72ea54fd302`
+- `update-highlights.en.png`: `f6ac509535e5ee2722c53d72d78b34df62b81136495df8521e730c48e960389e`
+- `update-highlights.zh-Hans.png`: `663fee5abcba45ab6a99e672eb5df5ffbebfdde885cc0977d92f2d1c12aa10d8`
