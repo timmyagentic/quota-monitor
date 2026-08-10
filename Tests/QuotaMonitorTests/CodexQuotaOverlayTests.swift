@@ -263,14 +263,114 @@ struct CodexQuotaOverlayTests {
             displays: displays) == CGRect(x: -1_400, y: 280, width: 1_000, height: 700))
     }
 
-    @Test("Overlay preserves the legacy right-side account-row slot")
+    @Test("Help-control selection requires a labeled bottom-right button")
+    func selectsHelpControlAnchor() {
+        let windowFrame = CGRect(x: 100, y: 50, width: 490, height: 700)
+        let candidates = [
+            CodexHelpControlCandidate(
+                frame: CGRect(x: 550, y: 710, width: 32, height: 32),
+                descriptors: ["Open help"]),
+            CodexHelpControlCandidate(
+                frame: CGRect(x: 550, y: 80, width: 32, height: 32),
+                descriptors: ["Help"]),
+            CodexHelpControlCandidate(
+                frame: CGRect(x: 550, y: 710, width: 32, height: 32),
+                descriptors: ["Settings"])
+        ]
+
+        let anchor = CodexHelpControlSelectionPolicy.anchor(
+            in: windowFrame,
+            candidates: candidates)
+        #expect(anchor?.leadingEdgeTrailingInset == 40)
+        #expect(anchor?.leadingX(in: windowFrame) == 550)
+        #expect(CodexHelpControlSelectionPolicy.anchor(
+            in: windowFrame,
+            candidates: Array(candidates.dropFirst())) == nil)
+    }
+
+    @Test("Help discovery retries off transient misses with bounded backoff")
+    func helpDiscoveryRetryPolicy() {
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 1) == 0.5)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 2) == 1)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 3) == 2)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 4) == 4)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 5) == 8)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 50) == 8)
+
+        let now = Date(timeIntervalSince1970: 10_000)
+        let later = now.addingTimeInterval(4)
+        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: nil,
+            isRunning: false,
+            force: false))
+        #expect(!CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: later,
+            isRunning: true,
+            force: true))
+        #expect(!CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: later,
+            isRunning: false,
+            force: false))
+        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: later,
+            nextAttemptAt: later,
+            isRunning: false,
+            force: false))
+        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: later,
+            isRunning: false,
+            force: true))
+    }
+
+    @Test("Overlay follows help control and scales the 150-of-490 fallback slot")
     func accountRowLayout() {
+        let minimumWindow = CGRect(x: 0, y: 0, width: 480, height: 700)
         #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080))
+            in: minimumWindow,
+            helpControlLeadingX: 440)
+            == CGRect(x: 274, y: 12, width: 132, height: 25))
+
+        let referenceWindow = CGRect(x: 0, y: 0, width: 490, height: 700)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: referenceWindow,
+            helpControlLeadingX: 450)
             == CGRect(x: 284, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
+            in: referenceWindow)
+            == CGRect(x: 18, y: 12, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: referenceWindow,
+            helpControlLeadingX: .infinity)
+            == CGRect(x: 18, y: 12, width: 132, height: 25))
+
+        let widerWindow = CGRect(x: 0, y: 0, width: 720, height: 700)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow,
+            helpControlLeadingX: 680)
+            == CGRect(x: 514, y: 12, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow)
+            == CGRect(x: 88, y: 12, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700),
+            helpControlLeadingX: -240)
+            == CGRect(x: -406, y: 212, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
-            == CGRect(x: -916, y: 212, width: 132, height: 25))
+            == CGRect(x: -1_026, y: 212, width: 132, height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: CGRect(x: 20, y: 200, width: 120, height: 700))
+            == CGRect(x: 32, y: 212, width: 132, height: 25))
 
         let weeklyOnly = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -279,12 +379,22 @@ struct CodexQuotaOverlayTests {
             displayMode: .used,
             now: now)
         #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            presentation: weeklyOnly) == CGRect(
+            in: referenceWindow,
+            presentation: weeklyOnly,
+            helpControlLeadingX: 450) == CGRect(
                 x: 332,
                 y: 12,
                 width: 84,
                 height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow,
+            presentation: weeklyOnly).maxX == 220)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow,
+            presentation: weeklyOnly,
+            helpControlLeadingX: 680).maxX == CodexQuotaOverlayLayout.frame(
+                in: widerWindow,
+                helpControlLeadingX: 680).maxX)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: weeklyOnly,
             resetCredits: nil) == 97)
@@ -315,8 +425,16 @@ struct CodexQuotaOverlayTests {
             resetCredits: resetCredits) == 238)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            contentHeight: 222,
+            helpControlLeadingX: 1_880) == CGRect(
+                x: 1_558,
+                y: 43,
+                width: 288,
+                height: 222))
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             contentHeight: 222) == CGRect(
-                x: 128,
+                x: 300,
                 y: 43,
                 width: 288,
                 height: 222))
@@ -334,8 +452,16 @@ struct CodexQuotaOverlayTests {
             resetCredits: nil) == 158)
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
+            contentHeight: 300,
+            helpControlLeadingX: -640) == CGRect(
+                x: -962,
+                y: 243,
+                width: 288,
+                height: 265))
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
-                x: -1_072,
+                x: -1_188,
                 y: 243,
                 width: 288,
                 height: 265))
@@ -483,6 +609,10 @@ struct CodexQuotaOverlayTests {
             contentsOf: repositoryRoot.appendingPathComponent(
                 "QuotaMonitor/App/CodexQuotaOverlayController.swift"),
             encoding: .utf8)
+        let helpControlSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "QuotaMonitor/App/CodexHelpControlAccessibility.swift"),
+            encoding: .utf8)
         let viewSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "QuotaMonitor/App/CodexQuotaOverlayView.swift"),
@@ -498,6 +628,11 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("SIGTERM"))
         #expect(!source.contains("remote-debugging-port"))
         #expect(!source.contains("Process()"))
+        #expect(helpControlSource.contains("AXIsProcessTrusted()"))
+        #expect(!helpControlSource.contains("kAXTrustedCheckOptionPrompt"))
+        #expect(helpControlSource.contains("maximumVisitedElements = 600"))
+        #expect(source.contains("Task.detached(priority: .utility)"))
+        #expect(source.contains("helpControlNextDiscoveryAt"))
         #expect(source.contains(
             "panel.ignoresMouseEvents = !placement.allowsInteraction"))
         #expect(source.contains("ignoresMouseEvents: false"))
