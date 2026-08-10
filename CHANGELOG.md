@@ -32,7 +32,7 @@ window copy.
 
 #### Summary
 
-- The Codex window widget now mirrors the menu bar's compact 5h/7d readout without an extra status dot, rests on a barely visible semantic surface that becomes clearer on hover, follows Codex's help button when it is available and otherwise uses a proportional fallback calibrated to the 150-of-490 reference position, and opens a clearly branded, narrower detail card without an unnecessary scroll bar at normal window sizes.
+- The Codex window widget now mirrors the menu bar's compact 5h/7d readout without an extra status dot, rests on a barely visible semantic surface that becomes clearer on hover, follows Codex's help button when it is available and adapts its fallback placement when it is not, and opens a clearly branded, narrower detail card without an unnecessary scroll bar at normal window sizes.
 - The Codex quota widget now stays attached to a visible Codex window while you work in another app, with foreground windows covering it normally and hover details closing on app switch.
 - Dates and times in Sessions, History, Activity, and Trends now match the language selected inside Quota Monitor.
 - Dashboard now opens at a size suited to the current display while continuing to remember the size and position you choose.
