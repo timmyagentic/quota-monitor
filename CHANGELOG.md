@@ -32,6 +32,12 @@ window copy.
 
 #### Summary
 
+- One-command npm installs now correctly recognize and install Quota Monitor 1.0.0 and later releases.
+
+### Fixed
+
+- **Reliable npm release selection.** The public installer now treats Sparkle's internal build number and display version independently, so it can install 1.0.0 and later releases without weakening URL, signature, or bundle checks.
+
 ## [1.0.0] — 2026-08-11
 
 #### Summary
