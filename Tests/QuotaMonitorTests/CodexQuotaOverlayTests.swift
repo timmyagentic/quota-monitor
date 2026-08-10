@@ -211,6 +211,7 @@ struct CodexQuotaOverlayTests {
             trackedWindowIsOnScreen: true,
             overlayIsVisible: true) == .background)
         #expect(!CodexQuotaOverlayPlacement.background.allowsDetails)
+        #expect(!CodexQuotaOverlayPlacement.background.allowsInteraction)
     }
 
     @Test("Background tracking never summons a hidden or off-screen widget")
@@ -224,6 +225,8 @@ struct CodexQuotaOverlayTests {
             trackedWindowIsOnScreen: false,
             overlayIsVisible: true) == .hidden)
         #expect(CodexQuotaOverlayPlacement.foreground.allowsDetails)
+        #expect(CodexQuotaOverlayPlacement.foreground.allowsInteraction)
+        #expect(!CodexQuotaOverlayPlacement.hidden.allowsInteraction)
     }
 
     @Test("Quartz window frames map onto primary and secondary AppKit screens")
@@ -480,7 +483,9 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("SIGTERM"))
         #expect(!source.contains("remote-debugging-port"))
         #expect(!source.contains("Process()"))
-        #expect(source.contains("panel.ignoresMouseEvents = false"))
+        #expect(source.contains(
+            "panel.ignoresMouseEvents = !placement.allowsInteraction"))
+        #expect(source.contains("panel.ignoresMouseEvents = true"))
         #expect(source.contains("panel.level = .normal"))
         #expect(!source.contains("panel.level = .floating"))
         #expect(source.contains(

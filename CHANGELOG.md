@@ -39,7 +39,7 @@ window copy.
 ### Fixed
 
 - **Refined Codex quota widget.** The window widget now uses the same compact quota text as the menu bar without an extra status dot; its idle state draws no background, border, or shadow over Codex, adding a light semantic-gray surface and subtle border only while hovered, and its position leaves clear space for Codex's help control. The anchored detail card uses the native semantic window background, starts with the Quota Monitor name, stays narrow, scrolls only when a short window would otherwise clip content, and closes after pointer exit or a click elsewhere instead of remaining pinned.
-- **Keep the Codex widget with its window.** Switching to another app now leaves the compact widget attached to a visible Codex window while normal foreground windows cover it naturally; hover details close immediately, and minimizing, hiding, closing, or moving Codex off the current Space still hides the widget.
+- **Keep the Codex widget with its window.** Switching to another app now leaves the compact widget attached to a visible Codex window while normal foreground windows cover it naturally; background clicks pass through to Codex, hover details close immediately, and minimizing, hiding, closing, or moving Codex off the current Space still hides the widget.
 - **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
 
 ## [1.0.0] — 2026-08-09

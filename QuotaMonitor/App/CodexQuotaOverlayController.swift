@@ -274,6 +274,7 @@ final class CodexQuotaOverlayController: NSObject {
         if panel.frame != frame {
             panel.setFrame(frame, display: panel.isVisible)
         }
+        panel.ignoresMouseEvents = !placement.allowsInteraction
         switch placement {
         case .foreground where shouldRaise || !panel.isVisible:
             if let codexWindowNumber {
@@ -527,7 +528,7 @@ final class CodexQuotaOverlayController: NSObject {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.ignoresMouseEvents = false
+        panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
         panel.hidesOnDeactivate = false
         panel.isExcludedFromWindowsMenu = true

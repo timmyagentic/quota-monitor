@@ -212,6 +212,10 @@ enum CodexQuotaOverlayPlacement: Equatable {
     var allowsDetails: Bool {
         self == .foreground
     }
+
+    var allowsInteraction: Bool {
+        self == .foreground
+    }
 }
 
 enum CodexQuotaOverlayVisibilityPolicy {
