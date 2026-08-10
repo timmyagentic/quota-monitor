@@ -1,5 +1,16 @@
 # Codex sidebar quota evidence
 
+`summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
+isolated real-data QA build at source commit
+`be6b0f0823ab0279b9d186aba119c2116deb16c5`. It shows the current weekly-only
+summary after integrating the semantic-background change, rendering the same
+compact text as the menu bar (`7d 63%` for the captured shadow snapshot), with
+no additional health dot. The crop is the native 84 x 25 point overlay window
+and contains no account identity or conversation content.
+
+SHA-256:
+`6a2b9cc74fe35c7d98256da923c44036ee6738f1634e9d9d2d984847078a8722`
+
 `native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
 screenshots from the isolated real-data QA build. They show the
 QuotaMonitor-owned native widget in the established slot immediately before
@@ -23,15 +34,12 @@ conversation content is included.
 SHA-256:
 `36a5dc425352c2475fdaa58a06357117ac0048d3f0a3eecd9f5120814c496f43`
 
-`refined-widget-zh-Hans.png` is a native SwiftUI fixture render of the exact
-summary and detail views used by the isolated QA build. It shows the shared
-`5h` / `7d` compact labels, the refined segmented summary, and the branded
-288-point detail card with synthetic quota and reset-credit data. The detail
-card begins with the same `Quota Monitor` product title used by the menu-bar
-popover. No account identity, credential, or conversation content is included.
-The host-app interaction could not be captured through Computer Use because
-the safety layer does not permit controlling the Codex app that hosts the
-current task.
+`refined-widget-zh-Hans.png` is the native SwiftUI fixture render captured for
+PR #175 before the no-dot summary follow-up. Its branded 288-point detail card
+remains current, while its summary is superseded by the direct Computer Use
+capture above. The detail card begins with the same `Quota Monitor` product
+title used by the menu-bar popover. No account identity, credential, or
+conversation content is included.
 
 SHA-256:
 `737b4f2b6e648d5b6e6f8d54a035fbbe334394259aeba676fa97551320d1822d`
