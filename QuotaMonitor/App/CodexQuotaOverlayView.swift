@@ -159,27 +159,20 @@ struct CodexQuotaOverlayDetailsView: View {
                     .resetCreditsAvailable,
                 now: context.date)
 
-            let contentHeight = CodexQuotaOverlayLayout.detailsContentHeight(
-                presentation: presentation,
-                resetCredits: resetCredits)
+            ViewThatFits(in: .vertical) {
+                detailsContent(
+                    presentation: presentation,
+                    resetCredits: resetCredits,
+                    now: context.date)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            GeometryReader { proxy in
-                if CodexQuotaOverlayLayout.detailsRequiresScrolling(
-                    contentHeight: contentHeight,
-                    viewportHeight: proxy.size.height) {
-                    ScrollView(.vertical) {
-                        detailsContent(
-                            presentation: presentation,
-                            resetCredits: resetCredits,
-                            now: context.date)
-                    }
-                    .scrollIndicators(.hidden)
-                } else {
+                ScrollView(.vertical) {
                     detailsContent(
                         presentation: presentation,
                         resetCredits: resetCredits,
                         now: context.date)
                 }
+                .scrollIndicators(.hidden)
             }
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)

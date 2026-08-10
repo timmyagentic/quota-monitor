@@ -280,12 +280,6 @@ struct CodexQuotaOverlayTests {
                 y: 243,
                 width: 288,
                 height: 265))
-        #expect(!CodexQuotaOverlayLayout.detailsRequiresScrolling(
-            contentHeight: 222,
-            viewportHeight: 222))
-        #expect(CodexQuotaOverlayLayout.detailsRequiresScrolling(
-            contentHeight: 300,
-            viewportHeight: 265))
     }
 
     @Test("Mouse-down dismissal keeps only overlay-owned interactions open")
@@ -451,7 +445,9 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("addGlobalMonitorForEvents"))
         #expect(!source.contains("isDetailsPinned"))
         #expect(viewSource.contains("Text(Branding.appDisplayName)"))
-        #expect(viewSource.contains("detailsRequiresScrolling("))
+        #expect(viewSource.contains("ViewThatFits(in: .vertical)"))
+        #expect(viewSource.contains(
+            ".fixedSize(horizontal: false, vertical: true)"))
         #expect(viewSource.contains("ScrollView(.vertical)"))
         #expect(viewSource.contains(".scrollIndicators(.hidden)"))
         #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))

@@ -326,13 +326,6 @@ enum CodexQuotaOverlayLayout {
             height: min(contentHeight, availableHeight))
     }
 
-    static func detailsRequiresScrolling(
-        contentHeight: CGFloat,
-        viewportHeight: CGFloat
-    ) -> Bool {
-        contentHeight > viewportHeight
-    }
-
     static func isOverlayWindowIdentifier(_ rawValue: String?) -> Bool {
         rawValue == windowIdentifier || rawValue == detailsWindowIdentifier
     }
