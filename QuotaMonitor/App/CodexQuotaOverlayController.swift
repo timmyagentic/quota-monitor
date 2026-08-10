@@ -25,6 +25,13 @@ final class CodexQuotaOverlayController: NSObject {
     private var lastCodexWindowNumber: Int?
     private var lastCodexWindowFrame: CGRect?
     private var helpControlAnchor: CodexHelpControlAnchor?
+    private var helpControlDiscoveryTask: Task<Void, Never>?
+    private var helpControlDiscoveryGeneration = 0
+    private var helpControlDiscoveryFailureCount = 0
+    private var helpControlNextDiscoveryAt: Date?
+    private var helpControlDiscoveryPID: pid_t?
+    private var helpControlDiscoveryWindowNumber: Int?
+    private var helpControlDiscoveryWindowBounds: CGRect?
     private var isCodexFrontmost = false
     private var isSummaryHovered = false
     private var isDetailsHovered = false
@@ -90,6 +97,7 @@ final class CodexQuotaOverlayController: NSObject {
 
     func showDetailsForLocalQA() {
         guard LocalQAEnvironment.isQARequested() else { return }
+        resetHelpControlDiscovery(clearAnchor: true)
         shouldShowDetailsForLocalQA = true
         refreshLocalQAOverlay()
     }
@@ -187,13 +195,11 @@ final class CodexQuotaOverlayController: NSObject {
                 above: window.windowNumber,
                 candidates: onScreenWindows)
         } ?? false
-        if isCodexFrontmost,
-           becameFrontmost || lastCodexWindowNumber != window.windowNumber,
-           let trackedCodexPID {
-            helpControlAnchor = CodexHelpControlAccessibility.anchor(
-                for: trackedCodexPID,
-                in: window.bounds)
-        }
+        refreshHelpControlAnchorIfNeeded(
+            for: window,
+            processIdentifier: trackedCodexPID,
+            becameFrontmost: becameFrontmost,
+            now: now)
         let helpControlLeadingX = helpControlAnchor?.leadingX(
             in: appKitWindowFrame)
         showOverlay(
@@ -217,6 +223,123 @@ final class CodexQuotaOverlayController: NSObject {
             isCodexFrontmost
                 ? Self.foregroundTrackingInterval
                 : Self.backgroundTrackingInterval)
+    }
+
+    private func refreshHelpControlAnchorIfNeeded(
+        for window: CodexWindowCandidate,
+        processIdentifier: pid_t?,
+        becameFrontmost: Bool,
+        now: Date
+    ) {
+        guard let processIdentifier else {
+            resetHelpControlDiscovery(clearAnchor: true)
+            return
+        }
+
+        let targetChanged = helpControlDiscoveryPID != processIdentifier
+            || helpControlDiscoveryWindowNumber != window.windowNumber
+        let layoutChanged = !targetChanged
+            && helpControlDiscoveryWindowBounds != window.bounds
+
+        if targetChanged {
+            resetHelpControlDiscovery(clearAnchor: true)
+            helpControlDiscoveryPID = processIdentifier
+            helpControlDiscoveryWindowNumber = window.windowNumber
+            helpControlDiscoveryWindowBounds = window.bounds
+        } else if layoutChanged {
+            helpControlDiscoveryWindowBounds = window.bounds
+            helpControlNextDiscoveryAt = now
+        }
+
+        guard isCodexFrontmost,
+              CodexHelpControlDiscoveryPolicy.shouldStart(
+                now: now,
+                nextAttemptAt: helpControlNextDiscoveryAt,
+                isRunning: helpControlDiscoveryTask != nil,
+                force: becameFrontmost || targetChanged || layoutChanged) else {
+            return
+        }
+        startHelpControlDiscovery(
+            processIdentifier: processIdentifier,
+            windowNumber: window.windowNumber,
+            windowBounds: window.bounds)
+    }
+
+    private func startHelpControlDiscovery(
+        processIdentifier: pid_t,
+        windowNumber: Int,
+        windowBounds: CGRect
+    ) {
+        helpControlDiscoveryGeneration &+= 1
+        let generation = helpControlDiscoveryGeneration
+        helpControlDiscoveryTask = Task.detached(priority: .utility) { [weak self] in
+            let anchor = CodexHelpControlAccessibility.anchor(
+                for: processIdentifier,
+                in: windowBounds)
+            guard !Task.isCancelled else { return }
+            await self?.completeHelpControlDiscovery(
+                anchor: anchor,
+                processIdentifier: processIdentifier,
+                windowNumber: windowNumber,
+                windowBounds: windowBounds,
+                generation: generation,
+                completedAt: Date())
+        }
+    }
+
+    private func completeHelpControlDiscovery(
+        anchor: CodexHelpControlAnchor?,
+        processIdentifier: pid_t,
+        windowNumber: Int,
+        windowBounds: CGRect,
+        generation: Int,
+        completedAt: Date
+    ) {
+        guard helpControlDiscoveryGeneration == generation else { return }
+        helpControlDiscoveryTask = nil
+        guard isStarted,
+              isCodexFrontmost,
+              trackedCodexPID == processIdentifier,
+              helpControlDiscoveryPID == processIdentifier,
+              helpControlDiscoveryWindowNumber == windowNumber else {
+            return
+        }
+        guard helpControlDiscoveryWindowBounds == windowBounds else {
+            helpControlNextDiscoveryAt = completedAt
+            refreshOverlay(now: completedAt)
+            return
+        }
+
+        if let anchor {
+            helpControlAnchor = anchor
+            helpControlDiscoveryFailureCount = 0
+            helpControlNextDiscoveryAt = completedAt.addingTimeInterval(
+                CodexHelpControlDiscoveryPolicy.anchoredRefreshInterval)
+        } else {
+            helpControlDiscoveryFailureCount += 1
+            if helpControlDiscoveryFailureCount
+                >= CodexHelpControlDiscoveryPolicy.preservedAnchorMissLimit {
+                helpControlAnchor = nil
+            }
+            helpControlNextDiscoveryAt = completedAt.addingTimeInterval(
+                CodexHelpControlDiscoveryPolicy.retryInterval(
+                    afterFailureCount: helpControlDiscoveryFailureCount))
+        }
+        refreshOverlay(now: completedAt)
+    }
+
+    private func resetHelpControlDiscovery(clearAnchor: Bool) {
+        helpControlDiscoveryGeneration &+= 1
+        helpControlDiscoveryTask?.cancel()
+        helpControlDiscoveryTask = nil
+        helpControlDiscoveryFailureCount = 0
+        helpControlNextDiscoveryAt = nil
+        helpControlDiscoveryPID = nil
+        helpControlDiscoveryWindowNumber = nil
+        helpControlDiscoveryWindowBounds = nil
+        if clearAnchor {
+            helpControlAnchor = nil
+        }
     }
 
     private func refreshLocalQAOverlay(now: Date = Date()) {
@@ -325,7 +448,7 @@ final class CodexQuotaOverlayController: NSObject {
         isDetailsHovered = false
         lastCodexWindowNumber = nil
         lastCodexWindowFrame = nil
-        helpControlAnchor = nil
+        resetHelpControlDiscovery(clearAnchor: true)
         closeDetails()
         panel?.orderOut(nil)
     }

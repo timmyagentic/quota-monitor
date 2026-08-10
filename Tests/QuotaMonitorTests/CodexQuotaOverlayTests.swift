@@ -288,6 +288,50 @@ struct CodexQuotaOverlayTests {
             candidates: Array(candidates.dropFirst())) == nil)
     }
 
+    @Test("Help discovery retries off transient misses with bounded backoff")
+    func helpDiscoveryRetryPolicy() {
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 1) == 0.5)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 2) == 1)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 3) == 2)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 4) == 4)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 5) == 8)
+        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+            afterFailureCount: 50) == 8)
+
+        let now = Date(timeIntervalSince1970: 10_000)
+        let later = now.addingTimeInterval(4)
+        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: nil,
+            isRunning: false,
+            force: false))
+        #expect(!CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: later,
+            isRunning: true,
+            force: true))
+        #expect(!CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: later,
+            isRunning: false,
+            force: false))
+        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: later,
+            nextAttemptAt: later,
+            isRunning: false,
+            force: false))
+        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+            now: now,
+            nextAttemptAt: later,
+            isRunning: false,
+            force: true))
+    }
+
     @Test("Overlay follows help control and scales the 150-of-490 fallback slot")
     func accountRowLayout() {
         let minimumWindow = CGRect(x: 0, y: 0, width: 480, height: 700)
@@ -587,6 +631,8 @@ struct CodexQuotaOverlayTests {
         #expect(helpControlSource.contains("AXIsProcessTrusted()"))
         #expect(!helpControlSource.contains("kAXTrustedCheckOptionPrompt"))
         #expect(helpControlSource.contains("maximumVisitedElements = 600"))
+        #expect(source.contains("Task.detached(priority: .utility)"))
+        #expect(source.contains("helpControlNextDiscoveryAt"))
         #expect(source.contains(
             "panel.ignoresMouseEvents = !placement.allowsInteraction"))
         #expect(source.contains("ignoresMouseEvents: false"))

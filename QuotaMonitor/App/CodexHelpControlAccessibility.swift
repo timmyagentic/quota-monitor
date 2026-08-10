@@ -2,7 +2,7 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
-struct CodexHelpControlAnchor: Equatable {
+struct CodexHelpControlAnchor: Equatable, Sendable {
     let leadingEdgeTrailingInset: CGFloat
 
     func leadingX(in windowFrame: CGRect) -> CGFloat {
@@ -13,6 +13,27 @@ struct CodexHelpControlAnchor: Equatable {
 struct CodexHelpControlCandidate: Equatable {
     let frame: CGRect
     let descriptors: [String]
+}
+
+enum CodexHelpControlDiscoveryPolicy {
+    static let anchoredRefreshInterval: TimeInterval = 10
+    static let preservedAnchorMissLimit = 2
+
+    static func retryInterval(afterFailureCount failureCount: Int) -> TimeInterval {
+        let exponent = min(max(0, failureCount - 1), 4)
+        return min(8, 0.5 * pow(2, Double(exponent)))
+    }
+
+    static func shouldStart(
+        now: Date,
+        nextAttemptAt: Date?,
+        isRunning: Bool,
+        force: Bool
+    ) -> Bool {
+        guard !isRunning else { return false }
+        guard !force, let nextAttemptAt else { return true }
+        return now >= nextAttemptAt
+    }
 }
 
 enum CodexHelpControlSelectionPolicy {
@@ -81,12 +102,15 @@ enum CodexHelpControlAccessibility {
 
     /// Reads an already-authorized accessibility tree without prompting for
     /// permission. Missing permission, labels, or controls deliberately falls
-    /// through to the layout's fixed fallback anchor.
+    /// through to the layout's proportional fallback anchor.
     static func anchor(
         for processIdentifier: pid_t,
         in quartzWindowFrame: CGRect
     ) -> CodexHelpControlAnchor? {
-        guard AXIsProcessTrusted() else { return nil }
+        guard !currentTaskIsCancelled,
+              AXIsProcessTrusted() else {
+            return nil
+        }
 
         let application = AXUIElementCreateApplication(processIdentifier)
         guard let windows = attribute(
@@ -114,7 +138,8 @@ enum CodexHelpControlAccessibility {
         var candidates: [CodexHelpControlCandidate] = []
 
         while cursor < queue.count,
-              visited.count < maximumVisitedElements {
+              visited.count < maximumVisitedElements,
+              !currentTaskIsCancelled {
             let item = queue[cursor]
             cursor += 1
 
@@ -150,6 +175,12 @@ enum CodexHelpControlAccessibility {
         }
 
         return candidates
+    }
+
+    private static var currentTaskIsCancelled: Bool {
+        withUnsafeCurrentTask { task in
+            task?.isCancelled ?? false
+        }
     }
 
     private static func stringAttribute(
