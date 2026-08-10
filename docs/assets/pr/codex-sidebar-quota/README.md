@@ -1,13 +1,23 @@
 # Codex sidebar quota evidence
 
 The current handoff at source commit
-`4216d979ec84c9b4824a0fcc8a01473da460bac3` creates neither a background nor
+`d33eb40bde83a8b81e01f143e7ff226aac24d0a3` creates neither a background nor
 an outline node while the compact summary is idle. The 3.5% semantic-gray fill,
 0.12-opacity outline, and shadow are created only during hover. Full Codex
 window captures from intermediate builds were removed because their surrounding
 sidebar contained local conversation and workspace titles. Do not add another
 full-window capture here; future evidence must be cropped to the account row or
 otherwise redact local history before it is committed.
+
+`borderless-idle-account-row.png` is a direct 2x privacy crop from the exact
+isolated real-data QA build at that source commit. It shows the idle quota text
+beside Codex's official help control without exposing the account name or local
+conversation history. The overlay window's blank pixels have zero alpha, and
+the captured Codex pixels inside the overlay, immediately to its left, and
+immediately to its right are all RGB `(252, 252, 252)`.
+
+SHA-256:
+`b3f023246497c0a824d1351763eb3e16457fe79390b1fee9461b757ca6805d19`
 
 `shifted-left-zh-Hans.png` is a direct 2x capture from the isolated real-data
 QA build at source commit
