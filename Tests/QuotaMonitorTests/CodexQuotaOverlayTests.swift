@@ -186,6 +186,44 @@ struct CodexQuotaOverlayTests {
         #expect(CodexWindowSelectionPolicy.frontWindow(
             for: pid,
             candidates: candidates)?.windowNumber == 4)
+        #expect(CodexWindowSelectionPolicy.isWindow(
+            1,
+            above: 4,
+            candidates: candidates))
+        #expect(!CodexWindowSelectionPolicy.isWindow(
+            5,
+            above: 4,
+            candidates: candidates))
+        #expect(!CodexWindowSelectionPolicy.isWindow(
+            99,
+            above: 4,
+            candidates: candidates))
+    }
+
+    @Test("A visible widget stays with Codex in the background without reopening")
+    func backgroundVisibilityPolicy() {
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: true,
+            trackedWindowIsOnScreen: true,
+            overlayIsVisible: false) == .foreground)
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: false,
+            trackedWindowIsOnScreen: true,
+            overlayIsVisible: true) == .background)
+        #expect(!CodexQuotaOverlayPlacement.background.allowsDetails)
+    }
+
+    @Test("Background tracking never summons a hidden or off-screen widget")
+    func backgroundVisibilityRequiresExistingOnScreenWidget() {
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: false,
+            trackedWindowIsOnScreen: true,
+            overlayIsVisible: false) == .hidden)
+        #expect(CodexQuotaOverlayVisibilityPolicy.placement(
+            codexIsFrontmost: false,
+            trackedWindowIsOnScreen: false,
+            overlayIsVisible: true) == .hidden)
+        #expect(CodexQuotaOverlayPlacement.foreground.allowsDetails)
     }
 
     @Test("Quartz window frames map onto primary and secondary AppKit screens")
@@ -443,6 +481,10 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("remote-debugging-port"))
         #expect(!source.contains("Process()"))
         #expect(source.contains("panel.ignoresMouseEvents = false"))
+        #expect(source.contains("panel.level = .normal"))
+        #expect(!source.contains("panel.level = .floating"))
+        #expect(source.contains(
+            "panel.order(.above, relativeTo: codexWindowNumber)"))
         #expect(source.contains("onHoverChanged"))
         #expect(source.contains("detailsPanel"))
         #expect(source.contains("addGlobalMonitorForEvents"))

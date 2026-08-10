@@ -187,6 +187,48 @@ enum CodexWindowSelectionPolicy {
                 && $0.bounds.height >= minimumWindowSize.height
         }
     }
+
+    static func isWindow(
+        _ upperWindowNumber: Int,
+        above lowerWindowNumber: Int,
+        candidates: [CodexWindowCandidate]
+    ) -> Bool {
+        guard let upperIndex = candidates.firstIndex(where: {
+            $0.windowNumber == upperWindowNumber
+        }), let lowerIndex = candidates.firstIndex(where: {
+            $0.windowNumber == lowerWindowNumber
+        }) else {
+            return false
+        }
+        return upperIndex < lowerIndex
+    }
+}
+
+enum CodexQuotaOverlayPlacement: Equatable {
+    case hidden
+    case foreground
+    case background
+
+    var allowsDetails: Bool {
+        self == .foreground
+    }
+}
+
+enum CodexQuotaOverlayVisibilityPolicy {
+    /// A visible widget may remain attached after Codex loses focus, but a
+    /// background Codex window must never summon a new overlay above the app
+    /// the user is currently working in.
+    static func placement(
+        codexIsFrontmost: Bool,
+        trackedWindowIsOnScreen: Bool,
+        overlayIsVisible: Bool
+    ) -> CodexQuotaOverlayPlacement {
+        guard trackedWindowIsOnScreen else { return .hidden }
+        if codexIsFrontmost {
+            return .foreground
+        }
+        return overlayIsVisible ? .background : .hidden
+    }
 }
 
 struct CodexDisplayGeometry: Equatable {
