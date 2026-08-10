@@ -2,14 +2,14 @@
 
 `summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
 isolated real-data QA build at source commit
-`be6b0f0823ab0279b9d186aba119c2116deb16c5`. It shows the current weekly-only
+`40996a3622f38e2b7f837345170c1f02f0dae22f`. It shows the final weekly-only
 summary after integrating the semantic-background change, rendering the same
-compact text as the menu bar (`7d 63%` for the captured shadow snapshot), with
+compact text as the menu bar (`7d 64%` for the captured shadow snapshot), with
 no additional health dot. The crop is the native 84 x 25 point overlay window
 and contains no account identity or conversation content.
 
 SHA-256:
-`6a2b9cc74fe35c7d98256da923c44036ee6738f1634e9d9d2d984847078a8722`
+`7745c78db4b0f792984a8c68b727e99312b965fcfbd4604fdad73b8b016305bf`
 
 `native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
 screenshots from the isolated real-data QA build. They show the
@@ -53,11 +53,14 @@ components have different roles and dimensions.
 SHA-256:
 `ca129088ad3acab48c6c98db2fc72106b10baf7f465f0f8c3b7878bb50a7dec0`
 
-`no-scroll-expanded-zh-Hans.png` is a 2x native SwiftUI render of the exact
-summary and expanded detail views after removing the vertical scroll
-container. It uses synthetic quota and reset-card data to verify that the full
-ordinary expanded state remains visible without a scrollbar or clipped rows.
-No account identity, credential, or conversation content is included.
+`no-scroll-expanded-zh-Hans.png` is a 2x native SwiftUI render from the initial
+static-content implementation at `20959cb3462e6e41866d0f3db6d52db7442ff278`.
+It documents the ordinary fully fitting state; the final implementation uses
+`ViewThatFits` to preserve the same no-scroll presentation when the rendered
+content fits and falls back to a hidden-indicator scroll view when it does not.
+The final-build summary is captured above, while the rendered-fit and fallback
+selection are covered by the source-level regression contract. No account
+identity, credential, or conversation content is included.
 
 SHA-256:
 `95386e29018a497e525230a92a9722c34ea888ee267fd7eec857cc124fabe5a2`
