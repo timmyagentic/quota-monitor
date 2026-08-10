@@ -179,13 +179,84 @@ enum CodexWindowSelectionPolicy {
         for processIdentifier: pid_t,
         candidates: [CodexWindowCandidate]
     ) -> CodexWindowCandidate? {
-        candidates.first {
-            $0.ownerPID == processIdentifier
-                && $0.layer == 0
-                && $0.alpha > 0.01
-                && $0.bounds.width >= minimumWindowSize.width
-                && $0.bounds.height >= minimumWindowSize.height
+        candidates.first { candidate in
+            isEligibleWindow(candidate, for: processIdentifier)
         }
+    }
+
+    static func trackedWindow(
+        for processIdentifier: pid_t,
+        lastWindowNumber: Int?,
+        codexIsFrontmost: Bool,
+        candidates: [CodexWindowCandidate]
+    ) -> CodexWindowCandidate? {
+        if codexIsFrontmost {
+            return frontWindow(
+                for: processIdentifier,
+                candidates: candidates)
+        }
+        guard let lastWindowNumber else { return nil }
+        return candidates.first { candidate in
+            candidate.windowNumber == lastWindowNumber
+                && isEligibleWindow(candidate, for: processIdentifier)
+        }
+    }
+
+    static func isWindow(
+        _ upperWindowNumber: Int,
+        above lowerWindowNumber: Int,
+        candidates: [CodexWindowCandidate]
+    ) -> Bool {
+        guard let upperIndex = candidates.firstIndex(where: {
+            $0.windowNumber == upperWindowNumber
+        }), let lowerIndex = candidates.firstIndex(where: {
+            $0.windowNumber == lowerWindowNumber
+        }) else {
+            return false
+        }
+        return upperIndex < lowerIndex
+    }
+
+    private static func isEligibleWindow(
+        _ candidate: CodexWindowCandidate,
+        for processIdentifier: pid_t
+    ) -> Bool {
+        candidate.ownerPID == processIdentifier
+            && candidate.layer == 0
+            && candidate.alpha > 0.01
+            && candidate.bounds.width >= minimumWindowSize.width
+            && candidate.bounds.height >= minimumWindowSize.height
+    }
+}
+
+enum CodexQuotaOverlayPlacement: Equatable {
+    case hidden
+    case foreground
+    case background
+
+    var allowsDetails: Bool {
+        self == .foreground
+    }
+
+    var allowsInteraction: Bool {
+        self == .foreground
+    }
+}
+
+enum CodexQuotaOverlayVisibilityPolicy {
+    /// A visible widget may remain attached after Codex loses focus, but a
+    /// background Codex window must never summon a new overlay above the app
+    /// the user is currently working in.
+    static func placement(
+        codexIsFrontmost: Bool,
+        trackedWindowIsOnScreen: Bool,
+        overlayIsVisible: Bool
+    ) -> CodexQuotaOverlayPlacement {
+        guard trackedWindowIsOnScreen else { return .hidden }
+        if codexIsFrontmost {
+            return .foreground
+        }
+        return overlayIsVisible ? .background : .hidden
     }
 }
 
@@ -235,23 +306,33 @@ enum CodexQuotaOverlayLayout {
     static let detailsHeaderHeight: CGFloat = 27
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
-    private static let legacyAccountRowTrailingOffset: CGFloat = 432
+    private static let helpControlGap: CGFloat = 34
+    // The approved fallback slot ends at 150 pt in the 490 pt reference
+    // account row. Store it as a proportion so wider and narrower Codex
+    // windows keep the same relative placement.
+    private static let fallbackTrailingPositionRatio: CGFloat = 150.0 / 490.0
     private static let bottomInset: CGFloat = 12
     private static let detailsLeftInset: CGFloat = 12
     private static let detailsGap: CGFloat = 6
     private static let detailsTopInset: CGFloat = 12
 
-    /// Preserve the established injected-widget slot immediately before the
-    /// account-row help control. The native overlay is wider because it shows
-    /// both rolling windows, so anchor its trailing edge instead of placing it
-    /// directly after the account name.
-    static func frame(in codexWindowFrame: CGRect) -> CGRect {
-        frame(in: codexWindowFrame, width: size.width)
+    /// Prefer the discovered account-row help control. If Accessibility cannot
+    /// provide it, preserve the approved 150-of-490 reference placement as a
+    /// proportion of the current Codex window width.
+    static func frame(
+        in codexWindowFrame: CGRect,
+        helpControlLeadingX: CGFloat? = nil
+    ) -> CGRect {
+        frame(
+            in: codexWindowFrame,
+            width: size.width,
+            helpControlLeadingX: helpControlLeadingX)
     }
 
     static func frame(
         in codexWindowFrame: CGRect,
-        presentation: CodexQuotaOverlayPresentation
+        presentation: CodexQuotaOverlayPresentation,
+        helpControlLeadingX: CGFloat? = nil
     ) -> CGRect {
         let visibleWindowCount = [presentation.fiveHour, presentation.weekly]
             .compactMap { $0 }
@@ -259,18 +340,39 @@ enum CodexQuotaOverlayLayout {
         let width = visibleWindowCount == 1
             ? singleWindowWidth
             : size.width
-        return frame(in: codexWindowFrame, width: width)
+        return frame(
+            in: codexWindowFrame,
+            width: width,
+            helpControlLeadingX: helpControlLeadingX)
     }
 
     private static func frame(
         in codexWindowFrame: CGRect,
-        width: CGFloat
+        width: CGFloat,
+        helpControlLeadingX: CGFloat?
     ) -> CGRect {
-        let trailingX = min(
-            codexWindowFrame.minX + legacyAccountRowTrailingOffset,
-            codexWindowFrame.maxX - bottomInset)
+        let discoveredTrailingX: CGFloat? = helpControlLeadingX.flatMap { leadingX in
+            guard leadingX.isFinite,
+                  leadingX >= codexWindowFrame.minX,
+                  leadingX <= codexWindowFrame.maxX else {
+                return nil
+            }
+            return leadingX - helpControlGap
+        }
+        let relativeFallbackTrailingX = codexWindowFrame.minX
+            + (codexWindowFrame.width * fallbackTrailingPositionRatio).rounded()
+        let preferredTrailingX = discoveredTrailingX
+            ?? relativeFallbackTrailingX
+        let preferredOriginX = preferredTrailingX - width
+        let minimumOriginX = codexWindowFrame.minX + bottomInset
+        let maximumOriginX = max(
+            minimumOriginX,
+            codexWindowFrame.maxX - bottomInset - width)
+        let originX = max(
+            minimumOriginX,
+            min(preferredOriginX, maximumOriginX))
         return CGRect(
-            x: trailingX - width,
+            x: originX,
             y: codexWindowFrame.minY + bottomInset,
             width: width,
             height: size.height)
@@ -286,7 +388,10 @@ enum CodexQuotaOverlayLayout {
         guard windowCount > 0 else { return 0 }
 
         var height: CGFloat = 24 + detailsHeaderHeight
-        height += CGFloat(windowCount) * 38
+        // The rendered quota row includes two caption lines, the progress
+        // track, and vertical padding. Keep the model height above its actual
+        // SwiftUI fitting height so ordinary cards select the static branch.
+        height += CGFloat(windowCount) * 46
         height += CGFloat(max(0, windowCount - 1)) * 15
 
         if let resetCredits {
@@ -304,9 +409,12 @@ enum CodexQuotaOverlayLayout {
 
     static func detailsFrame(
         in codexWindowFrame: CGRect,
-        contentHeight: CGFloat
+        contentHeight: CGFloat,
+        helpControlLeadingX: CGFloat? = nil
     ) -> CGRect {
-        let summaryFrame = frame(in: codexWindowFrame)
+        let summaryFrame = frame(
+            in: codexWindowFrame,
+            helpControlLeadingX: helpControlLeadingX)
         let width = min(detailsWidth, max(
             1,
             codexWindowFrame.width - detailsLeftInset * 2))

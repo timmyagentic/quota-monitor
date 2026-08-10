@@ -377,6 +377,87 @@ struct MigrationsTests {
         }
     }
 
+    @Test("v20 pre-aggregates existing Sessions history and installs maintenance triggers")
+    func sessionSummaryMigrationBackfillsExistingHistory() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-session-summary-v20")
+        let queue = try DatabaseQueue(path: url.path)
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(queue, upTo: "v19-gpt56-price-history-reprice")
+
+        let stamp = "2026-07-20T12:00:00Z"
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO sessions
+                    (session_id, root_session_id, started_at, updated_at,
+                     last_model_id, created_at, imported_at, provider)
+                VALUES
+                    ('summary-populated', 'summary-populated', ?, ?,
+                     'gpt-5.6-sol', ?, ?, 'codex'),
+                    ('summary-empty', 'summary-empty', ?, ?,
+                     'gpt-5.6-sol', ?, ?, 'codex')
+                """, arguments: [
+                    stamp, stamp, stamp, stamp,
+                    stamp, stamp, stamp, stamp,
+                ])
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (session_id, timestamp, model_id, total_tokens,
+                     value_usd, provider, model_inferred)
+                VALUES
+                    ('summary-populated', ?, 'gpt-5.6-sol', 10, 1, 'codex', 0),
+                    ('summary-populated', ?, 'gpt-5.6-sol', 20, 2.5, 'codex', 1)
+                """, arguments: [stamp, stamp])
+        }
+
+        try migrator.migrate(queue)
+
+        try queue.read { db in
+            let fetchedPopulated = try Row.fetchOne(db, sql: """
+                SELECT total_value_usd, total_tokens, event_count, has_inferred_model
+                FROM session_summaries
+                WHERE session_id = 'summary-populated'
+                """)
+            let populated = try #require(fetchedPopulated)
+            #expect(abs((populated["total_value_usd"] as Double) - 3.5) < 1e-9)
+            #expect((populated["total_tokens"] as Int64) == 30)
+            #expect((populated["event_count"] as Int) == 2)
+            #expect((populated["has_inferred_model"] as Bool) == true)
+
+            let fetchedEmpty = try Row.fetchOne(db, sql: """
+                SELECT total_value_usd, total_tokens, event_count, has_inferred_model
+                FROM session_summaries
+                WHERE session_id = 'summary-empty'
+                """)
+            let empty = try #require(fetchedEmpty)
+            #expect((empty["total_value_usd"] as Double) == 0)
+            #expect((empty["total_tokens"] as Int64) == 0)
+            #expect((empty["event_count"] as Int) == 0)
+            #expect((empty["has_inferred_model"] as Bool) == false)
+
+            let indexes = try String.fetchAll(db, sql: """
+                SELECT name FROM sqlite_master
+                WHERE type = 'index' AND name LIKE '%_page'
+                """)
+            #expect(indexes.contains("idx_session_summaries_value_page"))
+            #expect(indexes.contains("idx_session_summaries_tokens_page"))
+            #expect(indexes.contains("idx_session_summaries_recent_page"))
+
+            let triggers = try String.fetchAll(db, sql: """
+                SELECT name FROM sqlite_master
+                WHERE type = 'trigger' AND name LIKE 'session_summaries_%'
+                """)
+            #expect(Set(triggers) == [
+                "session_summaries_after_session_insert",
+                "session_summaries_after_session_activity_update",
+                "session_summaries_after_usage_insert",
+                "session_summaries_after_usage_delete",
+                "session_summaries_after_usage_update",
+                "session_summaries_after_usage_move",
+            ])
+        }
+    }
+
     @Test("v17 adds lazy Codex checkpoints and removes negative offsets")
     func codexCheckpointMigrationIsLazyAndPreservesProbeState() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-checkpoint-v17")

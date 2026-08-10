@@ -16,16 +16,24 @@ Use this project skill for QuotaMonitor local QA and visible-behavior checks in
    git status --short --branch
    ```
 
-2. Run static checks first. This does not launch `QuotaMonitor.app`:
+2. While implementation is changing, run only the affected Swift suite or
+   suites with `swift test --disable-keychain --filter ...`.
+
+3. Once code, tests, and QA scripts are stable, run the final static gate once.
+   This does not launch `QuotaMonitor.app`:
 
    ```sh
    ./qa/run-static.sh
    ```
 
-   `./qa/run-all.sh` is an alias for the same static suite. If this fails,
-   inspect the failing command before launching any QA app instance.
+   `./qa/run-all.sh` is an alias for the same static suite; do not run both.
+   Do not precede the gate with an unfiltered `swift test` or a separate
+   `git diff --check`. If the gate reports a reused passing Swift result, the
+   code/test/QA fingerprint is unchanged and no second full run is needed. If
+   the gate fails, inspect the failing command before launching any QA app
+   instance.
 
-3. For visible UI work, launch an isolated setup app for Computer Use. The
+4. For visible UI work, launch an isolated setup app for Computer Use. The
    setup script prepares artifacts; it is not a separate visible-app test
    layer. For local test-version checks that should resemble the installed app,
    launch real-data shadow QA:
@@ -48,11 +56,11 @@ Use this project skill for QuotaMonitor local QA and visible-behavior checks in
    preferences cannot be copied, use the fixture-smoke setup only when a
    deterministic clean-room check is acceptable.
 
-4. Open the run's `computer-use-qa.md` and use its `Computer Use app target`
+5. Open the run's `computer-use-qa.md` and use its `Computer Use app target`
    exactly. Do not target by bare name `QuotaMonitor` or only by bundle id:
    this machine can also have `/Applications/QuotaMonitor.app` running.
 
-5. Use Computer Use on the exact `.app` path from the brief:
+6. Use Computer Use on the exact `.app` path from the brief:
    - Dashboard: Forecast, Trends, Composition.
    - Sessions: search, sort, detail, token/cost/event rows.
    - History: day selection, rollups, per-session details.
@@ -61,13 +69,13 @@ Use this project skill for QuotaMonitor local QA and visible-behavior checks in
    - Menu-bar help: readability and close behavior.
    - Visual pass: clipping, overlaps, blank charts, missing icons.
 
-6. Re-check the artifact contract:
+7. Re-check the artifact contract:
 
    ```sh
    ./qa/check-artifacts.sh <artifact-dir>
    ```
 
-7. After Computer Use, run the printed `cleanup-computer-use.sh` unless the user
+8. After Computer Use, run the printed `cleanup-computer-use.sh` unless the user
    explicitly wants the QA app left open. The cleanup closes only QA-launched
    QuotaMonitor processes and restores `/Applications/QuotaMonitor.app` if it
    was running before the QA launch.

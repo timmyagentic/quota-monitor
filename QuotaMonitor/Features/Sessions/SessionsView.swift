@@ -16,6 +16,7 @@ struct SessionsView: View {
         let query = SessionsPaginationState.Query(sort: sort, search: search)
         let pageRequest = pagination.inFlightRequest
         let selectedSession = selection
+        let sessionsDataGeneration = env.sessionsDataGeneration
 
         NavigationSplitView {
             sidebar
@@ -43,8 +44,18 @@ struct SessionsView: View {
                 }
             }
             guard !Task.isCancelled else { return }
-            // Search and sort reset the list prefix, but keep the inspected
+            // Search and sort reset the page cursor, but keep the inspected
             // session open. List filtering should not dismiss useful detail.
+            pagination.reset(query: query)
+        }
+        .task(id: sessionsDataGeneration) {
+            guard sessionsDataGeneration > 0 else { return }
+            if let request = pagination.inFlightRequest {
+                pagination.cancel(request)
+            }
+            // A summary update can move an unloaded session across the saved
+            // keyset cursor. Restart from page one so live imports cannot
+            // leave that session permanently absent from this list.
             pagination.reset(query: query)
         }
         .task(id: pageRequest?.id) {
@@ -54,7 +65,8 @@ struct SessionsView: View {
                 let page = try await env.fetchSessionsPage(
                     sort: request.query.sort,
                     search: request.query.search,
-                    limit: request.limit,
+                    after: request.cursor,
+                    pageSize: request.pageSize,
                     trigger: request.trigger)
                 try Task.checkCancellation()
                 let desiredQuery = SessionsPaginationState.Query(

@@ -10,7 +10,8 @@ extension AppEnvironment {
     func fetchSessionsPage(
         sort: SessionSort,
         search: String,
-        limit: Int,
+        after cursor: SessionPageCursor?,
+        pageSize: Int,
         trigger: SessionPageLoadTrigger
     ) async throws -> SessionPage {
         let filter = providerFilter
@@ -21,7 +22,8 @@ extension AppEnvironment {
             fields: [
                 "sort": .string(String(describing: sort)),
                 "search_length": .int(search.count),
-                "limit": .int(limit),
+                "page_size": .int(pageSize),
+                "has_cursor": .bool(cursor != nil),
                 "filter": .string(filter.rawValue)
             ])
         do {
@@ -32,12 +34,13 @@ extension AppEnvironment {
                     sort: sort,
                     search: search,
                     provider: filter,
-                    limit: limit)
+                    after: cursor,
+                    pageSize: pageSize)
             }
             DeveloperLog.finishOperation(op, fields: [
                 "rows": .int(page.rows.count),
                 "has_more": .bool(page.hasMore),
-                "limit": .int(limit),
+                "page_size": .int(pageSize),
                 "filter": .string(filter.rawValue)
             ])
             return page

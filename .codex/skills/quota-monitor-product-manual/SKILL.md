@@ -19,7 +19,6 @@ Use this skill from the current `quota-monitor` checkout root when the user asks
    - Start from these surfaces: onboarding, menu-bar popover, Dashboard, History, Sessions, Settings General, Settings Advanced, menu-bar help, update window, and uninstall confirmation.
 
 3. Verify with the real app.
-   - Run `./qa/run-static.sh` first.
    - Launch visible QA with `./qa/prepare-computer-use-fixture-smoke.sh` for
      deterministic screenshots, or `./qa/prepare-computer-use-real-data.sh`
      when validating installed-like behavior.
@@ -42,7 +41,9 @@ Use this skill from the current `quota-monitor` checkout root when the user asks
 6. Clean up and verify.
    - Run the printed `cleanup-computer-use.sh` unless the user asks to keep the QA app open.
    - Check `pgrep -fl QuotaMonitor` and distinguish the installed app from QA-launched processes.
-   - Run `git diff --check`.
+   - Once source, tests, QA scripts, documentation, and changelogs are stable,
+     run `./qa/run-static.sh` once. Do not precede it with an unfiltered
+     `swift test` or a separate `git diff --check`.
    - Review `git diff -- docs/product-manual.md .codex/skills/quota-monitor-product-manual/SKILL.md`.
 
 ## Boundaries

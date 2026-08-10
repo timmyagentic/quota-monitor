@@ -115,8 +115,8 @@
             "zh-Hans": "历史再多，操作依然轻快"
           },
           "body": {
-            "en": "Sessions, search, Dashboard charts, and the year heatmap now reuse work and load progressively, while routine refreshes stay quiet in the background.",
-            "zh-Hans": "会话、搜索、Dashboard 图表与全年热图现在会复用结果并渐进加载，日常刷新也会在后台安静完成。"
+            "en": "Sessions now use truly bounded database pages, while search, Dashboard charts, and the year heatmap reuse work and routine refreshes stay quiet in the background.",
+            "zh-Hans": "会话现在会使用真正有边界的数据库分页，搜索、Dashboard 图表与全年热图会复用结果，日常刷新也会在后台安静完成。"
           },
           "media": {
             "type": "video",
@@ -135,8 +135,8 @@
             "zh-Hans": "历史与现在，费用都准确"
           },
           "body": {
-            "en": "Bundled pricing now covers GPT-5.6 and Claude Opus 5, and historical usage keeps the rate that applied on the day it happened.",
-            "zh-Hans": "随包价格现在覆盖 GPT-5.6 与 Claude Opus 5，历史用量仍会保留发生当天真正适用的费率。"
+            "en": "Bundled pricing now covers GPT-5.6, Claude Opus 5, and Claude Sonnet 5, while historical usage keeps the rate that applied on the day it happened.",
+            "zh-Hans": "随包价格现在覆盖 GPT-5.6、Claude Opus 5 与 Claude Sonnet 5，历史用量仍会保留发生当天真正适用的费率。"
           },
           "media": {
             "type": "image",

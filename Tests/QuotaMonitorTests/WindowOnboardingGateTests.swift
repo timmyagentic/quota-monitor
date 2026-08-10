@@ -36,10 +36,24 @@ struct WindowOnboardingGateTests {
 
     @Test("AppKit windows reuse SwiftUI autosave frame names")
     func frameAutosaveNamesMatchPreviousSwiftUIWindowIDs() {
-        #expect(WindowManager.frameAutosaveName(for: "dashboard") == "dashboard")
-        #expect(WindowManager.frameAutosaveName(for: "settings") == "settings")
-        #expect(WindowManager.frameAutosaveName(for: "whats-new") == "whats-new")
-        #expect(WindowManager.frameAutosaveName(for: "menubar-help") == nil)
+        #expect(WindowManager.frameAutosaveName(
+            for: "dashboard", localQAActive: false) == "dashboard")
+        #expect(WindowManager.frameAutosaveName(
+            for: "settings", localQAActive: false) == "settings")
+        #expect(WindowManager.frameAutosaveName(
+            for: "whats-new", localQAActive: false) == "whats-new")
+        #expect(WindowManager.frameAutosaveName(
+            for: "menubar-help", localQAActive: false) == nil)
+    }
+
+    @Test("Local QA cannot read or rewrite the user's saved window frames")
+    func localQAFramesStayIsolated() {
+        #expect(WindowManager.frameAutosaveName(
+            for: "dashboard",
+            localQAActive: true) == nil)
+        #expect(WindowManager.frameAutosaveName(
+            for: "settings",
+            localQAActive: true) == nil)
     }
 
     @Test("Miniaturized windows still count as app windows")

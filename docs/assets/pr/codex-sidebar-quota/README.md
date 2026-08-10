@@ -1,5 +1,47 @@
 # Codex sidebar quota evidence
 
+The current handoff at source commit
+`d33eb40bde83a8b81e01f143e7ff226aac24d0a3` creates neither a background nor
+an outline node while the compact summary is idle. The 3.5% semantic-gray fill,
+0.12-opacity outline, and shadow are created only during hover. Full Codex
+window captures from intermediate builds were removed because their surrounding
+sidebar contained local conversation and workspace titles. Do not add another
+full-window capture here; future evidence must be cropped to the account row or
+otherwise redact local history before it is committed.
+
+`borderless-idle-account-row.png` is a direct 2x privacy crop from the exact
+isolated real-data QA build at that source commit. It shows the idle quota text
+beside Codex's official help control without exposing the account name or local
+conversation history. The overlay window's blank pixels have zero alpha, and
+the captured Codex pixels inside the overlay, immediately to its left, and
+immediately to its right are all RGB `(252, 252, 252)`.
+
+SHA-256:
+`b3f023246497c0a824d1351763eb3e16457fe79390b1fee9461b757ca6805d19`
+
+`shifted-left-zh-Hans.png` is a direct 2x capture from the isolated real-data
+QA build at source commit
+`d3226a9d149f4908d4b3257d3729731d2f324f8a`. It verifies that the unchanged
+detail card still renders cleanly after the summary and its anchored detail
+surface move 16 points left. The layout regression contract verifies the new
+416-point trailing anchor across normal, weekly-only, and secondary-display
+frames, leaving additional clearance for Codex's official help control. No
+account identity, credential, or conversation content is included.
+
+SHA-256:
+`e64474dfc1cf3f001689b268e77b3f2131b91ea2a60ac56755458fa1b5ff2877`
+
+`summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
+isolated real-data QA build at source commit
+`40996a3622f38e2b7f837345170c1f02f0dae22f`. It shows the final weekly-only
+summary after integrating the semantic-background change, rendering the same
+compact text as the menu bar (`7d 64%` for the captured shadow snapshot), with
+no additional health dot. The crop is the native 84 x 25 point overlay window
+and contains no account identity or conversation content.
+
+SHA-256:
+`7745c78db4b0f792984a8c68b727e99312b965fcfbd4604fdad73b8b016305bf`
+
 `native-overlay.png` and `native-overlay-expanded.png` are privacy-cropped
 screenshots from the isolated real-data QA build. They show the
 QuotaMonitor-owned native widget in the established slot immediately before
@@ -23,15 +65,12 @@ conversation content is included.
 SHA-256:
 `36a5dc425352c2475fdaa58a06357117ac0048d3f0a3eecd9f5120814c496f43`
 
-`refined-widget-zh-Hans.png` is a native SwiftUI fixture render of the exact
-summary and detail views used by the isolated QA build. It shows the shared
-`5h` / `7d` compact labels, the refined segmented summary, and the branded
-288-point detail card with synthetic quota and reset-credit data. The detail
-card begins with the same `Quota Monitor` product title used by the menu-bar
-popover. No account identity, credential, or conversation content is included.
-The host-app interaction could not be captured through Computer Use because
-the safety layer does not permit controlling the Codex app that hosts the
-current task.
+`refined-widget-zh-Hans.png` is the native SwiftUI fixture render captured for
+PR #175 before the no-dot summary follow-up. Its branded 288-point detail card
+remains current, while its summary is superseded by the direct Computer Use
+capture above. The detail card begins with the same `Quota Monitor` product
+title used by the menu-bar popover. No account identity, credential, or
+conversation content is included.
 
 SHA-256:
 `737b4f2b6e648d5b6e6f8d54a035fbbe334394259aeba676fa97551320d1822d`
@@ -44,6 +83,18 @@ components have different roles and dimensions.
 
 SHA-256:
 `ca129088ad3acab48c6c98db2fc72106b10baf7f465f0f8c3b7878bb50a7dec0`
+
+`no-scroll-expanded-zh-Hans.png` is a direct 2x capture from the isolated
+real-data QA build at source commit
+`c08994ea5670d5d1281a672a3babb27383dcb3cb`. It shows the final weekly-only
+detail card at its measured ordinary-content height, with every row visible
+and no scrollbar. The final
+implementation uses `ViewThatFits` to retain a hidden-indicator scroll fallback
+only when the available Codex window height is genuinely constrained. No
+account identity, credential, or conversation content is included.
+
+SHA-256:
+`5e5e58b5dfe7202c8cd32791b05522eeaa45e70d419452a8c942957f478235c2`
 
 ## Legacy reference
 

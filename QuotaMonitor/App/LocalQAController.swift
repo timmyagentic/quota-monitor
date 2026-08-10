@@ -6,13 +6,16 @@ final class LocalQAController {
     private let configuration: LocalQAConfiguration
     private let environment: AppEnvironment
     private let statusItemController: StatusItemController
+    private weak var codexQuotaOverlayController: CodexQuotaOverlayController?
 
     init(configuration: LocalQAConfiguration,
          environment: AppEnvironment,
-         statusItemController: StatusItemController) {
+         statusItemController: StatusItemController,
+         codexQuotaOverlayController: CodexQuotaOverlayController?) {
         self.configuration = configuration
         self.environment = environment
         self.statusItemController = statusItemController
+        self.codexQuotaOverlayController = codexQuotaOverlayController
     }
 
     func start() {
@@ -50,6 +53,9 @@ final class LocalQAController {
                 await pause(seconds: 0.8)
             case .showPopover:
                 statusItemController.showPopover()
+                await pause(seconds: 0.6)
+            case .showCodexOverlayDetails:
+                codexQuotaOverlayController?.showDetailsForLocalQA()
                 await pause(seconds: 0.6)
             case .refreshAll:
                 environment.refreshAll(throttle: false, trigger: "qa")

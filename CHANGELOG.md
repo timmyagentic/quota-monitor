@@ -32,13 +32,13 @@ window copy.
 
 #### Summary
 
-## [1.0.0] — 2026-08-10
+## [1.0.0] — 2026-08-11
 
 #### Summary
 
-- Codex now puts compact 5-hour and 7-day quotas in an adaptive widget beside the active window, with reset timing and reset credits on hover—no restart required.
-- History, Sessions, Dashboard charts, the activity heatmap, and search stay responsive on large histories; visible dates follow the app language.
-- GPT-5.6 and Claude Opus 5 pricing is built in, while historical usage keeps the rate that applied at the time.
+- Codex now puts compact 5-hour and 7-day quotas beside the active window, follows Codex's own controls when available, and stays attached while you work in another app.
+- History, truly paged Sessions, Dashboard charts, the activity heatmap, and search stay responsive on large histories; Dashboard also opens at a size suited to the current display.
+- GPT-5.6, Claude Opus 5, and Claude Sonnet 5 pricing is built in, while historical usage keeps the rate that applied at the time.
 - Updates check quietly, prepare in one click, and keep important highlights available in the replayable What's New guide.
 
 ### Added
@@ -55,13 +55,16 @@ window copy.
 
 ### Fixed
 
-- **Polished Codex widget presentation.** The adaptive widget blends into Codex, shares stable 5h/7d labels with the menu bar, and opens a narrow branded card with matched typography, semantic progress colors, one configured percentage, and natural pointer-exit or click-away dismissal.
+- **Polished Codex widget presentation.** The adaptive widget blends into Codex, shares stable 5h/7d labels with the menu bar, follows Codex's help control when available, scales its fallback placement with the window, and opens a narrow branded card with matched typography, semantic progress colors, one configured percentage, and natural pointer-exit or click-away dismissal.
+- **Keep the Codex widget with its window.** Switching to another app leaves the compact widget attached to a visible Codex window while normal foreground windows cover it naturally; background clicks pass through to Codex, hover details close immediately, and minimizing, hiding, closing, or moving Codex off the current Space still hides the widget.
 - **Dates follow the app language.** Sessions, History, Activity, and Trends now format visible dates and times using Quota Monitor's selected language instead of the macOS system locale.
 - **Responsive Token Activity heatmap.** The full-year grid uses a compact layout at the default Dashboard width, reserves room for the final month label, and falls back to horizontal scrolling only in narrower windows.
 - **Private Beta range downloads.** Authenticated full downloads now return a normal complete response, while valid single byte ranges use the validated request and object size to produce an exact `Content-Range` even when storage omits usable range metadata; suffix requests are converted to explicit offset reads, and malformed ranges continue to fail closed.
 - **Stable native Codex quota.** The widget follows the active Codex window, hides automatically in the background or when Codex tracking is disabled, avoids a duplicate launch request, preserves the last good quota during refreshes, filters expired reset cards, retries data loading without requiring a restart, and restores the previous hover detail card with usage, progress, and reset timing.
 - **GPT-5.6 price history.** Terra and Luna usage before July 30 keeps launch pricing, while later Standard, Fast, Flex, and long-context estimates use OpenAI's reduced rates.
 - **Claude Opus 5 pricing.** The bundled catalog now includes Anthropic's official Opus 5 input, output, cache-read, and cache-write rates, so newly imported usage is priced directly by the app instead of remaining at `$0`.
+- **Claude Sonnet 5 standard pricing.** The bundled catalog now prices `claude-sonnet-5` at Anthropic's standard $3 input, $0.30 cache-read, $3.75 five-minute cache-write, $6 one-hour cache-write, and $15 output rates per million tokens, so its history no longer stays at `$0` or depends on a user's older local catalog.
+- **Truly bounded Sessions pages.** Sessions now read trigger-maintained summaries and advance through indexed keyset cursors in fixed 50-row pages, avoiding a full usage-history aggregation and repeated growing-prefix work on every scroll.
 - **Reliable private Beta publication.** The publisher and production storage lock now use request forms accepted by the deployed service, so authenticated Beta uploads can complete without weakening access controls.
 - **Accurate low Claude percentages.** Claude's 0...100 utilization values now remain literal near the start of a quota window, so 1% is no longer mistaken for an obsolete ratio and displayed as 100%.
 - **Fresh Dashboard after minimizing.** Restoring a minimized Dashboard now refreshes its summaries and charts once, without repeatedly running Dashboard work while it remains minimized.
@@ -89,7 +92,8 @@ window copy.
 - **Quieter background refreshes.** Launch loads the menu-bar snapshot without preloading a hidden Dashboard, while frequent watcher scans skip summary work when imports are unchanged; opening the popover or choosing Refresh still updates time-dependent totals.
 - **Reliable window-scoped Dock state.** After an app or update window closes, Quota Monitor waits for AppKit to finish the close and then rechecks every managed, minimized, and update window before returning to menu-bar-only mode; a separate macOS Recent Apps shortcut may remain and does not mean the running Dock icon is still present.
 - **Broader initial History view.** History loads the latest 21 calendar days on first open, then keeps the existing seven-day incremental pages for viewport fill and deliberate downward scrolling.
-- **Progressive Sessions loading.** Sessions loads 50 globally searched and sorted rows at a time, preserves stable recency, cost, and token ordering, and continues past the former 500-session limit without rendering the entire history up front.
+- **Adaptive Dashboard opening size.** A first-time Dashboard now scales to the usable workspace of the display where it was opened and starts centered there, while later openings continue restoring the user's saved size and position.
+- **Leaner contributor test runs.** Local development now limits iteration to affected suites, reuses unchanged passing Swift results, and keeps successful full-suite output concise without weakening the final PR gate.
 
 ### Removed
 

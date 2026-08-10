@@ -6,9 +6,9 @@ QuotaMonitor is a SwiftPM macOS app. App source lives in `QuotaMonitor/`, groupe
 
 ## Build, Test, and Development Commands
 
-- `swift test --disable-keychain`: runs the Swift test suite without keychain stalls.
-- `swift test --filter SuiteName`: runs targeted tests while iterating.
-- `./qa/run-static.sh`: default non-GUI gate; runs shell tests, Python tool tests, release-note validation, `git diff --check`, and Swift tests.
+- `swift test --disable-keychain --filter SuiteName`: runs only an affected suite while iterating.
+- `./qa/run-static.sh`: final non-GUI PR gate; runs shell/Python checks, release-note validation, `git diff --check`, and the Swift suite. Passing Swift output is summarized and its full log is saved under `.build/qa-logs/`.
+- `./qa/run-static.sh --force`: bypasses Swift-result reuse. CI uses this; local iteration normally should not.
 - `./build.sh`: builds and assembles `.build/QuotaMonitor.app` for local use.
 - `CONFIG=release ./build.sh`: release-style app build.
 - `./tools/make-dmg.sh`: creates the distributable DMG after a release build.
@@ -19,7 +19,9 @@ Use Swift 6 with strict concurrency enabled. Keep indentation at four spaces and
 
 ## Testing Guidelines
 
-Add focused tests beside related suites in `Tests/QuotaMonitorTests/`. Test names should describe behavior, not implementation. For app logic changes, run a targeted `swift test --filter ...` first, then `./qa/run-static.sh` before PR publication.
+Add focused tests beside related suites in `Tests/QuotaMonitorTests/`. Test names should describe behavior, not implementation. During Codex iteration, run only the smallest affected suite or suites; do not run an unfiltered `swift test` before the final gate. Once code, tests, and QA scripts are stable, run `./qa/run-static.sh` once for that PR candidate immediately before commit/push. Do not run a separate `git diff --check` alongside it, because the gate already owns that check, and do not rerun the gate merely to collect another log.
+
+`qa/run-static.sh` always reruns the inexpensive shell, Python, release-note, and whitespace checks. It reuses a passing Swift-suite result when the current code/test/QA/tool inputs and Swift toolchain have the same content fingerprint, independent of staging or committing. Changes under source, tests, `qa/`, build/tool scripts, package metadata, or bundled resources invalidate that result; documentation and changelog-only edits do not invalidate Swift tests but still receive their lightweight checks. Use `--force` only when a genuinely fresh full suite is required. Historical plans and execution records are evidence, not permission to restore redundant full-test sequences.
 
 ## Commit & Pull Request Guidelines
 
