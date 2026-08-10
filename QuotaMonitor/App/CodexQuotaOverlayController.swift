@@ -87,7 +87,7 @@ final class CodexQuotaOverlayController: NSObject {
         guard LocalQAEnvironment.isQARequested() else { return }
         shouldShowDetailsForLocalQA = true
         refreshOverlay()
-        showDetails()
+        showDetails(installClickAwayMonitors: false)
     }
 
     @objc private func workspaceStateDidChange(_ notification: Notification) {
@@ -146,7 +146,7 @@ final class CodexQuotaOverlayController: NSObject {
             in: appKitWindowFrame,
             presentation: presentation)
         if shouldShowDetailsForLocalQA {
-            showDetails(now: now)
+            showDetails(now: now, installClickAwayMonitors: false)
         }
         if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
@@ -250,7 +250,10 @@ final class CodexQuotaOverlayController: NSObject {
         showDetails()
     }
 
-    private func showDetails(now: Date = Date()) {
+    private func showDetails(
+        now: Date = Date(),
+        installClickAwayMonitors: Bool = true
+    ) {
         detailsCloseTask?.cancel()
         detailsCloseTask = nil
         guard panel?.isVisible == true,
@@ -270,7 +273,9 @@ final class CodexQuotaOverlayController: NSObject {
         if !panel.isVisible {
             panel.orderFrontRegardless()
         }
-        installClickAwayMonitorsIfNeeded()
+        if installClickAwayMonitors {
+            installClickAwayMonitorsIfNeeded()
+        }
     }
 
     private func scheduleDetailsClose() {
