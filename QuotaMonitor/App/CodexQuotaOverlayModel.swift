@@ -306,16 +306,21 @@ enum CodexQuotaOverlayLayout {
     static let detailsHeaderHeight: CGFloat = 27
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
-    private static let legacyAccountRowTrailingOffset: CGFloat = 416
+    // Codex keeps the help control centered 24 pt inside the window's trailing
+    // edge. Reserve its 32 pt hit target plus the existing 34 pt visual gap so
+    // the quota widget follows that control without covering its interaction
+    // area as the Codex window changes width.
+    private static let helpControlCenterTrailingInset: CGFloat = 24
+    private static let helpControlHitTargetWidth: CGFloat = 32
+    private static let helpControlGap: CGFloat = 34
     private static let bottomInset: CGFloat = 12
     private static let detailsLeftInset: CGFloat = 12
     private static let detailsGap: CGFloat = 6
     private static let detailsTopInset: CGFloat = 12
 
-    /// Preserve the established injected-widget slot immediately before the
-    /// account-row help control. The native overlay is wider because it shows
-    /// both rolling windows, so anchor its trailing edge instead of placing it
-    /// directly after the account name.
+    /// Keep the widget immediately before the account-row help control. Both
+    /// summary widths share one trailing anchor, so switching between one and
+    /// two quota windows never changes the help-control spacing.
     static func frame(in codexWindowFrame: CGRect) -> CGRect {
         frame(in: codexWindowFrame, width: size.width)
     }
@@ -337,11 +342,20 @@ enum CodexQuotaOverlayLayout {
         in codexWindowFrame: CGRect,
         width: CGFloat
     ) -> CGRect {
-        let trailingX = min(
-            codexWindowFrame.minX + legacyAccountRowTrailingOffset,
-            codexWindowFrame.maxX - bottomInset)
+        let helpControlCenterX = codexWindowFrame.maxX
+            - helpControlCenterTrailingInset
+        let helpControlLeadingX = helpControlCenterX
+            - helpControlHitTargetWidth / 2
+        let preferredOriginX = helpControlLeadingX - helpControlGap - width
+        let minimumOriginX = codexWindowFrame.minX + bottomInset
+        let maximumOriginX = max(
+            minimumOriginX,
+            codexWindowFrame.maxX - bottomInset - width)
+        let originX = max(
+            minimumOriginX,
+            min(preferredOriginX, maximumOriginX))
         return CGRect(
-            x: trailingX - width,
+            x: originX,
             y: codexWindowFrame.minY + bottomInset,
             width: width,
             height: size.height)

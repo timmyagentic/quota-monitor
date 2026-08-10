@@ -263,14 +263,25 @@ struct CodexQuotaOverlayTests {
             displays: displays) == CGRect(x: -1_400, y: 280, width: 1_000, height: 700))
     }
 
-    @Test("Overlay preserves the legacy right-side account-row slot")
+    @Test("Overlay follows the right-side help control slot")
     func accountRowLayout() {
+        let minimumWindow = CGRect(x: 0, y: 0, width: 480, height: 700)
         #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080))
+            in: minimumWindow)
+            == CGRect(x: 274, y: 12, width: 132, height: 25))
+
+        let referenceWindow = CGRect(x: 0, y: 0, width: 490, height: 700)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: referenceWindow)
             == CGRect(x: 284, y: 12, width: 132, height: 25))
+
+        let widerWindow = CGRect(x: 0, y: 0, width: 720, height: 700)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow)
+            == CGRect(x: 514, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
-            == CGRect(x: -916, y: 212, width: 132, height: 25))
+            == CGRect(x: -406, y: 212, width: 132, height: 25))
 
         let weeklyOnly = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -279,12 +290,16 @@ struct CodexQuotaOverlayTests {
             displayMode: .used,
             now: now)
         #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            in: referenceWindow,
             presentation: weeklyOnly) == CGRect(
                 x: 332,
                 y: 12,
                 width: 84,
                 height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow,
+            presentation: weeklyOnly).maxX == CodexQuotaOverlayLayout.frame(
+                in: widerWindow).maxX)
         #expect(CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: weeklyOnly,
             resetCredits: nil) == 97)
@@ -316,7 +331,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             contentHeight: 222) == CGRect(
-                x: 128,
+                x: 1_558,
                 y: 43,
                 width: 288,
                 height: 222))
@@ -335,7 +350,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
-                x: -1_072,
+                x: -962,
                 y: 243,
                 width: 288,
                 height: 265))
