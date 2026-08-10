@@ -186,6 +186,21 @@ struct CodexQuotaOverlayTests {
         #expect(CodexWindowSelectionPolicy.frontWindow(
             for: pid,
             candidates: candidates)?.windowNumber == 4)
+        #expect(CodexWindowSelectionPolicy.trackedWindow(
+            for: pid,
+            lastWindowNumber: 5,
+            codexIsFrontmost: false,
+            candidates: candidates)?.windowNumber == 5)
+        #expect(CodexWindowSelectionPolicy.trackedWindow(
+            for: pid,
+            lastWindowNumber: 99,
+            codexIsFrontmost: false,
+            candidates: candidates) == nil)
+        #expect(CodexWindowSelectionPolicy.trackedWindow(
+            for: pid,
+            lastWindowNumber: 5,
+            codexIsFrontmost: true,
+            candidates: candidates)?.windowNumber == 4)
         #expect(CodexWindowSelectionPolicy.isWindow(
             1,
             above: 4,
@@ -485,7 +500,9 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("Process()"))
         #expect(source.contains(
             "panel.ignoresMouseEvents = !placement.allowsInteraction"))
-        #expect(source.contains("panel.ignoresMouseEvents = true"))
+        #expect(source.contains("ignoresMouseEvents: false"))
+        #expect(source.contains(
+            "panel.ignoresMouseEvents = ignoresMouseEvents"))
         #expect(source.contains("panel.level = .normal"))
         #expect(!source.contains("panel.level = .floating"))
         #expect(source.contains(

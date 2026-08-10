@@ -149,8 +149,10 @@ final class CodexQuotaOverlayController: NSObject {
 
         let onScreenWindows = Self.onScreenWindows()
         let window = trackedCodexPID.flatMap {
-            CodexWindowSelectionPolicy.frontWindow(
+            CodexWindowSelectionPolicy.trackedWindow(
                 for: $0,
+                lastWindowNumber: lastCodexWindowNumber,
+                codexIsFrontmost: isCodexFrontmost,
                 candidates: onScreenWindows)
         }
         let placement = CodexQuotaOverlayVisibilityPolicy.placement(
@@ -471,7 +473,8 @@ final class CodexQuotaOverlayController: NSObject {
             defer: false)
         configure(
             panel,
-            identifier: CodexQuotaOverlayLayout.windowIdentifier)
+            identifier: CodexQuotaOverlayLayout.windowIdentifier,
+            ignoresMouseEvents: true)
 
         let rootView = CodexQuotaOverlayView(
             onHoverChanged: { [weak self] hovering in
@@ -502,7 +505,8 @@ final class CodexQuotaOverlayController: NSObject {
             defer: false)
         configure(
             panel,
-            identifier: CodexQuotaOverlayLayout.detailsWindowIdentifier)
+            identifier: CodexQuotaOverlayLayout.detailsWindowIdentifier,
+            ignoresMouseEvents: false)
 
         let rootView = CodexQuotaOverlayDetailsView(
             onHoverChanged: { [weak self] hovering in
@@ -521,14 +525,15 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func configure(
         _ panel: CodexQuotaOverlayPanel,
-        identifier: String
+        identifier: String,
+        ignoresMouseEvents: Bool
     ) {
         panel.isReleasedWhenClosed = false
         panel.identifier = NSUserInterfaceItemIdentifier(identifier)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = ignoresMouseEvents
         panel.acceptsMouseMovedEvents = true
         panel.hidesOnDeactivate = false
         panel.isExcludedFromWindowsMenu = true

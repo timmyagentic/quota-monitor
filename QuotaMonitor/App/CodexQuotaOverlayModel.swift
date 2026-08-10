@@ -179,12 +179,26 @@ enum CodexWindowSelectionPolicy {
         for processIdentifier: pid_t,
         candidates: [CodexWindowCandidate]
     ) -> CodexWindowCandidate? {
-        candidates.first {
-            $0.ownerPID == processIdentifier
-                && $0.layer == 0
-                && $0.alpha > 0.01
-                && $0.bounds.width >= minimumWindowSize.width
-                && $0.bounds.height >= minimumWindowSize.height
+        candidates.first { candidate in
+            isEligibleWindow(candidate, for: processIdentifier)
+        }
+    }
+
+    static func trackedWindow(
+        for processIdentifier: pid_t,
+        lastWindowNumber: Int?,
+        codexIsFrontmost: Bool,
+        candidates: [CodexWindowCandidate]
+    ) -> CodexWindowCandidate? {
+        if codexIsFrontmost {
+            return frontWindow(
+                for: processIdentifier,
+                candidates: candidates)
+        }
+        guard let lastWindowNumber else { return nil }
+        return candidates.first { candidate in
+            candidate.windowNumber == lastWindowNumber
+                && isEligibleWindow(candidate, for: processIdentifier)
         }
     }
 
@@ -201,6 +215,17 @@ enum CodexWindowSelectionPolicy {
             return false
         }
         return upperIndex < lowerIndex
+    }
+
+    private static func isEligibleWindow(
+        _ candidate: CodexWindowCandidate,
+        for processIdentifier: pid_t
+    ) -> Bool {
+        candidate.ownerPID == processIdentifier
+            && candidate.layer == 0
+            && candidate.alpha > 0.01
+            && candidate.bounds.width >= minimumWindowSize.width
+            && candidate.bounds.height >= minimumWindowSize.height
     }
 }
 
