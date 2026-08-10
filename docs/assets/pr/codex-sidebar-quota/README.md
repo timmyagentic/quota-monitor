@@ -1,5 +1,26 @@
 # Codex sidebar quota evidence
 
+The current handoff at source commit
+`4216d979ec84c9b4824a0fcc8a01473da460bac3` creates neither a background nor
+an outline node while the compact summary is idle. The 3.5% semantic-gray fill,
+0.12-opacity outline, and shadow are created only during hover. Full Codex
+window captures from intermediate builds were removed because their surrounding
+sidebar contained local conversation and workspace titles. Do not add another
+full-window capture here; future evidence must be cropped to the account row or
+otherwise redact local history before it is committed.
+
+`shifted-left-zh-Hans.png` is a direct 2x capture from the isolated real-data
+QA build at source commit
+`d3226a9d149f4908d4b3257d3729731d2f324f8a`. It verifies that the unchanged
+detail card still renders cleanly after the summary and its anchored detail
+surface move 16 points left. The layout regression contract verifies the new
+416-point trailing anchor across normal, weekly-only, and secondary-display
+frames, leaving additional clearance for Codex's official help control. No
+account identity, credential, or conversation content is included.
+
+SHA-256:
+`e64474dfc1cf3f001689b268e77b3f2131b91ea2a60ac56755458fa1b5ff2877`
+
 `summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
 isolated real-data QA build at source commit
 `40996a3622f38e2b7f837345170c1f02f0dae22f`. It shows the final weekly-only

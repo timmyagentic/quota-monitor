@@ -235,7 +235,7 @@ enum CodexQuotaOverlayLayout {
     static let detailsHeaderHeight: CGFloat = 27
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
-    private static let legacyAccountRowTrailingOffset: CGFloat = 432
+    private static let legacyAccountRowTrailingOffset: CGFloat = 416
     private static let bottomInset: CGFloat = 12
     private static let detailsLeftInset: CGFloat = 12
     private static let detailsGap: CGFloat = 6
