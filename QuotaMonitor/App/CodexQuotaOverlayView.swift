@@ -68,19 +68,21 @@ struct CodexQuotaOverlayView: View {
                 width: summaryWidth(for: presentation),
                 height: CodexQuotaOverlayLayout.size.height)
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(.primary.opacity(isHovering ? 0.075 : 0.035))
+                if isHovering {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.035))
+                }
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(
-                        .primary.opacity(isHovering ? 0.12 : 0.08),
-                        lineWidth: 0.75)
+                if isHovering {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(.primary.opacity(0.12), lineWidth: 0.75)
+                }
             }
             .shadow(
-                color: .black.opacity(isHovering ? 0.13 : 0.075),
-                radius: isHovering ? 4 : 2.5,
-                y: 1)
+                color: .black.opacity(isHovering ? 0.13 : 0),
+                radius: isHovering ? 4 : 0,
+                y: isHovering ? 1 : 0)
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .onHover { hovering in
                 isHovering = hovering
@@ -176,11 +178,7 @@ struct CodexQuotaOverlayDetailsView: View {
             }
             .background {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.regularMaterial)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(.primary.opacity(0.018))
-                    }
+                    .fill(Color(nsColor: .windowBackgroundColor))
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)

@@ -1,5 +1,36 @@
 # Codex sidebar quota evidence
 
+The current handoff at source commit
+`d33eb40bde83a8b81e01f143e7ff226aac24d0a3` creates neither a background nor
+an outline node while the compact summary is idle. The 3.5% semantic-gray fill,
+0.12-opacity outline, and shadow are created only during hover. Full Codex
+window captures from intermediate builds were removed because their surrounding
+sidebar contained local conversation and workspace titles. Do not add another
+full-window capture here; future evidence must be cropped to the account row or
+otherwise redact local history before it is committed.
+
+`borderless-idle-account-row.png` is a direct 2x privacy crop from the exact
+isolated real-data QA build at that source commit. It shows the idle quota text
+beside Codex's official help control without exposing the account name or local
+conversation history. The overlay window's blank pixels have zero alpha, and
+the captured Codex pixels inside the overlay, immediately to its left, and
+immediately to its right are all RGB `(252, 252, 252)`.
+
+SHA-256:
+`b3f023246497c0a824d1351763eb3e16457fe79390b1fee9461b757ca6805d19`
+
+`shifted-left-zh-Hans.png` is a direct 2x capture from the isolated real-data
+QA build at source commit
+`d3226a9d149f4908d4b3257d3729731d2f324f8a`. It verifies that the unchanged
+detail card still renders cleanly after the summary and its anchored detail
+surface move 16 points left. The layout regression contract verifies the new
+416-point trailing anchor across normal, weekly-only, and secondary-display
+frames, leaving additional clearance for Codex's official help control. No
+account identity, credential, or conversation content is included.
+
+SHA-256:
+`e64474dfc1cf3f001689b268e77b3f2131b91ea2a60ac56755458fa1b5ff2877`
+
 `summary-status-copy-zh-Hans.png` is a direct Computer Use capture from the
 isolated real-data QA build at source commit
 `40996a3622f38e2b7f837345170c1f02f0dae22f`. It shows the final weekly-only

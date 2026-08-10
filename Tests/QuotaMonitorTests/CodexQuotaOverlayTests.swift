@@ -211,10 +211,10 @@ struct CodexQuotaOverlayTests {
     func accountRowLayout() {
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080))
-            == CGRect(x: 300, y: 12, width: 132, height: 25))
+            == CGRect(x: 284, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
-            == CGRect(x: -900, y: 212, width: 132, height: 25))
+            == CGRect(x: -916, y: 212, width: 132, height: 25))
 
         let weeklyOnly = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -225,7 +225,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             presentation: weeklyOnly) == CGRect(
-                x: 348,
+                x: 332,
                 y: 12,
                 width: 84,
                 height: 25))
@@ -260,7 +260,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             contentHeight: 222) == CGRect(
-                x: 144,
+                x: 128,
                 y: 43,
                 width: 288,
                 height: 222))
@@ -279,7 +279,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
-                x: -1_056,
+                x: -1_072,
                 y: 243,
                 width: 288,
                 height: 265))
@@ -459,10 +459,15 @@ struct CodexQuotaOverlayTests {
         #expect(viewSource.contains("style: settings.menuBarLabelStyle"))
         #expect(!viewSource.contains("private func metricAccent"))
         #expect(!viewSource.contains(".fill(Material.ultraThin)"))
+        #expect(!viewSource.contains(".fill(.regularMaterial)"))
+        #expect(viewSource.contains("if isHovering"))
+        #expect(viewSource.contains(".fill(Color.primary.opacity(0.035))"))
         #expect(viewSource.contains(
-            ".fill(.primary.opacity(isHovering ? 0.075 : 0.035))"))
+            "color: .black.opacity(isHovering ? 0.13 : 0)"))
         #expect(viewSource.contains(
-            ".primary.opacity(isHovering ? 0.12 : 0.08)"))
+            ".fill(Color(nsColor: .windowBackgroundColor))"))
+        #expect(viewSource.contains(
+            ".stroke(.primary.opacity(0.12), lineWidth: 0.75)"))
         let pollingStart = try #require(
             appDelegate.range(of: "env.startBackgroundPolling()"))
         let overlayStart = try #require(
