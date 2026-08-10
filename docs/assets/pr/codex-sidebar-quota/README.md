@@ -55,15 +55,15 @@ SHA-256:
 
 `no-scroll-expanded-zh-Hans.png` is a direct 2x capture from the isolated
 real-data QA build at source commit
-`5cabd5122e04cdfe250364e3083d6bea964c83d0`. It shows the final weekly-only
+`c08994ea5670d5d1281a672a3babb27383dcb3cb`. It shows the final weekly-only
 detail card at its measured ordinary-content height, with every row visible
-and no scrollbar, together with the compact summary below it. The final
+and no scrollbar. The final
 implementation uses `ViewThatFits` to retain a hidden-indicator scroll fallback
 only when the available Codex window height is genuinely constrained. No
 account identity, credential, or conversation content is included.
 
 SHA-256:
-`439a258ad075a4a9c214c7ee646e3bf72b44456ad18e2e071932dfa59f4b6ce1`
+`5e5e58b5dfe7202c8cd32791b05522eeaa45e70d419452a8c942957f478235c2`
 
 ## Legacy reference
 
