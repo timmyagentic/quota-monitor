@@ -182,6 +182,9 @@ final class WindowManager {
         let env = AppEnvironment.shared
         let loc = LocalizationStore.shared
         let settings = SettingsStore.shared
+        let dashboardVisibleFrame = id == "dashboard"
+            ? Self.preferredDashboardVisibleFrame()
+            : nil
 
         let root: AnyView
         let config: WindowConfig
@@ -194,10 +197,11 @@ final class WindowManager {
                 .environment(updater))
             config = WindowConfig(
                 resizable: true,
-                initialContentSize: NSSize(width: 980, height: 680),
-                minContentSize: NSSize(width: 820, height: 560),
+                initialContentSize: DashboardWindowSizingPolicy.contentSize(
+                    forVisibleFrame: dashboardVisibleFrame),
+                minContentSize: DashboardWindowSizingPolicy.minimumContentSize,
                 autosaveName: Self.frameAutosaveName(for: id),
-                centerOnOpen: false)
+                centerOnOpen: true)
         case "settings":
             let tabSelection = SettingsTabSelection()
             settingsTabSelection = tabSelection
@@ -276,7 +280,15 @@ final class WindowManager {
         window.isReleasedWhenClosed = false   // the controller owns the window
         if let minSize = config.minContentSize { window.contentMinSize = minSize }
         if let size = config.initialContentSize { window.setContentSize(size) }
-        if config.centerOnOpen { window.center() }
+        if config.centerOnOpen {
+            if id == "dashboard", let dashboardVisibleFrame {
+                window.setFrameOrigin(DashboardWindowSizingPolicy.centeredOrigin(
+                    windowFrameSize: window.frame.size,
+                    in: dashboardVisibleFrame))
+            } else {
+                window.center()
+            }
+        }
         // Assigning the autosave name restores a saved frame if one exists
         // (overriding the size/center above); otherwise the centered/default
         // frame stands and is what gets saved. MUST come after setContentSize.
@@ -298,7 +310,15 @@ final class WindowManager {
         let centerOnOpen: Bool
     }
 
-    static func frameAutosaveName(for id: String) -> String? {
+    static func frameAutosaveName(
+        for id: String,
+        localQAActive: Bool = LocalQAEnvironment.isActive()
+    ) -> String? {
+        // NSWindow frame autosave always uses the app's standard preferences
+        // domain, not LocalQAEnvironment's isolated defaults suite. Disable it
+        // for local QA so a fixture run neither reads nor rewrites the user's
+        // real window memory.
+        guard !localQAActive else { return nil }
         switch id {
         case "dashboard", "settings", "whats-new":
             // Matches the previous SwiftUI `Window(id:)` frame keys
@@ -308,6 +328,17 @@ final class WindowManager {
         default:
             return nil
         }
+    }
+
+    private static func preferredDashboardVisibleFrame() -> NSRect? {
+        DashboardWindowSizingPolicy.preferredVisibleFrame(
+            pointerLocation: NSEvent.mouseLocation,
+            screens: NSScreen.screens.map {
+                DashboardWindowSizingPolicy.ScreenGeometry(
+                    frame: $0.frame,
+                    visibleFrame: $0.visibleFrame)
+            },
+            fallbackVisibleFrame: NSScreen.main?.visibleFrame)
     }
 }
 

@@ -45,9 +45,10 @@ struct ActivityHeatmapGeometryTests {
         #expect(square.height == cell)
     }
 
-    @Test("default dashboard width selects the compact full-year layout")
-    func defaultWidthUsesCompactLayout() {
-        let defaultWindowWidth: CGFloat = 980
+    @Test("compact-screen dashboard width selects the compact full-year layout")
+    func compactScreenWidthUsesCompactLayout() {
+        let defaultWindowWidth = DashboardWindowSizingPolicy.contentSize(
+            forVisibleFrame: NSRect(x: 0, y: 0, width: 1280, height: 720)).width
         let dashboardHorizontalPadding: CGFloat = 20 * 2
         let panelHorizontalPadding: CGFloat = 14 * 2
         let availableWidth = defaultWindowWidth
@@ -61,6 +62,17 @@ struct ActivityHeatmapGeometryTests {
         #expect(HeatmapLayout.compact.fits(
             availableWidth: availableWidth,
             weekCount: weekCount))
+    }
+
+    @Test("desktop dashboard width selects the regular full-year layout")
+    func desktopWidthUsesRegularLayout() {
+        let defaultWindowWidth = DashboardWindowSizingPolicy.contentSize(
+            forVisibleFrame: NSRect(x: 0, y: 0, width: 1920, height: 956)).width
+        let availableWidth = defaultWindowWidth - 20 * 2 - 14 * 2
+
+        #expect(HeatmapLayout.regular.fits(
+            availableWidth: availableWidth,
+            weekCount: 53))
     }
 
     @Test("compact layout scrolls only below its full-year width")
