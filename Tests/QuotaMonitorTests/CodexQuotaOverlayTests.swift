@@ -524,14 +524,16 @@ struct CodexQuotaOverlayTests {
         #expect(!viewSource.contains("private func metricAccent"))
         #expect(!viewSource.contains(".fill(Material.ultraThin)"))
         #expect(!viewSource.contains(".fill(.regularMaterial)"))
-        #expect(viewSource.contains("if isHovering"))
-        #expect(viewSource.contains(".fill(Color.primary.opacity(0.035))"))
+        #expect(viewSource.contains(
+            ".fill(Color.primary.opacity(isHovering ? 0.035 : 0.018))"))
         #expect(viewSource.contains(
             "color: .black.opacity(isHovering ? 0.13 : 0)"))
         #expect(viewSource.contains(
             ".fill(Color(nsColor: .windowBackgroundColor))"))
         #expect(viewSource.contains(
-            ".stroke(.primary.opacity(0.12), lineWidth: 0.75)"))
+            ".primary.opacity(isHovering ? 0.12 : 0.055)"))
+        #expect(viewSource.contains(
+            "lineWidth: isHovering ? 0.75 : 0.5"))
         let pollingStart = try #require(
             appDelegate.range(of: "env.startBackgroundPolling()"))
         let overlayStart = try #require(

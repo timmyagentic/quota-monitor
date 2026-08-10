@@ -68,16 +68,14 @@ struct CodexQuotaOverlayView: View {
                 width: summaryWidth(for: presentation),
                 height: CodexQuotaOverlayLayout.size.height)
             .background {
-                if isHovering {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.035))
-                }
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(isHovering ? 0.035 : 0.018))
             }
             .overlay {
-                if isHovering {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(.primary.opacity(0.12), lineWidth: 0.75)
-                }
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(
+                        .primary.opacity(isHovering ? 0.12 : 0.055),
+                        lineWidth: isHovering ? 0.75 : 0.5)
             }
             .shadow(
                 color: .black.opacity(isHovering ? 0.13 : 0),
