@@ -35,6 +35,11 @@ window copy.
 - The Codex window widget now mirrors the menu bar's compact 5h/7d readout without an extra status dot, rests on a barely visible semantic surface that becomes clearer on hover, and opens a clearly branded, narrower detail card without an unnecessary scroll bar at normal window sizes.
 - The Codex quota widget now stays attached to a visible Codex window while you work in another app, with foreground windows covering it normally and hover details closing on app switch.
 - Dates and times in Sessions, History, Activity, and Trends now match the language selected inside Quota Monitor.
+- Dashboard now opens at a size suited to the current display while continuing to remember the size and position you choose.
+
+### Changed
+
+- **Adaptive Dashboard opening size.** A first-time Dashboard now scales to the usable workspace of the display where it was opened and starts centered there, while later openings continue restoring the user's saved size and position.
 
 ### Fixed
 
