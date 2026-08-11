@@ -396,14 +396,15 @@ final class SettingsStore {
         if storedLaunchAtLogin == nil {
             defaults.set(true, forKey: Keys.launchAtLoginEnabled)
         }
-        // Default false. A missing key reads as false via
-        // `defaults.bool(forKey:)`, which is exactly the resolved
-        // default we want for both fresh installs and existing users
-        // upgrading to this release (per the user-confirmed spec).
+        // The Dock icon remains opt-in. A missing key reads as false.
         self.showDockIconForWindows =
             defaults.bool(forKey: Keys.showDockIconForWindows)
-        self.codexSidebarQuotaEnabled =
-            defaults.bool(forKey: Keys.codexSidebarQuotaEnabled)
+        let storedCodexSidebarQuotaEnabled =
+            defaults.object(forKey: Keys.codexSidebarQuotaEnabled) as? Bool
+        self.codexSidebarQuotaEnabled = storedCodexSidebarQuotaEnabled ?? true
+        if storedCodexSidebarQuotaEnabled == nil {
+            defaults.set(true, forKey: Keys.codexSidebarQuotaEnabled)
+        }
         let storedCodexSidebarQuotaPosition = defaults.array(
             forKey: Keys.codexSidebarQuotaPosition)
         if let storedCodexSidebarQuotaPosition,

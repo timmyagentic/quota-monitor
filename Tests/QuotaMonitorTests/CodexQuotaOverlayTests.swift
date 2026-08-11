@@ -714,7 +714,7 @@ struct CodexQuotaOverlayTests {
             now: now) == nil)
     }
 
-    @Test("The existing sidebar opt-in persists across the native migration")
+    @Test("The native widget defaults on and persists an explicit opt-out")
     @MainActor
     func settingPersists() {
         let suite = "CodexQuotaOverlayTests-\(UUID().uuidString)"
@@ -723,9 +723,11 @@ struct CodexQuotaOverlayTests {
         defaults.removePersistentDomain(forName: suite)
 
         let settings = SettingsStore(defaults: defaults)
-        #expect(!settings.codexSidebarQuotaEnabled)
-        settings.codexSidebarQuotaEnabled = true
-        #expect(SettingsStore(defaults: defaults).codexSidebarQuotaEnabled)
+        #expect(settings.codexSidebarQuotaEnabled)
+        #expect(defaults.bool(forKey: "settings.codexSidebarQuotaEnabled"))
+
+        settings.codexSidebarQuotaEnabled = false
+        #expect(!SettingsStore(defaults: defaults).codexSidebarQuotaEnabled)
     }
 
     @Test("A manual widget position persists and can be reset")
