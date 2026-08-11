@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The Codex quota widget now stays to the left of Help in the current sidebar layout without requiring a manual position, including in wide and full-screen windows.
+
+### Fixed
+
+- **Correct automatic Codex widget placement.** Quota Monitor now recognizes Codex's Help menu popup as the anchor, preserves whether that anchor follows the sidebar or window edge during resizing, and estimates the same Help-relative sidebar slot when Accessibility is unavailable instead of scaling the fallback across the entire window.
+
 ## [1.0.1] — 2026-08-11
 
 #### Summary

@@ -299,6 +299,17 @@ enum CodexWindowFrameConverter {
     }
 }
 
+enum CodexSidebarAutomaticPlacementMetrics {
+    // Current Codex keeps the account row in a 438 pt leading sidebar. Its
+    // 33 pt Help control begins 41 pt before the sidebar's trailing edge.
+    // These metrics let the no-Accessibility path estimate the same slot as
+    // the discovered Help-control path instead of drifting into page content.
+    static let referenceSidebarWidth: CGFloat = 438
+    static let helpLeadingTrailingInset: CGFloat = 41
+    static let helpCenterTrailingInset: CGFloat = 24
+    static let widgetTrailingGap: CGFloat = 34
+}
+
 enum CodexQuotaOverlayLayout {
     static let size = CGSize(width: 132, height: 25)
     static let singleWindowWidth: CGFloat = 84
@@ -306,19 +317,14 @@ enum CodexQuotaOverlayLayout {
     static let detailsHeaderHeight: CGFloat = 27
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
-    private static let helpControlGap: CGFloat = 34
-    // The approved fallback slot ends at 150 pt in the 490 pt reference
-    // account row. Store it as a proportion so wider and narrower Codex
-    // windows keep the same relative placement.
-    private static let fallbackTrailingPositionRatio: CGFloat = 150.0 / 490.0
     private static let bottomInset: CGFloat = 12
     private static let detailsLeftInset: CGFloat = 12
     private static let detailsGap: CGFloat = 6
     private static let detailsTopInset: CGFloat = 12
 
-    /// Prefer the discovered account-row help control. If Accessibility cannot
-    /// provide it, preserve the approved 150-of-490 reference placement as a
-    /// proportion of the current Codex window width.
+    /// Prefer the discovered account-row Help control. If Accessibility cannot
+    /// provide it, estimate that same Help-relative slot from the current
+    /// leading-sidebar geometry.
     static func frame(
         in codexWindowFrame: CGRect,
         helpControlLeadingX: CGFloat? = nil,
@@ -368,12 +374,21 @@ enum CodexQuotaOverlayLayout {
                   leadingX <= codexWindowFrame.maxX else {
                 return nil
             }
-            return leadingX - helpControlGap
+            return leadingX
+                - CodexSidebarAutomaticPlacementMetrics.widgetTrailingGap
         }
-        let relativeFallbackTrailingX = codexWindowFrame.minX
-            + (codexWindowFrame.width * fallbackTrailingPositionRatio).rounded()
+        let fallbackSidebarWidth = min(
+            CodexSidebarAutomaticPlacementMetrics.referenceSidebarWidth,
+            max(0, codexWindowFrame.width))
+        let fallbackHelpLeadingX = codexWindowFrame.minX
+            + max(
+                0,
+                fallbackSidebarWidth
+                    - CodexSidebarAutomaticPlacementMetrics.helpLeadingTrailingInset)
+        let fallbackTrailingX = fallbackHelpLeadingX
+            - CodexSidebarAutomaticPlacementMetrics.widgetTrailingGap
         let preferredTrailingX = discoveredTrailingX
-            ?? relativeFallbackTrailingX
+            ?? fallbackTrailingX
         let preferredOriginX = preferredTrailingX - width
         let minimumOriginX = codexWindowFrame.minX + bottomInset
         let maximumOriginX = max(
