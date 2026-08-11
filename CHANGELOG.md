@@ -30,18 +30,11 @@ window copy.
 
 ## [Unreleased]
 
-#### Summary
-
-- The Codex quota widget now stays to the left of Help in the current sidebar layout without requiring a manual position, including in wide and full-screen windows.
-
-### Fixed
-
-- **Correct automatic Codex widget placement.** Quota Monitor now recognizes Codex's Help menu popup as the anchor, preserves whether that anchor follows the sidebar or window edge during resizing, and estimates the same Help-relative sidebar slot when Accessibility is unavailable instead of scaling the fallback across the entire window.
-
 ## [1.0.1] — 2026-08-11
 
 #### Summary
 
+- The Codex quota widget now stays to the left of Help in the current sidebar layout without requiring a manual position, including in wide and full-screen windows.
 - Press and hold the Codex quota widget for one second to unlock dragging; an inline hint and shaking move icon make the interaction clear, and the chosen position persists across window resizing and relaunches.
 - One-command npm installs now correctly recognize and install Quota Monitor 1.0.0 and later releases.
 
@@ -51,6 +44,7 @@ window copy.
 
 ### Fixed
 
+- **Correct automatic Codex widget placement.** Quota Monitor now recognizes Codex's Help menu popup as the anchor, preserves whether that anchor follows the sidebar or window edge during resizing, and estimates the same Help-relative sidebar slot when Accessibility is unavailable instead of scaling the fallback across the entire window.
 - **Reliable npm release selection.** The public installer now treats Sparkle's internal build number and display version independently, so it can install 1.0.0 and later releases without weakening URL, signature, or bundle checks.
 
 ## [1.0.0] — 2026-08-11
