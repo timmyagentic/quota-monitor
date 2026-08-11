@@ -300,7 +300,12 @@ struct CodexQuotaOverlayTests {
 
         let compactSidebarAnchor = CodexHelpControlSelectionPolicy.anchor(
             in: CGRect(x: 0, y: 0, width: 490, height: 1_080),
-            candidates: [sidebarCandidates[0]])
+            candidates: [
+                sidebarCandidates[0],
+                CodexHelpControlCandidate(
+                    frame: CGRect(x: 450, y: 1_040, width: 32, height: 32),
+                    descriptors: ["Open help"])
+            ])
         #expect(compactSidebarAnchor == CodexHelpControlAnchor(
             horizontalReference: .windowLeadingInset(397)))
         #expect(compactSidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
