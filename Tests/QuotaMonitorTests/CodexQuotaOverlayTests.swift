@@ -297,6 +297,14 @@ struct CodexQuotaOverlayTests {
         #expect(sidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
         #expect(sidebarAnchor?.leadingX(
             in: CGRect(x: 100, y: 50, width: 1_200, height: 700)) == 497)
+
+        let compactSidebarAnchor = CodexHelpControlSelectionPolicy.anchor(
+            in: CGRect(x: 0, y: 0, width: 490, height: 1_080),
+            candidates: [sidebarCandidates[0]])
+        #expect(compactSidebarAnchor == CodexHelpControlAnchor(
+            horizontalReference: .windowLeadingInset(397)))
+        #expect(compactSidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
+
         #expect(CodexHelpControlSelectionPolicy.anchor(
             in: fullWidthWindow,
             candidates: Array(sidebarCandidates.dropFirst())) == CodexHelpControlAnchor(

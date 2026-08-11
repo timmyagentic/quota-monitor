@@ -93,15 +93,22 @@ enum CodexHelpControlSelectionPolicy {
                     < score(rhs.frame, in: windowFrame)
             }
             .map { candidate in
-                let trailingCenterInset = windowFrame.maxX - candidate.frame.midX
-                if (0...maximumEdgeInset).contains(trailingCenterInset) {
-                    return CodexHelpControlAnchor(
-                        horizontalReference: .windowTrailingInset(
-                            windowFrame.maxX - candidate.frame.minX))
+                let sidebarDistance = abs(
+                    candidate.frame.midX
+                        - expectedSidebarHelpCenterX(in: windowFrame))
+                let trailingDistance = abs(
+                    candidate.frame.midX
+                        - expectedTrailingHelpCenterX(in: windowFrame))
+                let horizontalReference: CodexHelpControlAnchor.HorizontalReference
+                if sidebarDistance <= trailingDistance {
+                    horizontalReference = .windowLeadingInset(
+                        candidate.frame.minX - windowFrame.minX)
+                } else {
+                    horizontalReference = .windowTrailingInset(
+                        windowFrame.maxX - candidate.frame.minX)
                 }
                 return CodexHelpControlAnchor(
-                    horizontalReference: .windowLeadingInset(
-                        candidate.frame.minX - windowFrame.minX))
+                    horizontalReference: horizontalReference)
             }
     }
 
@@ -116,11 +123,6 @@ enum CodexHelpControlSelectionPolicy {
     }
 
     private static func score(_ frame: CGRect, in windowFrame: CGRect) -> CGFloat {
-        let expectedSidebarHelpCenterX = windowFrame.minX
-            + min(
-                windowFrame.width,
-                CodexSidebarAutomaticPlacementMetrics.referenceSidebarWidth)
-            - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset
         let trailingCenterInset = windowFrame.maxX - frame.midX
         let trailingCandidatePenalty =
             windowFrame.width > maximumSidebarLeadingInset
@@ -131,10 +133,23 @@ enum CodexHelpControlSelectionPolicy {
             abs(
                 trailingCenterInset
                     - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset),
-            abs(frame.midX - expectedSidebarHelpCenterX))
+            abs(frame.midX - expectedSidebarHelpCenterX(in: windowFrame)))
         return trailingCandidatePenalty
             + horizontalDistance
             + abs((windowFrame.maxY - frame.midY) - 24)
+    }
+
+    private static func expectedSidebarHelpCenterX(in windowFrame: CGRect) -> CGFloat {
+        windowFrame.minX
+            + min(
+                windowFrame.width,
+                CodexSidebarAutomaticPlacementMetrics.referenceSidebarWidth)
+            - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset
+    }
+
+    private static func expectedTrailingHelpCenterX(in windowFrame: CGRect) -> CGFloat {
+        windowFrame.maxX
+            - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset
     }
 }
 
