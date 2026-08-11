@@ -41,6 +41,7 @@ final class CodexQuotaOverlayController: NSObject {
     private var summaryDragStartFrame: CGRect?
     private var summaryDragStartMouseLocation: CGPoint?
     private var summaryDragFrame: CGRect?
+    private var summaryDragDidMove = false
     private var shouldShowDetailsForLocalQA = false
     private var isStarted = false
 
@@ -484,16 +485,27 @@ final class CodexQuotaOverlayController: NSObject {
         showDetails()
     }
 
+    private func summaryPressBegan() {
+        closeDetails()
+    }
+
+    private func summaryDragBegan() {
+        guard detailsAreAllowed,
+              let panel else {
+            return
+        }
+        summaryDragStartFrame = panel.frame
+        summaryDragStartMouseLocation = NSEvent.mouseLocation
+        summaryDragFrame = panel.frame
+        summaryDragDidMove = false
+        closeDetails()
+    }
+
     private func summaryDragChanged() {
         guard detailsAreAllowed,
               let panel,
               let codexWindowFrame = lastCodexWindowFrame else {
             return
-        }
-        if summaryDragStartFrame == nil {
-            summaryDragStartFrame = panel.frame
-            summaryDragStartMouseLocation = NSEvent.mouseLocation
-            closeDetails()
         }
         guard let summaryDragStartFrame,
               let summaryDragStartMouseLocation else {
@@ -513,11 +525,13 @@ final class CodexQuotaOverlayController: NSObject {
             candidate,
             in: codexWindowFrame)
         summaryDragFrame = frame
+        summaryDragDidMove = true
         panel.setFrame(frame, display: panel.isVisible)
     }
 
     private func summaryDragEnded() {
-        guard let summaryDragFrame,
+        guard summaryDragDidMove,
+              let summaryDragFrame,
               let codexWindowFrame = lastCodexWindowFrame else {
             resetSummaryDrag()
             return
@@ -534,6 +548,7 @@ final class CodexQuotaOverlayController: NSObject {
         summaryDragStartFrame = nil
         summaryDragStartMouseLocation = nil
         summaryDragFrame = nil
+        summaryDragDidMove = false
     }
 
     private var detailsAreAllowed: Bool {
@@ -681,6 +696,12 @@ final class CodexQuotaOverlayController: NSObject {
             },
             onActivate: { [weak self] in
                 self?.activateDetails()
+            },
+            onPressBegan: { [weak self] in
+                self?.summaryPressBegan()
+            },
+            onDragBegan: { [weak self] in
+                self?.summaryDragBegan()
             },
             onDragChanged: { [weak self] in
                 self?.summaryDragChanged()

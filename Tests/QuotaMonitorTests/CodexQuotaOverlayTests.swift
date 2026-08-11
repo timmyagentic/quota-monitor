@@ -526,6 +526,38 @@ struct CodexQuotaOverlayTests {
             afterMouseDownIn: nil))
     }
 
+    @Test("Moving requires a complete one-second hold while short clicks still open details")
+    func longPressDragPolicy() {
+        #expect(CodexQuotaOverlayDragInteractionPolicy.holdDuration == .seconds(1))
+        #expect(!CodexQuotaOverlayDragPhase.pressing.isUnlocked)
+        #expect(CodexQuotaOverlayDragPhase.ready.isUnlocked)
+        #expect(CodexQuotaOverlayDragPhase.dragging.isUnlocked)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .pressing,
+            translation: .zero) == .activateDetails)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .pressing,
+            translation: CGSize(width: 4, height: 0)) == .cancel)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .ready,
+            translation: .zero) == .finishDrag)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .dragging,
+            translation: CGSize(width: 20, height: 12)) == .finishDrag)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .idle,
+            translation: .zero) == .cancel)
+
+        let english = LocalizationTestSupport.withLanguage(.english) {
+            [L10n.codexOverlayHoldToMove, L10n.codexOverlayReadyToMove]
+        }
+        let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            [L10n.codexOverlayHoldToMove, L10n.codexOverlayReadyToMove]
+        }
+        #expect(english == ["Hold 1 sec, then drag", "Drag now"])
+        #expect(chinese == ["按住 1 秒后拖动", "现在可拖动"])
+    }
+
     @Test("Reset-card details prefer expirations and fall back to a live count")
     func resetCreditsPresentation() {
         let expirations = [
@@ -717,8 +749,13 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains(
             "panel.order(.above, relativeTo: codexWindowNumber)"))
         #expect(source.contains("onHoverChanged"))
+        #expect(source.contains("summaryDragBegan"))
         #expect(source.contains("summaryDragChanged"))
-        #expect(viewSource.contains("DragGesture(minimumDistance: 3)"))
+        #expect(viewSource.contains("DragGesture(minimumDistance: 0"))
+        #expect(viewSource.contains(
+            "CodexQuotaOverlayDragInteractionPolicy.holdDuration"))
+        #expect(viewSource.contains("repeatForever(autoreverses: true)"))
+        #expect(viewSource.contains("accessibilityReduceMotion"))
         #expect(source.contains("detailsPanel"))
         #expect(source.contains("addGlobalMonitorForEvents"))
         #expect(!source.contains("isDetailsPinned"))

@@ -567,3 +567,42 @@ enum CodexQuotaOverlayInteractionPolicy {
         !CodexQuotaOverlayLayout.isOverlayWindowIdentifier(windowIdentifier)
     }
 }
+
+enum CodexQuotaOverlayDragPhase: Equatable {
+    case idle
+    case pressing
+    case ready
+    case dragging
+
+    var isUnlocked: Bool {
+        self == .ready || self == .dragging
+    }
+}
+
+enum CodexQuotaOverlayDragReleaseAction: Equatable {
+    case activateDetails
+    case finishDrag
+    case cancel
+}
+
+enum CodexQuotaOverlayDragInteractionPolicy {
+    static let holdDuration: Duration = .seconds(1)
+    static let tapMovementTolerance: CGFloat = 3
+
+    static func releaseAction(
+        phase: CodexQuotaOverlayDragPhase,
+        translation: CGSize
+    ) -> CodexQuotaOverlayDragReleaseAction {
+        switch phase {
+        case .idle:
+            return .cancel
+        case .pressing:
+            let distance = hypot(translation.width, translation.height)
+            return distance <= tapMovementTolerance
+                ? .activateDetails
+                : .cancel
+        case .ready, .dragging:
+            return .finishDrag
+        }
+    }
+}

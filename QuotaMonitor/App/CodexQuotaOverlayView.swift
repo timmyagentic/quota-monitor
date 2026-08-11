@@ -12,9 +12,14 @@ struct CodexQuotaOverlayView: View {
     @Environment(LocalizationStore.self) private var localization
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
+    @State private var dragPhase = CodexQuotaOverlayDragPhase.idle
+    @State private var holdTask: Task<Void, Never>?
+    @State private var jiggleForward = false
 
     let onHoverChanged: (Bool) -> Void
     let onActivate: () -> Void
+    let onPressBegan: () -> Void
+    let onDragBegan: () -> Void
     let onDragChanged: () -> Void
     let onDragEnded: () -> Void
 
@@ -25,46 +30,7 @@ struct CodexQuotaOverlayView: View {
                 displayMode: settings.quotaDisplayMode,
                 now: context.date)
 
-            Group {
-                if presentation.hasQuota {
-                    HStack(spacing: 0) {
-                        if let fiveHour = presentation.fiveHour {
-                            metric(
-                                QuotaWindowCompactLabel.fiveHour,
-                                fiveHour)
-                                .frame(maxWidth: .infinity)
-                        }
-                        if presentation.fiveHour != nil,
-                           presentation.weekly != nil {
-                            Rectangle()
-                                .fill(.primary.opacity(0.12))
-                                .frame(width: 1, height: 13)
-                        }
-                        if let weekly = presentation.weekly {
-                            metric(
-                                QuotaWindowCompactLabel.sevenDay,
-                                weekly)
-                                .frame(maxWidth: .infinity)
-                        }
-                        if presentation.isCached {
-                            Image(systemName: "clock.fill")
-                                .font(.system(size: 7, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .accessibilityLabel(L10n.codexOverlayCachedStatus)
-                        }
-                    }
-                    .opacity(presentation.isCached ? 0.72 : 1)
-                } else {
-                    HStack(spacing: 5) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .font(.system(size: 9, weight: .semibold))
-                        Text(L10n.codexOverlayUnavailableCompact)
-                            .lineLimit(1)
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
-                }
-            }
+            summaryContent(presentation)
             .padding(.horizontal, 4)
             .frame(
                 width: summaryWidth(for: presentation),
@@ -88,17 +54,15 @@ struct CodexQuotaOverlayView: View {
                 isHovering = hovering
                 onHoverChanged(hovering)
             }
-            .onTapGesture {
-                onActivate()
-            }
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 3)
-                    .onChanged { _ in
-                        onDragChanged()
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        dragChanged(value)
                     }
-                    .onEnded { _ in
-                        onDragEnded()
+                    .onEnded { value in
+                        dragEnded(value)
                     })
+            .onDisappear(perform: cancelInteraction)
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.14),
                 value: isHovering)
@@ -109,6 +73,158 @@ struct CodexQuotaOverlayView: View {
                 onActivate()
             }
             .id(localization.currentLanguage)
+        }
+    }
+
+    @ViewBuilder
+    private func summaryContent(
+        _ presentation: CodexQuotaOverlayPresentation
+    ) -> some View {
+        switch dragPhase {
+        case .pressing:
+            Text(L10n.codexOverlayHoldToMove)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .accessibilityLabel(L10n.codexOverlayHoldToMove)
+        case .ready, .dragging:
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .rotationEffect(.degrees(
+                        reduceMotion ? 0 : (jiggleForward ? 3 : -3)))
+                    .offset(x: reduceMotion ? 0 : (jiggleForward ? 0.8 : -0.8))
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : .easeInOut(duration: 0.11)
+                                .repeatForever(autoreverses: true),
+                        value: jiggleForward)
+                Text(L10n.codexOverlayReadyToMove)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(Color.accentColor)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(L10n.codexOverlayReadyToMove)
+        case .idle:
+            quotaContent(presentation)
+        }
+    }
+
+    @ViewBuilder
+    private func quotaContent(
+        _ presentation: CodexQuotaOverlayPresentation
+    ) -> some View {
+        if presentation.hasQuota {
+            HStack(spacing: 0) {
+                if let fiveHour = presentation.fiveHour {
+                    metric(
+                        QuotaWindowCompactLabel.fiveHour,
+                        fiveHour)
+                        .frame(maxWidth: .infinity)
+                }
+                if presentation.fiveHour != nil,
+                   presentation.weekly != nil {
+                    Rectangle()
+                        .fill(.primary.opacity(0.12))
+                        .frame(width: 1, height: 13)
+                }
+                if let weekly = presentation.weekly {
+                    metric(
+                        QuotaWindowCompactLabel.sevenDay,
+                        weekly)
+                        .frame(maxWidth: .infinity)
+                }
+                if presentation.isCached {
+                    Image(systemName: "clock.fill")
+                        .font(.system(size: 7, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(L10n.codexOverlayCachedStatus)
+                }
+            }
+            .opacity(presentation.isCached ? 0.72 : 1)
+        } else {
+            HStack(spacing: 5) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(L10n.codexOverlayUnavailableCompact)
+                    .lineLimit(1)
+            }
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func dragChanged(_ value: DragGesture.Value) {
+        switch dragPhase {
+        case .idle:
+            beginPress()
+        case .pressing:
+            break
+        case .ready:
+            dragPhase = .dragging
+            onDragChanged()
+        case .dragging:
+            onDragChanged()
+        }
+    }
+
+    private func dragEnded(_ value: DragGesture.Value) {
+        holdTask?.cancel()
+        holdTask = nil
+        let action = CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: dragPhase,
+            translation: value.translation)
+        resetVisualState()
+
+        switch action {
+        case .activateDetails:
+            onActivate()
+        case .finishDrag:
+            onDragEnded()
+        case .cancel:
+            break
+        }
+    }
+
+    private func beginPress() {
+        dragPhase = .pressing
+        onPressBegan()
+        holdTask?.cancel()
+        holdTask = Task { @MainActor in
+            try? await Task.sleep(
+                for: CodexQuotaOverlayDragInteractionPolicy.holdDuration)
+            guard !Task.isCancelled, dragPhase == .pressing else { return }
+            dragPhase = .ready
+            onDragBegan()
+            guard !reduceMotion else { return }
+            withAnimation(
+                .easeInOut(duration: 0.11)
+                    .repeatForever(autoreverses: true)
+            ) {
+                jiggleForward = true
+            }
+        }
+    }
+
+    private func cancelInteraction() {
+        holdTask?.cancel()
+        holdTask = nil
+        if dragPhase.isUnlocked {
+            onDragEnded()
+        }
+        resetVisualState()
+    }
+
+    private func resetVisualState() {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            dragPhase = .idle
+            jiggleForward = false
         }
     }
 
