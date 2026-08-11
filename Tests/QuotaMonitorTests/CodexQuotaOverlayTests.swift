@@ -1,3 +1,4 @@
+import ApplicationServices
 import CoreGraphics
 import Foundation
 import Testing
@@ -263,29 +264,71 @@ struct CodexQuotaOverlayTests {
             displays: displays) == CGRect(x: -1_400, y: 280, width: 1_000, height: 700))
     }
 
-    @Test("Help-control selection requires a labeled bottom-right button")
+    @Test("Help-control selection follows sidebar popups and trailing buttons")
     func selectsHelpControlAnchor() {
-        let windowFrame = CGRect(x: 100, y: 50, width: 490, height: 700)
-        let candidates = [
+        #expect(CodexHelpControlRolePolicy.supports(kAXButtonRole as String))
+        #expect(CodexHelpControlRolePolicy.supports(kAXPopUpButtonRole as String))
+        #expect(!CodexHelpControlRolePolicy.supports(kAXGroupRole as String))
+
+        let fullWidthWindow = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
+        let sidebarCandidates = [
             CodexHelpControlCandidate(
-                frame: CGRect(x: 550, y: 710, width: 32, height: 32),
+                frame: CGRect(x: 397, y: 1_041, width: 33, height: 32),
+                descriptors: ["Open help menu"]),
+            CodexHelpControlCandidate(
+                frame: CGRect(x: 1_871, y: 1_040, width: 33, height: 32),
                 descriptors: ["Open help"]),
             CodexHelpControlCandidate(
-                frame: CGRect(x: 550, y: 80, width: 32, height: 32),
+                frame: CGRect(x: 397, y: 80, width: 33, height: 32),
                 descriptors: ["Help"]),
             CodexHelpControlCandidate(
-                frame: CGRect(x: 550, y: 710, width: 32, height: 32),
+                frame: CGRect(x: 900, y: 1_041, width: 33, height: 32),
+                descriptors: ["Help"]),
+            CodexHelpControlCandidate(
+                frame: CGRect(x: 397, y: 1_041, width: 33, height: 32),
                 descriptors: ["Settings"])
         ]
 
-        let anchor = CodexHelpControlSelectionPolicy.anchor(
-            in: windowFrame,
-            candidates: candidates)
-        #expect(anchor?.leadingEdgeTrailingInset == 40)
-        #expect(anchor?.leadingX(in: windowFrame) == 550)
+        let sidebarAnchor = CodexHelpControlSelectionPolicy.anchor(
+            in: fullWidthWindow,
+            candidates: sidebarCandidates)
+        #expect(sidebarAnchor == CodexHelpControlAnchor(
+            horizontalReference: .windowLeadingInset(397)))
+        #expect(sidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
+        #expect(sidebarAnchor?.leadingX(
+            in: CGRect(x: 100, y: 50, width: 1_200, height: 700)) == 497)
+
+        let compactSidebarAnchor = CodexHelpControlSelectionPolicy.anchor(
+            in: CGRect(x: 0, y: 0, width: 490, height: 1_080),
+            candidates: [
+                sidebarCandidates[0],
+                CodexHelpControlCandidate(
+                    frame: CGRect(x: 450, y: 1_040, width: 32, height: 32),
+                    descriptors: ["Open help"])
+            ])
+        #expect(compactSidebarAnchor == CodexHelpControlAnchor(
+            horizontalReference: .windowLeadingInset(397)))
+        #expect(compactSidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
+
         #expect(CodexHelpControlSelectionPolicy.anchor(
-            in: windowFrame,
-            candidates: Array(candidates.dropFirst())) == nil)
+            in: fullWidthWindow,
+            candidates: Array(sidebarCandidates.dropFirst())) == CodexHelpControlAnchor(
+                horizontalReference: .windowTrailingInset(49)))
+        #expect(CodexHelpControlSelectionPolicy.anchor(
+            in: fullWidthWindow,
+            candidates: Array(sidebarCandidates.dropFirst(2))) == nil)
+
+        let compactWindow = CGRect(x: 100, y: 50, width: 490, height: 700)
+        let trailingAnchor = CodexHelpControlSelectionPolicy.anchor(
+            in: compactWindow,
+            candidates: [CodexHelpControlCandidate(
+                frame: CGRect(x: 550, y: 710, width: 32, height: 32),
+                descriptors: ["Open help"])])
+        #expect(trailingAnchor == CodexHelpControlAnchor(
+            horizontalReference: .windowTrailingInset(40)))
+        #expect(trailingAnchor?.leadingX(in: compactWindow) == 550)
+        #expect(trailingAnchor?.leadingX(
+            in: CGRect(x: 100, y: 50, width: 720, height: 700)) == 780)
     }
 
     @Test("Help discovery retries off transient misses with bounded backoff")
@@ -332,7 +375,7 @@ struct CodexQuotaOverlayTests {
             force: true))
     }
 
-    @Test("Overlay follows help control and scales the 150-of-490 fallback slot")
+    @Test("Overlay follows Help and uses the same Help-left slot without AX")
     func accountRowLayout() {
         let minimumWindow = CGRect(x: 0, y: 0, width: 480, height: 700)
         #expect(CodexQuotaOverlayLayout.frame(
@@ -347,11 +390,11 @@ struct CodexQuotaOverlayTests {
             == CGRect(x: 284, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: referenceWindow)
-            == CGRect(x: 18, y: 12, width: 132, height: 25))
+            == CGRect(x: 231, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: referenceWindow,
             helpControlLeadingX: .infinity)
-            == CGRect(x: 18, y: 12, width: 132, height: 25))
+            == CGRect(x: 231, y: 12, width: 132, height: 25))
 
         let widerWindow = CGRect(x: 0, y: 0, width: 720, height: 700)
         #expect(CodexQuotaOverlayLayout.frame(
@@ -360,14 +403,14 @@ struct CodexQuotaOverlayTests {
             == CGRect(x: 514, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: widerWindow)
-            == CGRect(x: 88, y: 12, width: 132, height: 25))
+            == CGRect(x: 231, y: 12, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700),
             helpControlLeadingX: -240)
             == CGRect(x: -406, y: 212, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
-            == CGRect(x: -1_026, y: 212, width: 132, height: 25))
+            == CGRect(x: -969, y: 212, width: 132, height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: CGRect(x: 20, y: 200, width: 120, height: 700))
             == CGRect(x: 32, y: 212, width: 132, height: 25))
@@ -419,7 +462,31 @@ struct CodexQuotaOverlayTests {
                 height: 25))
         #expect(CodexQuotaOverlayLayout.frame(
             in: widerWindow,
-            presentation: weeklyOnly).maxX == 220)
+            presentation: weeklyOnly).maxX == 363)
+        let currentFullWidthWindow = CGRect(
+            x: 0,
+            y: 0,
+            width: 1_920,
+            height: 1_080)
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: currentFullWidthWindow,
+            presentation: weeklyOnly,
+            helpControlLeadingX: 397) == CGRect(
+                x: 279,
+                y: 12,
+                width: 84,
+                height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: currentFullWidthWindow,
+            presentation: weeklyOnly) == CGRect(
+                x: 279,
+                y: 12,
+                width: 84,
+                height: 25))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: currentFullWidthWindow) == CodexQuotaOverlayLayout.frame(
+                in: currentFullWidthWindow,
+                helpControlLeadingX: 397))
         #expect(CodexQuotaOverlayLayout.frame(
             in: widerWindow,
             presentation: weeklyOnly,
@@ -465,7 +532,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
             contentHeight: 222) == CGRect(
-                x: 300,
+                x: 75,
                 y: 43,
                 width: 288,
                 height: 222))
@@ -508,7 +575,7 @@ struct CodexQuotaOverlayTests {
         #expect(CodexQuotaOverlayLayout.detailsFrame(
             in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
             contentHeight: 300) == CGRect(
-                x: -1_188,
+                x: -1_125,
                 y: 243,
                 width: 288,
                 height: 265))

@@ -3,10 +3,20 @@ import CoreGraphics
 import Foundation
 
 struct CodexHelpControlAnchor: Equatable, Sendable {
-    let leadingEdgeTrailingInset: CGFloat
+    enum HorizontalReference: Equatable, Sendable {
+        case windowLeadingInset(CGFloat)
+        case windowTrailingInset(CGFloat)
+    }
+
+    let horizontalReference: HorizontalReference
 
     func leadingX(in windowFrame: CGRect) -> CGFloat {
-        windowFrame.maxX - leadingEdgeTrailingInset
+        switch horizontalReference {
+        case let .windowLeadingInset(inset):
+            windowFrame.minX + inset
+        case let .windowTrailingInset(inset):
+            windowFrame.maxX - inset
+        }
     }
 }
 
@@ -37,9 +47,17 @@ enum CodexHelpControlDiscoveryPolicy {
 }
 
 enum CodexHelpControlSelectionPolicy {
+    private enum HorizontalAffinity {
+        case leadingSidebar
+        case trailingWindow
+    }
+
     private static let minimumControlSize: CGFloat = 12
     private static let maximumControlSize: CGFloat = 64
     private static let maximumEdgeInset: CGFloat = 96
+    private static let maximumSidebarLeadingInset =
+        CodexSidebarAutomaticPlacementMetrics.referenceSidebarWidth
+            + maximumEdgeInset
     private static let helpTerms = [
         "help",
         "question",
@@ -54,7 +72,7 @@ enum CodexHelpControlSelectionPolicy {
         in windowFrame: CGRect,
         candidates: [CodexHelpControlCandidate]
     ) -> CodexHelpControlAnchor? {
-        candidates
+        let eligibleCandidates = candidates
             .filter { candidate in
                 let frame = candidate.frame
                 guard frame.width >= minimumControlSize,
@@ -65,18 +83,41 @@ enum CodexHelpControlSelectionPolicy {
                       matchesHelpDescriptor(candidate.descriptors) else {
                     return false
                 }
+                let leadingCenterInset = frame.midX - windowFrame.minX
                 let trailingCenterInset = windowFrame.maxX - frame.midX
                 let bottomCenterInset = windowFrame.maxY - frame.midY
-                return (0...maximumEdgeInset).contains(trailingCenterInset)
+                let isAtWindowTrailingEdge =
+                    (0...maximumEdgeInset).contains(trailingCenterInset)
+                let isInLeadingSidebar =
+                    (0...maximumSidebarLeadingInset).contains(leadingCenterInset)
+                return (isAtWindowTrailingEdge || isInLeadingSidebar)
                     && (0...maximumEdgeInset).contains(bottomCenterInset)
             }
+
+        let sidebarCandidates = eligibleCandidates.filter {
+            horizontalAffinity(for: $0.frame, in: windowFrame) == .leadingSidebar
+        }
+        let preferredCandidates = sidebarCandidates.isEmpty
+            ? eligibleCandidates
+            : sidebarCandidates
+
+        return preferredCandidates
             .min { lhs, rhs in
                 score(lhs.frame, in: windowFrame)
                     < score(rhs.frame, in: windowFrame)
             }
-            .map {
-                CodexHelpControlAnchor(
-                    leadingEdgeTrailingInset: windowFrame.maxX - $0.frame.minX)
+            .map { candidate in
+                let horizontalReference: CodexHelpControlAnchor.HorizontalReference
+                switch horizontalAffinity(for: candidate.frame, in: windowFrame) {
+                case .leadingSidebar:
+                    horizontalReference = .windowLeadingInset(
+                        candidate.frame.minX - windowFrame.minX)
+                case .trailingWindow:
+                    horizontalReference = .windowTrailingInset(
+                        windowFrame.maxX - candidate.frame.minX)
+                }
+                return CodexHelpControlAnchor(
+                    horizontalReference: horizontalReference)
             }
     }
 
@@ -91,8 +132,47 @@ enum CodexHelpControlSelectionPolicy {
     }
 
     private static func score(_ frame: CGRect, in windowFrame: CGRect) -> CGFloat {
-        abs((windowFrame.maxX - frame.midX) - 24)
+        let trailingCenterInset = windowFrame.maxX - frame.midX
+        let horizontalDistance = min(
+            abs(
+                trailingCenterInset
+                    - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset),
+            abs(frame.midX - expectedSidebarHelpCenterX(in: windowFrame)))
+        return horizontalDistance
             + abs((windowFrame.maxY - frame.midY) - 24)
+    }
+
+    private static func horizontalAffinity(
+        for frame: CGRect,
+        in windowFrame: CGRect
+    ) -> HorizontalAffinity {
+        let sidebarDistance = abs(
+            frame.midX - expectedSidebarHelpCenterX(in: windowFrame))
+        let trailingDistance = abs(
+            frame.midX - expectedTrailingHelpCenterX(in: windowFrame))
+        return sidebarDistance <= trailingDistance
+            ? .leadingSidebar
+            : .trailingWindow
+    }
+
+    private static func expectedSidebarHelpCenterX(in windowFrame: CGRect) -> CGFloat {
+        windowFrame.minX
+            + min(
+                windowFrame.width,
+                CodexSidebarAutomaticPlacementMetrics.referenceSidebarWidth)
+            - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset
+    }
+
+    private static func expectedTrailingHelpCenterX(in windowFrame: CGRect) -> CGFloat {
+        windowFrame.maxX
+            - CodexSidebarAutomaticPlacementMetrics.helpCenterTrailingInset
+    }
+}
+
+enum CodexHelpControlRolePolicy {
+    static func supports(_ role: String) -> Bool {
+        role == (kAXButtonRole as String)
+            || role == (kAXPopUpButtonRole as String)
     }
 }
 
@@ -126,10 +206,10 @@ enum CodexHelpControlAccessibility {
 
         return CodexHelpControlSelectionPolicy.anchor(
             in: quartzWindowFrame,
-            candidates: buttonCandidates(in: window))
+            candidates: helpControlCandidates(in: window))
     }
 
-    private static func buttonCandidates(
+    private static func helpControlCandidates(
         in window: AXUIElement
     ) -> [CodexHelpControlCandidate] {
         var queue: [(element: AXUIElement, depth: Int)] = [(window, 0)]
@@ -146,8 +226,10 @@ enum CodexHelpControlAccessibility {
             let hash = CFHash(item.element)
             guard visited.insert(hash).inserted else { continue }
 
-            if stringAttribute(item.element, kAXRoleAttribute as CFString)
-                == (kAXButtonRole as String),
+            if let role = stringAttribute(
+                item.element,
+                kAXRoleAttribute as CFString),
+               CodexHelpControlRolePolicy.supports(role),
                let frame = frame(of: item.element) {
                 let descriptors = [
                     kAXTitleAttribute,
