@@ -1,7 +1,7 @@
 # Codex widget Help-left placement evidence
 
 `exact-build-default-placement.png` was captured from the signed real-data-shadow
-QA build whose embedded `BuildCommit` was `09a44c7`.
+QA build whose embedded `BuildCommit` was `98af43c`.
 
 - Codex window: `x=0…1920`, `y=0…1080`
 - Saved manual position: absent
