@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-08-11
+
 #### Summary
 
 - Press and hold the Codex quota widget for one second to unlock dragging; an inline hint and shaking move icon make the interaction clear, and the chosen position persists across window resizing and relaunches.
