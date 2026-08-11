@@ -32,7 +32,12 @@ window copy.
 
 #### Summary
 
+- The Codex quota widget can now be dragged anywhere within its window and keeps that relative position across window resizing and relaunches.
 - One-command npm installs now correctly recognize and install Quota Monitor 1.0.0 and later releases.
+
+### Added
+
+- **Movable Codex quota widget.** Drag the compact widget to a preferred location inside Codex; Quota Monitor keeps it within the window, restores the position after relaunch, and offers a Settings action to return to automatic placement.
 
 ### Fixed
 

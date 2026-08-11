@@ -73,11 +73,16 @@ enum L10n {
         t(
             en: "Shows the latest 5-hour and weekly quota in the Codex account row. "
                 + "Hover or click the widget for usage and reset details. "
+                + "Drag it to choose where it sits in the Codex window. "
                 + "The widget follows the Codex window, hides when Codex is in the background, "
                 + "and never restarts or modifies Codex.",
             zh: "在 Codex 账户行内显示最新的 5 小时和每周额度；悬停或点击可查看用量与重置详情。"
+                + "拖动挂件可调整它在 Codex 窗口中的位置。"
                 + "挂件会跟随 Codex 窗口，"
                 + "Codex 位于后台时自动隐藏，并且不会重启或修改 Codex。")
+    }
+    static var codexOverlayResetPosition: String {
+        t(en: "Restore automatic widget position", zh: "恢复挂件自动位置")
     }
     static var codexOverlayDisabledStatus: String {
         t(en: "The widget is off.", zh: "挂件已关闭。")
@@ -102,8 +107,8 @@ enum L10n {
         t(en: "Quota unavailable", zh: "额度暂不可用")
     }
     static var codexOverlayAccessibilityHint: String {
-        t(en: "Hover or press to show quota and reset details.",
-          zh: "悬停或按下可显示额度与重置详情。")
+        t(en: "Hover or press to show quota details. Drag to move the widget.",
+          zh: "悬停或按下可显示额度详情；拖动可移动挂件。")
     }
     static func codexOverlayRemaining(_ percent: Int) -> String {
         t(en: "\(percent)% remaining", zh: "剩余 \(percent)%")

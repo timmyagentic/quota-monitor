@@ -38,6 +38,9 @@ final class CodexQuotaOverlayController: NSObject {
     private var detailsCloseTask: Task<Void, Never>?
     private var localMouseDownMonitor: Any?
     private var globalMouseDownMonitor: Any?
+    private var summaryDragStartFrame: CGRect?
+    private var summaryDragStartMouseLocation: CGPoint?
+    private var summaryDragFrame: CGRect?
     private var shouldShowDetailsForLocalQA = false
     private var isStarted = false
 
@@ -407,10 +410,11 @@ final class CodexQuotaOverlayController: NSObject {
     ) {
         guard placement != .hidden else { return }
         lastCodexWindowFrame = codexWindowFrame
-        let frame = CodexQuotaOverlayLayout.frame(
+        let frame = summaryDragFrame ?? CodexQuotaOverlayLayout.frame(
             in: codexWindowFrame,
             presentation: presentation,
-            helpControlLeadingX: helpControlLeadingX)
+            helpControlLeadingX: helpControlLeadingX,
+            manualPosition: settings.codexSidebarQuotaPosition)
         let panel = panel ?? makePanel()
         if panel.frame != frame {
             panel.setFrame(frame, display: panel.isVisible)
@@ -446,6 +450,7 @@ final class CodexQuotaOverlayController: NSObject {
         detailsCloseTask = nil
         isSummaryHovered = false
         isDetailsHovered = false
+        resetSummaryDrag()
         lastCodexWindowNumber = nil
         lastCodexWindowFrame = nil
         resetHelpControlDiscovery(clearAnchor: true)
@@ -477,6 +482,58 @@ final class CodexQuotaOverlayController: NSObject {
     private func activateDetails() {
         guard detailsAreAllowed else { return }
         showDetails()
+    }
+
+    private func summaryDragChanged() {
+        guard detailsAreAllowed,
+              let panel,
+              let codexWindowFrame = lastCodexWindowFrame else {
+            return
+        }
+        if summaryDragStartFrame == nil {
+            summaryDragStartFrame = panel.frame
+            summaryDragStartMouseLocation = NSEvent.mouseLocation
+            closeDetails()
+        }
+        guard let summaryDragStartFrame,
+              let summaryDragStartMouseLocation else {
+            return
+        }
+        let mouseLocation = NSEvent.mouseLocation
+        let candidate = CGRect(
+            x: summaryDragStartFrame.minX
+                + mouseLocation.x
+                - summaryDragStartMouseLocation.x,
+            y: summaryDragStartFrame.minY
+                + mouseLocation.y
+                - summaryDragStartMouseLocation.y,
+            width: summaryDragStartFrame.width,
+            height: summaryDragStartFrame.height)
+        let frame = CodexQuotaOverlayLayout.clampedFrame(
+            candidate,
+            in: codexWindowFrame)
+        summaryDragFrame = frame
+        panel.setFrame(frame, display: panel.isVisible)
+    }
+
+    private func summaryDragEnded() {
+        guard let summaryDragFrame,
+              let codexWindowFrame = lastCodexWindowFrame else {
+            resetSummaryDrag()
+            return
+        }
+        settings.codexSidebarQuotaPosition =
+            CodexQuotaOverlayLayout.manualPosition(
+                for: summaryDragFrame,
+                in: codexWindowFrame)
+        resetSummaryDrag()
+        refreshOverlay()
+    }
+
+    private func resetSummaryDrag() {
+        summaryDragStartFrame = nil
+        summaryDragStartMouseLocation = nil
+        summaryDragFrame = nil
     }
 
     private var detailsAreAllowed: Bool {
@@ -579,16 +636,16 @@ final class CodexQuotaOverlayController: NSObject {
         in codexWindowFrame: CGRect,
         presentation: CodexQuotaOverlayPresentation
     ) {
-        guard let detailsPanel else { return }
+        guard let detailsPanel,
+              let summaryFrame = panel?.frame else { return }
         let resetCredits = resetCreditsPresentation()
         let contentHeight = CodexQuotaOverlayLayout.detailsContentHeight(
             presentation: presentation,
             resetCredits: resetCredits)
         let frame = CodexQuotaOverlayLayout.detailsFrame(
             in: codexWindowFrame,
-            contentHeight: contentHeight,
-            helpControlLeadingX: helpControlAnchor?.leadingX(
-                in: codexWindowFrame))
+            summaryFrame: summaryFrame,
+            contentHeight: contentHeight)
         if detailsPanel.frame != frame {
             detailsPanel.setFrame(frame, display: detailsPanel.isVisible)
         }
@@ -624,6 +681,12 @@ final class CodexQuotaOverlayController: NSObject {
             },
             onActivate: { [weak self] in
                 self?.activateDetails()
+            },
+            onDragChanged: { [weak self] in
+                self?.summaryDragChanged()
+            },
+            onDragEnded: { [weak self] in
+                self?.summaryDragEnded()
             })
             .environment(environment)
             .environment(settings)

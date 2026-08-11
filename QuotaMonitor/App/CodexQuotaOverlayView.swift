@@ -15,6 +15,8 @@ struct CodexQuotaOverlayView: View {
 
     let onHoverChanged: (Bool) -> Void
     let onActivate: () -> Void
+    let onDragChanged: () -> Void
+    let onDragEnded: () -> Void
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -89,6 +91,14 @@ struct CodexQuotaOverlayView: View {
             .onTapGesture {
                 onActivate()
             }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 3)
+                    .onChanged { _ in
+                        onDragChanged()
+                    }
+                    .onEnded { _ in
+                        onDragEnded()
+                    })
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.14),
                 value: isHovering)

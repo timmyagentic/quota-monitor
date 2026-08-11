@@ -28,6 +28,20 @@ enum CodexSidebarQuotaStatus: Equatable {
     case quotaUnavailable
 }
 
+struct CodexSidebarQuotaPosition: Equatable, Sendable {
+    let horizontalFraction: Double
+    let verticalFraction: Double
+
+    init?(horizontalFraction: Double, verticalFraction: Double) {
+        guard horizontalFraction.isFinite,
+              verticalFraction.isFinite else {
+            return nil
+        }
+        self.horizontalFraction = min(1, max(0, horizontalFraction))
+        self.verticalFraction = min(1, max(0, verticalFraction))
+    }
+}
+
 @Observable
 @MainActor
 final class SettingsStore {
@@ -97,6 +111,21 @@ final class SettingsStore {
     var codexSidebarQuotaEnabled: Bool {
         didSet { defaults.set(codexSidebarQuotaEnabled,
                               forKey: Keys.codexSidebarQuotaEnabled) }
+    }
+    /// User-selected location within the Codex window's available overlay
+    /// area. Fractions keep the widget on-screen when the window or display
+    /// changes; `nil` restores automatic help-control placement.
+    var codexSidebarQuotaPosition: CodexSidebarQuotaPosition? {
+        didSet {
+            if let codexSidebarQuotaPosition {
+                defaults.set([
+                    codexSidebarQuotaPosition.horizontalFraction,
+                    codexSidebarQuotaPosition.verticalFraction
+                ], forKey: Keys.codexSidebarQuotaPosition)
+            } else {
+                defaults.removeObject(forKey: Keys.codexSidebarQuotaPosition)
+            }
+        }
     }
     /// Runtime-only visibility and freshness state for the native overlay.
     var codexSidebarQuotaStatus: CodexSidebarQuotaStatus = .disabled
@@ -375,6 +404,20 @@ final class SettingsStore {
             defaults.bool(forKey: Keys.showDockIconForWindows)
         self.codexSidebarQuotaEnabled =
             defaults.bool(forKey: Keys.codexSidebarQuotaEnabled)
+        let storedCodexSidebarQuotaPosition = defaults.array(
+            forKey: Keys.codexSidebarQuotaPosition)
+        if let storedCodexSidebarQuotaPosition,
+           storedCodexSidebarQuotaPosition.count == 2,
+           let horizontalFraction = (
+               storedCodexSidebarQuotaPosition[0] as? NSNumber)?.doubleValue,
+           let verticalFraction = (
+               storedCodexSidebarQuotaPosition[1] as? NSNumber)?.doubleValue {
+            self.codexSidebarQuotaPosition = CodexSidebarQuotaPosition(
+                horizontalFraction: horizontalFraction,
+                verticalFraction: verticalFraction)
+        } else {
+            self.codexSidebarQuotaPosition = nil
+        }
         self.menuBarHeadlineWindow = (defaults.string(forKey: Keys.menuBarHeadlineWindow)
             .flatMap(HeadlineWindow.init(rawValue:))) ?? .last7d
         self.quotaDisplayMode = (defaults.string(forKey: Keys.quotaDisplayMode)
@@ -732,6 +775,7 @@ final class SettingsStore {
         static let launchAtLoginEnabled = "settings.launchAtLoginEnabled"
         static let showDockIconForWindows = "settings.showDockIconForWindows"
         static let codexSidebarQuotaEnabled = "settings.codexSidebarQuotaEnabled"
+        static let codexSidebarQuotaPosition = "settings.codexSidebarQuotaPosition"
         static let menuBarHeadlineWindow = "settings.menuBarHeadlineWindow"
         static let quotaDisplayMode = "settings.quotaDisplayMode"
         static let tokenUnitLanguage = "settings.tokenUnitLanguage"
