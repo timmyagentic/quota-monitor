@@ -32,7 +32,12 @@ window copy.
 
 #### Summary
 
+- Press and hold the Codex quota widget for one second to unlock dragging; an inline hint and shaking move icon make the interaction clear, and the chosen position persists across window resizing and relaunches.
 - One-command npm installs now correctly recognize and install Quota Monitor 1.0.0 and later releases.
+
+### Added
+
+- **Movable Codex quota widget.** Press and hold the compact widget for one second, then drag it to a preferred location inside Codex; an inline hint and shaking move icon show when dragging is unlocked, while Quota Monitor keeps it within the window, restores the position after relaunch, and offers a Settings action to return to automatic placement.
 
 ### Fixed
 

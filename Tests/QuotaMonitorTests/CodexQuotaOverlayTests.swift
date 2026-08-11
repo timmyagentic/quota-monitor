@@ -372,6 +372,37 @@ struct CodexQuotaOverlayTests {
             in: CGRect(x: 20, y: 200, width: 120, height: 700))
             == CGRect(x: 32, y: 212, width: 132, height: 25))
 
+        let manualTopTrailing = CodexSidebarQuotaPosition(
+            horizontalFraction: 1,
+            verticalFraction: 1)!
+        #expect(CodexSidebarQuotaPosition(
+            horizontalFraction: 2,
+            verticalFraction: -1) == CodexSidebarQuotaPosition(
+                horizontalFraction: 1,
+                verticalFraction: 0))
+        #expect(CodexQuotaOverlayLayout.frame(
+            in: widerWindow,
+            helpControlLeadingX: 680,
+            manualPosition: manualTopTrailing)
+            == CGRect(x: 576, y: 663, width: 132, height: 25))
+        let centeredManualFrame = CGRect(
+            x: 294,
+            y: 337.5,
+            width: 132,
+            height: 25)
+        #expect(CodexQuotaOverlayLayout.manualPosition(
+            for: centeredManualFrame,
+            in: widerWindow) == CodexSidebarQuotaPosition(
+                horizontalFraction: 0.5,
+                verticalFraction: 0.5))
+        #expect(CodexQuotaOverlayLayout.clampedFrame(
+            CGRect(x: -100, y: 900, width: 132, height: 25),
+            in: widerWindow) == CGRect(
+                x: 12,
+                y: 663,
+                width: 132,
+                height: 25))
+
         let weeklyOnly = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
                 primary: nil,
@@ -438,6 +469,22 @@ struct CodexQuotaOverlayTests {
                 y: 43,
                 width: 288,
                 height: 222))
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: 0, y: 0, width: 720, height: 700),
+            summaryFrame: CGRect(x: 294, y: 337.5, width: 132, height: 25),
+            contentHeight: 222) == CGRect(
+                x: 138,
+                y: 368.5,
+                width: 288,
+                height: 222))
+        #expect(CodexQuotaOverlayLayout.detailsFrame(
+            in: CGRect(x: 0, y: 0, width: 720, height: 700),
+            summaryFrame: CGRect(x: 576, y: 650, width: 132, height: 25),
+            contentHeight: 222) == CGRect(
+                x: 420,
+                y: 422,
+                width: 288,
+                height: 222))
 
         let cached = CodexQuotaOverlayPresentation.make(
             snapshot: snapshot(
@@ -477,6 +524,38 @@ struct CodexQuotaOverlayTests {
             afterMouseDownIn: "codex-document"))
         #expect(CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
             afterMouseDownIn: nil))
+    }
+
+    @Test("Moving requires a complete one-second hold while short clicks still open details")
+    func longPressDragPolicy() {
+        #expect(CodexQuotaOverlayDragInteractionPolicy.holdDuration == .seconds(1))
+        #expect(!CodexQuotaOverlayDragPhase.pressing.isUnlocked)
+        #expect(CodexQuotaOverlayDragPhase.ready.isUnlocked)
+        #expect(CodexQuotaOverlayDragPhase.dragging.isUnlocked)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .pressing,
+            translation: .zero) == .activateDetails)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .pressing,
+            translation: CGSize(width: 4, height: 0)) == .cancel)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .ready,
+            translation: .zero) == .finishDrag)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .dragging,
+            translation: CGSize(width: 20, height: 12)) == .finishDrag)
+        #expect(CodexQuotaOverlayDragInteractionPolicy.releaseAction(
+            phase: .idle,
+            translation: .zero) == .cancel)
+
+        let english = LocalizationTestSupport.withLanguage(.english) {
+            [L10n.codexOverlayHoldToMove, L10n.codexOverlayReadyToMove]
+        }
+        let chinese = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            [L10n.codexOverlayHoldToMove, L10n.codexOverlayReadyToMove]
+        }
+        #expect(english == ["Hold 1 sec, then drag", "Drag now"])
+        #expect(chinese == ["按住 1 秒后拖动", "现在可拖动"])
     }
 
     @Test("Reset-card details prefer expirations and fall back to a live count")
@@ -582,6 +661,33 @@ struct CodexQuotaOverlayTests {
         #expect(SettingsStore(defaults: defaults).codexSidebarQuotaEnabled)
     }
 
+    @Test("A manual widget position persists and can be reset")
+    @MainActor
+    func manualPositionPersistsAndResets() {
+        let suite = "CodexQuotaOverlayPositionTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.removePersistentDomain(forName: suite)
+
+        let settings = SettingsStore(defaults: defaults)
+        #expect(settings.codexSidebarQuotaPosition == nil)
+        settings.codexSidebarQuotaPosition = CodexSidebarQuotaPosition(
+            horizontalFraction: 0.75,
+            verticalFraction: 0.25)
+        #expect(SettingsStore(defaults: defaults).codexSidebarQuotaPosition
+            == CodexSidebarQuotaPosition(
+                horizontalFraction: 0.75,
+                verticalFraction: 0.25))
+
+        settings.codexSidebarQuotaPosition = nil
+        #expect(SettingsStore(defaults: defaults).codexSidebarQuotaPosition == nil)
+
+        defaults.set(
+            [0.5, "invalid"],
+            forKey: "settings.codexSidebarQuotaPosition")
+        #expect(SettingsStore(defaults: defaults).codexSidebarQuotaPosition == nil)
+    }
+
     @Test("Overlay intent stays hidden until Codex tracking is enabled")
     @MainActor
     func overlayRequiresCodexProvider() {
@@ -643,6 +749,13 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains(
             "panel.order(.above, relativeTo: codexWindowNumber)"))
         #expect(source.contains("onHoverChanged"))
+        #expect(source.contains("summaryDragBegan"))
+        #expect(source.contains("summaryDragChanged"))
+        #expect(viewSource.contains("DragGesture(minimumDistance: 0"))
+        #expect(viewSource.contains(
+            "CodexQuotaOverlayDragInteractionPolicy.holdDuration"))
+        #expect(viewSource.contains("repeatForever(autoreverses: true)"))
+        #expect(viewSource.contains("accessibilityReduceMotion"))
         #expect(source.contains("detailsPanel"))
         #expect(source.contains("addGlobalMonitorForEvents"))
         #expect(!source.contains("isDetailsPinned"))

@@ -92,6 +92,15 @@ struct GeneralSettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if settings.codexSidebarQuotaPosition != nil {
+                        Button {
+                            settings.codexSidebarQuotaPosition = nil
+                        } label: {
+                            Label(
+                                L10n.codexOverlayResetPosition,
+                                systemImage: "arrow.counterclockwise")
+                        }
+                    }
                     if settings.codexSidebarQuotaEnabled {
                         Label(
                             codexSidebarStatusText,

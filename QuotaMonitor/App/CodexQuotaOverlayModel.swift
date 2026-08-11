@@ -321,18 +321,21 @@ enum CodexQuotaOverlayLayout {
     /// proportion of the current Codex window width.
     static func frame(
         in codexWindowFrame: CGRect,
-        helpControlLeadingX: CGFloat? = nil
+        helpControlLeadingX: CGFloat? = nil,
+        manualPosition: CodexSidebarQuotaPosition? = nil
     ) -> CGRect {
         frame(
             in: codexWindowFrame,
             width: size.width,
-            helpControlLeadingX: helpControlLeadingX)
+            helpControlLeadingX: helpControlLeadingX,
+            manualPosition: manualPosition)
     }
 
     static func frame(
         in codexWindowFrame: CGRect,
         presentation: CodexQuotaOverlayPresentation,
-        helpControlLeadingX: CGFloat? = nil
+        helpControlLeadingX: CGFloat? = nil,
+        manualPosition: CodexSidebarQuotaPosition? = nil
     ) -> CGRect {
         let visibleWindowCount = [presentation.fiveHour, presentation.weekly]
             .compactMap { $0 }
@@ -343,14 +346,22 @@ enum CodexQuotaOverlayLayout {
         return frame(
             in: codexWindowFrame,
             width: width,
-            helpControlLeadingX: helpControlLeadingX)
+            helpControlLeadingX: helpControlLeadingX,
+            manualPosition: manualPosition)
     }
 
     private static func frame(
         in codexWindowFrame: CGRect,
         width: CGFloat,
-        helpControlLeadingX: CGFloat?
+        helpControlLeadingX: CGFloat?,
+        manualPosition: CodexSidebarQuotaPosition?
     ) -> CGRect {
+        if let manualPosition {
+            return frame(
+                in: codexWindowFrame,
+                width: width,
+                manualPosition: manualPosition)
+        }
         let discoveredTrailingX: CGFloat? = helpControlLeadingX.flatMap { leadingX in
             guard leadingX.isFinite,
                   leadingX >= codexWindowFrame.minX,
@@ -376,6 +387,92 @@ enum CodexQuotaOverlayLayout {
             y: codexWindowFrame.minY + bottomInset,
             width: width,
             height: size.height)
+    }
+
+    static func clampedFrame(
+        _ frame: CGRect,
+        in codexWindowFrame: CGRect
+    ) -> CGRect {
+        let horizontalRange = originRange(
+            containerMinimum: codexWindowFrame.minX,
+            containerMaximum: codexWindowFrame.maxX,
+            itemLength: frame.width)
+        let verticalRange = originRange(
+            containerMinimum: codexWindowFrame.minY,
+            containerMaximum: codexWindowFrame.maxY,
+            itemLength: frame.height)
+        return CGRect(
+            x: min(horizontalRange.upperBound, max(horizontalRange.lowerBound, frame.minX)),
+            y: min(verticalRange.upperBound, max(verticalRange.lowerBound, frame.minY)),
+            width: frame.width,
+            height: frame.height)
+    }
+
+    static func manualPosition(
+        for frame: CGRect,
+        in codexWindowFrame: CGRect
+    ) -> CodexSidebarQuotaPosition? {
+        let clamped = clampedFrame(frame, in: codexWindowFrame)
+        let horizontalRange = originRange(
+            containerMinimum: codexWindowFrame.minX,
+            containerMaximum: codexWindowFrame.maxX,
+            itemLength: frame.width)
+        let verticalRange = originRange(
+            containerMinimum: codexWindowFrame.minY,
+            containerMaximum: codexWindowFrame.maxY,
+            itemLength: frame.height)
+        return CodexSidebarQuotaPosition(
+            horizontalFraction: fraction(
+                clamped.minX,
+                in: horizontalRange),
+            verticalFraction: fraction(
+                clamped.minY,
+                in: verticalRange))
+    }
+
+    private static func frame(
+        in codexWindowFrame: CGRect,
+        width: CGFloat,
+        manualPosition: CodexSidebarQuotaPosition
+    ) -> CGRect {
+        let horizontalRange = originRange(
+            containerMinimum: codexWindowFrame.minX,
+            containerMaximum: codexWindowFrame.maxX,
+            itemLength: width)
+        let verticalRange = originRange(
+            containerMinimum: codexWindowFrame.minY,
+            containerMaximum: codexWindowFrame.maxY,
+            itemLength: size.height)
+        return CGRect(
+            x: horizontalRange.lowerBound
+                + (horizontalRange.upperBound - horizontalRange.lowerBound)
+                * CGFloat(manualPosition.horizontalFraction),
+            y: verticalRange.lowerBound
+                + (verticalRange.upperBound - verticalRange.lowerBound)
+                * CGFloat(manualPosition.verticalFraction),
+            width: width,
+            height: size.height)
+    }
+
+    private static func originRange(
+        containerMinimum: CGFloat,
+        containerMaximum: CGFloat,
+        itemLength: CGFloat
+    ) -> ClosedRange<CGFloat> {
+        let minimum = containerMinimum + bottomInset
+        let maximum = max(
+            minimum,
+            containerMaximum - bottomInset - itemLength)
+        return minimum...maximum
+    }
+
+    private static func fraction(
+        _ value: CGFloat,
+        in range: ClosedRange<CGFloat>
+    ) -> Double {
+        let length = range.upperBound - range.lowerBound
+        guard length > 0 else { return 0 }
+        return Double((value - range.lowerBound) / length)
     }
 
     static func detailsContentHeight(
@@ -415,23 +512,47 @@ enum CodexQuotaOverlayLayout {
         let summaryFrame = frame(
             in: codexWindowFrame,
             helpControlLeadingX: helpControlLeadingX)
+        return detailsFrame(
+            in: codexWindowFrame,
+            summaryFrame: summaryFrame,
+            contentHeight: contentHeight)
+    }
+
+    static func detailsFrame(
+        in codexWindowFrame: CGRect,
+        summaryFrame: CGRect,
+        contentHeight: CGFloat
+    ) -> CGRect {
         let width = min(detailsWidth, max(
             1,
             codexWindowFrame.width - detailsLeftInset * 2))
         let preferredOriginX = summaryFrame.maxX - width
         let minimumOriginX = codexWindowFrame.minX + detailsLeftInset
         let maximumOriginX = codexWindowFrame.maxX - detailsLeftInset - width
-        let originY = summaryFrame.maxY + detailsGap
+        let aboveOriginY = summaryFrame.maxY + detailsGap
+        let availableAbove = max(
+            0,
+            codexWindowFrame.maxY - aboveOriginY - detailsTopInset)
+        let belowMaximumY = summaryFrame.minY - detailsGap
+        let availableBelow = max(
+            0,
+            belowMaximumY - codexWindowFrame.minY - detailsTopInset)
+        let opensAbove = availableAbove >= contentHeight
+            || availableAbove >= availableBelow
         let availableHeight = max(
             1,
-            codexWindowFrame.maxY - originY - detailsTopInset)
+            opensAbove ? availableAbove : availableBelow)
+        let height = min(contentHeight, availableHeight)
+        let originY = opensAbove
+            ? aboveOriginY
+            : belowMaximumY - height
         return CGRect(
             x: max(
                 minimumOriginX,
                 min(preferredOriginX, maximumOriginX)),
             y: originY,
             width: width,
-            height: min(contentHeight, availableHeight))
+            height: height)
     }
 
     static func isOverlayWindowIdentifier(_ rawValue: String?) -> Bool {
@@ -444,5 +565,44 @@ enum CodexQuotaOverlayInteractionPolicy {
         afterMouseDownIn windowIdentifier: String?
     ) -> Bool {
         !CodexQuotaOverlayLayout.isOverlayWindowIdentifier(windowIdentifier)
+    }
+}
+
+enum CodexQuotaOverlayDragPhase: Equatable {
+    case idle
+    case pressing
+    case ready
+    case dragging
+
+    var isUnlocked: Bool {
+        self == .ready || self == .dragging
+    }
+}
+
+enum CodexQuotaOverlayDragReleaseAction: Equatable {
+    case activateDetails
+    case finishDrag
+    case cancel
+}
+
+enum CodexQuotaOverlayDragInteractionPolicy {
+    static let holdDuration: Duration = .seconds(1)
+    static let tapMovementTolerance: CGFloat = 3
+
+    static func releaseAction(
+        phase: CodexQuotaOverlayDragPhase,
+        translation: CGSize
+    ) -> CodexQuotaOverlayDragReleaseAction {
+        switch phase {
+        case .idle:
+            return .cancel
+        case .pressing:
+            let distance = hypot(translation.width, translation.height)
+            return distance <= tapMovementTolerance
+                ? .activateDetails
+                : .cancel
+        case .ready, .dragging:
+            return .finishDrag
+        }
     }
 }
