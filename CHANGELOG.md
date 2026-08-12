@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Cost estimates now cover GLM-5.2, GPT-5.3 Codex Fast, and Codex Auto Review, while Claude Sonnet 5 uses Anthropic's retained launch price.
+
+### Fixed
+
+- **Selected model pricing corrections.** The bundled catalog now uses Claude Sonnet 5's permanent $2/$10 rates, adds official GLM-5.2 and GPT-5.3 Codex Fast pricing, and estimates `codex-auto-review` with a clearly marked GPT-5.4 fallback because OpenAI does not publish a separate reviewer-model price.
+
 ## [1.0.1] — 2026-08-11
 
 #### Summary

@@ -255,8 +255,8 @@ struct PricingValueBackfillTests {
                   input: 5.00, cached: 0.50, cacheCreation: 6.25,
                   output: 25.00, isOfficial: true),
             .init(modelId: "claude-sonnet-5",
-                  input: 3.00, cached: 0.30, cacheCreation: 3.75,
-                  output: 15.00, isOfficial: true),
+                  input: 2.00, cached: 0.20, cacheCreation: 2.50,
+                  output: 10.00, isOfficial: true),
             .init(modelId: "claude-fable-5",
                   input: 10.00, cached: 1.00, cacheCreation: 12.50,
                   output: 50.00, isOfficial: false),
@@ -272,6 +272,12 @@ struct PricingValueBackfillTests {
             .init(modelId: "glm-5.1",
                   input: 1.40, cached: 0.26, cacheCreation: 0,
                   output: 4.40, isOfficial: true),
+            .init(modelId: "glm-5.2",
+                  input: 1.40, cached: 0.26, cacheCreation: 0,
+                  output: 4.40, isOfficial: true),
+            .init(modelId: "codex-auto-review",
+                  input: 2.50, cached: 0.25, cacheCreation: 0,
+                  output: 15.00, isOfficial: false),
         ]
 
         let rows = try db.pool.read { conn in
@@ -290,7 +296,9 @@ struct PricingValueBackfillTests {
                   'claude-opus-4-8',
                   'claude-sonnet-4-5-20250929',
                   'glm-4.7',
-                  'glm-5.1'
+                  'glm-5.1',
+                  'glm-5.2',
+                  'codex-auto-review'
                 )
                 ORDER BY model_id
                 """)
@@ -310,18 +318,18 @@ struct PricingValueBackfillTests {
         }
     }
 
-    @Test("Claude Sonnet 5 usage uses the standard list price")
-    func claudeSonnet5UsesStandardListPrice() throws {
+    @Test("Claude Sonnet 5 usage uses the permanent launch price")
+    func claudeSonnet5UsesPermanentLaunchPrice() throws {
         let db = try makeDatabase()
-        // Simulate a user whose existing catalog retained the introductory
-        // rate. Installing the bundled catalog must normalize that history.
+        // Simulate a user whose existing catalog has the cancelled increase.
+        // Installing the bundled catalog must normalize that history.
         try db.pool.write { conn in
             try conn.execute(sql: """
                 UPDATE pricing_catalog
-                SET input_price_per_million = 2,
-                    cached_input_price_per_million = 0.2,
-                    cache_creation_price_per_million = 2.5,
-                    output_price_per_million = 10,
+                SET input_price_per_million = 3,
+                    cached_input_price_per_million = 0.3,
+                    cache_creation_price_per_million = 3.75,
+                    output_price_per_million = 15,
                     price_source = 'local'
                 WHERE model_id = 'claude-sonnet-5'
                 """)
@@ -341,8 +349,8 @@ struct PricingValueBackfillTests {
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn)
         }
-        let introductoryValue = try #require(valueUSD(in: db).first)
-        #expect(abs(introductoryValue - 18.70) < 1e-6)
+        let increasedValue = try #require(valueUSD(in: db).first)
+        #expect(abs(increasedValue - 28.05) < 1e-6)
 
         let repaired = try db.pool.write { conn in
             let changed = try PricingService.installBundledCatalog(in: conn)
@@ -352,10 +360,42 @@ struct PricingValueBackfillTests {
 
         let values = try valueUSD(in: db)
         let value = try #require(values.first)
-        // Standard input/read/5m-write/1h-write/output rates:
-        // 3 + 0.30 + 3.75 + 6 + 15 = 28.05.
+        // Permanent input/read/5m-write/1h-write/output rates:
+        // 2 + 0.20 + 2.50 + 4 + 10 = 18.70.
         #expect(repaired)
-        #expect(abs(value - 28.05) < 1e-6)
+        #expect(abs(value - 18.70) < 1e-6)
+    }
+
+    @Test("bundled GPT-5.3 Codex Fast and Auto Review rows price imported usage")
+    func selectedCodexRowsPriceImportedUsage() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-5.3-codex",
+            input: 1_000_000,
+            cached: 200_000,
+            output: 100_000,
+            serviceTierPreference: "priority",
+            seedValueUSD: 0)
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "codex-auto-review",
+            input: 1_000_000,
+            cached: 200_000,
+            output: 100_000,
+            seedValueUSD: 0)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        // GPT-5.3 Codex Fast: .8M * $3.50 + .2M * $0.35 + .1M * $28 = $5.67.
+        #expect(abs(values[0] - 5.67) < 1e-6)
+        // Auto Review estimate: .8M * $2.50 + .2M * $0.25 + .1M * $15 = $3.55.
+        #expect(abs(values[1] - 3.55) < 1e-6)
     }
 
     // MARK: - rows without a matching catalog row are left alone

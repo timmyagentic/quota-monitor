@@ -73,6 +73,7 @@ enum CodexFastMode {
         "gpt-5.6-luna": 2.0,
         "gpt-5.5": 2.5,
         "gpt-5.4": 2.0,
+        "gpt-5.3-codex": 2.0,
     ]
     /// Suffix appended to the base model_id to form the synthetic
     /// catalog row that holds Fast-tier prices.
@@ -194,7 +195,12 @@ enum BundledPricingCatalog {
         .init(modelId: "gpt-5.3-codex", displayName: "GPT-5.3 Codex",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
               effectiveModelId: "gpt-5.3-codex", isOfficial: true, note: nil,
-              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.3-codex"),
+              sourceUrl: "https://developers.openai.com/api/docs/pricing"),
+        .init(modelId: "codex-auto-review", displayName: "Codex Auto Review",
+              inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
+              effectiveModelId: "gpt-5.4", isOfficial: false,
+              note: "No separate public price is available. Estimated using GPT-5.4 standard pricing.",
+              sourceUrl: "https://learn.chatgpt.com/docs/sandboxing/auto-review"),
         .init(modelId: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
               effectiveModelId: "gpt-5.3-codex", isOfficial: false,
@@ -241,10 +247,10 @@ enum BundledPricingCatalog {
               note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
         .init(modelId: "claude-sonnet-5", displayName: "Claude Sonnet 5",
-              inputPricePerMillion: 3.00, cachedInputPricePerMillion: 0.30, outputPricePerMillion: 15.00,
-              cacheCreationPricePerMillion: 3.75,
+              inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "claude-sonnet-5", isOfficial: true,
-              note: "Uses Anthropic's standard list price rather than introductory pricing.",
+              note: "Anthropic retained the launch price as the permanent standard price.",
               sourceUrl: "https://platform.claude.com/docs/en/about-claude/pricing"),
         .init(modelId: "claude-opus-4-8", displayName: "Claude Opus 4.8",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
@@ -292,6 +298,10 @@ enum BundledPricingCatalog {
         // --- Zhipu GLM (Z.AI Anthropic-compatible endpoint) ---
         // Official Z.AI USD list prices for GLM models observed through the
         // Claude-style import path. No separate cache-write premium is bundled.
+        .init(modelId: "glm-5.2", displayName: "GLM-5.2",
+              inputPricePerMillion: 1.40, cachedInputPricePerMillion: 0.26, outputPricePerMillion: 4.40,
+              effectiveModelId: "glm-5.2", isOfficial: true, note: nil,
+              sourceUrl: "https://docs.z.ai/guides/overview/pricing"),
         .init(modelId: "glm-5.1", displayName: "GLM-5.1",
               inputPricePerMillion: 1.40, cachedInputPricePerMillion: 0.26, outputPricePerMillion: 4.40,
               effectiveModelId: "glm-5.1", isOfficial: true, note: nil,
