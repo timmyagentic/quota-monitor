@@ -134,6 +134,31 @@ final class CodexQuotaOverlayController: NSObject {
             return
         }
 
+        let runningCodexProcessIdentifiers = Set(
+            workspace.runningApplications.compactMap { application -> pid_t? in
+                guard let bundleIdentifier = application.bundleIdentifier,
+                      Self.supportedBundleIdentifiers.contains(bundleIdentifier),
+                      !application.isTerminated else {
+                    return nil
+                }
+                return application.processIdentifier
+            })
+        guard !runningCodexProcessIdentifiers.isEmpty else {
+            lastFrontmostPID = nil
+            trackedCodexPID = nil
+            isCodexFrontmost = false
+            hideOverlay()
+            setStatus(.waitingForCodex)
+            // Application launch notifications wake the scanner when Codex
+            // starts, so there is no reason to enumerate windows while idle.
+            updateTrackingInterval(nil)
+            return
+        }
+        if let trackedCodexPID,
+           !runningCodexProcessIdentifiers.contains(trackedCodexPID) {
+            self.trackedCodexPID = nil
+        }
+
         let frontmostApplication = workspace.frontmostApplication
         let frontmostCodexPID: pid_t?
         if let frontmostApplication,
@@ -387,10 +412,12 @@ final class CodexQuotaOverlayController: NSObject {
             trigger: "codex-overlay")
     }
 
-    private func updateTrackingInterval(_ interval: TimeInterval) {
+    private func updateTrackingInterval(_ interval: TimeInterval?) {
         guard trackingInterval != interval else { return }
         trackingTimer?.invalidate()
+        trackingTimer = nil
         trackingInterval = interval
+        guard let interval else { return }
         let timer = Timer(
             timeInterval: interval,
             target: self,

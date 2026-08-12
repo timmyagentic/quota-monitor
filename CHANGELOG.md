@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The native Codex quota widget now starts enabled while preserving an existing choice to keep it off.
+
+### Changed
+
+- **Native widget on by default.** New installs and users without a saved widget preference now start with the native Codex quota widget enabled, while an existing explicit opt-out remains respected.
+
 ## [1.0.1] — 2026-08-12
 
 #### Summary
