@@ -30,13 +30,15 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-08-12
+
 #### Summary
 
 - The native Codex quota widget now starts enabled while preserving an existing choice to keep it off.
 
 ### Changed
 
-- **Native widget on by default.** New installs and users without a saved widget preference now start with the native Codex quota widget enabled, while an existing explicit opt-out remains respected.
+- **Native widget on by default.** New installs and users without a saved widget preference now start with the native Codex quota widget enabled, while an existing explicit opt-out remains respected; when Codex is not running, the widget scanner stays dormant until macOS reports that Codex has launched.
 
 ## [1.0.1] — 2026-08-12
 
