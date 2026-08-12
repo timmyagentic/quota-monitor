@@ -30,21 +30,14 @@ window copy.
 
 ## [Unreleased]
 
-#### Summary
-
-- Cost estimates now cover GLM-5.2, GPT-5.3 Codex Fast, and Codex Auto Review, while Claude Sonnet 5 uses Anthropic's retained launch price.
-
-### Fixed
-
-- **Selected model pricing corrections.** The bundled catalog now uses Claude Sonnet 5's permanent $2/$10 rates, adds official GLM-5.2 and GPT-5.3 Codex Fast pricing, and estimates `codex-auto-review` with a clearly marked GPT-5.4 fallback because OpenAI does not publish a separate reviewer-model price.
-
-## [1.0.1] — 2026-08-11
+## [1.0.1] — 2026-08-12
 
 #### Summary
 
 - The Codex quota widget now stays to the left of Help in the current sidebar layout without requiring a manual position, including in wide and full-screen windows.
 - Press and hold the Codex quota widget for one second to unlock dragging; an inline hint and shaking move icon make the interaction clear, and the chosen position persists across window resizing and relaunches.
 - One-command npm installs now correctly recognize and install Quota Monitor 1.0.0 and later releases.
+- Cost estimates now cover GLM-5.2, GPT-5.3 Codex Fast, and Codex Auto Review, while Claude Sonnet 5 uses Anthropic's retained launch price.
 
 ### Added
 
@@ -54,6 +47,7 @@ window copy.
 
 - **Correct automatic Codex widget placement.** Quota Monitor now recognizes Codex's Help menu popup as the anchor, preserves whether that anchor follows the sidebar or window edge during resizing, and estimates the same Help-relative sidebar slot when Accessibility is unavailable instead of scaling the fallback across the entire window.
 - **Reliable npm release selection.** The public installer now treats Sparkle's internal build number and display version independently, so it can install 1.0.0 and later releases without weakening URL, signature, or bundle checks.
+- **Selected model pricing corrections.** The bundled catalog now uses Claude Sonnet 5's permanent $2/$10 rates, adds official GLM-5.2 and GPT-5.3 Codex Fast pricing, and estimates `codex-auto-review` with a clearly marked GPT-5.4 fallback because OpenAI does not publish a separate reviewer-model price.
 
 ## [1.0.0] — 2026-08-11
 

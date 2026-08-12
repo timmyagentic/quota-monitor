@@ -24,21 +24,14 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
-#### Summary
-
-- 费用估算现在覆盖 GLM-5.2、GPT-5.3 Codex Fast 与 Codex Auto Review，Claude Sonnet 5 也会使用 Anthropic 保留的首发价格。
-
-### 修复
-
-- **修正指定模型价格。** 内置目录现在为 Claude Sonnet 5 使用永久的输入 $2／输出 $10 费率，补充 GLM-5.2 与 GPT-5.3 Codex Fast 官方价格；由于 OpenAI 未发布 reviewer 模型的独立价格，`codex-auto-review` 会使用明确标注为估算的 GPT-5.4 费率兜底。
-
-## [1.0.1] — 2026-08-11
+## [1.0.1] — 2026-08-12
 
 #### Summary
 
 - Codex 额度挂件现在会在当前侧边栏布局中自动保持在 Help 左侧，宽窗口和全屏下也不需要手动调整。
 - 按住 Codex 额度挂件 1 秒即可解锁拖动；挂件会先显示操作提示，解锁后以抖动图标确认状态，并在窗口缩放或应用重启后保持所选位置。
 - npm 一键安装现在可以正常识别并安装 Quota Monitor 1.0.0 及后续正式版本。
+- 费用估算现在覆盖 GLM-5.2、GPT-5.3 Codex Fast 与 Codex Auto Review，Claude Sonnet 5 也会使用 Anthropic 保留的首发价格。
 
 ### 新增
 
@@ -48,6 +41,7 @@ appcast 中按系统语言切换的双语更新说明。
 
 - **正确的 Codex 挂件自动定位。** Quota Monitor 现在会把 Codex 的 Help 菜单弹出控件识别为锚点，窗口缩放时保持锚点跟随侧边栏或窗口边缘，并在没有辅助功能权限时估算同一个 Help 左侧槽位，不再让兜底位置随整个窗口宽度向右偏移。
 - **可靠选择 npm 安装版本。** 公开安装器现在会分别处理 Sparkle 内部构建号与显示版本，因此可以安装 1.0.0 及后续版本，同时不放宽下载地址、签名或应用包校验。
+- **修正指定模型价格。** 内置目录现在为 Claude Sonnet 5 使用永久的输入 $2／输出 $10 费率，补充 GLM-5.2 与 GPT-5.3 Codex Fast 官方价格；由于 OpenAI 未发布 reviewer 模型的独立价格，`codex-auto-review` 会使用明确标注为估算的 GPT-5.4 费率兜底。
 
 ## [1.0.0] — 2026-08-11
 
