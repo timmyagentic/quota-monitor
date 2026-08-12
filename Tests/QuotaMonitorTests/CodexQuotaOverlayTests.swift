@@ -808,6 +808,8 @@ struct CodexQuotaOverlayTests {
         #expect(helpControlSource.contains("maximumVisitedElements = 600"))
         #expect(source.contains("Task.detached(priority: .utility)"))
         #expect(source.contains("helpControlNextDiscoveryAt"))
+        #expect(source.contains("workspace.runningApplications"))
+        #expect(source.contains("updateTrackingInterval(nil)"))
         #expect(source.contains(
             "panel.ignoresMouseEvents = !placement.allowsInteraction"))
         #expect(source.contains("ignoresMouseEvents: false"))
