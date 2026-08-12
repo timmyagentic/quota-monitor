@@ -24,6 +24,14 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+
+- 费用估算现在覆盖 GLM-5.2、GPT-5.3 Codex Fast 与 Codex Auto Review，Claude Sonnet 5 也会使用 Anthropic 保留的首发价格。
+
+### 修复
+
+- **修正指定模型价格。** 内置目录现在为 Claude Sonnet 5 使用永久的输入 $2／输出 $10 费率，补充 GLM-5.2 与 GPT-5.3 Codex Fast 官方价格；由于 OpenAI 未发布 reviewer 模型的独立价格，`codex-auto-review` 会使用明确标注为估算的 GPT-5.4 费率兜底。
+
 ## [1.0.1] — 2026-08-11
 
 #### Summary
