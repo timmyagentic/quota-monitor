@@ -97,6 +97,36 @@ struct DashboardTrendSeriesTests {
         #expect(series.reduce(Int64(0)) { $0 + $1.tokens } == 30)
     }
 
+    @Test("active series retains the partial first day of a rolling window")
+    func activeSeriesRetainsPartialFirstRollingDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let first = try #require(calendar.date(
+            from: DateComponents(year: 2026, month: 7, day: 16)))
+        let days = try (0...30).map { offset in
+            try #require(calendar.date(
+                byAdding: .day, value: offset, to: first))
+        }
+        let daily = days.map {
+            DailyPoint(date: $0, valueUSD: 1, tokens: 10)
+        }
+        let provider = days.map {
+            breakdown(date: $0, key: "codex", tokens: 10)
+        }
+        let input = derivationInput(
+            daily: daily,
+            calendar: calendar,
+            provider: provider,
+            rangeDays: 30)
+
+        let series = TrendSeriesBuilder.activeSeries(for: input)
+
+        #expect(series.count == 31,
+                "30 × 24 hours can intersect 31 local calendar dates")
+        #expect(series.first?.date == first)
+        #expect(series.reduce(Int64(0)) { $0 + $1.tokens } == 310)
+    }
+
     @Test("selected-day scrubbing reuses one active-series derivation")
     func selectedDayScrubbingReusesDerivedSeries() throws {
         var calendar = Calendar(identifier: .gregorian)

@@ -1,6 +1,74 @@
 import Foundation
 import GRDB
 
+private struct RollingTrendBreakdownBucket: Hashable {
+    let date: Date
+    let provider: String
+    let key: String
+}
+
+private struct RollingTrendBreakdownTotal {
+    let label: String
+    var valueUSD: Double
+    var tokens: Int64
+}
+
+private struct RollingTrendAccumulator {
+    var dayValue: [Date: Double] = [:]
+    var dayTokens: [Date: Int64] = [:]
+    var dayCacheUsage: [Date: CacheUsageSummary] = [:]
+    var providerTotals: [RollingTrendBreakdownBucket: RollingTrendBreakdownTotal] = [:]
+    var modelTotals: [RollingTrendBreakdownBucket: RollingTrendBreakdownTotal] = [:]
+
+    mutating func add(
+        day: Date,
+        provider: String,
+        modelKey: String,
+        modelLabel: String,
+        valueUSD: Double,
+        tokens: Int64,
+        cacheReadTokens: Int64,
+        cacheEligibleInputTokens: Int64
+    ) {
+        dayValue[day, default: 0] += valueUSD
+        dayTokens[day, default: 0] += tokens
+        let currentCache = dayCacheUsage[day] ?? .zero
+        dayCacheUsage[day] = CacheUsageSummary(
+            readTokens: currentCache.readTokens + cacheReadTokens,
+            eligibleInputTokens: currentCache.eligibleInputTokens
+                + cacheEligibleInputTokens)
+
+        addBreakdown(
+            to: &providerTotals,
+            bucket: RollingTrendBreakdownBucket(
+                date: day, provider: provider, key: provider),
+            label: provider,
+            valueUSD: valueUSD,
+            tokens: tokens)
+        addBreakdown(
+            to: &modelTotals,
+            bucket: RollingTrendBreakdownBucket(
+                date: day, provider: provider, key: modelKey),
+            label: modelLabel,
+            valueUSD: valueUSD,
+            tokens: tokens)
+    }
+
+    private func addBreakdown(
+        to totals: inout [RollingTrendBreakdownBucket: RollingTrendBreakdownTotal],
+        bucket: RollingTrendBreakdownBucket,
+        label: String,
+        valueUSD: Double,
+        tokens: Int64
+    ) {
+        var current = totals[bucket] ?? RollingTrendBreakdownTotal(
+            label: label, valueUSD: 0, tokens: 0)
+        current.valueUSD += valueUSD
+        current.tokens += tokens
+        totals[bucket] = current
+    }
+}
+
 // Top-level dashboard / overview / per-model / per-provider queries.
 // All methods compose inside one read transaction via `loadDashboard`.
 
@@ -9,25 +77,22 @@ extension Aggregator {
     static func loadDashboard(
         from pool: DatabasePool,
         provider: ProviderFilter = .all,
-        enabledProviders: Set<String>? = nil
+        enabledProviders: Set<String>? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
     ) async throws -> DashboardSnapshot {
         try await pool.read { db in
             let overview = try fetchOverview(
                 db: db, provider: provider, enabledProviders: enabledProviders)
-            // One-year window powers the Token Monitor-inspired Trends
-            // page, including its daily cache hit-rate series. Derive the
-            // short overview from the same result so Dashboard refreshes do
-            // not scan the same recent rows twice.
-            let dailyExtended = try fetchDaily(
-                db: db, days: 365, provider: provider,
-                enabledProviders: enabledProviders)
+            // One raw-row scan derives every exact elapsed-time Trends range.
+            // This keeps the partial boundary day accurate without repeating
+            // the one-year database scan for each range and stack mode.
+            let trends = try fetchRollingTrends(
+                db: db, provider: provider,
+                enabledProviders: enabledProviders,
+                now: now, calendar: calendar)
+            let dailyExtended = trends.last365Days.daily
             let daily = Array(dailyExtended.suffix(14))
-            let dailyProviderExtended = try fetchDailyBreakdown(
-                db: db, days: 365, grouping: .provider, provider: provider,
-                enabledProviders: enabledProviders)
-            let dailyModelExtended = try fetchDailyBreakdown(
-                db: db, days: 365, grouping: .model, provider: provider,
-                enabledProviders: enabledProviders)
             let monthly = try fetchMonthly(
                 db: db, months: 12, provider: provider,
                 enabledProviders: enabledProviders)
@@ -59,8 +124,7 @@ extension Aggregator {
                 overview: overview,
                 daily: daily,
                 dailyExtended: dailyExtended,
-                dailyProviderExtended: dailyProviderExtended,
-                dailyModelExtended: dailyModelExtended,
+                trends: trends,
                 monthly: monthly,
                 modelShares: shares,
                 modelShares30d: shares30d,
@@ -245,6 +309,172 @@ extension Aggregator {
         .sorted {
             if $0.date != $1.date { return $0.date < $1.date }
             return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        }
+    }
+
+    /// Exact elapsed-time windows for Dashboard Trends. Events are filtered
+    /// against `[now - N × 24h, now)` before being assigned to local-calendar
+    /// days, so only the in-window portion of the first day is counted.
+    static func fetchRollingTrends(
+        db: Database,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> DashboardTrendData {
+        let scope = ProviderScope(
+            filter: provider, enabledProviders: enabledProviders)
+        let cutoffs = Dictionary(uniqueKeysWithValues:
+            RollingTrendWindow.allCases.map { ($0, $0.lowerBound(from: now)) })
+        let oldestCutoff = cutoffs[.last365Days] ?? .distantPast
+        // Query from the local start of the partial boundary day, then apply
+        // exact parsed-Date bounds below. This retains timestamp-format
+        // compatibility while limiting the raw-row scan to the longest range.
+        let queryStart = calendar.startOfDay(for: oldestCutoff)
+        let lowerBound = ISO8601.fractional.string(from: queryStart)
+        let cacheRead = cacheReadTokensExpression(table: "ue")
+        let cacheEligibleInput = cacheEligibleInputExpression(table: "ue")
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT
+                ue.timestamp,
+                ue.provider,
+                ue.model_id,
+                COALESCE(pc.display_name, ue.model_id) AS model_label,
+                ue.value_usd,
+                ue.total_tokens,
+                \(cacheRead) AS cache_read_tokens,
+                \(cacheEligibleInput) AS cache_eligible_input_tokens
+            FROM usage_events ue
+            LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id
+            WHERE ue.timestamp >= ?
+            \(scope.clause(table: "ue"))
+            """, arguments: [lowerBound])
+
+        var accumulators: [RollingTrendWindow: RollingTrendAccumulator] = [:]
+        var prior30DayValueUSD = 0.0
+        let prior30Lower = now.addingTimeInterval(-60 * 24 * 60 * 60)
+        let prior30Upper = now.addingTimeInterval(-30 * 24 * 60 * 60)
+
+        for row in rows {
+            let timestamp: String = row["timestamp"] ?? ""
+            guard let date = parseTimestamp(timestamp),
+                  date >= oldestCutoff,
+                  date < now
+            else { continue }
+
+            let valueUSD: Double = row["value_usd"] ?? 0
+            if date >= prior30Lower, date < prior30Upper {
+                prior30DayValueUSD += valueUSD
+            }
+
+            let rawProvider: String = row["provider"] ?? "unknown"
+            let normalizedProvider = normalizedTrendValue(
+                rawProvider, fallback: "unknown")
+            let rawModelKey: String = row["model_id"] ?? "unknown"
+            let modelKey = normalizedTrendValue(
+                rawModelKey, fallback: "unknown")
+            let rawModelLabel: String = row["model_label"] ?? modelKey
+            let modelLabel = normalizedTrendValue(
+                rawModelLabel, fallback: modelKey)
+            let day = calendar.startOfDay(for: date)
+            let tokens: Int64 = row["total_tokens"] ?? 0
+            let cacheReadTokens: Int64 = row["cache_read_tokens"] ?? 0
+            let cacheEligibleInputTokens: Int64 =
+                row["cache_eligible_input_tokens"] ?? 0
+
+            for window in RollingTrendWindow.allCases {
+                guard let cutoff = cutoffs[window], date >= cutoff else { continue }
+                accumulators[window, default: RollingTrendAccumulator()].add(
+                    day: day,
+                    provider: normalizedProvider,
+                    modelKey: modelKey,
+                    modelLabel: modelLabel,
+                    valueUSD: valueUSD,
+                    tokens: tokens,
+                    cacheReadTokens: cacheReadTokens,
+                    cacheEligibleInputTokens: cacheEligibleInputTokens)
+            }
+        }
+
+        func snapshot(for window: RollingTrendWindow) -> TrendWindowSnapshot {
+            let accumulator = accumulators[window] ?? RollingTrendAccumulator()
+            let cutoff = cutoffs[window] ?? now
+            return TrendWindowSnapshot(
+                daily: rollingDailySeries(
+                    dayTokens: accumulator.dayTokens,
+                    dayValue: accumulator.dayValue,
+                    dayCacheUsage: accumulator.dayCacheUsage,
+                    lowerBound: cutoff,
+                    now: now,
+                    calendar: calendar),
+                providerBreakdown: rollingBreakdownSeries(
+                    accumulator.providerTotals),
+                modelBreakdown: rollingBreakdownSeries(
+                    accumulator.modelTotals))
+        }
+
+        return DashboardTrendData(
+            last7Days: snapshot(for: .last7Days),
+            last30Days: snapshot(for: .last30Days),
+            last90Days: snapshot(for: .last90Days),
+            last365Days: snapshot(for: .last365Days),
+            prior30DayValueUSD: prior30DayValueUSD)
+    }
+
+    private static func normalizedTrendValue(
+        _ rawValue: String,
+        fallback: String
+    ) -> String {
+        let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? fallback : normalized
+    }
+
+    private static func rollingDailySeries(
+        dayTokens: [Date: Int64],
+        dayValue: [Date: Double],
+        dayCacheUsage: [Date: CacheUsageSummary],
+        lowerBound: Date,
+        now: Date,
+        calendar: Calendar
+    ) -> [DailyPoint] {
+        let firstDay = calendar.startOfDay(for: lowerBound)
+        let today = calendar.startOfDay(for: now)
+        guard firstDay <= today else { return [] }
+
+        var points: [DailyPoint] = []
+        points.reserveCapacity(367)
+        var day = firstDay
+        while day <= today {
+            points.append(DailyPoint(
+                date: day,
+                valueUSD: dayValue[day] ?? 0,
+                tokens: dayTokens[day] ?? 0,
+                cacheUsage: dayCacheUsage[day] ?? .zero))
+            guard let next = calendar.date(
+                byAdding: .day, value: 1, to: day),
+                next > day
+            else { break }
+            day = next
+        }
+        return points
+    }
+
+    private static func rollingBreakdownSeries(
+        _ totals: [RollingTrendBreakdownBucket: RollingTrendBreakdownTotal]
+    ) -> [DailyBreakdownPoint] {
+        totals.map { bucket, total in
+            DailyBreakdownPoint(
+                date: bucket.date,
+                provider: bucket.provider,
+                key: bucket.key,
+                label: total.label,
+                valueUSD: total.valueUSD,
+                tokens: total.tokens)
+        }
+        .sorted {
+            if $0.date != $1.date { return $0.date < $1.date }
+            return $0.label.localizedCaseInsensitiveCompare($1.label)
+                == .orderedAscending
         }
     }
 

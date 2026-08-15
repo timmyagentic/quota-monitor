@@ -2,16 +2,15 @@ import SwiftUI
 import Charts
 
 /// Trends panel: stacked token bars by provider/model with a cache hit-rate
-/// line sharing the same dates. The summary line still reports spend over
-/// today / 7d / 30d so the panel remains useful for both tokens and cost.
+/// line sharing the same dates. Each selectable range uses an exact trailing
+/// N × 24-hour window before its events are bucketed by local-calendar day.
 struct TrendsSection: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(LocalizationStore.self) private var localization
     @Environment(\.calendar) private var calendar
 
-    let dailyExtended: [DailyPoint]
-    let providerBreakdown: [DailyBreakdownPoint]
-    let modelBreakdown: [DailyBreakdownPoint]
+    let trends: DashboardTrendData
+    let visibleProviders: Set<String>
 
     @State private var range: TrendRange = .last30d
     @State private var stackBy: TrendStack = .provider
@@ -289,9 +288,9 @@ struct TrendsSection: View {
 
     private var statline: some View {
         let today = todayUSD
-        let last7d = lastNDaysUSD(7)
-        let last30d = lastNDaysUSD(30)
-        let prior30d = priorNDaysUSD(30, offsetDays: 30)
+        let last7d = trends.last7Days.daily.reduce(0) { $0 + $1.valueUSD }
+        let last30d = trends.last30Days.daily.reduce(0) { $0 + $1.valueUSD }
+        let prior30d = trends.prior30DayValueUSD
 
         var parts: [String] = [
             L10n.trendsTodayShort(today.formatted(.currency(code: "USD"))),
@@ -312,8 +311,24 @@ struct TrendsSection: View {
 
     // MARK: - derived data
 
+    private var activeWindow: TrendWindowSnapshot {
+        trends.window(for: range.rollingWindow)
+    }
+
     private var windowedDaily: [DailyPoint] {
-        Array(dailyExtended.suffix(range.days))
+        activeWindow.daily
+    }
+
+    private var windowedProviderBreakdown: [DailyBreakdownPoint] {
+        activeWindow.providerBreakdown.filter {
+            visibleProviders.contains($0.provider)
+        }
+    }
+
+    private var windowedModelBreakdown: [DailyBreakdownPoint] {
+        activeWindow.modelBreakdown.filter {
+            visibleProviders.contains($0.provider)
+        }
     }
 
     private var cacheTrendPoints: [CacheTrendPoint] {
@@ -369,9 +384,9 @@ struct TrendsSection: View {
 
     private var seriesDerivationInput: TrendSeriesDerivationInput {
         TrendSeriesDerivationInput(
-            dailyExtended: dailyExtended,
-            providerBreakdown: providerBreakdown,
-            modelBreakdown: modelBreakdown,
+            dailyExtended: windowedDaily,
+            providerBreakdown: windowedProviderBreakdown,
+            modelBreakdown: windowedModelBreakdown,
             rangeDays: range.days,
             grouping: stackBy.grouping,
             calendar: calendar,
@@ -450,20 +465,8 @@ struct TrendsSection: View {
         }
     }
 
-    private func lastNDaysUSD(_ n: Int) -> Double {
-        dailyExtended.suffix(n).reduce(0) { $0 + $1.valueUSD }
-    }
-
-    private func priorNDaysUSD(_ n: Int, offsetDays: Int) -> Double {
-        let total = dailyExtended.count
-        let endIndex = total - offsetDays
-        let startIndex = max(0, endIndex - n)
-        guard startIndex < endIndex, endIndex <= total else { return 0 }
-        return dailyExtended[startIndex..<endIndex].reduce(0) { $0 + $1.valueUSD }
-    }
-
     private var todayUSD: Double {
-        dailyExtended.last?.valueUSD ?? 0
+        trends.last30Days.daily.last?.valueUSD ?? 0
     }
 
     private func compactTokens(_ tokens: Int64) -> String {
@@ -545,7 +548,7 @@ enum TrendSeriesBuilder {
         for input: TrendSeriesDerivationInput
     ) -> [DailyBreakdownPoint] {
         let calendar = input.calendar
-        let days = Set(input.dailyExtended.suffix(input.rangeDays).map {
+        let days = Set(input.dailyExtended.map {
             calendar.startOfDay(for: $0.date)
         })
         let breakdown: [DailyBreakdownPoint]
@@ -645,6 +648,15 @@ private enum TrendRange: CaseIterable, Identifiable {
         case .last30d: return 30
         case .last90d: return 90
         case .lastYear: return 365
+        }
+    }
+
+    var rollingWindow: RollingTrendWindow {
+        switch self {
+        case .last7d: return .last7Days
+        case .last30d: return .last30Days
+        case .last90d: return .last90Days
+        case .lastYear: return .last365Days
         }
     }
 

@@ -307,6 +307,98 @@ struct AggregatorTests {
         #expect(abs(totalFromBuckets - 7.00) < 0.0001)
     }
 
+    @Test("rolling Trends filters exact elapsed-time boundaries before day bucketing")
+    func rollingTrendsFiltersExactBoundariesBeforeBucketing() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 15, hour: 12)))
+        let database = try makeDatabase()
+
+        let thirtyDayCutoff = now.addingTimeInterval(-30 * 24 * 60 * 60)
+        let sevenDayCutoff = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        let sixtyDayCutoff = now.addingTimeInterval(-60 * 24 * 60 * 60)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "exact-30d",
+            at: thirtyDayCutoff, valueUSD: 1, tokens: 100)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "outside-30d",
+            at: thirtyDayCutoff.addingTimeInterval(-1),
+            valueUSD: 2, tokens: 200)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "exact-7d",
+            at: sevenDayCutoff, valueUSD: 3, tokens: 300)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "outside-7d",
+            at: sevenDayCutoff.addingTimeInterval(-1),
+            valueUSD: 4, tokens: 400)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "exact-60d",
+            at: sixtyDayCutoff, valueUSD: 5, tokens: 500)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "outside-60d",
+            at: sixtyDayCutoff.addingTimeInterval(-1),
+            valueUSD: 6, tokens: 600)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "recent",
+            at: now.addingTimeInterval(-60 * 60), valueUSD: 8, tokens: 800)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "future",
+            at: now.addingTimeInterval(1), valueUSD: 7, tokens: 700)
+
+        let trends = try database.pool.read { db in
+            try Aggregator.fetchRollingTrends(
+                db: db, now: now, calendar: calendar)
+        }
+
+        #expect(trends.last7Days.daily.reduce(Int64(0)) { $0 + $1.tokens }
+                == 1_100)
+        #expect(trends.last30Days.daily.reduce(Int64(0)) { $0 + $1.tokens }
+                == 1_600)
+        #expect(trends.last90Days.daily.reduce(Int64(0)) { $0 + $1.tokens }
+                == 2_900)
+        #expect(abs(trends.prior30DayValueUSD - 7) < 0.0001)
+        #expect(trends.last30Days.daily.count == 31,
+                "a noon-to-noon 30-day window intersects 31 calendar dates")
+        #expect(trends.last30Days.daily.first?.tokens == 100,
+                "the first date must include only its in-window portion")
+        #expect(trends.last30Days.providerBreakdown.reduce(Int64(0)) {
+            $0 + $1.tokens
+        } == 1_600)
+        #expect(trends.last30Days.modelBreakdown.reduce(Int64(0)) {
+            $0 + $1.tokens
+        } == 1_600)
+    }
+
+    @Test("rolling Trends stays 7 × 24 hours across a DST transition")
+    func rollingTrendsUsesElapsedTimeAcrossDST() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try #require(TimeZone(identifier: "America/New_York"))
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 3, day: 10, hour: 12)))
+        let cutoff = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        let database = try makeDatabase()
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "inside-dst",
+            at: cutoff, valueUSD: 1, tokens: 100)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "outside-dst",
+            at: cutoff.addingTimeInterval(-1), valueUSD: 2, tokens: 200)
+
+        let trends = try database.pool.read { db in
+            try Aggregator.fetchRollingTrends(
+                db: db, now: now, calendar: calendar)
+        }
+
+        #expect(now.timeIntervalSince(cutoff) == 7 * 24 * 60 * 60)
+        #expect(calendar.component(.hour, from: cutoff) == 11,
+                "spring-forward makes the absolute cutoff 11:00 local")
+        #expect(trends.last7Days.daily.count == 8)
+        #expect(trends.last7Days.daily.reduce(Int64(0)) { $0 + $1.tokens }
+                == 100)
+        #expect(trends.last7Days.daily.first?.tokens == 100)
+    }
+
     // MARK: - 30d composition share
 
     @Test("fetchProviderShares30d: always emits both providers, zero-fills missing")
@@ -418,8 +510,10 @@ struct AggregatorTests {
         #expect(snapshot.activity.lifetimeTokens == 1_000)
         #expect(snapshot.activity.activeDays == 1)
         #expect(snapshot.dailyExtended.reduce(Int64(0)) { $0 + $1.tokens } == 1_000)
-        #expect(snapshot.dailyProviderExtended.allSatisfy { $0.provider == "codex" })
-        #expect(snapshot.dailyModelExtended.allSatisfy { $0.provider == "codex" })
+        #expect(snapshot.trends.last365Days.providerBreakdown
+            .allSatisfy { $0.provider == "codex" })
+        #expect(snapshot.trends.last365Days.modelBreakdown
+            .allSatisfy { $0.provider == "codex" })
         #expect(snapshot.providerShares30d.map(\.provider) == ["codex"])
         #expect(snapshot.modelShares30d.reduce(Int64(0)) { $0 + $1.tokens } == 1_000)
     }

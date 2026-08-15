@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Dashboard trend ranges now match the rolling usage totals shown elsewhere, including the partial day at the start of each range.
+
+### Fixed
+
+- **Consistent rolling trend windows.** The 7-day, 30-day, 90-day, and one-year trend views now count only usage from the exact trailing 7 × 24, 30 × 24, 90 × 24, or 365 × 24 hours before grouping it by local date, so an older part of the boundary day no longer inflates tokens, cost, or cache hit rate.
+
 ## [1.0.2] — 2026-08-12
 
 #### Summary
