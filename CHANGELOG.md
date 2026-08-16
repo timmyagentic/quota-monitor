@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-08-16
+
 #### Summary
 
 - Codex history now recovers automatically when an existing rollout file is rewritten, so recent token usage no longer remains permanently missing.

@@ -1,0 +1,12 @@
+<div class="release-summary">
+<ul>
+<li>Codex history now recovers automatically when an existing rollout file is rewritten, so recent token usage no longer remains permanently missing.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Fixed</h3>
+<ul>
+<li><b>Recover rewritten Codex history.</b> When a committed checkpoint no longer matches its rollout, Quota Monitor waits for the file to settle, reparses it from the beginning, and replaces that session transactionally; an incomplete file keeps the last-known-good rows until a later scan.</li>
+</ul>
+</div>
