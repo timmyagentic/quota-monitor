@@ -951,6 +951,74 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database)?.consecutiveCount == 2)
     }
 
+    @Test("source growth after recovery parse keeps the rebuild retry queued")
+    func sourceGrowthDuringStableRebuildRetries() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let beforeRows = try await usageRows(in: harness.database)
+        let beforeState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T05:30:00.000Z"),
+            taskLine(timestamp: "2026-07-19T05:30:01.000Z"),
+            contextLine(timestamp: "2026-07-19T05:30:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T05:30:03.000Z",
+                total: usage(input: 700, cached: 70, output: 70, reasoning: 14),
+                last: usage(input: 700, cached: 70, output: 70, reasoning: 14)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"source-growth"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        let observed = try await harness.engine.performScan()
+        #expect(observed.deferredSources.map(\.consecutiveCount) == [1])
+
+        let appendedLine = tokenLine(
+            timestamp: "2026-07-19T05:30:04.000Z",
+            total: usage(input: 710, cached: 71, output: 75, reasoning: 15),
+            last: usage(input: 10, cached: 1, output: 5, reasoning: 1)) + "\n"
+        let appendedData = Data(appendedLine.utf8)
+        let racingEngine = ImportEngine(
+            database: harness.database,
+            codexHome: harness.codexHome,
+            minimumRebuildStabilityInterval: 0,
+            sourceVerificationHook: { url in
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try handle.seekToEnd()
+                try handle.write(contentsOf: appendedData)
+            })
+        let failed = try await racingEngine.performScan()
+
+        #expect(failed.importedEvents == 0)
+        #expect(failed.errors.count == 1)
+        #expect(failed.errors[0].contains("changed while it was being parsed"))
+        #expect(failed.deferredSources.map(\.consecutiveCount) == [2])
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+        #expect(try await importState(
+            at: harness.rollout.path,
+            in: harness.database) == beforeState)
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)?.consecutiveCount == 2)
+
+        let appendedSignature = try await harness.engine.performScan()
+        #expect(appendedSignature.importedEvents == 0)
+        #expect(appendedSignature.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 2)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [770, 15])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+    }
+
     @Test("an existing archived canonical outranks an unrelated active copy")
     func archivedCanonicalRemainsAuthoritativeWhilePresent() async throws {
         let harness = try makeHarness(lines: prefixLines())

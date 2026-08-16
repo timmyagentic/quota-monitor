@@ -470,7 +470,9 @@ actor ImportEngine {
                                 output: parsedCandidate.output,
                                 file: file,
                                 expectedState: candidate.expectedState,
-                                mode: parsedCandidate.mode)
+                                mode: parsedCandidate.mode,
+                                requiresExactSourceSize:
+                                    candidate.pendingRebuildReason != nil)
                             importedSessions += 1
                             importedEvents += counts.events
                             importedSamples += counts.samples
@@ -1234,7 +1236,8 @@ actor ImportEngine {
 
     static func verifyCurrentSource(
         file: SessionFile,
-        output: CodexRolloutParseOutput
+        output: CodexRolloutParseOutput,
+        requiresExactSize: Bool = false
     ) throws {
         let reader = try RolloutRecordReader(fileURL: file.url)
         defer { try? reader.close() }
@@ -1243,6 +1246,8 @@ actor ImportEngine {
         let boundaryStart = max(0, output.endOffset - window)
         guard reader.snapshot.sourceIdentity == output.snapshot.sourceIdentity,
               reader.snapshot.size >= output.snapshot.size,
+              (!requiresExactSize
+                || reader.snapshot.size == output.snapshot.size),
               try reader.sha256(in: 0..<headEnd) == output.prefixHash,
               try reader.sha256(in: boundaryStart..<output.endOffset)
                 == output.endBoundaryHash,
@@ -1360,10 +1365,14 @@ actor ImportEngine {
         output: CodexRolloutParseOutput,
         file: SessionFile,
         expectedState: ImportStateRecord?,
-        mode: PersistMode
+        mode: PersistMode,
+        requiresExactSourceSize: Bool
     ) async throws -> PersistCounts {
         try sourceVerificationHook?(file.url)
-        try Self.verifyCurrentSource(file: file, output: output)
+        try Self.verifyCurrentSource(
+            file: file,
+            output: output,
+            requiresExactSize: requiresExactSourceSize)
 
         let checkpointData: Data?
         if let checkpoint = output.checkpoint {
