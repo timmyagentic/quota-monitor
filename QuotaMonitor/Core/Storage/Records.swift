@@ -125,6 +125,46 @@ struct ImportStateRecord: Codable, FetchableRecord, PersistableRecord, Equatable
     }
 }
 
+/// A durable observation of a Codex rollout that invalidated its committed
+/// incremental checkpoint without changing inode. Keeping this separate from
+/// `import_state` preserves the last-known-good cursor while the writer may be
+/// truncating or rewriting the file in place.
+struct CodexRebuildObservationRecord:
+    Codable, FetchableRecord, PersistableRecord, Equatable
+{
+    static let databaseTableName = "codex_rebuild_observations"
+
+    var sourcePath: String
+    var sessionId: String
+    var reason: String
+    var sourceDevice: Int64
+    var sourceInode: Int64
+    var sourceBirthtimeNs: Int64
+    var fileSize: Int64
+    var fileMtimeMs: Int64
+    var prefixHash: Data
+    var tailHash: Data
+    var firstDeferredAt: String
+    var lastDeferredAt: String
+    var consecutiveCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case sourcePath = "source_path"
+        case sessionId = "session_id"
+        case reason
+        case sourceDevice = "source_device"
+        case sourceInode = "source_inode"
+        case sourceBirthtimeNs = "source_birthtime_ns"
+        case fileSize = "file_size"
+        case fileMtimeMs = "file_mtime_ms"
+        case prefixHash = "prefix_hash"
+        case tailHash = "tail_hash"
+        case firstDeferredAt = "first_deferred_at"
+        case lastDeferredAt = "last_deferred_at"
+        case consecutiveCount = "consecutive_count"
+    }
+}
+
 struct RateLimitSampleRecord: Codable, FetchableRecord, PersistableRecord {
     static let databaseTableName = "rate_limit_samples"
 

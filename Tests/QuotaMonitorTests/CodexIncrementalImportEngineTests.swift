@@ -337,6 +337,334 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [70, 30])
     }
 
+    @Test("stable same-inode rewrite eventually rebuilds")
+    func stableSameInodeRewriteEventuallyRebuilds() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let oldIdentity = try sourceIdentity(of: harness.rollout)
+        let oldState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+
+        let rewrittenLines = [
+            metaLine(timestamp: "2026-07-19T01:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T01:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T01:00:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T01:00:03.000Z",
+                total: usage(input: 400, cached: 50, output: 40, reasoning: 8),
+                last: usage(input: 400, cached: 50, output: 40, reasoning: 8)),
+        ] + Array(repeating: #"{"type":"unknown","padding":"0123456789"}"#, count: 100)
+        let rewrittenData = rolloutData(rewrittenLines)
+        #expect(Int64(rewrittenData.count) > oldState.byteOffset)
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        #expect(try sourceIdentity(of: harness.rollout) == oldIdentity)
+
+        let firstObservation = try await harness.engine.performScan()
+        #expect(firstObservation.importedEvents == 0)
+        #expect(firstObservation.deferredSourceCount == 1)
+        #expect(firstObservation.deferredSources[0].reason == "head_changed")
+        #expect(firstObservation.deferredSources[0].consecutiveCount == 1)
+        #expect(!firstObservation.hasPersistentDeferredSources)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)?.consecutiveCount == 1)
+
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [440])
+        let recoveredState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+        #expect(recoveredState.byteOffset == Int64(rewrittenData.count))
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+
+        let tail = tokenLine(
+            timestamp: "2026-07-19T01:00:04.000Z",
+            total: usage(input: 410, cached: 52, output: 45, reasoning: 9),
+            last: usage(input: 10, cached: 2, output: 5, reasoning: 1)) + "\n"
+        try append(Data(tail.utf8), to: harness.rollout)
+        let resumed = try await harness.engine.performScan()
+        #expect(resumed.incrementalFiles == 1)
+        #expect(resumed.importedEvents == 1)
+        #expect(resumed.sourceBytesRead == Int64(tail.utf8.count))
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [440, 15])
+    }
+
+    @Test("same-inode incomplete rewrite preserves history until completion is stable")
+    func incompleteSameInodeRewriteWaitsForStableCompletion() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let beforeRows = try await usageRows(in: harness.database)
+        let beforeState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+
+        let completeToken = tokenLine(
+            timestamp: "2026-07-19T02:00:03.000Z",
+            total: usage(input: 300, cached: 40, output: 30, reasoning: 6),
+            last: usage(input: 300, cached: 40, output: 30, reasoning: 6))
+        let tokenBytes = Data(completeToken.utf8)
+        let splitIndex = tokenBytes.count / 2
+        var partialData = rolloutData([
+            metaLine(timestamp: "2026-07-19T02:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T02:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T02:00:02.000Z"),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"0123456789"}"#,
+            count: 100))
+        partialData.append(tokenBytes.prefix(splitIndex))
+        #expect(Int64(partialData.count) > beforeState.byteOffset)
+        try overwriteInPlace(partialData, at: harness.rollout)
+
+        let first = try await harness.engine.performScan()
+        #expect(first.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+
+        let second = try await harness.engine.performScan()
+        #expect(second.deferredSources.map(\.reason) == ["incomplete_tail"])
+        #expect(second.deferredSources.map(\.consecutiveCount) == [2])
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+        #expect(try await importState(
+            at: harness.rollout.path,
+            in: harness.database) == beforeState)
+
+        let third = try await harness.engine.performScan()
+        #expect(third.deferredSources.map(\.reason) == ["incomplete_tail"])
+        #expect(third.deferredSources.map(\.consecutiveCount) == [3])
+        #expect(third.hasPersistentDeferredSources)
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+
+        var completion = Data(tokenBytes.dropFirst(splitIndex))
+        completion.append(Data("\n".utf8))
+        try append(completion, to: harness.rollout)
+
+        // The completed file is a new signature, so it must earn two stable
+        // observations of its own instead of inheriting the partial file's count.
+        let completionFirstSeen = try await harness.engine.performScan()
+        #expect(completionFirstSeen.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(!completionFirstSeen.hasPersistentDeferredSources)
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [330])
+    }
+
+    @Test("persisted rebuild observation heals after engine restart")
+    func persistedObservationSurvivesEngineRestart() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T03:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T03:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T03:00:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T03:00:03.000Z",
+                total: usage(input: 500, cached: 50, output: 50, reasoning: 10),
+                last: usage(input: 500, cached: 50, output: 50, reasoning: 10)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"restart"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+
+        let deferred = try await harness.engine.performScan()
+        #expect(deferred.deferredSources.map(\.consecutiveCount) == [1])
+
+        let restarted = ImportEngine(
+            database: harness.database,
+            codexHome: harness.codexHome,
+            minimumRebuildStabilityInterval: 0)
+        let recovered = try await restarted.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [550])
+    }
+
+    @Test("stable signatures still wait for the minimum production interval")
+    func stableObservationHonorsMinimumInterval() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T03:30:00.000Z"),
+            taskLine(timestamp: "2026-07-19T03:30:01.000Z"),
+            contextLine(timestamp: "2026-07-19T03:30:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T03:30:03.000Z",
+                total: usage(input: 700, cached: 70, output: 70, reasoning: 14),
+                last: usage(input: 700, cached: 70, output: 70, reasoning: 14)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"interval"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let engine = ImportEngine(
+            database: harness.database,
+            codexHome: harness.codexHome,
+            minimumRebuildStabilityInterval: 2,
+            now: { clock.now() })
+
+        let first = try await engine.performScan()
+        #expect(first.deferredSources.map(\.consecutiveCount) == [1])
+        let immediateSecond = try await engine.performScan()
+        #expect(immediateSecond.deferredSources.map(\.consecutiveCount) == [2])
+        #expect(immediateSecond.importedEvents == 0)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+
+        clock.advance(by: 2.1)
+        let recovered = try await engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [770])
+    }
+
+    @Test("full rebuild does not duplicate replayed parent usage")
+    func fullRebuildDeduplicatesParentReplay() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let beforeRows = try await usageRows(in: harness.database)
+        #expect(beforeRows.map(\.totalTokens) == [110])
+
+        let childMeta = #"{"timestamp":"2026-07-19T06:00:00.000Z","type":"session_meta","payload":{"id":"99999999-8888-4777-8666-555555555555","forked_from_id":"11111111-2222-4333-8444-555555555555"}}"#
+        let replayedParentUsage = tokenLine(
+            timestamp: "2026-07-19T06:00:01.000Z",
+            total: usage(input: 100, cached: 20, output: 10, reasoning: 3),
+            last: usage(input: 100, cached: 20, output: 10, reasoning: 3))
+        try append(
+            Data((childMeta + "\n" + replayedParentUsage + "\n").utf8),
+            to: harness.rollout)
+
+        let first = try await harness.engine.performScan()
+        #expect(first.deferredSources.map(\.reason) == ["lineage_changed"])
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+
+        let rebuilt = try await harness.engine.performScan()
+        #expect(rebuilt.importedEvents == 1)
+        #expect(rebuilt.errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+    }
+
+    @Test("failed stable rebuild rolls back replacement and keeps pending recovery")
+    func failedStableRebuildRollsBackAndRetries() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let beforeRows = try await usageRows(in: harness.database)
+        let beforeState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T04:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T04:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T04:00:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T04:00:03.000Z",
+                total: usage(input: 600, cached: 60, output: 60, reasoning: 12),
+                last: usage(input: 600, cached: 60, output: 60, reasoning: 12)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"rollback"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+
+        _ = try await harness.engine.performScan()
+        try await harness.database.pool.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_rebuild_checkpoint
+                BEFORE UPDATE ON import_state
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced rebuild checkpoint failure');
+                END
+                """)
+        }
+
+        let failed = try await harness.engine.performScan()
+        #expect(failed.importedEvents == 0)
+        #expect(failed.errors.count == 1)
+        #expect(failed.errors[0].contains("forced rebuild checkpoint failure"))
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+        #expect(try await importState(
+            at: harness.rollout.path,
+            in: harness.database) == beforeState)
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)?.consecutiveCount == 2)
+
+        try await harness.database.pool.write { db in
+            try db.execute(sql: "DROP TRIGGER reject_rebuild_checkpoint")
+        }
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [660])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+    }
+
+    @Test("source mutation after full parse prevents replacement commit")
+    func sourceMutationDuringStableRebuildDoesNotCommit() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let beforeRows = try await usageRows(in: harness.database)
+        let beforeState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T05:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T05:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T05:00:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T05:00:03.000Z",
+                total: usage(input: 800, cached: 80, output: 80, reasoning: 16),
+                last: usage(input: 800, cached: 80, output: 80, reasoning: 16)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"source-race"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        _ = try await harness.engine.performScan()
+
+        let racingEngine = ImportEngine(
+            database: harness.database,
+            codexHome: harness.codexHome,
+            minimumRebuildStabilityInterval: 0,
+            sourceVerificationHook: { url in
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                try handle.seek(toOffset: 0)
+                try handle.write(contentsOf: Data("[".utf8))
+            })
+        let failed = try await racingEngine.performScan()
+
+        #expect(failed.importedEvents == 0)
+        #expect(failed.errors.count == 1)
+        #expect(failed.errors[0].contains("changed while it was being parsed"))
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+        #expect(try await importState(
+            at: harness.rollout.path,
+            in: harness.database) == beforeState)
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)?.consecutiveCount == 2)
+    }
+
     @Test("an existing archived canonical outranks an unrelated active copy")
     func archivedCanonicalRemainsAuthoritativeWhilePresent() async throws {
         let harness = try makeHarness(lines: prefixLines())
@@ -891,6 +1219,27 @@ struct CodexIncrementalImportEngineTests {
         let engine: ImportEngine
     }
 
+    private final class TestClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Date
+
+        init(_ value: Date) {
+            self.value = value
+        }
+
+        func now() -> Date {
+            lock.lock()
+            defer { lock.unlock() }
+            return value
+        }
+
+        func advance(by interval: TimeInterval) {
+            lock.lock()
+            value = value.addingTimeInterval(interval)
+            lock.unlock()
+        }
+    }
+
     private struct UsageRow: Equatable {
         let id: Int64
         let timestamp: String
@@ -946,7 +1295,10 @@ struct CodexIncrementalImportEngineTests {
             codexHome: codexHome,
             rollout: discoveredRollout,
             database: database,
-            engine: ImportEngine(database: database, codexHome: codexHome))
+            engine: ImportEngine(
+                database: database,
+                codexHome: codexHome,
+                minimumRebuildStabilityInterval: 0))
     }
 
     private func prefixLines() -> [String] {
@@ -1067,6 +1419,17 @@ struct CodexIncrementalImportEngineTests {
     ) async throws -> ImportStateRecord? {
         try await database.pool.read { db in
             try ImportStateRecord
+                .filter(Column("source_path") == path)
+                .fetchOne(db)
+        }
+    }
+
+    private func rebuildObservation(
+        at path: String,
+        in database: DatabaseManager
+    ) async throws -> CodexRebuildObservationRecord? {
+        try await database.pool.read { db in
+            try CodexRebuildObservationRecord
                 .filter(Column("source_path") == path)
                 .fetchOne(db)
         }

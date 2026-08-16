@@ -203,6 +203,9 @@ extension AppEnvironment {
                         "imported_events": .int(merged.importedEvents),
                         "imported_rate_limit_samples": .int(merged.importedRateLimitSamples),
                         "updated_session_metadata": .int(merged.updatedSessionMetadata),
+                        "deferred_sources": .int(merged.deferredSourceCount),
+                        "persistent_deferred_sources": .int(
+                            merged.persistentDeferredSourceCount),
                         "errors": .int(merged.errors.count)
                     ])
                 // Frequent watcher scans can skip summary queries when their
@@ -335,6 +338,7 @@ extension AppEnvironment {
             incrementalFiles: a.incrementalFiles + b.incrementalFiles,
             sourceBytesRead: a.sourceBytesRead + b.sourceBytesRead,
             errors: a.errors + b.errors,
+            deferredSources: a.deferredSources + b.deferredSources,
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
     }
 

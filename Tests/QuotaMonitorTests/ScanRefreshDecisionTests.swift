@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import QuotaMonitor
 
@@ -96,5 +97,38 @@ struct ScanRefreshDecisionTests {
             errors: [])
 
         #expect(report.didChangeReadModel)
+    }
+
+    @Test("Deferred source observability survives provider report merging")
+    func deferredSourcesMergeWithoutBecomingImportErrors() {
+        let firstDeferredAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let codex = ImportEngine.ScanReport(
+            scannedFiles: 1,
+            changedFiles: 1,
+            importedSessions: 0,
+            importedEvents: 0,
+            importedRateLimitSamples: 0,
+            errors: [],
+            deferredSources: [
+                ImportEngine.ScanReport.DeferredSource(
+                    sourcePath: "/codex/stuck.jsonl",
+                    sessionId: "stuck",
+                    reason: "boundary_changed",
+                    consecutiveCount: 4,
+                    firstDeferredAt: firstDeferredAt,
+                    checkpointBytes: 843_500,
+                    currentBytes: 47_537_329,
+                    isPersistent: true)
+            ])
+
+        let merged = AppEnvironment.mergeScanReports(codex, .empty)
+
+        #expect(merged.errors.isEmpty)
+        #expect(merged.deferredSourceCount == 1)
+        #expect(merged.consecutiveDeferredCount == 4)
+        #expect(merged.firstDeferredAt == firstDeferredAt)
+        #expect(merged.persistentDeferredSourceCount == 1)
+        #expect(merged.hasPersistentDeferredSources)
+        #expect(!merged.didChangeReadModel)
     }
 }

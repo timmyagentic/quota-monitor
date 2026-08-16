@@ -10,11 +10,17 @@ import GRDB
 
 actor ImportEngine {
     private static let proactiveMetadataBackfillWindow: TimeInterval = 7 * 24 * 60 * 60
+    private static let persistentDeferralInterval: TimeInterval = 5 * 60
 
     private let database: DatabaseManager
     private let codexHome: URL?
     private let securityScopedAccess: any SecurityScopedResourceAccessing
     private let maxCheckpointBytes: Int
+    private let minimumRebuildStabilityInterval: TimeInterval
+    private let now: @Sendable () -> Date
+    /// Deterministic seam for proving the final descriptor verification wins
+    /// a parse-versus-writer race. Normal app construction always leaves nil.
+    private let sourceVerificationHook: (@Sendable (URL) throws -> Void)?
     private var warnedOversizedSources: Set<RolloutSourceIdentity> = []
     private var cachedCodexSessionMetadata: (
         fingerprint: CodexSessionMetadataSourceFingerprint,
@@ -44,6 +50,38 @@ actor ImportEngine {
         let mode: PersistMode
     }
 
+    private enum DeferredReason: String, Sendable {
+        case truncated
+        case headChanged = "head_changed"
+        case boundaryChanged = "boundary_changed"
+        case identityChanged = "identity_changed"
+        case lineageChanged = "lineage_changed"
+        case sessionChanged = "session_changed"
+        case checkpointInvalid = "checkpoint_invalid"
+        case incompleteTail = "incomplete_tail"
+
+        static func parserReason(_ reason: String) -> DeferredReason {
+            if reason.contains("head fingerprint") { return .headChanged }
+            if reason.contains("boundary") { return .boundaryChanged }
+            if reason.contains("identity") { return .identityChanged }
+            if reason.contains("lineage") { return .lineageChanged }
+            if reason.contains("session id") { return .sessionChanged }
+            if reason.contains("shrank") { return .truncated }
+            return .checkpointInvalid
+        }
+    }
+
+    private struct RebuildSignature: Equatable {
+        let snapshot: RolloutFileSnapshot
+        let prefixHash: Data
+        let tailHash: Data
+    }
+
+    private enum ParseDecision {
+        case parsed(ParsedCandidate)
+        case deferred(ScanReport.DeferredSource)
+    }
+
     private enum ImportStateConflict: Error, LocalizedError, CustomStringConvertible {
         case stale
         case fileChangedDuringParse
@@ -63,6 +101,17 @@ actor ImportEngine {
     }
 
     struct ScanReport: Sendable {
+        struct DeferredSource: Sendable, Equatable {
+            let sourcePath: String
+            let sessionId: String
+            let reason: String
+            let consecutiveCount: Int
+            let firstDeferredAt: Date
+            let checkpointBytes: Int64
+            let currentBytes: Int64
+            let isPersistent: Bool
+        }
+
         let scannedFiles: Int
         let changedFiles: Int
         let importedSessions: Int
@@ -76,6 +125,9 @@ actor ImportEngine {
         let incrementalFiles: Int
         let sourceBytesRead: Int64
         let errors: [String]
+        /// Sources whose committed checkpoint cannot currently be trusted.
+        /// They retain their last-known-good rows and retry automatically.
+        let deferredSources: [DeferredSource]
         /// True when an App Store security-scoped root resolved but its scope
         /// could not be opened (folder moved/revoked). Surfaced to the user via
         /// `lastError` so a silently-empty import prompts a re-select instead.
@@ -91,6 +143,7 @@ actor ImportEngine {
             incrementalFiles: Int = 0,
             sourceBytesRead: Int64 = 0,
             errors: [String],
+            deferredSources: [DeferredSource] = [],
             scopeUnavailable: Bool = false
         ) {
             self.scannedFiles = scannedFiles
@@ -102,7 +155,26 @@ actor ImportEngine {
             self.incrementalFiles = incrementalFiles
             self.sourceBytesRead = sourceBytesRead
             self.errors = errors
+            self.deferredSources = deferredSources
             self.scopeUnavailable = scopeUnavailable
+        }
+
+        var deferredSourceCount: Int { deferredSources.count }
+
+        var consecutiveDeferredCount: Int {
+            deferredSources.map(\.consecutiveCount).max() ?? 0
+        }
+
+        var firstDeferredAt: Date? {
+            deferredSources.map(\.firstDeferredAt).min()
+        }
+
+        var persistentDeferredSourceCount: Int {
+            deferredSources.lazy.filter(\.isPersistent).count
+        }
+
+        var hasPersistentDeferredSources: Bool {
+            persistentDeferredSourceCount > 0
         }
 
         /// Whether this scan changed data consumed by the menu-bar or
@@ -125,12 +197,19 @@ actor ImportEngine {
         codexHome: URL? = SessionScanner.defaultCodexHome(),
         securityScopedAccess: any SecurityScopedResourceAccessing =
             FoundationSecurityScopedResourceAccessing(),
-        maxCheckpointBytes: Int = 4 * 1024 * 1024
+        maxCheckpointBytes: Int = 4 * 1024 * 1024,
+        minimumRebuildStabilityInterval: TimeInterval = 2,
+        now: @escaping @Sendable () -> Date = { Date() },
+        sourceVerificationHook: (@Sendable (URL) throws -> Void)? = nil
     ) {
         self.database = database
         self.codexHome = codexHome
         self.securityScopedAccess = securityScopedAccess
         self.maxCheckpointBytes = max(0, maxCheckpointBytes)
+        self.minimumRebuildStabilityInterval = max(
+            0, minimumRebuildStabilityInterval)
+        self.now = now
+        self.sourceVerificationHook = sourceVerificationHook
     }
 
     func performScan(progress: ScanProgressHandler? = nil) async throws -> ScanReport {
@@ -310,11 +389,13 @@ actor ImportEngine {
         var importedSamples = 0
         var incrementalFiles = 0
         var sourceBytesRead: Int64 = 0
+        var deferredSources: [ScanReport.DeferredSource] = []
 
         for (index, candidate) in changed.enumerated() {
             let file = candidate.file
             do {
-                if let parsedCandidate = try Self.parse(candidate: candidate) {
+                switch try await parse(candidate: candidate) {
+                case .parsed(let parsedCandidate):
                     sourceBytesRead += parsedCandidate.output.sequentialBytesRead
                     if var parsed = parsedCandidate.output.session {
                         if parsed.sessionId == candidate.sessionId {
@@ -351,14 +432,28 @@ actor ImportEngine {
                     } else {
                         errors.append("no session id resolved: \(file.path)")
                     }
-                } else {
+                case .deferred(let deferred):
+                    deferredSources.append(deferred)
                     DeveloperLog.eventRecord(
                         "importer.codex.source.wait",
                         level: .warning,
                         category: "importer",
                         result: "deferred",
-                        message: "Codex source is not a stable append or replacement",
-                        fields: ["session_id": .string(candidate.sessionId)])
+                        message: "Codex source is waiting for stable full rebuild",
+                        fields: [
+                            "session_id": .string(deferred.sessionId),
+                            "reason": .string(deferred.reason),
+                            "consecutive_count": .int(deferred.consecutiveCount),
+                            "first_deferred_at": .string(
+                                ISO8601.fractional.string(
+                                    from: deferred.firstDeferredAt)),
+                            "checkpoint_bytes": .int(Int(deferred.checkpointBytes)),
+                            "current_bytes": .int(Int(deferred.currentBytes)),
+                            "recovery_action": .string(
+                                deferred.isPersistent
+                                    ? "waiting_for_stable_complete_source"
+                                    : "observe_again")
+                        ])
                 }
             } catch {
                 errors.append("\(file.path): \(error)")
@@ -372,6 +467,17 @@ actor ImportEngine {
                 completedFiles: nextIndex,
                 totalFiles: changed.count,
                 currentFile: nextFile))
+        }
+
+        // Observations for removed, de-canonicalized, or once-again-valid
+        // sources should not leave a permanent warning behind. Changed paths
+        // retain their observation until `persist` removes it transactionally
+        // or a later scan proves they no longer need recovery.
+        do {
+            try await removeInactiveRebuildObservations(
+                changedPaths: Set(changed.map { $0.file.path }))
+        } catch {
+            errors.append("Codex rebuild observation cleanup: \(error)")
         }
 
         // After all files are persisted, walk the parent chain to compute
@@ -394,13 +500,16 @@ actor ImportEngine {
             updatedSessionMetadata: updatedSessionMetadata,
             incrementalFiles: incrementalFiles,
             sourceBytesRead: sourceBytesRead,
-            errors: errors)
+            errors: errors,
+            deferredSources: deferredSources)
 
-        Log.importer.info("scan ok scanned=\(report.scannedFiles) changed=\(report.changedFiles) sessions=\(report.importedSessions) events=\(report.importedEvents) samples=\(report.importedRateLimitSamples) incremental=\(report.incrementalFiles) bytes=\(report.sourceBytesRead) errors=\(report.errors.count)")
+        Log.importer.info("scan ok scanned=\(report.scannedFiles) changed=\(report.changedFiles) sessions=\(report.importedSessions) events=\(report.importedEvents) samples=\(report.importedRateLimitSamples) incremental=\(report.incrementalFiles) bytes=\(report.sourceBytesRead) deferred=\(report.deferredSourceCount) errors=\(report.errors.count)")
         DeveloperLog.eventRecord(
             "importer.scan.finish",
             category: "importer",
-            result: "success",
+            result: report.errors.isEmpty
+                ? (report.deferredSources.isEmpty ? "success" : "deferred")
+                : "partial",
             fields: [
                 "scanned_files": .int(report.scannedFiles),
                 "changed_files": .int(report.changedFiles),
@@ -411,6 +520,11 @@ actor ImportEngine {
                 "session_metadata_cache_hit": .bool(sessionMetadataCacheHit),
                 "incremental_files": .int(report.incrementalFiles),
                 "source_bytes_read": .int(Int(report.sourceBytesRead)),
+                "deferred_sources": .int(report.deferredSourceCount),
+                "max_consecutive_deferred": .int(
+                    report.consecutiveDeferredCount),
+                "persistent_deferred_sources": .int(
+                    report.persistentDeferredSourceCount),
                 "errors": .int(report.errors.count)
             ])
         for err in report.errors.prefix(5) {
@@ -578,7 +692,7 @@ actor ImportEngine {
                 == checkpoint.boundaryHash
     }
 
-    private static func parse(candidate: ScanCandidate) throws -> ParsedCandidate? {
+    private func parse(candidate: ScanCandidate) async throws -> ParseDecision {
         let file = candidate.file
         let expected = candidate.expectedState
         let checkpoint: CodexRolloutCheckpoint? = expected.flatMap { state in
@@ -593,9 +707,9 @@ actor ImportEngine {
         if let checkpoint,
            checkpoint.sourceIdentity == file.sourceIdentity {
             guard file.fileSize >= checkpoint.offset else {
-                // Committed bytes were truncated in place. That violates the
-                // append-only contract, so preserve last-known-good rows.
-                return nil
+                return try await resolveInvalidCheckpoint(
+                    candidate: candidate,
+                    reason: .truncated)
             }
             do {
                 let output = try RolloutParser.parseIncrementally(
@@ -603,11 +717,13 @@ actor ImportEngine {
                     fallbackSessionId: candidate.sessionId,
                     checkpoint: checkpoint)
                 if output.checkpoint != nil {
-                    return ParsedCandidate(output: output, mode: .append)
+                    return .parsed(ParsedCandidate(output: output, mode: .append))
                 }
             } catch let error as RolloutParserError {
-                if case .requiresFullRebuild = error {
-                    return nil
+                if case .requiresFullRebuild(let reason) = error {
+                    return try await resolveInvalidCheckpoint(
+                        candidate: candidate,
+                        reason: .parserReason(reason))
                 }
                 // Decode/version failures take the conservative full path.
             }
@@ -621,9 +737,217 @@ actor ImportEngine {
         } ?? false
         if (replacedIdentity || candidate.replacesExistingHistory),
            output.hasIncompleteTail {
-            return nil
+            let observation = try await observeRebuild(
+                candidate: candidate,
+                reason: .incompleteTail)
+            return .deferred(deferredSource(
+                candidate: candidate,
+                record: observation.record,
+                observedAt: observation.observedAt))
         }
-        return ParsedCandidate(output: output, mode: .replace)
+        return .parsed(ParsedCandidate(output: output, mode: .replace))
+    }
+
+    /// Same-inode rewrites are ambiguous while the upstream writer is active.
+    /// Require an identical persisted signature on a later scan, then parse
+    /// from byte zero. A second fingerprint comparison prevents a file that
+    /// changed between observation and parsing from bypassing that stability
+    /// gate; `persist` performs the final pre-transaction verification.
+    private func resolveInvalidCheckpoint(
+        candidate: ScanCandidate,
+        reason: DeferredReason
+    ) async throws -> ParseDecision {
+        let observation = try await observeRebuild(
+            candidate: candidate,
+            reason: reason)
+        var deferred = deferredSource(
+            candidate: candidate,
+            record: observation.record,
+            observedAt: observation.observedAt)
+
+        if observation.record.reason == DeferredReason.incompleteTail.rawValue {
+            return .deferred(deferred)
+        }
+
+        let firstObserved = ISO8601.parse(observation.record.firstDeferredAt)
+            ?? observation.observedAt
+        let stableFor = observation.observedAt.timeIntervalSince(firstObserved)
+        guard observation.record.consecutiveCount >= 2,
+              stableFor >= minimumRebuildStabilityInterval
+        else {
+            return .deferred(deferred)
+        }
+
+        let output = try RolloutParser.parseIncrementally(
+            fileURL: candidate.file.url,
+            fallbackSessionId: candidate.sessionId)
+        let parsedSignature = RebuildSignature(
+            snapshot: output.snapshot,
+            prefixHash: output.prefixHash,
+            tailHash: output.endBoundaryHash)
+        if output.hasIncompleteTail {
+            // The parser's end boundary stops before an incomplete record, so
+            // it intentionally cannot equal the full-file tail signature.
+            // Snapshot + head still prove we parsed the observed source.
+            guard output.snapshot == observation.signature.snapshot,
+                  output.prefixHash == observation.signature.prefixHash
+            else {
+                let changed = try await observeRebuild(
+                    candidate: candidate,
+                    reason: reason)
+                deferred = deferredSource(
+                    candidate: candidate,
+                    record: changed.record,
+                    observedAt: changed.observedAt)
+                return .deferred(deferred)
+            }
+            let incomplete = try await updateObservationReason(
+                observation.record,
+                reason: .incompleteTail,
+                observedAt: observation.observedAt)
+            deferred = deferredSource(
+                candidate: candidate,
+                record: incomplete,
+                observedAt: observation.observedAt)
+            return .deferred(deferred)
+        }
+        guard parsedSignature == observation.signature else {
+            let changed = try await observeRebuild(
+                candidate: candidate,
+                reason: reason)
+            deferred = deferredSource(
+                candidate: candidate,
+                record: changed.record,
+                observedAt: changed.observedAt)
+            return .deferred(deferred)
+        }
+
+        return .parsed(ParsedCandidate(output: output, mode: .replace))
+    }
+
+    private func observeRebuild(
+        candidate: ScanCandidate,
+        reason: DeferredReason
+    ) async throws -> (
+        record: CodexRebuildObservationRecord,
+        signature: RebuildSignature,
+        observedAt: Date
+    ) {
+        let signature = try Self.rebuildSignature(fileURL: candidate.file.url)
+        let observedAt = now()
+        let timestamp = ISO8601.fractional.string(from: observedAt)
+        let record = try await database.pool.write { db in
+            let existing = try CodexRebuildObservationRecord
+                .filter(Column("source_path") == candidate.file.path)
+                .fetchOne(db)
+            let signatureMatches = existing.map {
+                Self.observation($0, matches: signature)
+                    && $0.sessionId == candidate.sessionId
+            } ?? false
+            let preservedIncompleteTail = signatureMatches
+                && existing?.reason == DeferredReason.incompleteTail.rawValue
+            let nextCount: Int
+            if signatureMatches, let existing {
+                nextCount = existing.consecutiveCount == Int.max
+                    ? Int.max
+                    : existing.consecutiveCount + 1
+            } else {
+                nextCount = 1
+            }
+            let next = CodexRebuildObservationRecord(
+                sourcePath: candidate.file.path,
+                sessionId: candidate.sessionId,
+                reason: preservedIncompleteTail
+                    ? DeferredReason.incompleteTail.rawValue
+                    : reason.rawValue,
+                sourceDevice: signature.snapshot.device,
+                sourceInode: signature.snapshot.inode,
+                sourceBirthtimeNs: signature.snapshot.birthtimeNs,
+                fileSize: signature.snapshot.size,
+                fileMtimeMs: signature.snapshot.mtimeMs,
+                prefixHash: signature.prefixHash,
+                tailHash: signature.tailHash,
+                firstDeferredAt: signatureMatches
+                    ? existing?.firstDeferredAt ?? timestamp
+                    : timestamp,
+                lastDeferredAt: timestamp,
+                consecutiveCount: nextCount)
+            try next.save(db)
+            return next
+        }
+        return (record, signature, observedAt)
+    }
+
+    private func updateObservationReason(
+        _ record: CodexRebuildObservationRecord,
+        reason: DeferredReason,
+        observedAt: Date
+    ) async throws -> CodexRebuildObservationRecord {
+        var updated = record
+        updated.reason = reason.rawValue
+        updated.lastDeferredAt = ISO8601.fractional.string(from: observedAt)
+        let saved = updated
+        try await database.pool.write { db in
+            try saved.save(db)
+        }
+        return saved
+    }
+
+    private func deferredSource(
+        candidate: ScanCandidate,
+        record: CodexRebuildObservationRecord,
+        observedAt: Date
+    ) -> ScanReport.DeferredSource {
+        let firstDeferredAt = ISO8601.parse(record.firstDeferredAt) ?? observedAt
+        let isPersistent = record.consecutiveCount >= 3
+            || observedAt.timeIntervalSince(firstDeferredAt)
+                >= Self.persistentDeferralInterval
+        return ScanReport.DeferredSource(
+            sourcePath: record.sourcePath,
+            sessionId: record.sessionId,
+            reason: record.reason,
+            consecutiveCount: record.consecutiveCount,
+            firstDeferredAt: firstDeferredAt,
+            checkpointBytes: candidate.expectedState?.byteOffset ?? 0,
+            currentBytes: record.fileSize,
+            isPersistent: isPersistent)
+    }
+
+    private static func rebuildSignature(fileURL: URL) throws -> RebuildSignature {
+        let reader = try RolloutRecordReader(fileURL: fileURL)
+        defer { try? reader.close() }
+        let size = reader.snapshot.size
+        let window = RolloutParser.fingerprintWindowBytes
+        return RebuildSignature(
+            snapshot: reader.snapshot,
+            prefixHash: try reader.sha256(in: 0..<min(size, window)),
+            tailHash: try reader.sha256(in: max(0, size - window)..<size))
+    }
+
+    private static func observation(
+        _ record: CodexRebuildObservationRecord,
+        matches signature: RebuildSignature
+    ) -> Bool {
+        record.sourceDevice == signature.snapshot.device
+            && record.sourceInode == signature.snapshot.inode
+            && record.sourceBirthtimeNs == signature.snapshot.birthtimeNs
+            && record.fileSize == signature.snapshot.size
+            && record.fileMtimeMs == signature.snapshot.mtimeMs
+            && record.prefixHash == signature.prefixHash
+            && record.tailHash == signature.tailHash
+    }
+
+    private func removeInactiveRebuildObservations(
+        changedPaths: Set<String>
+    ) async throws {
+        try await database.pool.write { db in
+            let observations = try CodexRebuildObservationRecord.fetchAll(db)
+            for observation in observations
+            where !changedPaths.contains(observation.sourcePath) {
+                try CodexRebuildObservationRecord.deleteOne(
+                    db, key: observation.sourcePath)
+            }
+        }
     }
 
     static func verifyCurrentSource(
@@ -756,6 +1080,7 @@ actor ImportEngine {
         expectedState: ImportStateRecord?,
         mode: PersistMode
     ) async throws -> PersistCounts {
+        try sourceVerificationHook?(file.url)
         try Self.verifyCurrentSource(file: file, output: output)
 
         let checkpointData: Data?
@@ -857,11 +1182,17 @@ actor ImportEngine {
             // names one canonical source, so stale aliases are state only and
             // can be consolidated without touching user JSONL files.
             try nextState.save(db)
+            try CodexRebuildObservationRecord.deleteOne(db, key: file.path)
             if let oldPath = expectedState?.sourcePath, oldPath != file.path {
                 try ImportStateRecord.deleteOne(db, key: oldPath)
+                try CodexRebuildObservationRecord.deleteOne(db, key: oldPath)
             }
             try db.execute(sql: """
                 DELETE FROM import_state
+                WHERE session_id = ? AND source_path <> ?
+                """, arguments: [parsed.sessionId, file.path])
+            try db.execute(sql: """
+                DELETE FROM codex_rebuild_observations
                 WHERE session_id = ? AND source_path <> ?
                 """, arguments: [parsed.sessionId, file.path])
 

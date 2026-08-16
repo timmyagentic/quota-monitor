@@ -59,6 +59,9 @@ struct MainWindowLayoutTests {
         #expect(menuBar.contains(".accessibilityLabel(L10n.scanUpdatingFiles)"))
         #expect(scanStatus.contains(
             "env.scanPresentation == .detailedProgress"))
+        #expect(scanStatus.contains("report.hasPersistentDeferredSources"))
+        #expect(scanStatus.contains("L10n.scanDeferredWarningTitle"))
+        #expect(scanStatus.contains("L10n.scanDeferredWarningDetail"))
         #expect(onboarding.contains(
             "env.runScan(minInterval: 0, trigger: \"onboarding\")"))
     }
