@@ -430,6 +430,62 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database).byteOffset == Int64(rewrittenData.count))
     }
 
+    @Test("a rewrite caught between records recovers on the next scan")
+    func rewriteCaughtBetweenRecordsRecoversOnTheNextScan() async throws {
+        let harness = try makeHarness(lines: prefixLines() + [
+            tokenLine(
+                timestamp: "2026-07-19T00:00:04.000Z",
+                total: usage(input: 160, cached: 25, output: 18, reasoning: 5),
+                last: usage(input: 60, cached: 5, output: 8, reasoning: 2)),
+        ])
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 68])
+        let originalIdentity = try sourceIdentity(of: harness.rollout)
+
+        // Worst case for a rebuild with no quiescence check: the writer has
+        // truncated and replayed a newline-terminated prefix, so nothing marks
+        // the source as mid-flight. The rebuild follows the file down.
+        let replayedPrefix = rolloutData([
+            metaLine(timestamp: "2026-07-19T01:00:00.000Z"),
+            contextLine(timestamp: "2026-07-19T01:00:01.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T01:00:02.000Z",
+                total: usage(input: 40, cached: 5, output: 5, reasoning: 1),
+                last: usage(input: 40, cached: 5, output: 5, reasoning: 1)),
+        ])
+        try overwriteInPlace(replayedPrefix, at: harness.rollout)
+        #expect(try sourceIdentity(of: harness.rollout) == originalIdentity,
+                "must exercise the same-inode rewrite path")
+
+        let midRewriteReport = try await harness.engine.performScan()
+        #expect(midRewriteReport.importedEvents == 1)
+        #expect(midRewriteReport.errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [45])
+
+        // The writer finishes the rewrite. The dip is transient: the committed
+        // checkpoint now matches the replayed prefix, so the remaining records
+        // arrive incrementally rather than through another full rebuild.
+        let rest = [
+            tokenLine(
+                timestamp: "2026-07-19T01:00:03.000Z",
+                total: usage(input: 65, cached: 7, output: 10, reasoning: 2),
+                last: usage(input: 25, cached: 2, output: 5, reasoning: 1)),
+            tokenLine(
+                timestamp: "2026-07-19T01:00:04.000Z",
+                total: usage(input: 90, cached: 9, output: 15, reasoning: 3),
+                last: usage(input: 25, cached: 2, output: 5, reasoning: 1)),
+        ].joined(separator: "\n") + "\n"
+        try append(Data(rest.utf8), to: harness.rollout)
+
+        let recoveredReport = try await harness.engine.performScan()
+        #expect(recoveredReport.incrementalFiles == 1)
+        #expect(recoveredReport.importedEvents == 2)
+        #expect(recoveredReport.errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [45, 30, 30])
+    }
+
     @Test("an existing archived canonical outranks an unrelated active copy")
     func archivedCanonicalRemainsAuthoritativeWhilePresent() async throws {
         let harness = try makeHarness(lines: prefixLines())
