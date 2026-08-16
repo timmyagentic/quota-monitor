@@ -11,6 +11,7 @@ import GRDB
 actor ImportEngine {
     private static let proactiveMetadataBackfillWindow: TimeInterval = 7 * 24 * 60 * 60
     private static let persistentDeferralInterval: TimeInterval = 5 * 60
+    static let defaultRebuildStabilityInterval: TimeInterval = 2
 
     private let database: DatabaseManager
     private let codexHome: URL?
@@ -102,6 +103,7 @@ actor ImportEngine {
 
     struct ScanReport: Sendable {
         struct DeferredSource: Sendable, Equatable {
+            let provider: String
             let sourcePath: String
             let sessionId: String
             let reason: String
@@ -177,6 +179,23 @@ actor ImportEngine {
             persistentDeferredSourceCount > 0
         }
 
+        func replacingDeferredSources(
+            _ sources: [DeferredSource]
+        ) -> ScanReport {
+            ScanReport(
+                scannedFiles: scannedFiles,
+                changedFiles: changedFiles,
+                importedSessions: importedSessions,
+                importedEvents: importedEvents,
+                importedRateLimitSamples: importedRateLimitSamples,
+                updatedSessionMetadata: updatedSessionMetadata,
+                incrementalFiles: incrementalFiles,
+                sourceBytesRead: sourceBytesRead,
+                errors: errors,
+                deferredSources: sources,
+                scopeUnavailable: scopeUnavailable)
+        }
+
         /// Whether this scan changed data consumed by the menu-bar or
         /// Dashboard aggregators. File/checkpoint churn alone does not count.
         var didChangeReadModel: Bool {
@@ -198,7 +217,8 @@ actor ImportEngine {
         securityScopedAccess: any SecurityScopedResourceAccessing =
             FoundationSecurityScopedResourceAccessing(),
         maxCheckpointBytes: Int = 4 * 1024 * 1024,
-        minimumRebuildStabilityInterval: TimeInterval = 2,
+        minimumRebuildStabilityInterval: TimeInterval =
+            ImportEngine.defaultRebuildStabilityInterval,
         now: @escaping @Sendable () -> Date = { Date() },
         sourceVerificationHook: (@Sendable (URL) throws -> Void)? = nil
     ) {
@@ -903,6 +923,7 @@ actor ImportEngine {
             || observedAt.timeIntervalSince(firstDeferredAt)
                 >= Self.persistentDeferralInterval
         return ScanReport.DeferredSource(
+            provider: "codex",
             sourcePath: record.sourcePath,
             sessionId: record.sessionId,
             reason: record.reason,

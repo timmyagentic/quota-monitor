@@ -115,7 +115,9 @@ extension AppEnvironment {
                     // Fire any Claude file-watch write that was coalesced while
                     // this scan held `isScanning`, so a post-read append isn't
                     // stranded until the next write / manual refresh.
-                    self.runPendingClaudeFileWatchScanIfNeeded()
+                    if !self.runPendingCodexRebuildScanIfNeeded() {
+                        self.runPendingClaudeFileWatchScanIfNeeded()
+                    }
                 }
             }
             do {
@@ -182,11 +184,19 @@ extension AppEnvironment {
                         try await codexReport, try await claudeTask.value)
                 }
                 await MainActor.run {
-                    self.lastScanReport = merged
+                    let displayReport = Self.preservingUnscannedDeferrals(
+                        current: merged,
+                        previous: self.lastScanReport,
+                        scannedProviders: scanProviders,
+                        enabledProviders: enabled)
+                    self.lastScanReport = displayReport
                     if merged.didChangeReadModel {
                         self.sessionsDataGeneration &+= 1
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
+                    self.updateCodexRebuildFollowUp(
+                        report: merged,
+                        codexWasScanned: scanProviders.contains("codex"))
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.
                     if merged.scopeUnavailable {
@@ -340,6 +350,124 @@ extension AppEnvironment {
             errors: a.errors + b.errors,
             deferredSources: a.deferredSources + b.deferredSources,
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
+    }
+
+    /// A scoped scan owns health only for the providers it actually visited.
+    /// Keep unresolved warnings from enabled, unscanned providers so a
+    /// Claude-only FSEvents import cannot make a Codex problem disappear.
+    nonisolated static func preservingUnscannedDeferrals(
+        current: ImportEngine.ScanReport,
+        previous: ImportEngine.ScanReport?,
+        scannedProviders: Set<String>,
+        enabledProviders: Set<String>
+    ) -> ImportEngine.ScanReport {
+        guard let previous else { return current }
+        let currentKeys = Set(current.deferredSources.map {
+            $0.provider + "\u{1F}" + $0.sourcePath
+        })
+        let retained = previous.deferredSources.filter { source in
+            enabledProviders.contains(source.provider)
+                && !scannedProviders.contains(source.provider)
+                && !currentKeys.contains(
+                    source.provider + "\u{1F}" + source.sourcePath)
+        }
+        guard !retained.isEmpty else { return current }
+        return current.replacingDeferredSources(
+            current.deferredSources + retained)
+    }
+
+    /// Initial fingerprint mismatches retry just after the importer stability
+    /// window. An unchanged incomplete tail backs off exponentially to five
+    /// minutes; its signature check reads only two 4 KB windows, and any file
+    /// change returns to the short stability-confirmation delay.
+    nonisolated static func codexRebuildFollowUpDelay(
+        for sources: [ImportEngine.ScanReport.DeferredSource]
+    ) -> TimeInterval? {
+        let codexSources = sources.filter { $0.provider == "codex" }
+        guard !codexSources.isEmpty else { return nil }
+        if codexSources.contains(where: { $0.reason != "incomplete_tail" }) {
+            return ImportEngine.defaultRebuildStabilityInterval + 0.5
+        }
+        let count = codexSources.map(\.consecutiveCount).max() ?? 1
+        let exponent = min(6, max(0, count - 2))
+        return min(5 * pow(2, Double(exponent)), 5 * 60)
+    }
+
+    func updateCodexRebuildFollowUp(
+        report: ImportEngine.ScanReport,
+        codexWasScanned: Bool
+    ) {
+        guard codexWasScanned else { return }
+        codexRebuildFollowUpTask?.cancel()
+        codexRebuildFollowUpTask = nil
+        // This scan has consumed any follow-up that became pending while a
+        // different scan was active. If the source is still deferred below,
+        // arm exactly one new timer instead of also launching an immediate
+        // duplicate from the scan's defer.
+        codexRebuildFollowUpPending = false
+
+        guard let delay = Self.codexRebuildFollowUpDelay(
+            for: report.deferredSources)
+        else {
+            return
+        }
+
+        DeveloperLog.eventRecord(
+            "importer.codex.rebuild_follow_up.schedule",
+            category: "scan",
+            trigger: "codex-rebuild-follow-up",
+            provider: "codex",
+            result: "scheduled",
+            fields: [
+                "delay_seconds": .double(delay),
+                "deferred_sources": .int(report.deferredSourceCount),
+                "max_consecutive_deferred": .int(
+                    report.consecutiveDeferredCount)
+            ])
+        codexRebuildFollowUpTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.codexRebuildFollowUpTask = nil
+            guard !self.isScanning else {
+                self.codexRebuildFollowUpPending = true
+                DeveloperLog.eventRecord(
+                    "importer.codex.rebuild_follow_up.coalesced",
+                    category: "scan",
+                    trigger: "codex-rebuild-follow-up",
+                    provider: "codex",
+                    result: "coalesced")
+                return
+            }
+            self.runScan(
+                providers: ["codex"],
+                trigger: "codex-rebuild-follow-up")
+        }
+    }
+
+    /// Returns true when it starts a Codex scan. The caller then leaves any
+    /// pending Claude watcher scan queued; the Codex scan's defer consumes it.
+    @discardableResult
+    func runPendingCodexRebuildScanIfNeeded() -> Bool {
+        guard codexRebuildFollowUpPending else { return false }
+        codexRebuildFollowUpPending = false
+        runScan(
+            providers: ["codex"],
+            trigger: "codex-rebuild-follow-up-trailing")
+        return true
+    }
+
+    func cancelCodexRebuildFollowUp() {
+        codexRebuildFollowUpTask?.cancel()
+        codexRebuildFollowUpTask = nil
+        codexRebuildFollowUpPending = false
+    }
+
+    var _codexRebuildFollowUpIsScheduledForTest: Bool {
+        codexRebuildFollowUpTask != nil
     }
 
     /// Pure post-scan refresh policy. Persisted changes and explicit refreshes

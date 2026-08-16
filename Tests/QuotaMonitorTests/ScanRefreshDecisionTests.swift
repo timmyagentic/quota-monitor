@@ -111,6 +111,7 @@ struct ScanRefreshDecisionTests {
             errors: [],
             deferredSources: [
                 ImportEngine.ScanReport.DeferredSource(
+                    provider: "codex",
                     sourcePath: "/codex/stuck.jsonl",
                     sessionId: "stuck",
                     reason: "boundary_changed",
@@ -130,5 +131,137 @@ struct ScanRefreshDecisionTests {
         #expect(merged.persistentDeferredSourceCount == 1)
         #expect(merged.hasPersistentDeferredSources)
         #expect(!merged.didChangeReadModel)
+    }
+
+    @Test("Claude-only scans retain an unresolved Codex deferral")
+    func scopedScanRetainsUnscannedProviderDeferral() {
+        let previous = deferredCodexReport()
+        let claude = ImportEngine.ScanReport(
+            scannedFiles: 1,
+            changedFiles: 0,
+            importedSessions: 0,
+            importedEvents: 0,
+            importedRateLimitSamples: 0,
+            errors: [])
+
+        let displayed = AppEnvironment.preservingUnscannedDeferrals(
+            current: claude,
+            previous: previous,
+            scannedProviders: ["claude"],
+            enabledProviders: ["codex", "claude"])
+
+        #expect(displayed.deferredSources == previous.deferredSources)
+        #expect(displayed.scannedFiles == 1)
+    }
+
+    @Test("A Codex scan owns and clears its previous deferral")
+    func scannedProviderClearsResolvedDeferral() {
+        let displayed = AppEnvironment.preservingUnscannedDeferrals(
+            current: .empty,
+            previous: deferredCodexReport(),
+            scannedProviders: ["codex"],
+            enabledProviders: ["codex", "claude"])
+
+        #expect(displayed.deferredSources.isEmpty)
+    }
+
+    @Test("Disabling Codex drops its stale deferral")
+    func disabledProviderClearsDeferral() {
+        let displayed = AppEnvironment.preservingUnscannedDeferrals(
+            current: .empty,
+            previous: deferredCodexReport(),
+            scannedProviders: ["claude"],
+            enabledProviders: ["claude"])
+
+        #expect(displayed.deferredSources.isEmpty)
+    }
+
+    @Test("Codex rebuild retry delay confirms stability then backs off")
+    func codexRebuildRetryDelayPolicy() {
+        let changed = deferredCodexReport(
+            reason: "head_changed", consecutiveCount: 1)
+        let incomplete = deferredCodexReport(
+            reason: "incomplete_tail", consecutiveCount: 5)
+        let longIncomplete = deferredCodexReport(
+            reason: "incomplete_tail", consecutiveCount: 100)
+
+        #expect(AppEnvironment.codexRebuildFollowUpDelay(
+            for: changed.deferredSources)
+            == ImportEngine.defaultRebuildStabilityInterval + 0.5)
+        #expect(AppEnvironment.codexRebuildFollowUpDelay(
+            for: incomplete.deferredSources) == 40)
+        #expect(AppEnvironment.codexRebuildFollowUpDelay(
+            for: longIncomplete.deferredSources) == 300)
+        #expect(AppEnvironment.codexRebuildFollowUpDelay(for: []) == nil)
+    }
+
+    private func deferredCodexReport(
+        reason: String = "boundary_changed",
+        consecutiveCount: Int = 4
+    ) -> ImportEngine.ScanReport {
+        ImportEngine.ScanReport(
+            scannedFiles: 1,
+            changedFiles: 1,
+            importedSessions: 0,
+            importedEvents: 0,
+            importedRateLimitSamples: 0,
+            errors: [],
+            deferredSources: [
+                ImportEngine.ScanReport.DeferredSource(
+                    provider: "codex",
+                    sourcePath: "/codex/stuck.jsonl",
+                    sessionId: "stuck",
+                    reason: reason,
+                    consecutiveCount: consecutiveCount,
+                    firstDeferredAt: Date(timeIntervalSince1970: 1_700_000_000),
+                    checkpointBytes: 843_500,
+                    currentBytes: 47_537_329,
+                    isPersistent: consecutiveCount >= 3)
+            ])
+    }
+}
+
+@MainActor
+@Suite("Codex rebuild follow-up scheduling")
+struct CodexRebuildFollowUpSchedulingTests {
+    @Test("A deferred Codex scan arms one automatic follow-up")
+    func deferredScanSchedulesFollowUp() {
+        let env = AppEnvironment(startBackgroundTasks: false)
+        let report = ImportEngine.ScanReport(
+            scannedFiles: 1,
+            changedFiles: 1,
+            importedSessions: 0,
+            importedEvents: 0,
+            importedRateLimitSamples: 0,
+            errors: [],
+            deferredSources: [
+                ImportEngine.ScanReport.DeferredSource(
+                    provider: "codex",
+                    sourcePath: "/codex/stuck.jsonl",
+                    sessionId: "stuck",
+                    reason: "head_changed",
+                    consecutiveCount: 1,
+                    firstDeferredAt: Date(),
+                    checkpointBytes: 100,
+                    currentBytes: 200,
+                    isPersistent: false)
+            ])
+
+        env.updateCodexRebuildFollowUp(
+            report: report, codexWasScanned: true)
+
+        #expect(env._codexRebuildFollowUpIsScheduledForTest)
+        env.cancelCodexRebuildFollowUp()
+        #expect(!env._codexRebuildFollowUpIsScheduledForTest)
+    }
+
+    @Test("An unrelated provider scan does not alter Codex scheduling")
+    func unrelatedScanDoesNotScheduleFollowUp() {
+        let env = AppEnvironment(startBackgroundTasks: false)
+
+        env.updateCodexRebuildFollowUp(
+            report: .empty, codexWasScanned: false)
+
+        #expect(!env._codexRebuildFollowUpIsScheduledForTest)
     }
 }

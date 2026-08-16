@@ -65,6 +65,7 @@ final class LocalQAController {
                     errors: [],
                     deferredSources: [
                         ImportEngine.ScanReport.DeferredSource(
+                            provider: "codex",
                             sourcePath: "/qa/codex/rollout.jsonl",
                             sessionId: "qa-deferred-session",
                             reason: "head_changed",

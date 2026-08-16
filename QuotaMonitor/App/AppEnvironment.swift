@@ -114,6 +114,13 @@ final class AppEnvironment {
     /// write that lands inside the throttle window). Coalesces a burst into one
     /// trailing scan; cancelled when the watcher stops.
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
+    /// One coalesced delayed Codex scan used only while an invalid checkpoint
+    /// is waiting for a stable source signature. Unlike the regular popover
+    /// throttle, this closes the recovery loop without another user action.
+    var codexRebuildFollowUpTask: Task<Void, Never>?
+    /// The follow-up timer elapsed while another provider scan was running.
+    /// The active scan consumes this in its defer and starts the Codex scan.
+    var codexRebuildFollowUpPending = false
     var isLoadingDashboard = false
     var lastError: String?
 
@@ -241,6 +248,7 @@ final class AppEnvironment {
 
     func reloadHistoryImportRoots() {
         guard let db = database else { return }
+        cancelCodexRebuildFollowUp()
         importEngine = ImportEngine(database: db)
         claudeEngine = ClaudeImportEngine(database: db)
         // Rebuild the Claude file-watcher against the new roots so a mid-session
@@ -642,6 +650,18 @@ final class AppEnvironment {
     /// the UI immediately matches the new set.
     func applyEnabledProviders() {
         let enabled = SettingsStore.snapshot().enabledProviders
+        if !enabled.contains("codex") {
+            cancelCodexRebuildFollowUp()
+        }
+        if let report = lastScanReport {
+            let visibleDeferrals = report.deferredSources.filter {
+                enabled.contains($0.provider)
+            }
+            if visibleDeferrals.count != report.deferredSources.count {
+                lastScanReport = report.replacingDeferredSources(
+                    visibleDeferrals)
+            }
+        }
         DeveloperLog.eventRecord(
             "settings.enabled_providers.apply",
             category: "settings",
