@@ -24,6 +24,8 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-08-16
+
 #### Summary
 
 - Codex 在原文件内重写历史记录后，Quota Monitor 会在文件稳定时自动恢复导入，不再永久漏掉最近的 token 用量。

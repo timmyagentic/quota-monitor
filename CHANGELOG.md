@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-08-16
+
 #### Summary
 
 - Codex history that is rewritten in place now recovers automatically after the file becomes stable, instead of leaving recent token usage permanently missing.

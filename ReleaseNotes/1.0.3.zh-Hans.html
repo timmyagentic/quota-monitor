@@ -1,0 +1,14 @@
+<div class="release-summary">
+<ul>
+<li>Codex 日志被原地重写后，历史统计现在会自动恢复。</li>
+<li>重写尚未完成时继续保留现有统计，避免半写文件破坏旧数据。</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>修复</h3>
+<ul>
+<li><b>重建恢复。</b>稳定后的重写日志会从头重算并在事务中替换，新的 token 用量不再被失效 checkpoint 永久卡住。</li>
+<li><b>导入状态。</b>持续 deferred 的来源会自动重试，并在菜单栏提示统计可能不完整，不再显示为完整成功。</li>
+</ul>
+</div>

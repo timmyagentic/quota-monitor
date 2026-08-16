@@ -1,0 +1,14 @@
+<div class="release-summary">
+<ul>
+<li>Codex history now recovers automatically when a rollout file is rewritten in place.</li>
+<li>Existing statistics stay intact while an incomplete rewrite is still being written.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Fixed</h3>
+<ul>
+<li><b>Rebuild recovery.</b> Stable rewritten rollouts are reparsed from the beginning and replaced transactionally, so newer token usage is no longer stranded behind an invalid checkpoint.</li>
+<li><b>Import health.</b> Persistent deferred sources are retried automatically and shown in the menu-bar warning instead of being reported as a complete successful scan.</li>
+</ul>
+</div>
