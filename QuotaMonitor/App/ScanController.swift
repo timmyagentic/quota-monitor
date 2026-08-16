@@ -458,6 +458,21 @@ extension AppEnvironment {
             report: previousReport)
     }
 
+    /// Disabling Codex intentionally hides its warning and cancels the
+    /// in-memory timer, but leaves the durable rebuild observation intact.
+    /// Start one immediate, coalesced history scan when Codex is enabled
+    /// again so that persisted recovery work cannot remain stranded.
+    func resumeCodexHistoryImportAfterProviderEnable() {
+        codexRebuildFollowUpFailureCount = 0
+        DeveloperLog.eventRecord(
+            "importer.codex.rebuild_follow_up.resume",
+            category: "scan",
+            trigger: "provider-enabled",
+            provider: "codex",
+            result: "scheduled")
+        scheduleCodexRebuildFollowUp(after: 0, report: nil)
+    }
+
     private func scheduleCodexRebuildFollowUp(
         after delay: TimeInterval,
         report: ImportEngine.ScanReport?

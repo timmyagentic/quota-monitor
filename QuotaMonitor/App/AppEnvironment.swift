@@ -124,6 +124,10 @@ final class AppEnvironment {
     /// Consecutive scan-level failures while closing a rebuild recovery loop.
     /// Used for bounded retry backoff; reset by a successful Codex scan.
     var codexRebuildFollowUpFailureCount = 0
+    /// Last provider set applied to the live runtime. Keeping this separate
+    /// from the current Settings snapshot lets us detect a disabled -> enabled
+    /// transition after the setting has already been persisted.
+    private var lastAppliedEnabledProviders: Set<String>
     var isLoadingDashboard = false
     var lastError: String?
 
@@ -217,6 +221,7 @@ final class AppEnvironment {
         self.codexAccountUsageClient = codexAccountUsageClient
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
+        self.lastAppliedEnabledProviders = SettingsStore.snapshot().enabledProviders
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
         guard startBackgroundTasks else { return }
         // Boot background polling immediately so it doesn't depend on the user
@@ -653,6 +658,10 @@ final class AppEnvironment {
     /// the UI immediately matches the new set.
     func applyEnabledProviders() {
         let enabled = SettingsStore.snapshot().enabledProviders
+        let previouslyEnabled = lastAppliedEnabledProviders
+        lastAppliedEnabledProviders = enabled
+        let codexBecameEnabled = Self.providerBecameEnabled(
+            "codex", previous: previouslyEnabled, current: enabled)
         if !enabled.contains("codex") {
             cancelCodexRebuildFollowUp()
         }
@@ -712,6 +721,9 @@ final class AppEnvironment {
                     "error_message": .string(error.localizedDescription)
                 ])
         }
+        if codexBecameEnabled {
+            resumeCodexHistoryImportAfterProviderEnable()
+        }
         // Snap the toolbar filter off a disabled provider. We never
         // synthesize a single-provider filter — the union view (`.all`)
         // is always a valid fallback even when only one provider is
@@ -726,6 +738,14 @@ final class AppEnvironment {
             refreshDashboard(trigger: "settings")
         }
         refreshMenuBar(trigger: "settings")
+    }
+
+    nonisolated static func providerBecameEnabled(
+        _ provider: String,
+        previous: Set<String>,
+        current: Set<String>
+    ) -> Bool {
+        !previous.contains(provider) && current.contains(provider)
     }
 
     /// Apply runtime-mutable settings without restarting the app.

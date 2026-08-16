@@ -253,6 +253,27 @@ struct ScanRefreshDecisionTests {
 @MainActor
 @Suite("Codex rebuild follow-up scheduling")
 struct CodexRebuildFollowUpSchedulingTests {
+    @Test("Only a disabled-to-enabled transition resumes Codex history")
+    func providerEnableTransitionDecision() {
+        #expect(AppEnvironment.providerBecameEnabled(
+            "codex", previous: ["claude"], current: ["codex", "claude"]))
+        #expect(!AppEnvironment.providerBecameEnabled(
+            "codex", previous: ["codex", "claude"], current: ["codex", "claude"]))
+        #expect(!AppEnvironment.providerBecameEnabled(
+            "codex", previous: ["codex", "claude"], current: ["claude"]))
+    }
+
+    @Test("Re-enabling Codex arms an immediate coalesced history scan")
+    func providerEnableSchedulesHistoryScan() {
+        let env = AppEnvironment(startBackgroundTasks: false)
+
+        env.resumeCodexHistoryImportAfterProviderEnable()
+
+        #expect(env._codexRebuildFollowUpIsScheduledForTest)
+        #expect(env._codexRebuildFollowUpFailureCountForTest == 0)
+        env.cancelCodexRebuildFollowUp()
+    }
+
     @Test("A deferred Codex scan arms one automatic follow-up")
     func deferredScanSchedulesFollowUp() {
         let env = AppEnvironment(startBackgroundTasks: false)
