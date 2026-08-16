@@ -114,6 +114,10 @@ final class AppEnvironment {
     /// write that lands inside the throttle window). Coalesces a burst into one
     /// trailing scan; cancelled when the watcher stops.
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
+    /// A history-root grant or reauthorization that lands during another scan
+    /// must run once that scan releases the shared `isScanning` gate. This is
+    /// provider-wide because changing roots can affect Codex and Claude.
+    var historyRootRescanPending = false
     /// One coalesced delayed Codex scan used only while an invalid checkpoint
     /// is waiting for a stable source signature. Unlike the regular popover
     /// throttle, this closes the recovery loop without another user action.
@@ -275,7 +279,7 @@ final class AppEnvironment {
     /// then scans once at finish, so it uses the plain `reloadHistoryImportRoots`.)
     func reloadHistoryImportRootsAndRescan() {
         reloadHistoryImportRoots()
-        runScan(minInterval: 0, trigger: "history-root-change")
+        requestHistoryRootRescan()
     }
 
     /// Boot the background rate-limit poller. Idempotent.

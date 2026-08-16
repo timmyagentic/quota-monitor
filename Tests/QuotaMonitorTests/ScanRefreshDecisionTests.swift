@@ -253,6 +253,17 @@ struct ScanRefreshDecisionTests {
 @MainActor
 @Suite("Codex rebuild follow-up scheduling")
 struct CodexRebuildFollowUpSchedulingTests {
+    @Test("A history-root change during a scan queues a full trailing scan")
+    func historyRootChangeQueuesTrailingScan() {
+        let env = AppEnvironment(startBackgroundTasks: false)
+        env.isScanning = true
+
+        env.requestHistoryRootRescan()
+
+        #expect(env._historyRootRescanPendingForTest)
+        env.isScanning = false
+    }
+
     @Test("Only a disabled-to-enabled transition resumes Codex history")
     func providerEnableTransitionDecision() {
         #expect(AppEnvironment.providerBecameEnabled(

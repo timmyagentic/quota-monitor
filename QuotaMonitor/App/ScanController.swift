@@ -119,7 +119,8 @@ extension AppEnvironment {
                     // Fire any Claude file-watch write that was coalesced while
                     // this scan held `isScanning`, so a post-read append isn't
                     // stranded until the next write / manual refresh.
-                    if !self.runPendingCodexRebuildScanIfNeeded() {
+                    if !self.runPendingHistoryRootRescanIfNeeded(),
+                       !self.runPendingCodexRebuildScanIfNeeded() {
                         self.runPendingClaudeFileWatchScanIfNeeded()
                     }
                 }
@@ -473,6 +474,32 @@ extension AppEnvironment {
         scheduleCodexRebuildFollowUp(after: 0, report: nil)
     }
 
+    /// Root changes rebuild the importer immediately, but a scan already using
+    /// the previous importer may still be in flight. Queue one unthrottled full
+    /// scan instead of letting `runScan` discard the request at its busy gate.
+    func requestHistoryRootRescan() {
+        guard isScanning else {
+            runScan(minInterval: 0, trigger: "history-root-change")
+            return
+        }
+        historyRootRescanPending = true
+        DeveloperLog.eventRecord(
+            "importer.history_root.rescan.coalesced",
+            category: "scan",
+            trigger: "history-root-change",
+            result: "coalesced")
+    }
+
+    /// A full root-change scan supersedes provider-scoped trailing work for
+    /// this turn. Remaining scoped flags are consumed by its own defer.
+    @discardableResult
+    func runPendingHistoryRootRescanIfNeeded() -> Bool {
+        guard historyRootRescanPending else { return false }
+        historyRootRescanPending = false
+        runScan(minInterval: 0, trigger: "history-root-change-trailing")
+        return true
+    }
+
     private func scheduleCodexRebuildFollowUp(
         after delay: TimeInterval,
         report: ImportEngine.ScanReport?
@@ -547,6 +574,10 @@ extension AppEnvironment {
 
     var _codexRebuildFollowUpFailureCountForTest: Int {
         codexRebuildFollowUpFailureCount
+    }
+
+    var _historyRootRescanPendingForTest: Bool {
+        historyRootRescanPending
     }
 
     /// Pure post-scan refresh policy. Persisted changes and explicit refreshes
