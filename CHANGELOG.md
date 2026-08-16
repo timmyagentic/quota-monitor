@@ -32,13 +32,11 @@ window copy.
 
 #### Summary
 
-- Codex history that is rewritten in place now recovers automatically after the file becomes stable, instead of leaving recent token usage permanently missing.
-- Quota Monitor now warns when a history source has remained deferred long enough that totals may be incomplete.
+- Codex history now recovers automatically when an existing rollout file is rewritten, so recent token usage no longer remains permanently missing.
 
 ### Fixed
 
-- **Recover rewritten Codex history.** When Codex keeps the same file identity while rewriting earlier JSONL content, Quota Monitor now automatically follows up to confirm the source is stable, then transactionally rebuilds that session from byte zero; incomplete files, temporary path moves, and failed database writes preserve the last-known-good history and remain queued for retry.
-- **Visible deferred-import health.** Repeatedly deferred Codex sources now carry durable reason, count, and first-seen state into scan diagnostics, and the menu-bar popover warns when history totals may be incomplete instead of reporting an unqualified success.
+- **Recover rewritten Codex history.** When a committed checkpoint no longer matches its rollout, Quota Monitor reparses the complete file from the beginning and replaces that session transactionally; an incomplete file keeps the last-known-good rows until a later scan.
 
 ## [1.0.2] — 2026-08-12
 
