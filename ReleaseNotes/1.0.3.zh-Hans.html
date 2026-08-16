@@ -1,0 +1,12 @@
+<div class="release-summary">
+<ul>
+<li>Codex 原地重写已有日志后，历史统计现在会自动恢复，最近的 token 用量不再永久缺失。</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>修复</h3>
+<ul>
+<li><b>恢复被重写的 Codex 历史。</b>当已提交的 checkpoint 不再匹配当前日志时，Quota Monitor 会等待文件稳定、从头解析，并在事务中替换该会话；文件尾仍不完整时继续保留上一次正确数据，等待后续扫描。</li>
+</ul>
+</div>
