@@ -271,7 +271,7 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database) == completedRows)
     }
 
-    @Test("complete in-place rewrite rebuilds and returns to incremental append")
+    @Test("complete in-place rewrite rebuilds after stability and resumes append")
     func completeInPlaceRewriteRebuilds() async throws {
         let initialLines = prefixLines() + [
             tokenLine(
@@ -310,6 +310,15 @@ struct CodexIncrementalImportEngineTests {
         try overwriteInPlace(rewrittenData, at: harness.rollout)
         #expect(try sourceIdentity(of: harness.rollout) == originalIdentity)
 
+        let deferredReport = try await harness.engine.performScan()
+        #expect(deferredReport.changedFiles == 1)
+        #expect(deferredReport.importedEvents == 0)
+        #expect(deferredReport.sourceBytesRead == 0)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 68])
+
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -3)],
+            ofItemAtPath: harness.rollout.path)
         let rebuiltReport = try await harness.engine.performScan()
         #expect(rebuiltReport.changedFiles == 1)
         #expect(rebuiltReport.incrementalFiles == 0)
@@ -362,6 +371,9 @@ struct CodexIncrementalImportEngineTests {
         let partial = prefix + String(finalLine.prefix(finalLine.count / 2))
         try overwriteInPlace(Data(partial.utf8), at: harness.rollout)
         #expect(try sourceIdentity(of: harness.rollout) == originalIdentity)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSinceNow: -3)],
+            ofItemAtPath: harness.rollout.path)
 
         let report = try await harness.engine.performScan()
         #expect(report.changedFiles == 1)
