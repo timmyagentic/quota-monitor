@@ -562,6 +562,61 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database) == nil)
     }
 
+    @Test("failed missing-source reconciliation keeps durable recovery queued")
+    func failedMissingSourceReconciliationKeepsRetry() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T02:35:00.000Z"),
+            taskLine(timestamp: "2026-07-19T02:35:01.000Z"),
+            contextLine(timestamp: "2026-07-19T02:35:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T02:35:03.000Z",
+                total: usage(input: 475, cached: 50, output: 50, reasoning: 10),
+                last: usage(input: 475, cached: 50, output: 50, reasoning: 10)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"reconcile-failure"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        let observed = try await harness.engine.performScan()
+        #expect(observed.deferredSources.map(\.consecutiveCount) == [1])
+
+        let holding = harness.root.appendingPathComponent(
+            "reconcile-failure-rollout.jsonl")
+        try FileManager.default.moveItem(at: harness.rollout, to: holding)
+        try await harness.database.pool.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_missing_source_reconciliation
+                BEFORE UPDATE ON codex_rebuild_observations
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced reconciliation failure');
+                END
+                """)
+        }
+
+        let failed = try await harness.engine.performScan()
+
+        #expect(failed.errors.count == 1)
+        #expect(failed.errors[0].contains("forced reconciliation failure"))
+        #expect(failed.deferredSources.map(\.reason) == ["head_changed"])
+        #expect(failed.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)?.missingCount == 0)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+
+        try await harness.database.pool.write { db in
+            try db.execute(sql: "DROP TRIGGER reject_missing_source_reconciliation")
+        }
+        try FileManager.default.moveItem(at: holding, to: harness.rollout)
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [525])
+    }
+
     @Test("missing recovery source requires repeated five-minute confirmation")
     func missingRewriteSourceEventuallyExpires() async throws {
         let harness = try makeHarness(lines: prefixLines())

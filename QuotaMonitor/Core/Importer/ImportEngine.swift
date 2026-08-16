@@ -563,6 +563,21 @@ actor ImportEngine {
             }
         } catch {
             errors.append("Codex rebuild observation cleanup: \(error)")
+            let surviving = await pendingRebuildDeferredSources()
+            let alreadyReported = Set(deferredSources.map(\.sourcePath))
+            let recovered = surviving.filter {
+                !alreadyReported.contains($0.sourcePath)
+            }
+            deferredSources.append(contentsOf: recovered)
+            if !recovered.isEmpty {
+                DeveloperLog.eventRecord(
+                    "importer.codex.rebuild_retry.reconcile_failed",
+                    level: .warning,
+                    category: "importer",
+                    result: "deferred",
+                    message: "Codex rebuild observation reconciliation failed; retries remain queued",
+                    fields: ["deferred_sources": .int(recovered.count)])
+            }
         }
 
         // After all files are persisted, walk the parent chain to compute
@@ -1050,6 +1065,37 @@ actor ImportEngine {
                 message: String(describing: error),
                 fields: ["session_id": .string(candidate.sessionId)])
             return nil
+        }
+    }
+
+    /// Reload every durable recovery row after reconciliation rolls back. This
+    /// includes temporarily absent sources, which have no ScanCandidate from
+    /// which the per-file failure path could otherwise restore a retry.
+    private func pendingRebuildDeferredSources() async -> [ScanReport.DeferredSource] {
+        let observedAt = now()
+        do {
+            let pending = try await database.pool.read { db in
+                try CodexRebuildObservationRecord.fetchAll(db).map { record in
+                    let checkpointBytes = try ImportStateRecord
+                        .filter(Column("source_path") == record.sourcePath)
+                        .fetchOne(db)?.byteOffset ?? 0
+                    return (record, checkpointBytes)
+                }
+            }
+            return pending.map { record, checkpointBytes in
+                deferredSource(
+                    record: record,
+                    checkpointBytes: checkpointBytes,
+                    observedAt: observedAt)
+            }
+        } catch {
+            DeveloperLog.eventRecord(
+                "importer.codex.rebuild_retry.reload_all_fail",
+                level: .error,
+                category: "importer",
+                result: "failure",
+                message: String(describing: error))
+            return []
         }
     }
 
