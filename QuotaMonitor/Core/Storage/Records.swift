@@ -147,6 +147,8 @@ struct CodexRebuildObservationRecord:
     var firstDeferredAt: String
     var lastDeferredAt: String
     var consecutiveCount: Int
+    var missingFirstSeenAt: String?
+    var missingCount: Int
 
     enum CodingKeys: String, CodingKey {
         case sourcePath = "source_path"
@@ -162,6 +164,8 @@ struct CodexRebuildObservationRecord:
         case firstDeferredAt = "first_deferred_at"
         case lastDeferredAt = "last_deferred_at"
         case consecutiveCount = "consecutive_count"
+        case missingFirstSeenAt = "missing_first_seen_at"
+        case missingCount = "missing_count"
     }
 }
 

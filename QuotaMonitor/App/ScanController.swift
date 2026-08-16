@@ -398,7 +398,9 @@ extension AppEnvironment {
     ) -> TimeInterval? {
         let codexSources = sources.filter { $0.provider == "codex" }
         guard !codexSources.isEmpty else { return nil }
-        if codexSources.contains(where: { $0.reason != "incomplete_tail" }) {
+        if codexSources.contains(where: {
+            $0.reason != "incomplete_tail" && $0.reason != "source_missing"
+        }) {
             return ImportEngine.defaultRebuildStabilityInterval + 0.5
         }
         let count = codexSources.map(\.consecutiveCount).max() ?? 1

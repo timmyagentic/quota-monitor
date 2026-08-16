@@ -637,6 +637,8 @@ enum Migrations {
                 t.column("first_deferred_at", .text).notNull()
                 t.column("last_deferred_at", .text).notNull()
                 t.column("consecutive_count", .integer).notNull()
+                t.column("missing_first_seen_at", .text)
+                t.column("missing_count", .integer).notNull().defaults(to: 0)
             }
             try db.create(
                 indexOn: "codex_rebuild_observations",

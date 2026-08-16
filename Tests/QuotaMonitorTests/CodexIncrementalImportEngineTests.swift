@@ -460,6 +460,101 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [330])
     }
 
+    @Test("temporarily missing rewrite source keeps its observation and recovers")
+    func temporarilyMissingRewriteSourceRecovers() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T02:30:00.000Z"),
+            taskLine(timestamp: "2026-07-19T02:30:01.000Z"),
+            contextLine(timestamp: "2026-07-19T02:30:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T02:30:03.000Z",
+                total: usage(input: 450, cached: 45, output: 50, reasoning: 10),
+                last: usage(input: 450, cached: 45, output: 50, reasoning: 10)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"missing-source"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+
+        let first = try await harness.engine.performScan()
+        #expect(first.deferredSources.map(\.reason) == ["head_changed"])
+        let originalFirstDeferredAt = try #require(
+            first.deferredSources.first?.firstDeferredAt)
+
+        let holding = harness.root.appendingPathComponent("holding-rollout.jsonl")
+        try FileManager.default.moveItem(at: harness.rollout, to: holding)
+        let absent = try await harness.engine.performScan()
+
+        #expect(absent.deferredSources.map(\.reason) == ["source_missing"])
+        #expect(absent.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(absent.deferredSources.first?.firstDeferredAt
+            == originalFirstDeferredAt)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+        let missingObservation = try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)
+        #expect(missingObservation?.reason == "source_missing")
+        #expect(missingObservation?.missingCount == 1)
+        #expect(missingObservation?.missingFirstSeenAt != nil)
+
+        try FileManager.default.moveItem(at: holding, to: harness.rollout)
+        let recovered = try await harness.engine.performScan()
+
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [500])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+    }
+
+    @Test("missing recovery source requires repeated five-minute confirmation")
+    func missingRewriteSourceEventuallyExpires() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let clock = TestClock(Date(timeIntervalSince1970: 1_700_000_000))
+        let engine = ImportEngine(
+            database: harness.database,
+            codexHome: harness.codexHome,
+            minimumRebuildStabilityInterval: 0,
+            now: { clock.now() })
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T02:45:00.000Z"),
+            contextLine(timestamp: "2026-07-19T02:45:01.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T02:45:02.000Z",
+                total: usage(input: 250, cached: 25, output: 30, reasoning: 6),
+                last: usage(input: 250, cached: 25, output: 30, reasoning: 6)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"confirmed-missing"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        _ = try await engine.performScan()
+
+        let holding = harness.root.appendingPathComponent("removed-rollout.jsonl")
+        try FileManager.default.moveItem(at: harness.rollout, to: holding)
+        let firstMissing = try await engine.performScan()
+        #expect(firstMissing.deferredSources.map(\.consecutiveCount) == [1])
+
+        clock.advance(by: 5 * 60 + 1)
+        let secondMissing = try await engine.performScan()
+        #expect(secondMissing.deferredSources.map(\.consecutiveCount) == [2])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database)?.missingCount == 2)
+        let confirmedRemoved = try await engine.performScan()
+        #expect(confirmedRemoved.deferredSources.isEmpty)
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+    }
+
     @Test("persisted rebuild observation heals after engine restart")
     func persistedObservationSurvivesEngineRestart() async throws {
         let harness = try makeHarness(lines: prefixLines())

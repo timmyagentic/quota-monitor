@@ -579,6 +579,7 @@ struct MigrationsTests {
                 "source_inode", "source_birthtime_ns", "file_size",
                 "file_mtime_ms", "prefix_hash", "tail_hash",
                 "first_deferred_at", "last_deferred_at", "consecutive_count",
+                "missing_first_seen_at", "missing_count",
             ])
             let fetchedState = try ImportStateRecord.fetchOne(
                 db, key: "/codex/stuck.jsonl")

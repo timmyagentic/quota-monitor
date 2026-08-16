@@ -60,6 +60,7 @@ actor ImportEngine {
         case sessionChanged = "session_changed"
         case checkpointInvalid = "checkpoint_invalid"
         case incompleteTail = "incomplete_tail"
+        case sourceMissing = "source_missing"
 
         static func parserReason(_ reason: String) -> DeferredReason {
             if reason.contains("head fingerprint") { return .headChanged }
@@ -511,13 +512,30 @@ actor ImportEngine {
                 currentFile: nextFile))
         }
 
-        // Observations for removed, de-canonicalized, or once-again-valid
-        // sources should not leave a permanent warning behind. Changed paths
-        // retain their observation until `persist` removes it transactionally
-        // or a later scan proves they no longer need recovery.
+        // Present-but-unchanged or de-canonicalized sources no longer need a
+        // recovery observation. A source absent from one enumeration is not
+        // enough evidence of removal: active-to-archived renames can expose a
+        // transient gap, so retain and report it until absence is confirmed.
         do {
-            try await removeInactiveRebuildObservations(
-                changedPaths: Set(changed.map { $0.file.path }))
+            let inactiveDeferred = try await reconcileInactiveRebuildObservations(
+                changedPaths: Set(changed.map { $0.file.path }),
+                discoveredPaths: Set(discoveredFiles.map(\.path)))
+            deferredSources.append(contentsOf: inactiveDeferred)
+            for deferred in inactiveDeferred {
+                DeveloperLog.eventRecord(
+                    "importer.codex.source.missing",
+                    level: .warning,
+                    category: "importer",
+                    result: "deferred",
+                    message: "Codex recovery source is temporarily absent",
+                    fields: [
+                        "session_id": .string(deferred.sessionId),
+                        "reason": .string(deferred.reason),
+                        "consecutive_count": .int(deferred.consecutiveCount),
+                        "checkpoint_bytes": .int(Int(deferred.checkpointBytes)),
+                        "last_seen_bytes": .int(Int(deferred.currentBytes)),
+                    ])
+            }
         } catch {
             errors.append("Codex rebuild observation cleanup: \(error)")
         }
@@ -913,7 +931,9 @@ actor ImportEngine {
                     ? existing?.firstDeferredAt ?? timestamp
                     : timestamp,
                 lastDeferredAt: timestamp,
-                consecutiveCount: nextCount)
+                consecutiveCount: nextCount,
+                missingFirstSeenAt: nil,
+                missingCount: 0)
             try next.save(db)
             return next
         }
@@ -940,6 +960,17 @@ actor ImportEngine {
         record: CodexRebuildObservationRecord,
         observedAt: Date
     ) -> ScanReport.DeferredSource {
+        deferredSource(
+            record: record,
+            checkpointBytes: candidate.expectedState?.byteOffset ?? 0,
+            observedAt: observedAt)
+    }
+
+    private func deferredSource(
+        record: CodexRebuildObservationRecord,
+        checkpointBytes: Int64,
+        observedAt: Date
+    ) -> ScanReport.DeferredSource {
         let firstDeferredAt = ISO8601.parse(record.firstDeferredAt) ?? observedAt
         let isPersistent = record.consecutiveCount >= 3
             || observedAt.timeIntervalSince(firstDeferredAt)
@@ -951,7 +982,7 @@ actor ImportEngine {
             reason: record.reason,
             consecutiveCount: record.consecutiveCount,
             firstDeferredAt: firstDeferredAt,
-            checkpointBytes: candidate.expectedState?.byteOffset ?? 0,
+            checkpointBytes: checkpointBytes,
             currentBytes: record.fileSize,
             isPersistent: isPersistent)
     }
@@ -1005,16 +1036,61 @@ actor ImportEngine {
             && record.tailHash == signature.tailHash
     }
 
-    private func removeInactiveRebuildObservations(
-        changedPaths: Set<String>
-    ) async throws {
-        try await database.pool.write { db in
+    private func reconcileInactiveRebuildObservations(
+        changedPaths: Set<String>,
+        discoveredPaths: Set<String>
+    ) async throws -> [ScanReport.DeferredSource] {
+        let observedAt = now()
+        let timestamp = ISO8601.fractional.string(from: observedAt)
+        let pending = try await database.pool.write { db in
             let observations = try CodexRebuildObservationRecord.fetchAll(db)
-            for observation in observations
-            where !changedPaths.contains(observation.sourcePath) {
-                try CodexRebuildObservationRecord.deleteOne(
-                    db, key: observation.sourcePath)
+            var pending: [(CodexRebuildObservationRecord, Int64)] = []
+            for observation in observations {
+                if changedPaths.contains(observation.sourcePath) {
+                    continue
+                }
+                if discoveredPaths.contains(observation.sourcePath) {
+                    try CodexRebuildObservationRecord.deleteOne(
+                        db, key: observation.sourcePath)
+                    continue
+                }
+
+                var missing = observation
+                if let missingFirstSeenAt = observation.missingFirstSeenAt {
+                    let firstMissingAt = ISO8601.parse(missingFirstSeenAt)
+                        ?? observedAt
+                    let nextCount = observation.missingCount == Int.max
+                        ? Int.max
+                        : observation.missingCount + 1
+                    if nextCount >= 3,
+                       observedAt.timeIntervalSince(firstMissingAt)
+                        >= Self.persistentDeferralInterval
+                    {
+                        try CodexRebuildObservationRecord.deleteOne(
+                            db, key: observation.sourcePath)
+                        continue
+                    }
+                    missing.missingCount = nextCount
+                } else {
+                    missing.missingFirstSeenAt = timestamp
+                    missing.missingCount = 1
+                }
+                missing.reason = DeferredReason.sourceMissing.rawValue
+                missing.consecutiveCount = missing.missingCount
+                missing.lastDeferredAt = timestamp
+                try missing.save(db)
+                let checkpointBytes = try ImportStateRecord
+                    .filter(Column("source_path") == missing.sourcePath)
+                    .fetchOne(db)?.byteOffset ?? 0
+                pending.append((missing, checkpointBytes))
             }
+            return pending
+        }
+        return pending.map { record, checkpointBytes in
+            deferredSource(
+                record: record,
+                checkpointBytes: checkpointBytes,
+                observedAt: observedAt)
         }
     }
 

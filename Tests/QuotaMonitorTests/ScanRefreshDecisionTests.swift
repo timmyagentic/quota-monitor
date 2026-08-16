@@ -184,6 +184,8 @@ struct ScanRefreshDecisionTests {
             reason: "incomplete_tail", consecutiveCount: 5)
         let longIncomplete = deferredCodexReport(
             reason: "incomplete_tail", consecutiveCount: 100)
+        let missing = deferredCodexReport(
+            reason: "source_missing", consecutiveCount: 5)
 
         #expect(AppEnvironment.codexRebuildFollowUpDelay(
             for: changed.deferredSources)
@@ -192,6 +194,8 @@ struct ScanRefreshDecisionTests {
             for: incomplete.deferredSources) == 40)
         #expect(AppEnvironment.codexRebuildFollowUpDelay(
             for: longIncomplete.deferredSources) == 300)
+        #expect(AppEnvironment.codexRebuildFollowUpDelay(
+            for: missing.deferredSources) == 40)
         #expect(AppEnvironment.codexRebuildFollowUpDelay(for: []) == nil)
         #expect(AppEnvironment.codexRebuildScanFailureBackoff(
             consecutiveFailureCount: 1) == 5)
