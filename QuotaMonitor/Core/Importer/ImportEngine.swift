@@ -102,6 +102,18 @@ actor ImportEngine {
         }
     }
 
+    /// Carries a scan-local retry signal when the durable observation could
+    /// not be inserted. The underlying database message is retained for the
+    /// report, while the in-memory deferral keeps automatic recovery alive.
+    private struct RebuildObservationPersistenceError:
+        Error, Sendable, CustomStringConvertible
+    {
+        let message: String
+        let deferredSource: ScanReport.DeferredSource
+
+        var description: String { message }
+    }
+
     struct ScanReport: Sendable {
         struct DeferredSource: Sendable, Equatable {
             let provider: String
@@ -415,6 +427,7 @@ actor ImportEngine {
         for (index, candidate) in changed.enumerated() {
             let file = candidate.file
             var recoveryObservationHandled = false
+            var inMemoryRecoveryFallback: ScanReport.DeferredSource?
             do {
                 switch try await parse(candidate: candidate) {
                 case .parsed(let parsedCandidate):
@@ -479,6 +492,9 @@ actor ImportEngine {
                                     : "observe_again")
                         ])
                 }
+            } catch let error as RebuildObservationPersistenceError {
+                errors.append("\(file.path): \(error)")
+                inMemoryRecoveryFallback = error.deferredSource
             } catch {
                 errors.append("\(file.path): \(error)")
             }
@@ -487,24 +503,28 @@ actor ImportEngine {
             // persistence can fail, and a concurrent rewrite can also change
             // the parsed session before persistence. Keep every such recovery
             // in the report and automatic follow-up queue.
-            if !recoveryObservationHandled,
-               let pending = await pendingRebuildDeferredSource(
+            if !recoveryObservationHandled {
+                let durablePending = await pendingRebuildDeferredSource(
                     candidate: candidate)
-            {
-                deferredSources.append(pending)
-                DeveloperLog.eventRecord(
-                    "importer.codex.rebuild_retry.uncommitted",
-                    level: .warning,
-                    category: "importer",
-                    result: "deferred",
-                    message: "Codex full rebuild did not commit; retry remains queued",
-                    fields: [
-                        "session_id": .string(pending.sessionId),
-                        "reason": .string(pending.reason),
-                        "consecutive_count": .int(pending.consecutiveCount),
-                        "checkpoint_bytes": .int(Int(pending.checkpointBytes)),
-                        "current_bytes": .int(Int(pending.currentBytes)),
-                    ])
+                let pending = durablePending ?? inMemoryRecoveryFallback
+                if let pending {
+                    deferredSources.append(pending)
+                    DeveloperLog.eventRecord(
+                        "importer.codex.rebuild_retry.uncommitted",
+                        level: .warning,
+                        category: "importer",
+                        result: "deferred",
+                        message: "Codex full rebuild did not commit; retry remains queued",
+                        fields: [
+                            "session_id": .string(pending.sessionId),
+                            "reason": .string(pending.reason),
+                            "consecutive_count": .int(pending.consecutiveCount),
+                            "checkpoint_bytes": .int(Int(pending.checkpointBytes)),
+                            "current_bytes": .int(Int(pending.currentBytes)),
+                            "durable_observation": .bool(
+                                durablePending != nil),
+                        ])
+                }
             }
             let nextIndex = index + 1
             let nextFile = nextIndex < changed.count
@@ -901,46 +921,62 @@ actor ImportEngine {
         let signature = try Self.rebuildSignature(fileURL: candidate.file.url)
         let observedAt = now()
         let timestamp = ISO8601.fractional.string(from: observedAt)
-        let record = try await database.pool.write { db in
-            let existing = try CodexRebuildObservationRecord
-                .filter(Column("source_path") == candidate.file.path)
-                .fetchOne(db)
-            let signatureMatches = existing.map {
-                Self.observation($0, matches: signature)
-                    && $0.sessionId == candidate.sessionId
-            } ?? false
-            let preservedIncompleteTail = signatureMatches
-                && existing?.reason == DeferredReason.incompleteTail.rawValue
-            let nextCount: Int
-            if signatureMatches, let existing {
-                nextCount = existing.consecutiveCount == Int.max
-                    ? Int.max
-                    : existing.consecutiveCount + 1
-            } else {
-                nextCount = 1
+        let record: CodexRebuildObservationRecord
+        do {
+            record = try await database.pool.write { db in
+                let existing = try CodexRebuildObservationRecord
+                    .filter(Column("source_path") == candidate.file.path)
+                    .fetchOne(db)
+                let signatureMatches = existing.map {
+                    Self.observation($0, matches: signature)
+                        && $0.sessionId == candidate.sessionId
+                } ?? false
+                let preservedIncompleteTail = signatureMatches
+                    && existing?.reason == DeferredReason.incompleteTail.rawValue
+                let nextCount: Int
+                if signatureMatches, let existing {
+                    nextCount = existing.consecutiveCount == Int.max
+                        ? Int.max
+                        : existing.consecutiveCount + 1
+                } else {
+                    nextCount = 1
+                }
+                let next = CodexRebuildObservationRecord(
+                    sourcePath: candidate.file.path,
+                    sessionId: candidate.sessionId,
+                    reason: preservedIncompleteTail
+                        ? DeferredReason.incompleteTail.rawValue
+                        : reason.rawValue,
+                    sourceDevice: signature.snapshot.device,
+                    sourceInode: signature.snapshot.inode,
+                    sourceBirthtimeNs: signature.snapshot.birthtimeNs,
+                    fileSize: signature.snapshot.size,
+                    fileMtimeMs: signature.snapshot.mtimeMs,
+                    prefixHash: signature.prefixHash,
+                    tailHash: signature.tailHash,
+                    firstDeferredAt: signatureMatches
+                        ? existing?.firstDeferredAt ?? timestamp
+                        : timestamp,
+                    lastDeferredAt: timestamp,
+                    consecutiveCount: nextCount,
+                    missingFirstSeenAt: nil,
+                    missingCount: 0)
+                try next.save(db)
+                return next
             }
-            let next = CodexRebuildObservationRecord(
-                sourcePath: candidate.file.path,
-                sessionId: candidate.sessionId,
-                reason: preservedIncompleteTail
-                    ? DeferredReason.incompleteTail.rawValue
-                    : reason.rawValue,
-                sourceDevice: signature.snapshot.device,
-                sourceInode: signature.snapshot.inode,
-                sourceBirthtimeNs: signature.snapshot.birthtimeNs,
-                fileSize: signature.snapshot.size,
-                fileMtimeMs: signature.snapshot.mtimeMs,
-                prefixHash: signature.prefixHash,
-                tailHash: signature.tailHash,
-                firstDeferredAt: signatureMatches
-                    ? existing?.firstDeferredAt ?? timestamp
-                    : timestamp,
-                lastDeferredAt: timestamp,
-                consecutiveCount: nextCount,
-                missingFirstSeenAt: nil,
-                missingCount: 0)
-            try next.save(db)
-            return next
+        } catch {
+            throw RebuildObservationPersistenceError(
+                message: String(describing: error),
+                deferredSource: ScanReport.DeferredSource(
+                    provider: "codex",
+                    sourcePath: candidate.file.path,
+                    sessionId: candidate.sessionId,
+                    reason: reason.rawValue,
+                    consecutiveCount: 1,
+                    firstDeferredAt: observedAt,
+                    checkpointBytes: candidate.expectedState?.byteOffset ?? 0,
+                    currentBytes: signature.snapshot.size,
+                    isPersistent: false))
         }
         return (record, signature, observedAt)
     }

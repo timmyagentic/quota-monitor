@@ -190,11 +190,12 @@ extension AppEnvironment {
                         try await codexReport, try await claudeTask.value)
                 }
                 await MainActor.run {
+                    let currentlyEnabled = SettingsStore.snapshot().enabledProviders
                     let displayReport = Self.preservingUnscannedDeferrals(
                         current: merged,
                         previous: self.lastScanReport,
                         scannedProviders: scanProviders,
-                        enabledProviders: enabled)
+                        enabledProviders: currentlyEnabled)
                     self.lastScanReport = displayReport
                     if merged.didChangeReadModel {
                         self.sessionsDataGeneration &+= 1
@@ -202,7 +203,8 @@ extension AppEnvironment {
                     self.lastScanAtByScope[throttleKey] = Date()
                     self.updateCodexRebuildFollowUp(
                         report: displayReport,
-                        codexWasScanned: scanProviders.contains("codex"))
+                        codexWasScanned: scanProviders.contains("codex")
+                            && currentlyEnabled.contains("codex"))
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.
                     if merged.scopeUnavailable {
@@ -373,8 +375,12 @@ extension AppEnvironment {
         scannedProviders: Set<String>,
         enabledProviders: Set<String>
     ) -> ImportEngine.ScanReport {
-        guard let previous else { return current }
-        let currentKeys = Set(current.deferredSources.map {
+        let visibleCurrent = current.replacingDeferredSources(
+            current.deferredSources.filter {
+                enabledProviders.contains($0.provider)
+            })
+        guard let previous else { return visibleCurrent }
+        let currentKeys = Set(visibleCurrent.deferredSources.map {
             $0.provider + "\u{1F}" + $0.sourcePath
         })
         let retained = previous.deferredSources.filter { source in
@@ -383,9 +389,9 @@ extension AppEnvironment {
                 && !currentKeys.contains(
                     source.provider + "\u{1F}" + source.sourcePath)
         }
-        guard !retained.isEmpty else { return current }
-        return current.replacingDeferredSources(
-            current.deferredSources + retained)
+        guard !retained.isEmpty else { return visibleCurrent }
+        return visibleCurrent.replacingDeferredSources(
+            visibleCurrent.deferredSources + retained)
     }
 
     /// Initial fingerprint mismatches retry just after the importer stability

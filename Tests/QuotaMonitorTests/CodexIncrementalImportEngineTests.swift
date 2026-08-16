@@ -397,6 +397,57 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [440, 15])
     }
 
+    @Test("failed first observation write still reports a rebuild retry")
+    func failedInitialObservationWriteKeepsRetryAlive() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T01:15:00.000Z"),
+            taskLine(timestamp: "2026-07-19T01:15:01.000Z"),
+            contextLine(timestamp: "2026-07-19T01:15:02.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T01:15:03.000Z",
+                total: usage(input: 450, cached: 50, output: 45, reasoning: 9),
+                last: usage(input: 450, cached: 50, output: 45, reasoning: 9)),
+        ] + Array(
+            repeating: #"{"type":"unknown","padding":"observation-write"}"#,
+            count: 100))
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        try await harness.database.pool.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_first_rebuild_observation
+                BEFORE INSERT ON codex_rebuild_observations
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced observation write failure');
+                END
+                """)
+        }
+
+        let failed = try await harness.engine.performScan()
+
+        #expect(failed.importedEvents == 0)
+        #expect(failed.errors.count == 1)
+        #expect(failed.errors[0].contains("forced observation write failure"))
+        #expect(failed.deferredSources.map(\.reason) == ["head_changed"])
+        #expect(failed.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+
+        try await harness.database.pool.write { db in
+            try db.execute(sql: "DROP TRIGGER reject_first_rebuild_observation")
+        }
+        let persisted = try await harness.engine.performScan()
+        #expect(persisted.deferredSources.map(\.consecutiveCount) == [1])
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [495])
+    }
+
     @Test("same-inode incomplete rewrite preserves history until completion is stable")
     func incompleteSameInodeRewriteWaitsForStableCompletion() async throws {
         let harness = try makeHarness(lines: prefixLines())

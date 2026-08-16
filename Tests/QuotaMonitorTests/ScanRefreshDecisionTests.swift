@@ -195,6 +195,17 @@ struct ScanRefreshDecisionTests {
         #expect(displayed.deferredSources.isEmpty)
     }
 
+    @Test("Disabling Codex while its scan runs drops the new deferral")
+    func disabledProviderFiltersCompletedScanDeferral() {
+        let displayed = AppEnvironment.preservingUnscannedDeferrals(
+            current: deferredCodexReport(),
+            previous: nil,
+            scannedProviders: ["codex"],
+            enabledProviders: ["claude"])
+
+        #expect(displayed.deferredSources.isEmpty)
+    }
+
     @Test("Codex rebuild retry delay confirms stability then backs off")
     func codexRebuildRetryDelayPolicy() {
         let changed = deferredCodexReport(
