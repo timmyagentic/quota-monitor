@@ -111,6 +111,7 @@ extension AppEnvironment {
 
         Task { [weak self, op] in
             guard let self else { return }
+            var codexScanWasAttempted = codexWasRequested
             defer {
                 Task { @MainActor in
                     self.isScanning = false
@@ -143,6 +144,7 @@ extension AppEnvironment {
                         ? HistoryRootAuthorizationStore.shared.authorizedProviders(from: enabled)
                         : [],
                     isAppStore: isAppStore)
+                codexScanWasAttempted = scanProviders.contains("codex")
                 DeveloperLog.eventRecord(
                     "scan.providers",
                     category: "scan",
@@ -187,17 +189,10 @@ extension AppEnvironment {
                         try await codexReport, try await claudeTask.value)
                 }
                 await MainActor.run {
-                    // A provider report with errors cannot prove that an older
-                    // durable recovery condition was resolved. Retain its last
-                    // health state for this display pass; a later error-free
-                    // scan owns and clears it.
-                    let providersOwningDeferralHealth = merged.errors.isEmpty
-                        ? scanProviders
-                        : []
                     let displayReport = Self.preservingUnscannedDeferrals(
                         current: merged,
                         previous: self.lastScanReport,
-                        scannedProviders: providersOwningDeferralHealth,
+                        scannedProviders: scanProviders,
                         enabledProviders: enabled)
                     self.lastScanReport = displayReport
                     if merged.didChangeReadModel {
@@ -260,11 +255,7 @@ extension AppEnvironment {
             } catch {
                 await MainActor.run {
                     self.lastError = String(describing: error)
-                    if Self.shouldRearmCodexRebuildAfterScanFailure(
-                        codexWasRequested: codexWasRequested,
-                        trigger: trigger,
-                        previousReport: self.lastScanReport)
-                    {
+                    if codexScanWasAttempted {
                         self.rearmCodexRebuildFollowUpAfterScanFailure(
                             previousReport: self.lastScanReport)
                     }
@@ -420,18 +411,6 @@ extension AppEnvironment {
     ) -> TimeInterval {
         let exponent = min(6, max(0, consecutiveFailureCount - 1))
         return min(5 * pow(2, Double(exponent)), 5 * 60)
-    }
-
-    nonisolated static func shouldRearmCodexRebuildAfterScanFailure(
-        codexWasRequested: Bool,
-        trigger: String,
-        previousReport: ImportEngine.ScanReport?
-    ) -> Bool {
-        guard codexWasRequested else { return false }
-        return trigger.hasPrefix("codex-rebuild-follow-up")
-            || previousReport?.deferredSources.contains {
-                $0.provider == "codex"
-            } == true
     }
 
     func updateCodexRebuildFollowUp(

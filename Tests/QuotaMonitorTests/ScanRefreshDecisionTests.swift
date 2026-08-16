@@ -165,8 +165,8 @@ struct ScanRefreshDecisionTests {
         #expect(displayed.deferredSources.isEmpty)
     }
 
-    @Test("An errored Codex scan cannot clear its previous deferral")
-    func erroredProviderRetainsPreviousDeferral() {
+    @Test("A completed Codex scan clears a resolved deferral despite other errors")
+    func completedProviderClearsResolvedDeferralDespiteErrors() {
         let errored = ImportEngine.ScanReport(
             scannedFiles: 1,
             changedFiles: 1,
@@ -177,11 +177,11 @@ struct ScanRefreshDecisionTests {
         let displayed = AppEnvironment.preservingUnscannedDeferrals(
             current: errored,
             previous: deferredCodexReport(),
-            scannedProviders: [],
+            scannedProviders: ["codex"],
             enabledProviders: ["codex", "claude"])
 
         #expect(displayed.errors == errored.errors)
-        #expect(displayed.deferredSources.count == 1)
+        #expect(displayed.deferredSources.isEmpty)
     }
 
     @Test("Disabling Codex drops its stale deferral")
@@ -222,26 +222,6 @@ struct ScanRefreshDecisionTests {
             consecutiveFailureCount: 4) == 40)
         #expect(AppEnvironment.codexRebuildScanFailureBackoff(
             consecutiveFailureCount: 100) == 300)
-    }
-
-    @Test("Only Codex recovery scans re-arm after a scan-level failure")
-    func codexRebuildFailureRearmPolicy() {
-        #expect(AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
-            codexWasRequested: true,
-            trigger: "codex-rebuild-follow-up",
-            previousReport: nil))
-        #expect(!AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
-            codexWasRequested: false,
-            trigger: "codex-rebuild-follow-up",
-            previousReport: nil))
-        #expect(!AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
-            codexWasRequested: true,
-            trigger: "manual",
-            previousReport: nil))
-        #expect(AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
-            codexWasRequested: true,
-            trigger: "manual",
-            previousReport: deferredCodexReport()))
     }
 
     private func deferredCodexReport(
