@@ -542,56 +542,6 @@ struct MigrationsTests {
         }
     }
 
-    @Test("v21 adds durable Codex rebuild observations without resetting checkpoints")
-    func codexRebuildObservationMigrationPreservesImportState() throws {
-        let url = try temporaryDatabaseURL(prefix: "qm-codex-rebuild-observation-v21")
-        let queue = try DatabaseQueue(path: url.path)
-        var migrator = DatabaseMigrator()
-        Migrations.register(in: &migrator)
-        try migrator.migrate(queue, upTo: "v20-session-summaries-keyset")
-
-        let stamp = "2026-08-16T00:00:00.000Z"
-        try queue.write { db in
-            try db.execute(sql: """
-                INSERT INTO sessions
-                    (session_id, root_session_id, created_at, imported_at, provider)
-                VALUES ('stuck-codex', 'stuck-codex', ?, ?, 'codex')
-                """, arguments: [stamp, stamp])
-            try db.execute(sql: """
-                INSERT INTO import_state
-                    (source_path, session_id, file_size, file_mtime_ms,
-                     last_imported_at, byte_offset, parser_checkpoint,
-                     metadata_probe_complete)
-                VALUES ('/codex/stuck.jsonl', 'stuck-codex', 47537329,
-                        123456, ?, 843500, X'010203', 1)
-                """, arguments: [stamp])
-        }
-
-        try migrator.migrate(queue)
-
-        try queue.read { db in
-            #expect(try db.tableExists("codex_rebuild_observations"))
-            let columns = Set(try String.fetchAll(db, sql: """
-                SELECT name FROM pragma_table_info('codex_rebuild_observations')
-                """))
-            #expect(columns == [
-                "source_path", "session_id", "reason", "source_device",
-                "source_inode", "source_birthtime_ns", "file_size",
-                "file_mtime_ms", "prefix_hash", "tail_hash",
-                "first_deferred_at", "last_deferred_at", "consecutive_count",
-                "missing_first_seen_at", "missing_count",
-            ])
-            let fetchedState = try ImportStateRecord.fetchOne(
-                db, key: "/codex/stuck.jsonl")
-            let state = try #require(fetchedState)
-            #expect(state.sessionId == "stuck-codex")
-            #expect(state.fileSize == 47_537_329)
-            #expect(state.byteOffset == 843_500)
-            #expect(state.parserCheckpoint == Data([1, 2, 3]))
-            #expect(try CodexRebuildObservationRecord.fetchCount(db) == 0)
-        }
-    }
-
     @Test("v18 import_state session index can be reapplied safely")
     func importStateSessionLookupIndexMigrationIsIdempotent() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-import-state-index-idempotence")

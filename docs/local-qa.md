@@ -142,10 +142,6 @@ The default QA steps are:
 open-dashboard,open-settings,open-menubar-help,show-popover,refresh-all,exercise-settings,wait,snapshot
 ```
 
-Use `show-import-warning,show-popover,wait,snapshot` for the focused deferred
-Codex-history warning walkthrough. The synthetic report exists only in QA mode
-and does not read or modify a user's rollout files.
-
 In QA mode, `refresh-all` is local-only: it runs the importer and UI refreshes
 without contacting the live Codex app-server or Claude OAuth endpoint.
 `exercise-settings` then changes settings through the real `SettingsStore`,

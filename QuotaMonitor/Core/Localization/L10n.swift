@@ -417,15 +417,6 @@ enum L10n {
     static func scanCurrentFile(_ file: String) -> String {
         t(en: "Current file: \(file)", zh: "当前文件：\(file)")
     }
-    static var scanDeferredWarningTitle: String {
-        t(en: "History statistics may be incomplete",
-          zh: "历史统计可能不完整")
-    }
-    static func scanDeferredWarningDetail(count: Int, consecutive: Int) -> String {
-        t(
-            en: "\(count) Codex history file(s) are still changing (\(consecutive) consecutive scans). Existing data is preserved and recovery will retry automatically.",
-            zh: "有 \(count) 个 Codex 历史文件仍在变化（已连续 \(consecutive) 次扫描）。现有数据已保留，稳定后会自动恢复。")
-    }
     static var noScanYet: String { t(en: "No scan yet", zh: "尚未扫描") }
     static var scanErrors: String { t(en: "Scan errors", zh: "扫描错误") }
     static func errorTotal(_ n: Int) -> String {
