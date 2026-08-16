@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Rewritten Codex history now comes back on the very next scan instead of waiting for the file to go quiet.
+
+### Changed
+
+- **Recover rewritten rollouts without waiting.** Rebuilding a rewritten Codex rollout no longer requires the file to sit untouched for two seconds first. That wait never protected committed rows — a rollout caught mid-record already keeps them — while a source whose modification time reads as being in the future could be put off indefinitely.
+
 ## [1.0.3] — 2026-08-16
 
 #### Summary
