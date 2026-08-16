@@ -271,8 +271,16 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database) == completedRows)
     }
 
-    @Test("complete in-place rewrite rebuilds after stability and resumes append")
-    func completeInPlaceRewriteRebuilds() async throws {
+    // The next three tests all cover a rollout Codex rewrote while keeping its
+    // inode. `sourceIdentity` is (device, inode, birthtime), so they must not
+    // backdate the file's modification date: macOS clamps birthtime to any
+    // earlier mtime, which silently changes the identity and reroutes the scan
+    // onto the atomic-replacement path instead. Rewriting in place is enough —
+    // it leaves the identity untouched, which each test asserts immediately
+    // before the scan under test.
+
+    @Test("a same-inode rewrite rebuilds from byte zero and resumes append")
+    func sameInodeRewriteRebuildsThenResumesAppend() async throws {
         let initialLines = prefixLines() + [
             tokenLine(
                 timestamp: "2026-07-19T00:00:04.000Z",
@@ -308,17 +316,9 @@ struct CodexIncrementalImportEngineTests {
         let rewrittenData = rolloutData(rewrittenLines)
         #expect(Int64(rewrittenData.count) > beforeState.byteOffset)
         try overwriteInPlace(rewrittenData, at: harness.rollout)
-        #expect(try sourceIdentity(of: harness.rollout) == originalIdentity)
+        #expect(try sourceIdentity(of: harness.rollout) == originalIdentity,
+                "must exercise the same-inode rewrite path")
 
-        let deferredReport = try await harness.engine.performScan()
-        #expect(deferredReport.changedFiles == 1)
-        #expect(deferredReport.importedEvents == 0)
-        #expect(deferredReport.sourceBytesRead == 0)
-        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 68])
-
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date(timeIntervalSinceNow: -3)],
-            ofItemAtPath: harness.rollout.path)
         let rebuiltReport = try await harness.engine.performScan()
         #expect(rebuiltReport.changedFiles == 1)
         #expect(rebuiltReport.incrementalFiles == 0)
@@ -342,8 +342,8 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [45, 30, 30, 30])
     }
 
-    @Test("incomplete in-place rewrite preserves committed rows")
-    func incompleteInPlaceRewritePreservesHistory() async throws {
+    @Test("a same-inode rewrite caught mid-record preserves committed rows")
+    func sameInodeRewriteWithIncompleteTailPreservesHistory() async throws {
         let initialLines = prefixLines() + [
             tokenLine(
                 timestamp: "2026-07-19T00:00:04.000Z",
@@ -370,10 +370,8 @@ struct CodexIncrementalImportEngineTests {
         ].joined(separator: "\n") + "\n"
         let partial = prefix + String(finalLine.prefix(finalLine.count / 2))
         try overwriteInPlace(Data(partial.utf8), at: harness.rollout)
-        #expect(try sourceIdentity(of: harness.rollout) == originalIdentity)
-        try FileManager.default.setAttributes(
-            [.modificationDate: Date(timeIntervalSinceNow: -3)],
-            ofItemAtPath: harness.rollout.path)
+        #expect(try sourceIdentity(of: harness.rollout) == originalIdentity,
+                "must exercise the same-inode rewrite path")
 
         let report = try await harness.engine.performScan()
         #expect(report.changedFiles == 1)
@@ -385,6 +383,51 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await importState(
             at: harness.rollout.path,
             in: harness.database) == beforeState)
+    }
+
+    @Test("a same-inode rewrite that drops records follows the shortened file")
+    func sameInodeRewriteBelowCommittedOffsetFollowsTheFile() async throws {
+        let initialLines = prefixLines() + [
+            tokenLine(
+                timestamp: "2026-07-19T00:00:04.000Z",
+                total: usage(input: 160, cached: 25, output: 18, reasoning: 5),
+                last: usage(input: 60, cached: 5, output: 8, reasoning: 2)),
+        ]
+        let harness = try makeHarness(lines: initialLines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 68])
+        let beforeState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+        let originalIdentity = try sourceIdentity(of: harness.rollout)
+
+        // Every record is newline-terminated, so this is a settled rewrite that
+        // genuinely dropped history rather than a write caught in flight.
+        let rewrittenData = rolloutData([
+            metaLine(timestamp: "2026-07-19T01:00:00.000Z"),
+            contextLine(timestamp: "2026-07-19T01:00:01.000Z"),
+            tokenLine(
+                timestamp: "2026-07-19T01:00:02.000Z",
+                total: usage(input: 40, cached: 5, output: 5, reasoning: 1),
+                last: usage(input: 40, cached: 5, output: 5, reasoning: 1)),
+        ])
+        #expect(Int64(rewrittenData.count) < beforeState.byteOffset)
+        try overwriteInPlace(rewrittenData, at: harness.rollout)
+        #expect(try sourceIdentity(of: harness.rollout) == originalIdentity,
+                "must exercise the same-inode rewrite path")
+
+        let report = try await harness.engine.performScan()
+        #expect(report.changedFiles == 1)
+        #expect(report.incrementalFiles == 0)
+        #expect(report.importedEvents == 1)
+        #expect(report.sourceBytesRead == Int64(rewrittenData.count))
+        #expect(report.errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [45])
+        #expect(try await importState(
+            at: harness.rollout.path,
+            in: harness.database).byteOffset == Int64(rewrittenData.count))
     }
 
     @Test("an existing archived canonical outranks an unrelated active copy")

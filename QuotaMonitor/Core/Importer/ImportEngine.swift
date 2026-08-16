@@ -10,7 +10,6 @@ import GRDB
 
 actor ImportEngine {
     private static let proactiveMetadataBackfillWindow: TimeInterval = 7 * 24 * 60 * 60
-    private static let rewriteStabilityIntervalMs: Int64 = 2_000
 
     private let database: DatabaseManager
     private let codexHome: URL?
@@ -591,28 +590,24 @@ actor ImportEngine {
             return decoded
         }
 
-        var invalidatedCheckpoint = false
         if let checkpoint,
-           checkpoint.sourceIdentity == file.sourceIdentity {
-            invalidatedCheckpoint = true
-            if file.fileSize >= checkpoint.offset {
-                do {
-                    let output = try RolloutParser.parseIncrementally(
-                        fileURL: file.url,
-                        fallbackSessionId: candidate.sessionId,
-                        checkpoint: checkpoint)
-                    if output.checkpoint != nil {
-                        return ParsedCandidate(output: output, mode: .append)
-                    }
-                } catch is RolloutParserError {
-                    // Reparse from byte zero below once the source is stable.
+           checkpoint.sourceIdentity == file.sourceIdentity,
+           file.fileSize >= checkpoint.offset {
+            do {
+                let output = try RolloutParser.parseIncrementally(
+                    fileURL: file.url,
+                    fallbackSessionId: candidate.sessionId,
+                    checkpoint: checkpoint)
+                if output.checkpoint != nil {
+                    return ParsedCandidate(output: output, mode: .append)
                 }
+            } catch is RolloutParserError {
+                // Codex can rewrite a rollout while keeping its inode, which
+                // strands the committed checkpoint. Reparse from byte zero
+                // below instead of rejecting the source forever; the file is
+                // the record of truth and `hasIncompleteTail` still holds the
+                // last-known-good rows while a rewrite is mid-flight.
             }
-        }
-
-        if invalidatedCheckpoint,
-           try !Self.isStableForRebuild(fileURL: file.url) {
-            return nil
         }
 
         let output = try RolloutParser.parseIncrementally(
@@ -626,13 +621,6 @@ actor ImportEngine {
             return nil
         }
         return ParsedCandidate(output: output, mode: .replace)
-    }
-
-    private static func isStableForRebuild(fileURL: URL) throws -> Bool {
-        let reader = try RolloutRecordReader(fileURL: fileURL)
-        defer { try? reader.close() }
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1_000)
-        return nowMs - reader.snapshot.mtimeMs >= rewriteStabilityIntervalMs
     }
 
     static func verifyCurrentSource(
