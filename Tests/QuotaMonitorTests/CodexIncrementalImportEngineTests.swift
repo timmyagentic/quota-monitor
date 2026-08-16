@@ -397,6 +397,87 @@ struct CodexIncrementalImportEngineTests {
         #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [440, 15])
     }
 
+    @Test("pending rewrite is validated when size mtime and checkpoint windows collide")
+    func pendingRewriteSurvivesCheckpointMetadataCollision() async throws {
+        let padding = #"{"type":"unknown","padding":"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyz"}"#
+        let leadingPadding = Array(repeating: padding, count: 64)
+        let trailingPadding = Array(repeating: padding, count: 64)
+        let originalLines = [
+            metaLine(timestamp: "2026-07-19T00:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T00:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T00:00:02.000Z"),
+        ] + leadingPadding + [
+            tokenLine(
+                timestamp: "2026-07-19T00:00:03.000Z",
+                total: usage(input: 100, cached: 20, output: 10, reasoning: 3),
+                last: usage(input: 100, cached: 20, output: 10, reasoning: 3)),
+        ] + trailingPadding
+        let harness = try makeHarness(lines: originalLines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        let originalModificationTime = try modificationTime(of: harness.rollout)
+        _ = try await harness.engine.performScan()
+        let originalState = try await importState(
+            at: harness.rollout.path,
+            in: harness.database)
+        let originalIdentity = try sourceIdentity(of: harness.rollout)
+        #expect(originalState.byteOffset > 2 * RolloutParser.fingerprintWindowBytes)
+
+        var headRewriteLines = originalLines
+        headRewriteLines[0] = metaLine(timestamp: "2026-07-19T01:00:00.000Z")
+        try overwriteInPlace(rolloutData(headRewriteLines), at: harness.rollout)
+        let observed = try await harness.engine.performScan()
+        #expect(observed.deferredSources.map(\.reason) == ["head_changed"])
+        #expect(observed.deferredSources.map(\.consecutiveCount) == [1])
+
+        let collidedLines = [
+            metaLine(timestamp: "2026-07-19T00:00:00.000Z"),
+            taskLine(timestamp: "2026-07-19T00:00:01.000Z"),
+            contextLine(timestamp: "2026-07-19T00:00:02.000Z"),
+        ] + leadingPadding + [
+            tokenLine(
+                timestamp: "2026-07-19T00:00:03.000Z",
+                total: usage(input: 900, cached: 20, output: 10, reasoning: 3),
+                last: usage(input: 900, cached: 20, output: 10, reasoning: 3)),
+        ] + trailingPadding
+        let collidedData = rolloutData(collidedLines)
+        #expect(collidedData.count == Int(originalState.fileSize))
+        try overwriteInPlace(collidedData, at: harness.rollout)
+        try setModificationTime(originalModificationTime, at: harness.rollout)
+
+        let collidedFile = try #require(
+            SessionScanner.scan(codexHome: harness.codexHome).first)
+        #expect(collidedFile.sourceIdentity == originalIdentity)
+        #expect(collidedFile.fileSize == originalState.fileSize)
+        #expect(collidedFile.fileMtimeMs == originalState.fileMtimeMs)
+        let checkpointData = try #require(originalState.parserCheckpoint)
+        let checkpoint = try CodexRolloutCheckpoint.decoded(from: checkpointData)
+        let reader = try RolloutRecordReader(fileURL: harness.rollout)
+        defer { try? reader.close() }
+        let window = RolloutParser.fingerprintWindowBytes
+        #expect(try reader.sha256(in: 0..<window) == checkpoint.prefixHash)
+        #expect(try reader.sha256(
+            in: (checkpoint.offset - window)..<checkpoint.offset)
+            == checkpoint.boundaryHash)
+
+        let signatureChanged = try await harness.engine.performScan()
+        #expect(signatureChanged.changedFiles == 1)
+        #expect(signatureChanged.importedEvents == 0)
+        #expect(signatureChanged.deferredSources.map(\.consecutiveCount) == [1])
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) != nil)
+
+        let recovered = try await harness.engine.performScan()
+        #expect(recovered.importedEvents == 1)
+        #expect(recovered.deferredSources.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [910])
+        #expect(try await rebuildObservation(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+    }
+
     @Test("failed first observation write still reports a rebuild retry")
     func failedInitialObservationWriteKeepsRetryAlive() async throws {
         let harness = try makeHarness(lines: prefixLines())
@@ -1575,6 +1656,27 @@ struct CodexIncrementalImportEngineTests {
         defer { try? handle.close() }
         try handle.truncate(atOffset: 0)
         try handle.write(contentsOf: data)
+    }
+
+    private func modificationTime(of url: URL) throws -> timespec {
+        var status = stat()
+        let result = url.path.withCString { path in
+            Darwin.lstat(path, &status)
+        }
+        guard result == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        return status.st_mtimespec
+    }
+
+    private func setModificationTime(_ value: timespec, at url: URL) throws {
+        var times = [value, value]
+        let result = url.path.withCString { path in
+            Darwin.utimensat(AT_FDCWD, path, &times, 0)
+        }
+        guard result == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
     }
 
     private func sourceIdentity(of url: URL) throws -> RolloutSourceIdentity {

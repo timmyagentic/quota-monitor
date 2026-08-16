@@ -39,6 +39,10 @@ actor ImportEngine {
         let sessionId: String
         let expectedState: ImportStateRecord?
         let replacesExistingHistory: Bool
+        /// A durable recovery row must be driven through full-signature
+        /// validation even when size, mtime, and checkpoint fingerprint
+        /// windows happen to match the committed import state again.
+        let pendingRebuildReason: DeferredReason?
     }
 
     private enum PersistMode: Equatable {
@@ -270,6 +274,13 @@ actor ImportEngine {
             let rows = try ImportStateRecord.fetchAll(db)
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })
         }
+        let pendingRebuildReasons: [String: DeferredReason] =
+            try await database.pool.read { db in
+                let rows = try CodexRebuildObservationRecord.fetchAll(db)
+                return Dictionary(uniqueKeysWithValues: rows.map { record in
+                    (record.sourcePath, Self.resumeReason(for: record.reason))
+                })
+            }
         var errors: [String] = []
         let metadataBackfillCutoff = ISO8601.fractional.string(
             from: Date().addingTimeInterval(-Self.proactiveMetadataBackfillWindow))
@@ -360,6 +371,7 @@ actor ImportEngine {
         var changed: [ScanCandidate] = []
         for source in sources {
             let file = source.file
+            let pendingRebuildReason = pendingRebuildReasons[file.path]
             let expected: ImportStateRecord?
             if let direct = source.directState {
                 expected = direct
@@ -374,6 +386,16 @@ actor ImportEngine {
                expected.sourcePath == file.path,
                expected.fileSize == file.fileSize,
                expected.fileMtimeMs == file.fileMtimeMs {
+                if pendingRebuildReason != nil {
+                    changed.append(ScanCandidate(
+                        file: file,
+                        sessionId: source.sessionId,
+                        expectedState: expected,
+                        replacesExistingHistory: codexSessions.ids.contains(
+                            source.sessionId),
+                        pendingRebuildReason: pendingRebuildReason))
+                    continue
+                }
                 // Size and millisecond mtime can collide across an atomic
                 // replacement. A checkpointed root file is only unchanged if
                 // the scanner's inode snapshot still matches its checkpoint.
@@ -383,7 +405,8 @@ actor ImportEngine {
                         sessionId: source.sessionId,
                         expectedState: expected,
                         replacesExistingHistory: codexSessions.ids.contains(
-                            source.sessionId)))
+                            source.sessionId),
+                        pendingRebuildReason: pendingRebuildReason))
                     continue
                 }
                 if metadataIncompleteCodexPaths.contains(file.path),
@@ -394,7 +417,8 @@ actor ImportEngine {
                             sessionId: source.sessionId,
                             expectedState: expected,
                             replacesExistingHistory: codexSessions.ids.contains(
-                                source.sessionId)))
+                                source.sessionId),
+                            pendingRebuildReason: pendingRebuildReason))
                     } else {
                         currentCodexPathsWithoutBackfillableProjectMetadata.append(file.path)
                     }
@@ -405,7 +429,8 @@ actor ImportEngine {
                 file: file,
                 sessionId: source.sessionId,
                 expectedState: expected,
-                replacesExistingHistory: codexSessions.ids.contains(source.sessionId)))
+                replacesExistingHistory: codexSessions.ids.contains(source.sessionId),
+                pendingRebuildReason: pendingRebuildReason))
         }
         if !currentCodexPathsWithoutBackfillableProjectMetadata.isEmpty {
             try await markCodexRolloutsWithoutBackfillableProjectMetadata(
@@ -537,10 +562,12 @@ actor ImportEngine {
                 currentFile: nextFile))
         }
 
-        // Present-but-unchanged or de-canonicalized sources no longer need a
-        // recovery observation. A source absent from one enumeration is not
-        // enough evidence of removal: active-to-archived renames can expose a
-        // transient gap, so retain and report it until absence is confirmed.
+        // Present but de-canonicalized sources no longer need a recovery
+        // observation. Every canonical source with a durable observation was
+        // forced through the changed-file path above. A source absent from one
+        // enumeration is not enough evidence of removal: active-to-archived
+        // renames can expose a transient gap, so retain and report it until
+        // absence is confirmed.
         do {
             let inactiveDeferred = try await reconcileInactiveRebuildObservations(
                 changedPaths: Set(changed.map { $0.file.path }),
@@ -802,6 +829,13 @@ actor ImportEngine {
                   decoded.offset == state.byteOffset
             else { return nil }
             return decoded
+        }
+
+        if let pendingRebuildReason = candidate.pendingRebuildReason,
+           checkpoint?.sourceIdentity == file.sourceIdentity {
+            return try await resolveInvalidCheckpoint(
+                candidate: candidate,
+                reason: pendingRebuildReason)
         }
 
         if let checkpoint,
@@ -1121,6 +1155,23 @@ actor ImportEngine {
             && record.fileMtimeMs == signature.snapshot.mtimeMs
             && record.prefixHash == signature.prefixHash
             && record.tailHash == signature.tailHash
+    }
+
+    /// Missing-source and incomplete-tail observations describe the latest
+    /// wait state, not necessarily why the committed checkpoint became
+    /// invalid. Re-observe them with a neutral reason: an unchanged partial
+    /// signature remains `incomplete_tail`, while a newly completed signature
+    /// can start the normal stability gate instead of waiting forever.
+    private static func resumeReason(for persistedReason: String) -> DeferredReason {
+        guard let reason = DeferredReason(rawValue: persistedReason) else {
+            return .checkpointInvalid
+        }
+        switch reason {
+        case .incompleteTail, .sourceMissing:
+            return .checkpointInvalid
+        default:
+            return reason
+        }
     }
 
     private func reconcileInactiveRebuildObservations(
