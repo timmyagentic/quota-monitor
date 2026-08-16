@@ -477,6 +477,28 @@ actor ImportEngine {
                 }
             } catch {
                 errors.append("\(file.path): \(error)")
+                // A stable full rebuild can still lose a race in the final
+                // source verification or fail transactionally. Its persisted
+                // observation intentionally survives that rollback; report it
+                // again so AppEnvironment keeps the warning visible and arms
+                // another automatic follow-up instead of requiring user input.
+                if let pending = await pendingRebuildDeferredSource(
+                    candidate: candidate) {
+                    deferredSources.append(pending)
+                    DeveloperLog.eventRecord(
+                        "importer.codex.rebuild_retry.persist_failure",
+                        level: .warning,
+                        category: "importer",
+                        result: "deferred",
+                        message: "Codex full rebuild did not commit; retry remains queued",
+                        fields: [
+                            "session_id": .string(pending.sessionId),
+                            "reason": .string(pending.reason),
+                            "consecutive_count": .int(pending.consecutiveCount),
+                            "checkpoint_bytes": .int(Int(pending.checkpointBytes)),
+                            "current_bytes": .int(Int(pending.currentBytes)),
+                        ])
+                }
             }
             let nextIndex = index + 1
             let nextFile = nextIndex < changed.count
@@ -932,6 +954,31 @@ actor ImportEngine {
             checkpointBytes: candidate.expectedState?.byteOffset ?? 0,
             currentBytes: record.fileSize,
             isPersistent: isPersistent)
+    }
+
+    private func pendingRebuildDeferredSource(
+        candidate: ScanCandidate
+    ) async -> ScanReport.DeferredSource? {
+        do {
+            guard let record = try await database.pool.read({ db in
+                try CodexRebuildObservationRecord
+                    .filter(Column("source_path") == candidate.file.path)
+                    .fetchOne(db)
+            }) else { return nil }
+            return deferredSource(
+                candidate: candidate,
+                record: record,
+                observedAt: now())
+        } catch {
+            DeveloperLog.eventRecord(
+                "importer.codex.rebuild_retry.load_fail",
+                level: .error,
+                category: "importer",
+                result: "failure",
+                message: String(describing: error),
+                fields: ["session_id": .string(candidate.sessionId)])
+            return nil
+        }
     }
 
     private static func rebuildSignature(fileURL: URL) throws -> RebuildSignature {

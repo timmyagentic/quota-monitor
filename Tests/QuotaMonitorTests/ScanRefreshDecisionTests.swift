@@ -233,7 +233,7 @@ struct CodexRebuildFollowUpSchedulingTests {
             importedSessions: 0,
             importedEvents: 0,
             importedRateLimitSamples: 0,
-            errors: [],
+            errors: ["rebuild did not commit"],
             deferredSources: [
                 ImportEngine.ScanReport.DeferredSource(
                     provider: "codex",

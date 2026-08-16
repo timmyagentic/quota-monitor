@@ -597,6 +597,8 @@ struct CodexIncrementalImportEngineTests {
         #expect(failed.importedEvents == 0)
         #expect(failed.errors.count == 1)
         #expect(failed.errors[0].contains("forced rebuild checkpoint failure"))
+        #expect(failed.deferredSources.count == 1)
+        #expect(failed.deferredSources[0].consecutiveCount == 2)
         #expect(try await usageRows(in: harness.database) == beforeRows)
         #expect(try await importState(
             at: harness.rollout.path,
@@ -656,6 +658,8 @@ struct CodexIncrementalImportEngineTests {
         #expect(failed.importedEvents == 0)
         #expect(failed.errors.count == 1)
         #expect(failed.errors[0].contains("changed while it was being parsed"))
+        #expect(failed.deferredSources.count == 1)
+        #expect(failed.deferredSources[0].consecutiveCount == 2)
         #expect(try await usageRows(in: harness.database) == beforeRows)
         #expect(try await importState(
             at: harness.rollout.path,
