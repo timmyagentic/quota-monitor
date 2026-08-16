@@ -165,6 +165,25 @@ struct ScanRefreshDecisionTests {
         #expect(displayed.deferredSources.isEmpty)
     }
 
+    @Test("An errored Codex scan cannot clear its previous deferral")
+    func erroredProviderRetainsPreviousDeferral() {
+        let errored = ImportEngine.ScanReport(
+            scannedFiles: 1,
+            changedFiles: 1,
+            importedSessions: 0,
+            importedEvents: 0,
+            importedRateLimitSamples: 0,
+            errors: ["transient database read failure"])
+        let displayed = AppEnvironment.preservingUnscannedDeferrals(
+            current: errored,
+            previous: deferredCodexReport(),
+            scannedProviders: [],
+            enabledProviders: ["codex", "claude"])
+
+        #expect(displayed.errors == errored.errors)
+        #expect(displayed.deferredSources.count == 1)
+    }
+
     @Test("Disabling Codex drops its stale deferral")
     func disabledProviderClearsDeferral() {
         let displayed = AppEnvironment.preservingUnscannedDeferrals(

@@ -187,10 +187,17 @@ extension AppEnvironment {
                         try await codexReport, try await claudeTask.value)
                 }
                 await MainActor.run {
+                    // A provider report with errors cannot prove that an older
+                    // durable recovery condition was resolved. Retain its last
+                    // health state for this display pass; a later error-free
+                    // scan owns and clears it.
+                    let providersOwningDeferralHealth = merged.errors.isEmpty
+                        ? scanProviders
+                        : []
                     let displayReport = Self.preservingUnscannedDeferrals(
                         current: merged,
                         previous: self.lastScanReport,
-                        scannedProviders: scanProviders,
+                        scannedProviders: providersOwningDeferralHealth,
                         enabledProviders: enabled)
                     self.lastScanReport = displayReport
                     if merged.didChangeReadModel {
@@ -198,7 +205,7 @@ extension AppEnvironment {
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
                     self.updateCodexRebuildFollowUp(
-                        report: merged,
+                        report: displayReport,
                         codexWasScanned: scanProviders.contains("codex"))
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.

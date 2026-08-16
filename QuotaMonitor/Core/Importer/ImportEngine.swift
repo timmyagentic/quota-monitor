@@ -414,6 +414,7 @@ actor ImportEngine {
 
         for (index, candidate) in changed.enumerated() {
             let file = candidate.file
+            var recoveryObservationHandled = false
             do {
                 switch try await parse(candidate: candidate) {
                 case .parsed(let parsedCandidate):
@@ -438,6 +439,7 @@ actor ImportEngine {
                             if parsedCandidate.mode == .append {
                                 incrementalFiles += 1
                             }
+                            recoveryObservationHandled = true
                         } else {
                             DeveloperLog.eventRecord(
                                 "importer.codex.session_id.changed",
@@ -455,6 +457,7 @@ actor ImportEngine {
                     }
                 case .deferred(let deferred):
                     deferredSources.append(deferred)
+                    recoveryObservationHandled = true
                     DeveloperLog.eventRecord(
                         "importer.codex.source.wait",
                         level: .warning,
@@ -478,28 +481,30 @@ actor ImportEngine {
                 }
             } catch {
                 errors.append("\(file.path): \(error)")
-                // A stable full rebuild can still lose a race in the final
-                // source verification or fail transactionally. Its persisted
-                // observation intentionally survives that rollback; report it
-                // again so AppEnvironment keeps the warning visible and arms
-                // another automatic follow-up instead of requiring user input.
-                if let pending = await pendingRebuildDeferredSource(
-                    candidate: candidate) {
-                    deferredSources.append(pending)
-                    DeveloperLog.eventRecord(
-                        "importer.codex.rebuild_retry.persist_failure",
-                        level: .warning,
-                        category: "importer",
-                        result: "deferred",
-                        message: "Codex full rebuild did not commit; retry remains queued",
-                        fields: [
-                            "session_id": .string(pending.sessionId),
-                            "reason": .string(pending.reason),
-                            "consecutive_count": .int(pending.consecutiveCount),
-                            "checkpoint_bytes": .int(Int(pending.checkpointBytes)),
-                            "current_bytes": .int(Int(pending.currentBytes)),
-                        ])
-                }
+            }
+            // Any attempt that neither committed nor explicitly deferred may
+            // still own a durable rebuild observation: source verification or
+            // persistence can fail, and a concurrent rewrite can also change
+            // the parsed session before persistence. Keep every such recovery
+            // in the report and automatic follow-up queue.
+            if !recoveryObservationHandled,
+               let pending = await pendingRebuildDeferredSource(
+                    candidate: candidate)
+            {
+                deferredSources.append(pending)
+                DeveloperLog.eventRecord(
+                    "importer.codex.rebuild_retry.uncommitted",
+                    level: .warning,
+                    category: "importer",
+                    result: "deferred",
+                    message: "Codex full rebuild did not commit; retry remains queued",
+                    fields: [
+                        "session_id": .string(pending.sessionId),
+                        "reason": .string(pending.reason),
+                        "consecutive_count": .int(pending.consecutiveCount),
+                        "checkpoint_bytes": .int(Int(pending.checkpointBytes)),
+                        "current_bytes": .int(Int(pending.currentBytes)),
+                    ])
             }
             let nextIndex = index + 1
             let nextFile = nextIndex < changed.count
