@@ -193,6 +193,32 @@ struct ScanRefreshDecisionTests {
         #expect(AppEnvironment.codexRebuildFollowUpDelay(
             for: longIncomplete.deferredSources) == 300)
         #expect(AppEnvironment.codexRebuildFollowUpDelay(for: []) == nil)
+        #expect(AppEnvironment.codexRebuildScanFailureBackoff(
+            consecutiveFailureCount: 1) == 5)
+        #expect(AppEnvironment.codexRebuildScanFailureBackoff(
+            consecutiveFailureCount: 4) == 40)
+        #expect(AppEnvironment.codexRebuildScanFailureBackoff(
+            consecutiveFailureCount: 100) == 300)
+    }
+
+    @Test("Only Codex recovery scans re-arm after a scan-level failure")
+    func codexRebuildFailureRearmPolicy() {
+        #expect(AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
+            codexWasRequested: true,
+            trigger: "codex-rebuild-follow-up",
+            previousReport: nil))
+        #expect(!AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
+            codexWasRequested: false,
+            trigger: "codex-rebuild-follow-up",
+            previousReport: nil))
+        #expect(!AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
+            codexWasRequested: true,
+            trigger: "manual",
+            previousReport: nil))
+        #expect(AppEnvironment.shouldRearmCodexRebuildAfterScanFailure(
+            codexWasRequested: true,
+            trigger: "manual",
+            previousReport: deferredCodexReport()))
     }
 
     private func deferredCodexReport(
@@ -251,8 +277,26 @@ struct CodexRebuildFollowUpSchedulingTests {
             report: report, codexWasScanned: true)
 
         #expect(env._codexRebuildFollowUpIsScheduledForTest)
+        #expect(env._codexRebuildFollowUpFailureCountForTest == 1)
         env.cancelCodexRebuildFollowUp()
         #expect(!env._codexRebuildFollowUpIsScheduledForTest)
+        #expect(env._codexRebuildFollowUpFailureCountForTest == 0)
+    }
+
+    @Test("A scan-level failure re-arms one bounded follow-up")
+    func scanLevelFailureRearmsFollowUp() {
+        let env = AppEnvironment(startBackgroundTasks: false)
+
+        env.rearmCodexRebuildFollowUpAfterScanFailure(previousReport: nil)
+        env.rearmCodexRebuildFollowUpAfterScanFailure(previousReport: nil)
+
+        #expect(env._codexRebuildFollowUpIsScheduledForTest)
+        #expect(env._codexRebuildFollowUpFailureCountForTest == 2)
+
+        env.updateCodexRebuildFollowUp(
+            report: .empty, codexWasScanned: true)
+        #expect(!env._codexRebuildFollowUpIsScheduledForTest)
+        #expect(env._codexRebuildFollowUpFailureCountForTest == 0)
     }
 
     @Test("An unrelated provider scan does not alter Codex scheduling")

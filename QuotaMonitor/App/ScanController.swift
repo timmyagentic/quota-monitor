@@ -45,6 +45,9 @@ extension AppEnvironment {
                 fields: ["reason": "onboarding"])
             return
         }
+        let codexWasRequested = Self.resolveScanProviders(
+            requested: providers,
+            enabled: initialSnap.enabledProviders).contains("codex")
         // App Store sandbox builds can only read history folders the user has
         // explicitly authorized (security-scoped bookmarks). Abort the scan
         // ONLY when *no* enabled provider is authorized — otherwise we scope
@@ -248,7 +251,17 @@ extension AppEnvironment {
                     }
                 }
             } catch {
-                await MainActor.run { self.lastError = String(describing: error) }
+                await MainActor.run {
+                    self.lastError = String(describing: error)
+                    if Self.shouldRearmCodexRebuildAfterScanFailure(
+                        codexWasRequested: codexWasRequested,
+                        trigger: trigger,
+                        previousReport: self.lastScanReport)
+                    {
+                        self.rearmCodexRebuildFollowUpAfterScanFailure(
+                            previousReport: self.lastScanReport)
+                    }
+                }
                 DeveloperLog.failOperation(
                     op,
                     error: error,
@@ -393,24 +406,80 @@ extension AppEnvironment {
         return min(5 * pow(2, Double(exponent)), 5 * 60)
     }
 
+    nonisolated static func codexRebuildScanFailureBackoff(
+        consecutiveFailureCount: Int
+    ) -> TimeInterval {
+        let exponent = min(6, max(0, consecutiveFailureCount - 1))
+        return min(5 * pow(2, Double(exponent)), 5 * 60)
+    }
+
+    nonisolated static func shouldRearmCodexRebuildAfterScanFailure(
+        codexWasRequested: Bool,
+        trigger: String,
+        previousReport: ImportEngine.ScanReport?
+    ) -> Bool {
+        guard codexWasRequested else { return false }
+        return trigger.hasPrefix("codex-rebuild-follow-up")
+            || previousReport?.deferredSources.contains {
+                $0.provider == "codex"
+            } == true
+    }
+
     func updateCodexRebuildFollowUp(
         report: ImportEngine.ScanReport,
         codexWasScanned: Bool
     ) {
         guard codexWasScanned else { return }
+        guard let baseDelay = Self.codexRebuildFollowUpDelay(
+            for: report.deferredSources)
+        else {
+            cancelCodexRebuildFollowUp()
+            return
+        }
+
+        if report.errors.isEmpty {
+            codexRebuildFollowUpFailureCount = 0
+        } else {
+            codexRebuildFollowUpFailureCount = min(
+                Int.max - 1,
+                codexRebuildFollowUpFailureCount) + 1
+        }
+        let delay = report.errors.isEmpty
+            ? baseDelay
+            : max(
+                baseDelay,
+                Self.codexRebuildScanFailureBackoff(
+                    consecutiveFailureCount:
+                        codexRebuildFollowUpFailureCount))
+        scheduleCodexRebuildFollowUp(after: delay, report: report)
+    }
+
+    func rearmCodexRebuildFollowUpAfterScanFailure(
+        previousReport: ImportEngine.ScanReport?
+    ) {
+        codexRebuildFollowUpFailureCount = min(
+            Int.max - 1,
+            codexRebuildFollowUpFailureCount) + 1
+        let failureDelay = Self.codexRebuildScanFailureBackoff(
+            consecutiveFailureCount: codexRebuildFollowUpFailureCount)
+        let sourceDelay = previousReport.flatMap {
+            Self.codexRebuildFollowUpDelay(for: $0.deferredSources)
+        } ?? 0
+        scheduleCodexRebuildFollowUp(
+            after: max(sourceDelay, failureDelay),
+            report: previousReport)
+    }
+
+    private func scheduleCodexRebuildFollowUp(
+        after delay: TimeInterval,
+        report: ImportEngine.ScanReport?
+    ) {
         codexRebuildFollowUpTask?.cancel()
         codexRebuildFollowUpTask = nil
         // This scan has consumed any follow-up that became pending while a
-        // different scan was active. If the source is still deferred below,
-        // arm exactly one new timer instead of also launching an immediate
-        // duplicate from the scan's defer.
+        // different scan was active. Arm exactly one new timer instead of also
+        // launching an immediate duplicate from the scan's defer.
         codexRebuildFollowUpPending = false
-
-        guard let delay = Self.codexRebuildFollowUpDelay(
-            for: report.deferredSources)
-        else {
-            return
-        }
 
         DeveloperLog.eventRecord(
             "importer.codex.rebuild_follow_up.schedule",
@@ -420,9 +489,11 @@ extension AppEnvironment {
             result: "scheduled",
             fields: [
                 "delay_seconds": .double(delay),
-                "deferred_sources": .int(report.deferredSourceCount),
+                "deferred_sources": .int(report?.deferredSourceCount ?? 0),
                 "max_consecutive_deferred": .int(
-                    report.consecutiveDeferredCount)
+                    report?.consecutiveDeferredCount ?? 0),
+                "scan_failure_count": .int(
+                    codexRebuildFollowUpFailureCount)
             ])
         codexRebuildFollowUpTask = Task { @MainActor [weak self] in
             do {
@@ -464,10 +535,15 @@ extension AppEnvironment {
         codexRebuildFollowUpTask?.cancel()
         codexRebuildFollowUpTask = nil
         codexRebuildFollowUpPending = false
+        codexRebuildFollowUpFailureCount = 0
     }
 
     var _codexRebuildFollowUpIsScheduledForTest: Bool {
         codexRebuildFollowUpTask != nil
+    }
+
+    var _codexRebuildFollowUpFailureCountForTest: Int {
+        codexRebuildFollowUpFailureCount
     }
 
     /// Pure post-scan refresh policy. Persisted changes and explicit refreshes

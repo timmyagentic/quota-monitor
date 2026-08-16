@@ -121,6 +121,9 @@ final class AppEnvironment {
     /// The follow-up timer elapsed while another provider scan was running.
     /// The active scan consumes this in its defer and starts the Codex scan.
     var codexRebuildFollowUpPending = false
+    /// Consecutive scan-level failures while closing a rebuild recovery loop.
+    /// Used for bounded retry backoff; reset by a successful Codex scan.
+    var codexRebuildFollowUpFailureCount = 0
     var isLoadingDashboard = false
     var lastError: String?
 
