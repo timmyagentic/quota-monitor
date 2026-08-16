@@ -45,6 +45,9 @@ extension AppEnvironment {
                 fields: ["reason": "onboarding"])
             return
         }
+        let codexWasRequested = Self.resolveScanProviders(
+            requested: providers,
+            enabled: initialSnap.enabledProviders).contains("codex")
         // App Store sandbox builds can only read history folders the user has
         // explicitly authorized (security-scoped bookmarks). Abort the scan
         // ONLY when *no* enabled provider is authorized — otherwise we scope
@@ -108,6 +111,7 @@ extension AppEnvironment {
 
         Task { [weak self, op] in
             guard let self else { return }
+            var codexScanWasAttempted = codexWasRequested
             defer {
                 Task { @MainActor in
                     self.isScanning = false
@@ -115,7 +119,10 @@ extension AppEnvironment {
                     // Fire any Claude file-watch write that was coalesced while
                     // this scan held `isScanning`, so a post-read append isn't
                     // stranded until the next write / manual refresh.
-                    self.runPendingClaudeFileWatchScanIfNeeded()
+                    if !self.runPendingHistoryRootRescanIfNeeded(),
+                       !self.runPendingCodexRebuildScanIfNeeded() {
+                        self.runPendingClaudeFileWatchScanIfNeeded()
+                    }
                 }
             }
             do {
@@ -138,6 +145,7 @@ extension AppEnvironment {
                         ? HistoryRootAuthorizationStore.shared.authorizedProviders(from: enabled)
                         : [],
                     isAppStore: isAppStore)
+                codexScanWasAttempted = scanProviders.contains("codex")
                 DeveloperLog.eventRecord(
                     "scan.providers",
                     category: "scan",
@@ -182,11 +190,21 @@ extension AppEnvironment {
                         try await codexReport, try await claudeTask.value)
                 }
                 await MainActor.run {
-                    self.lastScanReport = merged
+                    let currentlyEnabled = SettingsStore.snapshot().enabledProviders
+                    let displayReport = Self.preservingUnscannedDeferrals(
+                        current: merged,
+                        previous: self.lastScanReport,
+                        scannedProviders: scanProviders,
+                        enabledProviders: currentlyEnabled)
+                    self.lastScanReport = displayReport
                     if merged.didChangeReadModel {
                         self.sessionsDataGeneration &+= 1
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
+                    self.updateCodexRebuildFollowUp(
+                        report: displayReport,
+                        codexWasScanned: scanProviders.contains("codex")
+                            && currentlyEnabled.contains("codex"))
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.
                     if merged.scopeUnavailable {
@@ -203,6 +221,9 @@ extension AppEnvironment {
                         "imported_events": .int(merged.importedEvents),
                         "imported_rate_limit_samples": .int(merged.importedRateLimitSamples),
                         "updated_session_metadata": .int(merged.updatedSessionMetadata),
+                        "deferred_sources": .int(merged.deferredSourceCount),
+                        "persistent_deferred_sources": .int(
+                            merged.persistentDeferredSourceCount),
                         "errors": .int(merged.errors.count)
                     ])
                 // Frequent watcher scans can skip summary queries when their
@@ -235,7 +256,13 @@ extension AppEnvironment {
                     }
                 }
             } catch {
-                await MainActor.run { self.lastError = String(describing: error) }
+                await MainActor.run {
+                    self.lastError = String(describing: error)
+                    if codexScanWasAttempted {
+                        self.rearmCodexRebuildFollowUpAfterScanFailure(
+                            previousReport: self.lastScanReport)
+                    }
+                }
                 DeveloperLog.failOperation(
                     op,
                     error: error,
@@ -335,7 +362,228 @@ extension AppEnvironment {
             incrementalFiles: a.incrementalFiles + b.incrementalFiles,
             sourceBytesRead: a.sourceBytesRead + b.sourceBytesRead,
             errors: a.errors + b.errors,
+            deferredSources: a.deferredSources + b.deferredSources,
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
+    }
+
+    /// A scoped scan owns health only for the providers it actually visited.
+    /// Keep unresolved warnings from enabled, unscanned providers so a
+    /// Claude-only FSEvents import cannot make a Codex problem disappear.
+    nonisolated static func preservingUnscannedDeferrals(
+        current: ImportEngine.ScanReport,
+        previous: ImportEngine.ScanReport?,
+        scannedProviders: Set<String>,
+        enabledProviders: Set<String>
+    ) -> ImportEngine.ScanReport {
+        let visibleCurrent = current.replacingDeferredSources(
+            current.deferredSources.filter {
+                enabledProviders.contains($0.provider)
+            })
+        guard let previous else { return visibleCurrent }
+        let currentKeys = Set(visibleCurrent.deferredSources.map {
+            $0.provider + "\u{1F}" + $0.sourcePath
+        })
+        let retained = previous.deferredSources.filter { source in
+            enabledProviders.contains(source.provider)
+                && !scannedProviders.contains(source.provider)
+                && !currentKeys.contains(
+                    source.provider + "\u{1F}" + source.sourcePath)
+        }
+        guard !retained.isEmpty else { return visibleCurrent }
+        return visibleCurrent.replacingDeferredSources(
+            visibleCurrent.deferredSources + retained)
+    }
+
+    /// Initial fingerprint mismatches retry just after the importer stability
+    /// window. An unchanged incomplete tail backs off exponentially to five
+    /// minutes; its signature check reads only two 4 KB windows, and any file
+    /// change returns to the short stability-confirmation delay.
+    nonisolated static func codexRebuildFollowUpDelay(
+        for sources: [ImportEngine.ScanReport.DeferredSource]
+    ) -> TimeInterval? {
+        let codexSources = sources.filter { $0.provider == "codex" }
+        guard !codexSources.isEmpty else { return nil }
+        if codexSources.contains(where: {
+            $0.reason != "incomplete_tail" && $0.reason != "source_missing"
+        }) {
+            return ImportEngine.defaultRebuildStabilityInterval + 0.5
+        }
+        let count = codexSources.map(\.consecutiveCount).max() ?? 1
+        let exponent = min(6, max(0, count - 2))
+        return min(5 * pow(2, Double(exponent)), 5 * 60)
+    }
+
+    nonisolated static func codexRebuildScanFailureBackoff(
+        consecutiveFailureCount: Int
+    ) -> TimeInterval {
+        let exponent = min(6, max(0, consecutiveFailureCount - 1))
+        return min(5 * pow(2, Double(exponent)), 5 * 60)
+    }
+
+    func updateCodexRebuildFollowUp(
+        report: ImportEngine.ScanReport,
+        codexWasScanned: Bool
+    ) {
+        guard codexWasScanned else { return }
+        guard let baseDelay = Self.codexRebuildFollowUpDelay(
+            for: report.deferredSources)
+        else {
+            cancelCodexRebuildFollowUp()
+            return
+        }
+
+        if report.errors.isEmpty {
+            codexRebuildFollowUpFailureCount = 0
+        } else {
+            codexRebuildFollowUpFailureCount = min(
+                Int.max - 1,
+                codexRebuildFollowUpFailureCount) + 1
+        }
+        let delay = report.errors.isEmpty
+            ? baseDelay
+            : max(
+                baseDelay,
+                Self.codexRebuildScanFailureBackoff(
+                    consecutiveFailureCount:
+                        codexRebuildFollowUpFailureCount))
+        scheduleCodexRebuildFollowUp(after: delay, report: report)
+    }
+
+    func rearmCodexRebuildFollowUpAfterScanFailure(
+        previousReport: ImportEngine.ScanReport?
+    ) {
+        codexRebuildFollowUpFailureCount = min(
+            Int.max - 1,
+            codexRebuildFollowUpFailureCount) + 1
+        let failureDelay = Self.codexRebuildScanFailureBackoff(
+            consecutiveFailureCount: codexRebuildFollowUpFailureCount)
+        let sourceDelay = previousReport.flatMap {
+            Self.codexRebuildFollowUpDelay(for: $0.deferredSources)
+        } ?? 0
+        scheduleCodexRebuildFollowUp(
+            after: max(sourceDelay, failureDelay),
+            report: previousReport)
+    }
+
+    /// Disabling Codex intentionally hides its warning and cancels the
+    /// in-memory timer, but leaves the durable rebuild observation intact.
+    /// Start one immediate, coalesced history scan when Codex is enabled
+    /// again so that persisted recovery work cannot remain stranded.
+    func resumeCodexHistoryImportAfterProviderEnable() {
+        codexRebuildFollowUpFailureCount = 0
+        DeveloperLog.eventRecord(
+            "importer.codex.rebuild_follow_up.resume",
+            category: "scan",
+            trigger: "provider-enabled",
+            provider: "codex",
+            result: "scheduled")
+        scheduleCodexRebuildFollowUp(after: 0, report: nil)
+    }
+
+    /// Root changes rebuild the importer immediately, but a scan already using
+    /// the previous importer may still be in flight. Queue one unthrottled full
+    /// scan instead of letting `runScan` discard the request at its busy gate.
+    func requestHistoryRootRescan() {
+        guard isScanning else {
+            runScan(minInterval: 0, trigger: "history-root-change")
+            return
+        }
+        historyRootRescanPending = true
+        DeveloperLog.eventRecord(
+            "importer.history_root.rescan.coalesced",
+            category: "scan",
+            trigger: "history-root-change",
+            result: "coalesced")
+    }
+
+    /// A full root-change scan supersedes provider-scoped trailing work for
+    /// this turn. Remaining scoped flags are consumed by its own defer.
+    @discardableResult
+    func runPendingHistoryRootRescanIfNeeded() -> Bool {
+        guard historyRootRescanPending else { return false }
+        historyRootRescanPending = false
+        runScan(minInterval: 0, trigger: "history-root-change-trailing")
+        return true
+    }
+
+    private func scheduleCodexRebuildFollowUp(
+        after delay: TimeInterval,
+        report: ImportEngine.ScanReport?
+    ) {
+        codexRebuildFollowUpTask?.cancel()
+        codexRebuildFollowUpTask = nil
+        // This scan has consumed any follow-up that became pending while a
+        // different scan was active. Arm exactly one new timer instead of also
+        // launching an immediate duplicate from the scan's defer.
+        codexRebuildFollowUpPending = false
+
+        DeveloperLog.eventRecord(
+            "importer.codex.rebuild_follow_up.schedule",
+            category: "scan",
+            trigger: "codex-rebuild-follow-up",
+            provider: "codex",
+            result: "scheduled",
+            fields: [
+                "delay_seconds": .double(delay),
+                "deferred_sources": .int(report?.deferredSourceCount ?? 0),
+                "max_consecutive_deferred": .int(
+                    report?.consecutiveDeferredCount ?? 0),
+                "scan_failure_count": .int(
+                    codexRebuildFollowUpFailureCount)
+            ])
+        codexRebuildFollowUpTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard let self, !Task.isCancelled else { return }
+            self.codexRebuildFollowUpTask = nil
+            guard !self.isScanning else {
+                self.codexRebuildFollowUpPending = true
+                DeveloperLog.eventRecord(
+                    "importer.codex.rebuild_follow_up.coalesced",
+                    category: "scan",
+                    trigger: "codex-rebuild-follow-up",
+                    provider: "codex",
+                    result: "coalesced")
+                return
+            }
+            self.runScan(
+                providers: ["codex"],
+                trigger: "codex-rebuild-follow-up")
+        }
+    }
+
+    /// Returns true when it starts a Codex scan. The caller then leaves any
+    /// pending Claude watcher scan queued; the Codex scan's defer consumes it.
+    @discardableResult
+    func runPendingCodexRebuildScanIfNeeded() -> Bool {
+        guard codexRebuildFollowUpPending else { return false }
+        codexRebuildFollowUpPending = false
+        runScan(
+            providers: ["codex"],
+            trigger: "codex-rebuild-follow-up-trailing")
+        return true
+    }
+
+    func cancelCodexRebuildFollowUp() {
+        codexRebuildFollowUpTask?.cancel()
+        codexRebuildFollowUpTask = nil
+        codexRebuildFollowUpPending = false
+        codexRebuildFollowUpFailureCount = 0
+    }
+
+    var _codexRebuildFollowUpIsScheduledForTest: Bool {
+        codexRebuildFollowUpTask != nil
+    }
+
+    var _codexRebuildFollowUpFailureCountForTest: Int {
+        codexRebuildFollowUpFailureCount
+    }
+
+    var _historyRootRescanPendingForTest: Bool {
+        historyRootRescanPending
     }
 
     /// Pure post-scan refresh policy. Persisted changes and explicit refreshes

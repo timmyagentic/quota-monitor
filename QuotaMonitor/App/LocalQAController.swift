@@ -54,6 +54,28 @@ final class LocalQAController {
             case .showPopover:
                 statusItemController.showPopover()
                 await pause(seconds: 0.6)
+            case .showImportWarning:
+                let firstDeferredAt = Date().addingTimeInterval(-10 * 60)
+                environment.lastScanReport = ImportEngine.ScanReport(
+                    scannedFiles: 1,
+                    changedFiles: 1,
+                    importedSessions: 0,
+                    importedEvents: 0,
+                    importedRateLimitSamples: 0,
+                    errors: [],
+                    deferredSources: [
+                        ImportEngine.ScanReport.DeferredSource(
+                            provider: "codex",
+                            sourcePath: "/qa/codex/rollout.jsonl",
+                            sessionId: "qa-deferred-session",
+                            reason: "head_changed",
+                            consecutiveCount: 4,
+                            firstDeferredAt: firstDeferredAt,
+                            checkpointBytes: 843_500,
+                            currentBytes: 47_537_329,
+                            isPersistent: true)
+                    ])
+                await pause(seconds: 0.2)
             case .showCodexOverlayDetails:
                 codexQuotaOverlayController?.showDetailsForLocalQA()
                 await pause(seconds: 0.6)

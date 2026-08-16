@@ -114,6 +114,24 @@ final class AppEnvironment {
     /// write that lands inside the throttle window). Coalesces a burst into one
     /// trailing scan; cancelled when the watcher stops.
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
+    /// A history-root grant or reauthorization that lands during another scan
+    /// must run once that scan releases the shared `isScanning` gate. This is
+    /// provider-wide because changing roots can affect Codex and Claude.
+    var historyRootRescanPending = false
+    /// One coalesced delayed Codex scan used only while an invalid checkpoint
+    /// is waiting for a stable source signature. Unlike the regular popover
+    /// throttle, this closes the recovery loop without another user action.
+    var codexRebuildFollowUpTask: Task<Void, Never>?
+    /// The follow-up timer elapsed while another provider scan was running.
+    /// The active scan consumes this in its defer and starts the Codex scan.
+    var codexRebuildFollowUpPending = false
+    /// Consecutive scan-level failures while closing a rebuild recovery loop.
+    /// Used for bounded retry backoff; reset by a successful Codex scan.
+    var codexRebuildFollowUpFailureCount = 0
+    /// Last provider set applied to the live runtime. Keeping this separate
+    /// from the current Settings snapshot lets us detect a disabled -> enabled
+    /// transition after the setting has already been persisted.
+    private var lastAppliedEnabledProviders: Set<String>
     var isLoadingDashboard = false
     var lastError: String?
 
@@ -207,6 +225,7 @@ final class AppEnvironment {
         self.codexAccountUsageClient = codexAccountUsageClient
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
+        self.lastAppliedEnabledProviders = SettingsStore.snapshot().enabledProviders
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
         guard startBackgroundTasks else { return }
         // Boot background polling immediately so it doesn't depend on the user
@@ -241,6 +260,7 @@ final class AppEnvironment {
 
     func reloadHistoryImportRoots() {
         guard let db = database else { return }
+        cancelCodexRebuildFollowUp()
         importEngine = ImportEngine(database: db)
         claudeEngine = ClaudeImportEngine(database: db)
         // Rebuild the Claude file-watcher against the new roots so a mid-session
@@ -259,7 +279,7 @@ final class AppEnvironment {
     /// then scans once at finish, so it uses the plain `reloadHistoryImportRoots`.)
     func reloadHistoryImportRootsAndRescan() {
         reloadHistoryImportRoots()
-        runScan(minInterval: 0, trigger: "history-root-change")
+        requestHistoryRootRescan()
     }
 
     /// Boot the background rate-limit poller. Idempotent.
@@ -642,6 +662,22 @@ final class AppEnvironment {
     /// the UI immediately matches the new set.
     func applyEnabledProviders() {
         let enabled = SettingsStore.snapshot().enabledProviders
+        let previouslyEnabled = lastAppliedEnabledProviders
+        lastAppliedEnabledProviders = enabled
+        let codexBecameEnabled = Self.providerBecameEnabled(
+            "codex", previous: previouslyEnabled, current: enabled)
+        if !enabled.contains("codex") {
+            cancelCodexRebuildFollowUp()
+        }
+        if let report = lastScanReport {
+            let visibleDeferrals = report.deferredSources.filter {
+                enabled.contains($0.provider)
+            }
+            if visibleDeferrals.count != report.deferredSources.count {
+                lastScanReport = report.replacingDeferredSources(
+                    visibleDeferrals)
+            }
+        }
         DeveloperLog.eventRecord(
             "settings.enabled_providers.apply",
             category: "settings",
@@ -689,6 +725,9 @@ final class AppEnvironment {
                     "error_message": .string(error.localizedDescription)
                 ])
         }
+        if codexBecameEnabled {
+            resumeCodexHistoryImportAfterProviderEnable()
+        }
         // Snap the toolbar filter off a disabled provider. We never
         // synthesize a single-provider filter — the union view (`.all`)
         // is always a valid fallback even when only one provider is
@@ -703,6 +742,14 @@ final class AppEnvironment {
             refreshDashboard(trigger: "settings")
         }
         refreshMenuBar(trigger: "settings")
+    }
+
+    nonisolated static func providerBecameEnabled(
+        _ provider: String,
+        previous: Set<String>,
+        current: Set<String>
+    ) -> Bool {
+        !previous.contains(provider) && current.contains(provider)
     }
 
     /// Apply runtime-mutable settings without restarting the app.

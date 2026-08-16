@@ -615,5 +615,34 @@ enum Migrations {
                 END
                 """)
         }
+
+        // v21: A same-inode Codex rollout rewrite invalidates the committed
+        // reducer checkpoint. Persist two small content signatures so the
+        // importer can wait for stability across scans, then rebuild without
+        // discarding the last-known-good rows while the file is still moving.
+        migrator.registerMigration("v21-codex-rebuild-observations") { db in
+            try db.create(table: "codex_rebuild_observations") { t in
+                // No foreign key: source relocation can need an observation
+                // before the new canonical path has an import_state row.
+                t.primaryKey("source_path", .text)
+                t.column("session_id", .text).notNull()
+                t.column("reason", .text).notNull()
+                t.column("source_device", .integer).notNull()
+                t.column("source_inode", .integer).notNull()
+                t.column("source_birthtime_ns", .integer).notNull()
+                t.column("file_size", .integer).notNull()
+                t.column("file_mtime_ms", .integer).notNull()
+                t.column("prefix_hash", .blob).notNull()
+                t.column("tail_hash", .blob).notNull()
+                t.column("first_deferred_at", .text).notNull()
+                t.column("last_deferred_at", .text).notNull()
+                t.column("consecutive_count", .integer).notNull()
+                t.column("missing_first_seen_at", .text)
+                t.column("missing_count", .integer).notNull().defaults(to: 0)
+            }
+            try db.create(
+                indexOn: "codex_rebuild_observations",
+                columns: ["session_id"])
+        }
     }
 }
