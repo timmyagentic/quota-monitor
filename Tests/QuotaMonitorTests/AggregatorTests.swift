@@ -99,6 +99,20 @@ struct AggregatorTests {
         iso.formatOptions = [.withInternetDateTime]
         let stamp = iso.string(from: when)
 
+        try seedEvent(
+            in: db, provider: provider, sessionId: sessionId,
+            timestamp: stamp, valueUSD: valueUSD, tokens: tokens)
+    }
+
+    private func seedEvent(
+        in db: DatabaseManager,
+        provider: String,
+        sessionId: String,
+        timestamp stamp: String,
+        valueUSD: Double,
+        tokens: Int64 = 1000
+    ) throws {
+
         try db.pool.write { conn in
             // INSERT OR IGNORE — reusing a session_id across calls is
             // intentional (so we can test DISTINCT counting).
@@ -368,6 +382,37 @@ struct AggregatorTests {
         #expect(trends.last30Days.modelBreakdown.reduce(Int64(0)) {
             $0 + $1.tokens
         } == 1_600)
+    }
+
+    @Test("rolling Trends keeps parseable timestamp formats on the oldest boundary day")
+    func rollingTrendsKeepsMixedTimestampFormatsAtOldestBoundary() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 15)))
+        let database = try makeDatabase()
+
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "sqlite-inside",
+            timestamp: "2025-08-15 23:00:00", valueUSD: 1, tokens: 100)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "offset-inside",
+            timestamp: "2025-08-14T23:30:00-01:00",
+            valueUSD: 2, tokens: 200)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "offset-outside",
+            timestamp: "2025-08-14T22:30:00-01:00",
+            valueUSD: 4, tokens: 400)
+
+        let trends = try database.pool.read { db in
+            try Aggregator.fetchRollingTrends(
+                db: db, now: now, calendar: calendar)
+        }
+
+        #expect(trends.last365Days.daily.reduce(Int64(0)) { $0 + $1.tokens }
+                == 300)
+        #expect(abs(trends.last365Days.daily.reduce(0.0) { $0 + $1.valueUSD }
+                    - 3) < 0.0001)
     }
 
     @Test("rolling Trends stays 7 × 24 hours across a DST transition")

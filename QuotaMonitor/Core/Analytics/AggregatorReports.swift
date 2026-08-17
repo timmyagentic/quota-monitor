@@ -327,11 +327,16 @@ extension Aggregator {
         let cutoffs = Dictionary(uniqueKeysWithValues:
             RollingTrendWindow.allCases.map { ($0, $0.lowerBound(from: now)) })
         let oldestCutoff = cutoffs[.last365Days] ?? .distantPast
-        // Query from the local start of the partial boundary day, then apply
-        // exact parsed-Date bounds below. This retains timestamp-format
-        // compatibility while limiting the raw-row scan to the longest range.
+        // Query conservatively from the UTC date before the partial boundary
+        // day, then apply exact parsed-Date bounds below. Every timestamp shape
+        // accepted by `parseTimestamp` begins with yyyy-MM-dd, but their later
+        // separators and offsets are not lexically comparable. A date-only
+        // bound keeps the timestamp index useful without dropping SQLite-form
+        // or offset timestamps before they can be parsed.
         let queryStart = calendar.startOfDay(for: oldestCutoff)
-        let lowerBound = ISO8601.fractional.string(from: queryStart)
+        let conservativeQueryStart = queryStart.addingTimeInterval(-24 * 60 * 60)
+        let lowerBound = String(
+            ISO8601.fractional.string(from: conservativeQueryStart).prefix(10))
         let cacheRead = cacheReadTokensExpression(table: "ue")
         let cacheEligibleInput = cacheEligibleInputExpression(table: "ue")
         let rows = try Row.fetchAll(db, sql: """
