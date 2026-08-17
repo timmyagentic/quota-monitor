@@ -591,12 +591,8 @@ actor ImportEngine {
         }
 
         if let checkpoint,
-           checkpoint.sourceIdentity == file.sourceIdentity {
-            guard file.fileSize >= checkpoint.offset else {
-                // Committed bytes were truncated in place. That violates the
-                // append-only contract, so preserve last-known-good rows.
-                return nil
-            }
+           checkpoint.sourceIdentity == file.sourceIdentity,
+           file.fileSize >= checkpoint.offset {
             do {
                 let output = try RolloutParser.parseIncrementally(
                     fileURL: file.url,
@@ -605,11 +601,12 @@ actor ImportEngine {
                 if output.checkpoint != nil {
                     return ParsedCandidate(output: output, mode: .append)
                 }
-            } catch let error as RolloutParserError {
-                if case .requiresFullRebuild = error {
-                    return nil
-                }
-                // Decode/version failures take the conservative full path.
+            } catch is RolloutParserError {
+                // Codex can rewrite a rollout while keeping its inode, which
+                // strands the committed checkpoint. Reparse from byte zero
+                // below instead of rejecting the source forever; the file is
+                // the record of truth and `hasIncompleteTail` still holds the
+                // last-known-good rows while a rewrite is mid-flight.
             }
         }
 
