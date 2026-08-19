@@ -44,11 +44,9 @@ struct DashboardView: View {
                 providerFilter: env.providerFilter,
                 enabledProviders: settings.enabledProviders)
             TrendsSection(
-                dailyExtended: snapshot.dailyExtended,
-                providerBreakdown: snapshot.dailyProviderExtended
-                    .filter { providerIsVisible($0.provider) },
-                modelBreakdown: snapshot.dailyModelExtended
-                    .filter { providerIsVisible($0.provider) })
+                trends: snapshot.trends,
+                visibleProviders: Set(
+                    ["codex", "claude"].filter(providerIsVisible)))
             ActivitySection(
                 scope: $env.activityDataScope,
                 indexed: indexedActivityContent(for: snapshot),

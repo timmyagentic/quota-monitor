@@ -49,6 +49,19 @@ enum TrendBreakdownGrouping: Sendable, Equatable {
     case model
 }
 
+enum RollingTrendWindow: Int, CaseIterable, Sendable, Hashable {
+    case last7Days = 7
+    case last30Days = 30
+    case last90Days = 90
+    case last365Days = 365
+
+    var days: Int { rawValue }
+
+    func lowerBound(from now: Date) -> Date {
+        now.addingTimeInterval(-TimeInterval(days) * 24 * 60 * 60)
+    }
+}
+
 struct DailyBreakdownPoint: Sendable, Identifiable, Equatable {
     let date: Date
     let provider: String
@@ -59,6 +72,29 @@ struct DailyBreakdownPoint: Sendable, Identifiable, Equatable {
 
     var id: String {
         "\(provider)-\(key)-\(date.timeIntervalSinceReferenceDate)"
+    }
+}
+
+struct TrendWindowSnapshot: Sendable, Equatable {
+    let daily: [DailyPoint]
+    let providerBreakdown: [DailyBreakdownPoint]
+    let modelBreakdown: [DailyBreakdownPoint]
+}
+
+struct DashboardTrendData: Sendable, Equatable {
+    let last7Days: TrendWindowSnapshot
+    let last30Days: TrendWindowSnapshot
+    let last90Days: TrendWindowSnapshot
+    let last365Days: TrendWindowSnapshot
+    let prior30DayValueUSD: Double
+
+    func window(for range: RollingTrendWindow) -> TrendWindowSnapshot {
+        switch range {
+        case .last7Days: return last7Days
+        case .last30Days: return last30Days
+        case .last90Days: return last90Days
+        case .last365Days: return last365Days
+        }
     }
 }
 
@@ -87,16 +123,13 @@ struct ModelShare: Sendable, Identifiable, Equatable {
 struct DashboardSnapshot: Sendable, Equatable {
     let overview: OverviewStats
     let daily: [DailyPoint]          // last 14 days, oldest first
-    /// Last 365 days, oldest first. Used by the Dashboard's Trends section
-    /// for the 7d / 30d / 90d / 1y ranges; the statline still reads only
-    /// the trailing 60 days to compute 30d and prior-30d totals.
+    /// Local-day buckets intersecting the trailing 365 × 24-hour window,
+    /// oldest first. The boundary day is partial, so this can contain 366
+    /// calendar dates. Also powers the Dashboard cache summaries.
     let dailyExtended: [DailyPoint]
-    /// Same rolling day window as `dailyExtended`, split by provider.
-    /// Powers the Token Monitor-inspired stacked trend chart.
-    let dailyProviderExtended: [DailyBreakdownPoint]
-    /// Same rolling day window as `dailyExtended`, split by model display
-    /// name so the Trends view can flip between tool and model stacks.
-    let dailyModelExtended: [DailyBreakdownPoint]
+    /// Exact 7 / 30 / 90 / 365 × 24-hour trend windows. Each window is
+    /// filtered before local-day bucketing so its first day is not overstated.
+    let trends: DashboardTrendData
     /// Last 12 calendar months, oldest first. Zero-filled.
     let monthly: [MonthlyPoint]
     let modelShares: [ModelShare]    // sorted desc by valueUSD (lifetime)
