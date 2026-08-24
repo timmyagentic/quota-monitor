@@ -113,6 +113,24 @@ struct RolloutParserTests {
         #expect(second.modelInferred == false)
     }
 
+    @Test("cumulative fallback preserves cache-write deltas")
+    func cacheWriteDeltaComputationFromCumulativeCounters() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-08-24T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","cwd":"/tmp/project"}}
+        {"timestamp":"2026-08-24T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-5.6-terra"}}
+        {"timestamp":"2026-08-24T00:00:02.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":30,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":110}}}}
+        {"timestamp":"2026-08-24T00:00:03.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":25,"cache_write_input_tokens":50,"output_tokens":18,"reasoning_output_tokens":5,"total_tokens":178}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.count == 2)
+        #expect(parsed.usageDeltas[0].cacheWriteInputTokens == 30)
+        #expect(parsed.usageDeltas[0].totalTokens == 110)
+        #expect(parsed.usageDeltas[1].cacheWriteInputTokens == 20)
+        #expect(parsed.usageDeltas[1].inputTokens == 60)
+        #expect(parsed.usageDeltas[1].totalTokens == 68)
+    }
+
     // MARK: - rate-limit sample extraction
 
     @Test("embedded rate_limits become primary + secondary sample drafts")

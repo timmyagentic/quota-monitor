@@ -181,6 +181,7 @@ struct TokenCountInfo: Decodable {
 struct TokenUsageWire: Codable, Equatable, Hashable, Sendable {
     let inputTokens: Int64
     let cachedInputTokens: Int64
+    let cacheWriteInputTokens: Int64
     let outputTokens: Int64
     let reasoningOutputTokens: Int64
     let totalTokens: Int64
@@ -188,13 +189,44 @@ struct TokenUsageWire: Codable, Equatable, Hashable, Sendable {
     enum CodingKeys: String, CodingKey {
         case inputTokens = "input_tokens"
         case cachedInputTokens = "cached_input_tokens"
+        case cacheWriteInputTokens = "cache_write_input_tokens"
         case outputTokens = "output_tokens"
         case reasoningOutputTokens = "reasoning_output_tokens"
         case totalTokens = "total_tokens"
     }
 
+    init(
+        inputTokens: Int64,
+        cachedInputTokens: Int64,
+        cacheWriteInputTokens: Int64 = 0,
+        outputTokens: Int64,
+        reasoningOutputTokens: Int64,
+        totalTokens: Int64
+    ) {
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.cacheWriteInputTokens = cacheWriteInputTokens
+        self.outputTokens = outputTokens
+        self.reasoningOutputTokens = reasoningOutputTokens
+        self.totalTokens = totalTokens
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        inputTokens = try values.decode(Int64.self, forKey: .inputTokens)
+        cachedInputTokens = try values.decode(Int64.self, forKey: .cachedInputTokens)
+        cacheWriteInputTokens = try values.decodeIfPresent(
+            Int64.self,
+            forKey: .cacheWriteInputTokens) ?? 0
+        outputTokens = try values.decode(Int64.self, forKey: .outputTokens)
+        reasoningOutputTokens = try values.decode(
+            Int64.self,
+            forKey: .reasoningOutputTokens)
+        totalTokens = try values.decode(Int64.self, forKey: .totalTokens)
+    }
+
     static let zero = TokenUsageWire(
-        inputTokens: 0, cachedInputTokens: 0,
+        inputTokens: 0, cachedInputTokens: 0, cacheWriteInputTokens: 0,
         outputTokens: 0, reasoningOutputTokens: 0, totalTokens: 0)
 }
 

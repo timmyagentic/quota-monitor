@@ -3,10 +3,11 @@ import GRDB
 
 // Installs the bundled pricing catalog and computes API-equivalent value for usage events.
 //
-// Value formula (matches codex-pacer):
-//   value_usd =   max(input - cached, 0) * input_price/1M
-//               + cached                  * cached_price/1M
-//               + output                  * output_price/1M
+// Codex value formula:
+//   value_usd =   max(input - cached - cache_write, 0) * input_price/1M
+//               + cached                                * cached_price/1M
+//               + cache_write                           * cache_write_price/1M
+//               + output                                * output_price/1M
 //
 // Why not `+ reasoning_output_tokens * output_price`? Empirical check across 300
 // token_count events in real Codex JSONL: every single one satisfies
@@ -24,7 +25,9 @@ struct PricingEntry: Sendable, Hashable {
     let inputPricePerMillion: Double
     let cachedInputPricePerMillion: Double
     let outputPricePerMillion: Double
-    let cacheCreationPricePerMillion: Double    // Claude 5m cache write; 0 for OpenAI
+    /// Provider cache-write rate: Claude 5-minute cache creation or OpenAI
+    /// prompt-cache writes. Zero when that model has no published write price.
+    let cacheCreationPricePerMillion: Double
     let effectiveModelId: String
     let isOfficial: Bool
     let note: String?
@@ -97,11 +100,10 @@ enum CodexFlexMode {
     static let suffix = "-flex"
 }
 
-/// OpenAI prices supported requests above 272K input tokens at 2x input
-/// (including cached input) and 1.5x output. Priority processing does not
-/// support long context, so an explicitly requested Priority turn uses the
-/// base Standard row once it crosses this threshold. Flex keeps its Flex row
-/// and receives the same long-context multipliers.
+/// OpenAI prices supported requests above 272K input tokens at 2x every input
+/// category (ordinary, cached, and cache writes) and 1.5x output. GPT-5.6 has
+/// published Fast long-context prices; older Fast models without such rows
+/// fall back to Standard long-context pricing. Flex retains its tier.
 enum CodexLongContextPricing {
     static let inputTokenThreshold: Int64 = 272_000
     static let inputMultiplier = 2.0
@@ -112,6 +114,11 @@ enum CodexLongContextPricing {
         "gpt-5.6-luna",
         "gpt-5.5",
         "gpt-5.4",
+    ]
+    static let fastModelIds: Set<String> = [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
     ]
 }
 
@@ -164,15 +171,18 @@ enum BundledPricingCatalog {
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
+              cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "gpt-5.6-sol", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-terra", displayName: "GPT-5.6 Terra",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 12.00,
+              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "gpt-5.6-terra", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-luna", displayName: "GPT-5.6 Luna",
               inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.20,
+              cacheCreationPricePerMillion: 0.25,
               effectiveModelId: "gpt-5.6-luna", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
@@ -450,9 +460,9 @@ enum PricingService {
     /// has a pricing entry. Provider-branched:
     ///
     ///   - **codex** (OpenAI): `input_tokens` is the gross figure that already
-    ///     includes the cached portion, so the input rate only applies to
-    ///     `max(input - cached, 0)`. `output_tokens` already includes reasoning;
-    ///     no cache_creation involved.
+    ///     includes cached reads and cache writes. Ordinary input therefore
+    ///     uses `max(input - cached - cache_write, 0)`; cache writes use their
+    ///     published 1.25x rate. `output_tokens` already includes reasoning.
     ///
     ///   - **claude**: the API breaks tokens out by category — `input_tokens`
     ///     is the **uncached** portion, `cache_read_input_tokens` is billed at
@@ -463,8 +473,9 @@ enum PricingService {
     /// For codex events, a stored `priority` or `flex` preference selects the
     /// matching synthetic tier row when supported. A stored `default` or an
     /// unknown preference selects the base Standard row. Requests above 272K
-    /// input tokens use OpenAI's long-context multipliers; Priority falls back
-    /// to Standard pricing there because Priority does not support long context.
+    /// input tokens use OpenAI's long-context multipliers. GPT-5.6 Priority
+    /// keeps Fast pricing there; models without Fast long-context rows fall
+    /// back to Standard.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
@@ -533,6 +544,7 @@ enum PricingService {
             multiplier: CodexLongContextPricing.outputMultiplier)
         let inputPriceExpr = codexPricePerMillionSQL(component: .input)
         let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
+        let cacheWritePriceExpr = codexPricePerMillionSQL(component: .cacheWrite)
         let outputPriceExpr = codexPricePerMillionSQL(component: .output)
         let scopeClause: String
         let updateTarget: String
@@ -597,11 +609,16 @@ enum PricingService {
                           * pc.output_price_per_million
                       ) / 1000000.0
                     ELSE
-                      (MAX(usage_events.input_tokens - usage_events.cached_input_tokens, 0)
+                      (MAX(usage_events.input_tokens
+                               - usage_events.cached_input_tokens
+                               - usage_events.cache_creation_tokens, 0)
                           * (\(inputPriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.cached_input_tokens
                           * (\(cachedInputPriceExpr))
+                          * \(inputMultiplierExpr)
+                       + usage_events.cache_creation_tokens
+                          * (\(cacheWritePriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.output_tokens
                           * (\(outputPriceExpr))
@@ -623,12 +640,14 @@ enum PricingService {
     private enum CodexPriceComponent {
         case input
         case cachedInput
+        case cacheWrite
         case output
 
         var catalogColumn: String {
             switch self {
             case .input: "input_price_per_million"
             case .cachedInput: "cached_input_price_per_million"
+            case .cacheWrite: "cache_creation_price_per_million"
             case .output: "output_price_per_million"
             }
         }
@@ -637,6 +656,7 @@ enum PricingService {
             switch self {
             case .input: period.inputPricePerMillion
             case .cachedInput: period.cachedInputPricePerMillion
+            case .cacheWrite: period.inputPricePerMillion * 1.25
             case .output: period.outputPricePerMillion
             }
         }
@@ -701,9 +721,10 @@ enum PricingService {
 
     /// SQL expression that resolves to the catalog `model_id` we should
     /// price this event against. A recognized codex event's stored tier
-    /// preference wins; unknown rows stay Standard. Long-context Priority
-    /// requests also use Standard because that service tier is unsupported.
-    /// Other providers and models keep `usage_events.model_id`.
+    /// preference wins; unknown rows stay Standard. GPT-5.6 keeps Fast for
+    /// long-context Priority requests because OpenAI publishes that matrix;
+    /// older Fast models without long-context rows use Standard there. Other
+    /// providers and models keep `usage_events.model_id`.
     ///
     /// We string-interpolate the model id lists and suffixes because
     /// they're code-controlled (sourced from the tier maps), never
@@ -719,19 +740,27 @@ enum PricingService {
         let fastIds = CodexFastMode.multipliers.keys.sorted()
         let flexIds = CodexFlexMode.multipliers.keys.sorted()
         let longContextIds = CodexLongContextPricing.modelIds.sorted()
-        for id in Set(fastIds + flexIds + longContextIds) {
+        let fastLongContextIds = CodexLongContextPricing.fastModelIds.sorted()
+        for id in Set(fastIds + flexIds + longContextIds + fastLongContextIds) {
             assert(!id.contains("'"),
                    "Codex tier multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
         }
         let quotedFast = fastIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedFlex = flexIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedLongContext = longContextIds.map { "'\($0)'" }.joined(separator: ",")
+        let quotedFastLongContext = fastLongContextIds
+            .map { "'\($0)'" }
+            .joined(separator: ",")
         let fastSuffix = CodexFastMode.suffix
         let flexSuffix = CodexFlexMode.suffix
         return """
         CASE
           WHEN usage_events.provider = 'codex'
           THEN CASE
+            WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
+                 AND usage_events.model_id IN (\(quotedFastLongContext))
+                 AND usage_events.codex_service_tier_preference = 'priority'
+              THEN usage_events.model_id || '\(fastSuffix)'
             WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
                  AND usage_events.model_id IN (\(quotedLongContext))
                  AND usage_events.codex_service_tier_preference = 'flex'

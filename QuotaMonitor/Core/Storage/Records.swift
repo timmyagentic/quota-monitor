@@ -59,7 +59,9 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
     var reasoningOutputTokens: Int64
     var totalTokens: Int64
     var valueUsd: Double
-    var cacheCreationTokens: Int64    // Claude-only; 0 for Codex
+    /// Provider cache-write input: Claude `cache_creation_input_tokens` or
+    /// Codex `cache_write_input_tokens`.
+    var cacheCreationTokens: Int64
     var cacheCreation5mTokens: Int64 = 0
     var cacheCreation1hTokens: Int64 = 0
     var provider: String              // 'codex' | 'claude'

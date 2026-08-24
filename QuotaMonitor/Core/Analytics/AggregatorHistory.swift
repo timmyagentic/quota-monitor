@@ -265,6 +265,7 @@ extension Aggregator {
         return try Row.fetchAll(db, sql: """
             SELECT id, timestamp, provider, model_id,
                    input_tokens, cached_input_tokens,
+                   cache_creation_tokens,
                    cache_creation_5m_tokens, cache_creation_1h_tokens,
                    output_tokens, reasoning_output_tokens,
                    total_tokens, value_usd, model_inferred
@@ -279,6 +280,7 @@ extension Aggregator {
                 modelId: row["model_id"] ?? "unknown",
                 inputTokens: row["input_tokens"] ?? 0,
                 cachedInputTokens: row["cached_input_tokens"] ?? 0,
+                cacheWriteInputTokens: row["cache_creation_tokens"] ?? 0,
                 cacheCreation5mTokens: row["cache_creation_5m_tokens"] ?? 0,
                 cacheCreation1hTokens: row["cache_creation_1h_tokens"] ?? 0,
                 outputTokens: row["output_tokens"] ?? 0,

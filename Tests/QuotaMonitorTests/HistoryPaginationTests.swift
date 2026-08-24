@@ -358,6 +358,34 @@ struct HistoryPaginationTests {
         #expect(claude.cacheUsage.hitRate == 0.8)
     }
 
+    @Test("session-day events expose provider cache-write input")
+    func sessionDayEventsExposeCacheWrites() throws {
+        let calendar = utcCalendar()
+        let db = try makeDatabase()
+        try seed(
+            in: db,
+            sessionId: "codex-cache-write",
+            timestamp: "2026-07-15T08:00:00Z",
+            provider: "codex",
+            tokens: 110,
+            inputTokens: 100,
+            cachedInputTokens: 20,
+            cacheCreationTokens: 30)
+
+        let events = try db.pool.read { connection in
+            try Aggregator.fetchEventsForSessionOnDay(
+                db: connection,
+                sessionId: "codex-cache-write",
+                day: "2026-07-15",
+                calendar: calendar)
+        }
+
+        let event = try #require(events.first)
+        #expect(event.cacheWriteInputTokens == 30)
+        #expect(event.inputTokens == 100)
+        #expect(event.totalTokens == 110)
+    }
+
     @Test("Claude legacy cache writes count as eligible input")
     func claudeLegacyCacheWritesCountAsEligibleInput() throws {
         let calendar = utcCalendar()

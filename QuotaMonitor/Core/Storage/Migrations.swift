@@ -85,7 +85,9 @@ enum Migrations {
         // v2: historical schema expansion. The migration identifier and
         // columns remain for databases created by older releases; current
         // runtime pricing is bundled-only and resets this legacy metadata.
-        //   - cache_creation_price_per_million: Claude-only 5-minute cache write rate. 0 for OpenAI models.
+        //   - cache_creation_price_per_million: provider cache-write rate;
+        //     Claude uses its 5-minute price and supported OpenAI models use
+        //     their prompt-cache write price.
         //   - above_*, price_source, fetched_at, and max_* are retained only so
         //     the append-only migration chain can open existing databases.
         migrator.registerMigration("v2-litellm-pricing") { db in
@@ -105,10 +107,11 @@ enum Migrations {
         // v3: multi-provider support.
         //   - sessions.provider  = 'codex' (default) | 'claude'
         //   - usage_events.provider = same; tagged at insert time so backfill
-        //     can branch on Claude (cache_creation billing) vs OpenAI (cached
-        //     read only) without joining sessions.
-        //   - usage_events.cache_creation_tokens = Claude-specific cache write tokens;
-        //     stays 0 for Codex/OpenAI events.
+        //     can branch on Claude duration-specific cache creation vs OpenAI
+        //     cached reads and prompt-cache writes without joining sessions.
+        //   - usage_events.cache_creation_tokens = provider-neutral cache write
+        //     input. Claude and Codex populate it from their respective wire
+        //     names; early Codex importers left it at 0.
         migrator.registerMigration("v3-multi-provider") { db in
             try db.alter(table: "sessions") { t in
                 t.add(column: "provider", .text)
@@ -613,6 +616,25 @@ enum Migrations {
                         END
                     WHERE session_id = NEW.session_id;
                 END
+                """)
+        }
+
+        // v21: Codex rollouts now expose `cache_write_input_tokens` as a
+        // disjoint subset of `input_tokens`. Reuse the provider-neutral
+        // cache_creation_tokens storage column, but force every known Codex
+        // source through a full parse so committed prefixes and their derived
+        // prices cannot retain the old implicit zero. Claude rows/checkpoints
+        // are unrelated and stay untouched.
+        migrator.registerMigration("v21-codex-cache-write-reread") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0,
+                    parser_checkpoint = NULL
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
                 """)
         }
     }

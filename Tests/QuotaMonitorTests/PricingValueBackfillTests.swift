@@ -11,8 +11,8 @@ import GRDB
 /// name, or an `OR` that misses a row would silently corrupt every
 /// dollar amount in the menu bar. We pin:
 ///
-///   - codex formula: cached tokens are subtracted from input before
-///     pricing (`MAX(input - cached, 0) * input_price + cached * cached_price …`)
+///   - codex formula: cached and cache-write tokens are disjoint subsets of
+///     input, so both are subtracted before ordinary input pricing
 ///   - claude formula: input/cached/cache_creation are billed independently,
 ///     with 1h cache writes split from 5m writes when the importer has that
 ///     breakdown
@@ -77,6 +77,7 @@ struct PricingValueBackfillTests {
         modelId: String,
         input: Int64, cached: Int64,
         output: Int64, cacheCreation: Int64 = 0,
+        codexCacheWrite: Int64 = 0,
         cacheCreation5m: Int64 = 0,
         cacheCreation1h: Int64 = 0,
         serviceTierPreference: String? = nil,
@@ -111,9 +112,13 @@ struct PricingValueBackfillTests {
                 """, arguments: [
                     sid, stamp, modelId,
                     input, cached, output,
-                    input + output + cacheCreation,
+                    provider == "claude"
+                        ? input + output + cacheCreation
+                        : input + output,
                     seedValueUSD,
-                    provider, cacheCreation, cacheCreation5m, cacheCreation1h,
+                    provider,
+                    provider == "codex" ? codexCacheWrite : cacheCreation,
+                    cacheCreation5m, cacheCreation1h,
                     serviceTierPreference
                 ])
         }
@@ -145,7 +150,7 @@ struct PricingValueBackfillTests {
 
     // MARK: - codex formula: subtracts cached from input
 
-    @Test("codex: value = max(input - cached, 0)*in_$ + cached*cached_$ + output*out_$")
+    @Test("codex: ordinary input subtracts cached tokens when cache writes are zero")
     func codexFormulaSubtractsCachedFromInput() throws {
         let db = try makeDatabase()
         // 1.00 / 0.10 / 8.00 per-million: simple decimals so the expected
@@ -167,6 +172,38 @@ struct PricingValueBackfillTests {
         #expect(values.count == 1)
         #expect(abs(values[0] - 1.62) < 1e-6,
                 "codex math expected 1.62, got \(values[0])")
+    }
+
+    @Test("codex: cache writes are removed from ordinary input and billed at 1.25x input")
+    func codexCacheWritesUseDedicatedRate() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-5.6-test",
+            input: 1.00,
+            cached: 0.10,
+            output: 8.00,
+            cacheCreation: 1.25)
+        // input_tokens includes both cached reads and cache writes:
+        //   ordinary input = 1M - 0.2M cached - 0.3M writes = 0.5M -> $0.50
+        //   cached reads   = 0.2M * $0.10                      -> $0.02
+        //   cache writes   = 0.3M * $1.25                      -> $0.375
+        //   output         = 0.1M * $8                         -> $0.80
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-5.6-test",
+            input: 1_000_000,
+            cached: 200_000,
+            output: 100_000,
+            codexCacheWrite: 300_000)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        #expect(abs(value - 1.695) < 1e-9)
     }
 
     // MARK: - claude formula: every category billed independently
@@ -700,7 +737,9 @@ struct PricingValueBackfillTests {
         let rows = try db.pool.read { conn in
             try Row.fetchAll(conn, sql: """
                 SELECT model_id, input_price_per_million,
-                       cached_input_price_per_million, output_price_per_million
+                       cached_input_price_per_million,
+                       cache_creation_price_per_million,
+                       output_price_per_million
                 FROM pricing_catalog
                 WHERE model_id IN (
                   'gpt-5.6-terra', 'gpt-5.6-terra-fast', 'gpt-5.6-terra-flex',
@@ -712,15 +751,16 @@ struct PricingValueBackfillTests {
             (row["model_id"] as String, (
                 row["input_price_per_million"] as Double,
                 row["cached_input_price_per_million"] as Double,
+                row["cache_creation_price_per_million"] as Double,
                 row["output_price_per_million"] as Double))
         })
-        let expected: [String: (Double, Double, Double)] = [
-            "gpt-5.6-terra": (2.00, 0.20, 12.00),
-            "gpt-5.6-terra-fast": (4.00, 0.40, 24.00),
-            "gpt-5.6-terra-flex": (1.00, 0.10, 6.00),
-            "gpt-5.6-luna": (0.20, 0.02, 1.20),
-            "gpt-5.6-luna-fast": (0.40, 0.04, 2.40),
-            "gpt-5.6-luna-flex": (0.10, 0.01, 0.60),
+        let expected: [String: (Double, Double, Double, Double)] = [
+            "gpt-5.6-terra": (2.00, 0.20, 2.50, 12.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 5.00, 24.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 1.25, 6.00),
+            "gpt-5.6-luna": (0.20, 0.02, 0.25, 1.20),
+            "gpt-5.6-luna-fast": (0.40, 0.04, 0.50, 2.40),
+            "gpt-5.6-luna-flex": (0.10, 0.01, 0.125, 0.60),
         ]
 
         #expect(prices.count == expected.count)
@@ -728,6 +768,7 @@ struct PricingValueBackfillTests {
             #expect(abs((prices[modelId]?.0 ?? -1) - price.0) < 1e-9)
             #expect(abs((prices[modelId]?.1 ?? -1) - price.1) < 1e-9)
             #expect(abs((prices[modelId]?.2 ?? -1) - price.2) < 1e-9)
+            #expect(abs((prices[modelId]?.3 ?? -1) - price.3) < 1e-9)
         }
     }
 
@@ -755,6 +796,34 @@ struct PricingValueBackfillTests {
         #expect(abs(values[1] - 0.5680) < 1e-9) // Terra reduced price.
         #expect(abs(values[2] - 0.2840) < 1e-9) // Luna launch price.
         #expect(abs(values[3] - 0.0568) < 1e-9) // Luna reduced price.
+    }
+
+    @Test("GPT-5.6 historical pricing keeps the matching cache-write rate")
+    func gpt56PriceCutoverPricesCacheWritesByEventTimestamp() throws {
+        let db = try makeDatabase()
+        for timestamp in [
+            "2026-07-29T23:59:59.999Z",
+            "2026-07-30T00:00:00.000Z",
+        ] {
+            try insertUsageEvent(
+                in: db,
+                provider: "codex",
+                modelId: "gpt-5.6-terra",
+                input: 200_000,
+                cached: 40_000,
+                output: 20_000,
+                codexCacheWrite: 60_000,
+                timestamp: timestamp)
+        }
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(values.count == 2)
+        #expect(abs(values[0] - 0.7475) < 1e-9) // Launch input/write prices.
+        #expect(abs(values[1] - 0.5980) < 1e-9) // Post-cut input/write prices.
     }
 
     @Test("GPT-5.6 historical prices preserve Fast, Flex, and long-context rules")
@@ -903,6 +972,36 @@ struct PricingValueBackfillTests {
         #expect(abs(values[0] - 1.275) < 1e-6)
     }
 
+    @Test("GPT-5.6 long context doubles ordinary, cached, and cache-write input")
+    func gpt56LongContextPricesEveryInputCategory() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-5.6-terra",
+            input: 2.00,
+            cached: 0.20,
+            output: 12.00,
+            cacheCreation: 2.50)
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-5.6-terra",
+            input: 300_000,
+            cached: 100_000,
+            output: 10_000,
+            codexCacheWrite: 100_000,
+            timestamp: "2026-08-24T00:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // 0.1M ordinary * $4 + 0.1M cached * $0.40
+        // + 0.1M write * $5 + 0.01M output * $18 = $1.12.
+        #expect(abs(value - 1.12) < 1e-9)
+    }
+
     @Test("codex Priority long context falls back to Standard long-context pricing")
     func codexPriorityLongContextUsesStandardLongPricing() throws {
         let db = try makeDatabase()
@@ -920,6 +1019,82 @@ struct PricingValueBackfillTests {
 
         let values = try valueUSD(in: db)
         #expect(abs(values[0] - 1.275) < 1e-6)
+    }
+
+    @Test("GPT-5.6 Priority long context keeps Fast pricing")
+    func gpt56PriorityLongContextUsesFastLongPricing() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-5.6-terra",
+            input: 2.00,
+            cached: 0.20,
+            output: 12.00,
+            cacheCreation: 2.50)
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-5.6-terra-fast",
+            input: 4.00,
+            cached: 0.40,
+            output: 24.00,
+            cacheCreation: 5.00)
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-5.6-terra",
+            input: 300_000,
+            cached: 100_000,
+            output: 10_000,
+            codexCacheWrite: 100_000,
+            serviceTierPreference: "priority",
+            timestamp: "2026-08-24T00:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // Fast long context: $8 ordinary input, $0.80 cached, $10 writes,
+        // and $36 output per million.
+        #expect(abs(value - 2.24) < 1e-9)
+    }
+
+    @Test("GPT-5.6 Flex long context prices cache writes on the Flex tier")
+    func gpt56FlexLongContextPricesCacheWrites() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-5.6-terra",
+            input: 2.00,
+            cached: 0.20,
+            output: 12.00,
+            cacheCreation: 2.50)
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-5.6-terra-flex",
+            input: 1.00,
+            cached: 0.10,
+            output: 6.00,
+            cacheCreation: 1.25)
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-5.6-terra",
+            input: 300_000,
+            cached: 100_000,
+            output: 10_000,
+            codexCacheWrite: 100_000,
+            serviceTierPreference: "flex",
+            timestamp: "2026-08-24T00:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // Flex long context: $2 ordinary input, $0.20 cached, $2.50 writes,
+        // and $9 output per million.
+        #expect(abs(value - 0.56) < 1e-9)
     }
 
     @Test("codex Flex long context applies long-context multipliers to Flex rates")

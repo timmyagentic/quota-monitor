@@ -211,6 +211,42 @@ struct CodexIncrementalImportEngineTests {
         #expect(abs(after[1].valueUsd - 0.00025875) < 1e-15)
     }
 
+    @Test("Codex scan persists and prices cache-write input tokens")
+    func scanPersistsAndPricesCacheWrites() async throws {
+        let harness = try makeHarness(lines: [
+            metaLine(timestamp: "2026-08-24T00:00:00.000Z"),
+            taskLine(timestamp: "2026-08-24T00:00:01.000Z"),
+            contextLine(
+                timestamp: "2026-08-24T00:00:02.000Z",
+                model: "gpt-5.6-terra"),
+            tokenLine(
+                timestamp: "2026-08-24T00:00:03.000Z",
+                total: usage(
+                    input: 300_000,
+                    cached: 100_000,
+                    output: 10_000,
+                    reasoning: 2_000,
+                    cacheWrite: 100_000),
+                last: usage(
+                    input: 300_000,
+                    cached: 100_000,
+                    output: 10_000,
+                    reasoning: 2_000,
+                    cacheWrite: 100_000)),
+        ])
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        let report = try await harness.engine.performScan()
+        #expect(report.errors.isEmpty)
+        #expect(report.importedEvents == 1)
+
+        let row = try #require(try await usageRows(in: harness.database).first)
+        #expect(row.cacheWriteInputTokens == 100_000)
+        #expect(row.totalTokens == 310_000,
+                "cache-write tokens are a subset of input, not an extra total")
+        #expect(abs(row.valueUsd - 1.12) < 1e-9)
+    }
+
     @Test("partial JSON can be truncated and retried without advancing the cursor")
     func partialJSONIsRewrittenExactlyOnce() async throws {
         let harness = try makeHarness(lines: prefixLines())
@@ -1046,6 +1082,7 @@ struct CodexIncrementalImportEngineTests {
         let modelId: String
         let inputTokens: Int64
         let cachedInputTokens: Int64
+        let cacheWriteInputTokens: Int64
         let outputTokens: Int64
         let reasoningOutputTokens: Int64
         let totalTokens: Int64
@@ -1055,6 +1092,7 @@ struct CodexIncrementalImportEngineTests {
     private struct UsageFixture {
         let input: Int
         let cached: Int
+        let cacheWrite: Int
         let output: Int
         let reasoning: Int
 
@@ -1122,19 +1160,24 @@ struct CodexIncrementalImportEngineTests {
         #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"task_started","turn_id":"fixture-turn"}}"#
     }
 
-    private func contextLine(timestamp: String) -> String {
-        #"{"timestamp":"\#(timestamp)","type":"turn_context","payload":{"turn_id":"fixture-turn","model":"gpt-5.4"}}"#
+    private func contextLine(
+        timestamp: String,
+        model: String = "gpt-5.4"
+    ) -> String {
+        #"{"timestamp":"\#(timestamp)","type":"turn_context","payload":{"turn_id":"fixture-turn","model":"\#(model)"}}"#
     }
 
     private func usage(
         input: Int,
         cached: Int,
         output: Int,
-        reasoning: Int
+        reasoning: Int,
+        cacheWrite: Int = 0
     ) -> UsageFixture {
         UsageFixture(
             input: input,
             cached: cached,
+            cacheWrite: cacheWrite,
             output: output,
             reasoning: reasoning)
     }
@@ -1148,7 +1191,7 @@ struct CodexIncrementalImportEngineTests {
     }
 
     private func usageJSON(_ value: UsageFixture) -> String {
-        #"{"input_tokens":\#(value.input),"cached_input_tokens":\#(value.cached),"output_tokens":\#(value.output),"reasoning_output_tokens":\#(value.reasoning),"total_tokens":\#(value.total)}"#
+        #"{"input_tokens":\#(value.input),"cached_input_tokens":\#(value.cached),"cache_write_input_tokens":\#(value.cacheWrite),"output_tokens":\#(value.output),"reasoning_output_tokens":\#(value.reasoning),"total_tokens":\#(value.total)}"#
     }
 
     private func rolloutData(_ lines: [String]) -> Data {
@@ -1183,7 +1226,8 @@ struct CodexIncrementalImportEngineTests {
         return try await database.pool.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT id, timestamp, model_id,
-                       input_tokens, cached_input_tokens, output_tokens,
+                       input_tokens, cached_input_tokens,
+                       cache_creation_tokens, output_tokens,
                        reasoning_output_tokens, total_tokens, value_usd
                 FROM usage_events
                 WHERE session_id = ?
@@ -1195,6 +1239,7 @@ struct CodexIncrementalImportEngineTests {
                     modelId: row["model_id"],
                     inputTokens: row["input_tokens"],
                     cachedInputTokens: row["cached_input_tokens"],
+                    cacheWriteInputTokens: row["cache_creation_tokens"],
                     outputTokens: row["output_tokens"],
                     reasoningOutputTokens: row["reasoning_output_tokens"],
                     totalTokens: row["total_tokens"],

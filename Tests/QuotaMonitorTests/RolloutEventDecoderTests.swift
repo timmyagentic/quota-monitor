@@ -142,6 +142,32 @@ struct RolloutEventDecoderTests {
         #expect(payload.turnId == "turn-context")
     }
 
+    @Test("token usage decodes cache writes and defaults legacy rows to zero")
+    func tokenUsageCacheWrites() throws {
+        let currentLine = Data(#"""
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":60,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110},"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":60,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110}}}}
+        """#.utf8)
+        let legacyLine = Data(#"""
+        {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":25,"cached_input_tokens":5,"output_tokens":2,"reasoning_output_tokens":1,"total_tokens":27},"last_token_usage":{"input_tokens":25,"cached_input_tokens":5,"output_tokens":2,"reasoning_output_tokens":1,"total_tokens":27}}}}
+        """#.utf8)
+
+        let current = try #require(RolloutEvent.decode(line: currentLine))
+        guard case .tokenCount(let currentPayload, _) = current else {
+            Issue.record("expected current .tokenCount, got \(current)")
+            return
+        }
+        #expect(currentPayload.info?.totalTokenUsage?.cacheWriteInputTokens == 60)
+        #expect(currentPayload.info?.lastTokenUsage?.cacheWriteInputTokens == 60)
+
+        let legacy = try #require(RolloutEvent.decode(line: legacyLine))
+        guard case .tokenCount(let legacyPayload, _) = legacy else {
+            Issue.record("expected legacy .tokenCount, got \(legacy)")
+            return
+        }
+        #expect(legacyPayload.info?.totalTokenUsage?.cacheWriteInputTokens == 0)
+        #expect(legacyPayload.info?.lastTokenUsage?.cacheWriteInputTokens == 0)
+    }
+
     @Test("irrelevant top-level events do not decode payload")
     func irrelevantTopLevelPayloadIsSkipped() throws {
         let line = Data(#"""
