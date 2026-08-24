@@ -118,6 +118,7 @@ value_usd =
 
 - `input_tokens` 是 gross input，已经包含 cached input 与 cache write input，所以普通输入只对 `input - cached - cache_write` 计费。
 - `cache_write_input_tokens` 通过 provider-neutral 的 `cache_creation_tokens` 列保存，GPT-5.6 按对应 Standard / Fast / Flex uncached input 单价的 `1.25x` 计费；它是输入明细，不额外加入 `total_tokens`。
+- 如果模型目录没有发布专用 cache write 价格，该部分保守地保留普通 input 单价，不会因为从 ordinary input 中拆分出来而变成 `$0`。
 - `output_tokens` 已经包含 reasoning output；`reasoning_output_tokens` 是拆分字段，不额外计费，否则会重复计算。
 - 旧 Codex session 缺少模型时 fallback 到 `gpt-5`，并设置 `model_inferred = true`，UI 可提示该行是近似估算。
 - 每行先按“价格行优先级”选择基础行或合成 `*-fast` / `*-flex` 行，再按请求输入量决定是否应用长上下文倍率。

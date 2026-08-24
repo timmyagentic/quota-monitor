@@ -26,7 +26,7 @@ struct PricingEntry: Sendable, Hashable {
     let cachedInputPricePerMillion: Double
     let outputPricePerMillion: Double
     /// Provider cache-write rate: Claude 5-minute cache creation or OpenAI
-    /// prompt-cache writes. Zero when that model has no published write price.
+    /// prompt-cache writes. Zero means Codex retains ordinary input pricing.
     let cacheCreationPricePerMillion: Double
     let effectiveModelId: String
     let isOfficial: Bool
@@ -462,7 +462,8 @@ enum PricingService {
     ///   - **codex** (OpenAI): `input_tokens` is the gross figure that already
     ///     includes cached reads and cache writes. Ordinary input therefore
     ///     uses `max(input - cached - cache_write, 0)`; cache writes use their
-    ///     published 1.25x rate. `output_tokens` already includes reasoning.
+    ///     published 1.25x rate, or ordinary input when no dedicated rate is
+    ///     available. `output_tokens` already includes reasoning.
     ///
     ///   - **claude**: the API breaks tokens out by category — `input_tokens`
     ///     is the **uncached** portion, `cache_read_input_tokens` is billed at
@@ -544,7 +545,13 @@ enum PricingService {
             multiplier: CodexLongContextPricing.outputMultiplier)
         let inputPriceExpr = codexPricePerMillionSQL(component: .input)
         let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
-        let cacheWritePriceExpr = codexPricePerMillionSQL(component: .cacheWrite)
+        let explicitCacheWritePriceExpr = codexPricePerMillionSQL(component: .cacheWrite)
+        let cacheWritePriceExpr = """
+        COALESCE(
+          NULLIF((\(explicitCacheWritePriceExpr)), 0),
+          (\(inputPriceExpr))
+        )
+        """
         let outputPriceExpr = codexPricePerMillionSQL(component: .output)
         let scopeClause: String
         let updateTarget: String

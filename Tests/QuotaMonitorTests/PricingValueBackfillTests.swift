@@ -206,6 +206,34 @@ struct PricingValueBackfillTests {
         #expect(abs(value - 1.695) < 1e-9)
     }
 
+    @Test("codex: cache writes without a dedicated rate retain ordinary input pricing")
+    func codexCacheWritesWithoutDedicatedRateUseInputPrice() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db,
+            modelId: "gpt-without-cache-write-price",
+            input: 1.00,
+            cached: 0.10,
+            output: 8.00)
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-without-cache-write-price",
+            input: 1_000_000,
+            cached: 200_000,
+            output: 100_000,
+            codexCacheWrite: 300_000)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // No write price exists, so the 0.3M write subset keeps the ordinary
+        // $1/M input rate instead of becoming free: 0.5 + 0.02 + 0.3 + 0.8.
+        #expect(abs(value - 1.62) < 1e-9)
+    }
+
     // MARK: - claude formula: every category billed independently
 
     @Test("claude: value sums input + cached + output + cache_creation independently (no subtraction)")
