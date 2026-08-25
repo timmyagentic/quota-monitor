@@ -269,7 +269,8 @@ extension AppEnvironment {
         try await db.pool.read { conn in
             let rows = try Row.fetchCursor(conn, sql: """
                 SELECT ue.id, ue.session_id, ue.timestamp, ue.model_id,
-                       ue.input_tokens, ue.cached_input_tokens, ue.output_tokens,
+                       ue.input_tokens, ue.cached_input_tokens,
+                       ue.cache_creation_tokens, ue.output_tokens,
                        ue.reasoning_output_tokens, ue.total_tokens, ue.value_usd,
                        COALESCE(NULLIF(TRIM(s.title), ''), NULLIF(TRIM(s.project_name), ''), '') AS export_title,
                        s.agent_nickname
@@ -277,7 +278,7 @@ extension AppEnvironment {
                 LEFT JOIN sessions s ON s.session_id = ue.session_id
                 ORDER BY ue.timestamp ASC
                 """)
-            let header = "id,session_id,timestamp,model_id,input,cached,output,reasoning,total,value_usd,title,agent\n"
+            let header = "id,session_id,timestamp,model_id,input,cached,cache_write,output,reasoning,total,value_usd,title,agent\n"
             guard FileManager.default.createFile(atPath: url.path, contents: header.data(using: .utf8)) else {
                 throw NSError(domain: "QuotaMonitor", code: 1,
                               userInfo: [NSLocalizedDescriptionKey: "Could not create file at \(url.path)"])
@@ -294,6 +295,7 @@ extension AppEnvironment {
                     row["model_id"] as String? ?? "",
                     "\(row["input_tokens"] as Int64? ?? 0)",
                     "\(row["cached_input_tokens"] as Int64? ?? 0)",
+                    "\(row["cache_creation_tokens"] as Int64? ?? 0)",
                     "\(row["output_tokens"] as Int64? ?? 0)",
                     "\(row["reasoning_output_tokens"] as Int64? ?? 0)",
                     "\(row["total_tokens"] as Int64? ?? 0)",

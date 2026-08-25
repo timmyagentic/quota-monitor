@@ -926,7 +926,10 @@ actor ImportEngine {
                 reasoningOutputTokens: delta.reasoningOutputTokens,
                 totalTokens: delta.totalTokens,
                 valueUsd: 0,
-                cacheCreationTokens: 0,
+                // The shared storage column is provider-neutral: Claude writes
+                // cache_creation_input_tokens, Codex writes
+                // cache_write_input_tokens. Both are cache-write input.
+                cacheCreationTokens: delta.cacheWriteInputTokens,
                 provider: "codex",
                 modelInferred: delta.modelInferred,
                 providerMessageId: nil,

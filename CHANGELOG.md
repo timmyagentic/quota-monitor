@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Codex cost estimates now include prompt-cache writes and apply GPT-5.6 long-context pricing across Standard, Flex, and Fast turns.
 - Dashboard trend ranges now match the rolling usage totals shown elsewhere, including the partial day at the start of each range.
 - Rewritten Codex history now comes back on the very next scan instead of waiting for the file to go quiet.
 
@@ -41,6 +42,7 @@ window copy.
 
 ### Fixed
 
+- **Complete GPT-5.6 and long-context pricing.** Codex imports retain prompt-cache writes, and the bundled catalog now materializes every supported Short/Long × Standard/Flex/Fast and historical row so each event selects one final price without runtime price multipliers. GPT-5.6 Sol switches from its launch price to the official promotional price at OpenAI's `2026-08-21T19:34:10Z` public announcement; Terra/Luna keep their July 30 cutover. GPT-5.6+ cache writes use 1.25× input, while earlier models use input price with no extra write charge. Unsupported legacy local/LiteLLM rows and bundled Claude/GLM rows cannot enter the Codex branch. The upgrade migration installs the complete catalog and immediately reprices stored events even if their original rollout is unavailable.
 - **Consistent rolling trend windows.** The 7-day, 30-day, 90-day, and one-year trend views now count only usage from the exact trailing 7 × 24, 30 × 24, 90 × 24, or 365 × 24 hours before grouping it by local date, so an older part of the boundary day no longer inflates tokens, cost, or cache hit rate.
 
 ## [1.0.3] — 2026-08-16

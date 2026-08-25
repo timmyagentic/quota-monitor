@@ -337,28 +337,36 @@ struct EventRow: View {
     ///   - Claude: stored `input_tokens` is already the uncached
     ///     remainder, so return as-is.
     ///   - Codex: stored `input_tokens` is OpenAI's `prompt_tokens`
-    ///     (full prompt including the cached subset), so subtract
-    ///     `cached_input_tokens` to leave just the new bytes.
+    ///     (full prompt including cached reads and cache writes), so subtract
+    ///     both subsets to leave ordinary uncached input.
     /// `max(0, ...)` defends against any historical row where the
-    /// cached count drifted higher than input due to a parser bug —
+    /// cached subsets drifted higher than input due to a parser bug —
     /// we'd rather show 0 than a negative.
     private var uncachedInputTokens: Int64 {
         switch event.provider {
         case "claude":
             return event.inputTokens
         default:
-            return max(0, event.inputTokens - event.cachedInputTokens)
+            return max(
+                0,
+                event.inputTokens
+                    - event.cachedInputTokens
+                    - event.cacheWriteInputTokens)
         }
     }
 
-    /// Total token volume that touched cache this turn. For Codex
-    /// this is just the read count (writes aren't surfaced). For
-    /// Claude this is reads + 5m writes + 1h writes — all the input
-    /// bytes that interacted with cache in any direction.
+    /// Total input that interacted with cache in either direction.
     private var cacheTokens: Int64 {
-        event.cachedInputTokens
-            + event.cacheCreation5mTokens
+        event.cachedInputTokens + cacheWriteInputTokens
+    }
+
+    private var cacheWriteInputTokens: Int64 {
+        let claudeSplit = event.cacheCreation5mTokens
             + event.cacheCreation1hTokens
+        if event.provider == "claude", claudeSplit > 0 {
+            return claudeSplit
+        }
+        return event.cacheWriteInputTokens
     }
 
     /// Cached share of total input this turn, in [0, 1]. Computed
@@ -373,8 +381,7 @@ struct EventRow: View {
         case "claude":
             denominator = event.inputTokens
                 + event.cachedInputTokens
-                + event.cacheCreation5mTokens
-                + event.cacheCreation1hTokens
+                + cacheWriteInputTokens
         default:
             denominator = event.inputTokens
         }

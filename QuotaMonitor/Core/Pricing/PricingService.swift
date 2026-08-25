@@ -3,10 +3,11 @@ import GRDB
 
 // Installs the bundled pricing catalog and computes API-equivalent value for usage events.
 //
-// Value formula (matches codex-pacer):
-//   value_usd =   max(input - cached, 0) * input_price/1M
-//               + cached                  * cached_price/1M
-//               + output                  * output_price/1M
+// Codex value formula:
+//   value_usd =   max(input - cached - cache_write, 0) * input_price/1M
+//               + cached                                * cached_price/1M
+//               + cache_write                           * cache_write_price/1M
+//               + output                                * output_price/1M
 //
 // Why not `+ reasoning_output_tokens * output_price`? Empirical check across 300
 // token_count events in real Codex JSONL: every single one satisfies
@@ -24,7 +25,9 @@ struct PricingEntry: Sendable, Hashable {
     let inputPricePerMillion: Double
     let cachedInputPricePerMillion: Double
     let outputPricePerMillion: Double
-    let cacheCreationPricePerMillion: Double    // Claude 5m cache write; 0 for OpenAI
+    /// Provider-specific cache-write rate: Claude 5-minute cache creation or
+    /// Codex prompt-cache writes. Values are materialized in the catalog.
+    let cacheCreationPricePerMillion: Double
     let effectiveModelId: String
     let isOfficial: Bool
     let note: String?
@@ -65,7 +68,7 @@ struct PricingEntry: Sendable, Hashable {
 /// Update this when OpenAI publishes a new Fast tier ratio or a new
 /// model gains a Fast variant — and update the bundled rows below.
 enum CodexFastMode {
-    /// model_id → multiplier (applied to input, cached, output rates).
+    /// model_id → multiplier used only to materialize Fast catalog rows.
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
         "gpt-5.6-sol": 2.0,
@@ -80,8 +83,8 @@ enum CodexFastMode {
     static let suffix = "-fast"
 }
 
-/// Codex Flex uses the published Flex-processing rates. These are half of
-/// standard input, cached-input, and output prices for the supported models.
+/// Codex Flex uses the published Flex-processing rates. These multipliers are
+/// consumed only while materializing catalog rows.
 /// As with Fast, rollout preference is pricing evidence rather than proof of
 /// the tier ultimately served by OpenAI.
 enum CodexFlexMode {
@@ -97,15 +100,15 @@ enum CodexFlexMode {
     static let suffix = "-flex"
 }
 
-/// OpenAI prices supported requests above 272K input tokens at 2x input
-/// (including cached input) and 1.5x output. Priority processing does not
-/// support long context, so an explicitly requested Priority turn uses the
-/// base Standard row once it crosses this threshold. Flex keeps its Flex row
-/// and receives the same long-context multipliers.
+/// Defines which models receive materialized Long rows. GPT-5.6 has published
+/// Fast Long prices; older Fast models without such rows select Standard Long.
+/// Flex retains its tier.
 enum CodexLongContextPricing {
     static let inputTokenThreshold: Int64 = 272_000
-    static let inputMultiplier = 2.0
-    static let outputMultiplier = 1.5
+    /// Used only while materializing bundled Long rows, never in event SQL.
+    static let inputPriceMultiplier = 2.0
+    static let outputPriceMultiplier = 1.5
+    static let suffix = "-long"
     static let modelIds: Set<String> = [
         "gpt-5.6-sol",
         "gpt-5.6-terra",
@@ -113,121 +116,199 @@ enum CodexLongContextPricing {
         "gpt-5.5",
         "gpt-5.4",
     ]
+    static let fastModelIds: Set<String> = [
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+    ]
 }
 
 struct CodexHistoricalPricePeriod: Sendable, Hashable {
+    let catalogRowId: String
     let modelId: String
     let startsOn: String?
     let endsBefore: String
     let inputPricePerMillion: Double
     let cachedInputPricePerMillion: Double
+    let cacheWritePricePerMillion: Double
     let outputPricePerMillion: Double
 }
 
-/// Fixed OpenAI list-price periods that must survive later catalog refreshes.
-/// Rollout timestamps are stored as UTC ISO-8601 strings. OpenAI announced the
-/// GPT-5.6 adjustment as starting on July 30 without a time, so every event
-/// dated 2026-07-30 or later uses the new catalog price.
+/// Fixed OpenAI list-price periods materialized into synthetic catalog rows.
+/// Terra/Luna use OpenAI's date-only July 30 announcement boundary. Sol uses
+/// the precise public announcement timestamp from OpenAI's official post; it
+/// is an auditable public cutover, not a claim about an unpublished internal
+/// billing-switch second.
 enum CodexPriceHistory {
     static let periods: [CodexHistoricalPricePeriod] = [
         .init(
+            catalogRowId: "gpt-5.6-sol-history-pre-20260821",
+            modelId: "gpt-5.6-sol",
+            startsOn: nil,
+            endsBefore: "2026-08-21T19:34:10.000Z",
+            inputPricePerMillion: 5.00,
+            cachedInputPricePerMillion: 0.50,
+            cacheWritePricePerMillion: 6.25,
+            outputPricePerMillion: 30.00),
+        .init(
+            catalogRowId: "gpt-5.6-terra-history-pre-20260730",
             modelId: "gpt-5.6-terra",
             startsOn: nil,
             endsBefore: "2026-07-30",
             inputPricePerMillion: 2.50,
             cachedInputPricePerMillion: 0.25,
+            cacheWritePricePerMillion: 3.125,
             outputPricePerMillion: 15.00),
         .init(
+            catalogRowId: "gpt-5.6-luna-history-pre-20260730",
             modelId: "gpt-5.6-luna",
             startsOn: nil,
             endsBefore: "2026-07-30",
             inputPricePerMillion: 1.00,
             cachedInputPricePerMillion: 0.10,
+            cacheWritePricePerMillion: 1.25,
             outputPricePerMillion: 6.00),
     ]
 }
 
 enum BundledPricingCatalog {
-    /// Concrete catalog entries shipped with the binary. Includes the
-    /// real model rows plus synthetic `*-fast` siblings derived from
-    /// `CodexFastMode.multipliers` so per-event preference and fallback
-    /// selection can JOIN against them directly.
-    static let entries: [PricingEntry] = base + fastVariants + flexVariants
+    /// Concrete catalog entries shipped with the binary. Codex variants cover
+    /// final Short/Long × tier and historical prices so event valuation only
+    /// chooses a row and never recalculates its prices.
+    static let entries: [PricingEntry] = base
+        + fastVariants
+        + flexVariants
+        + longVariants
+        + fastLongVariants
+        + flexLongVariants
+        + historicalVariants
+
+    /// Bundled rows that are valid for Codex rollout valuation. Provider
+    /// scoping prevents Claude/GLM rows from accidentally entering the Codex
+    /// formula merely because a rollout contains the same model id.
+    static let codexModelIds: Set<String> = {
+        var ids = codexBaseModelIds
+        ids.formUnion(fastVariants.map(\.modelId))
+        ids.formUnion(flexVariants.map(\.modelId))
+        ids.formUnion(longVariants.map(\.modelId))
+        ids.formUnion(fastLongVariants.map(\.modelId))
+        ids.formUnion(flexLongVariants.map(\.modelId))
+        ids.formUnion(historicalVariants.map(\.modelId))
+        return ids
+    }()
+
+    private static let codexBaseModelIds: Set<String> = [
+        "gpt-5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5.3-codex",
+        "codex-auto-review",
+        "gpt-5.3-codex-spark",
+        "gpt-5.2",
+        "gpt-5.2-codex",
+        "gpt-5-codex",
+        "gpt-5.1-codex-max",
+        "gpt-5.1-codex",
+        "gpt-5.1-codex-mini",
+    ]
 
     private static let base: [PricingEntry] = [
         // Legacy fallback used by RolloutParser when no model_id was ever
         // recorded for a session. Matches openai.com gpt-5 pricing.
         .init(modelId: "gpt-5", displayName: "GPT-5 (legacy fallback)",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.25,
               effectiveModelId: "gpt-5", isOfficial: true,
               note: "Used for sessions that lack turn_context model metadata.",
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
-              inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
-              effectiveModelId: "gpt-5.6-sol", isOfficial: true, note: nil,
+              inputPricePerMillion: 4.00, cachedInputPricePerMillion: 0.40, outputPricePerMillion: 20.00,
+              cacheCreationPricePerMillion: 5.00,
+              effectiveModelId: "gpt-5.6-sol", isOfficial: true,
+              note: "Promotional price announced at 2026-08-21T19:34:10Z; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-terra", displayName: "GPT-5.6 Terra",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 12.00,
+              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "gpt-5.6-terra", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-luna", displayName: "GPT-5.6 Luna",
               inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.20,
+              cacheCreationPricePerMillion: 0.25,
               effectiveModelId: "gpt-5.6-luna", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.5", displayName: "GPT-5.5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
+              cacheCreationPricePerMillion: 5.00,
               effectiveModelId: "gpt-5.5", isOfficial: true, note: nil,
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.4", displayName: "GPT-5.4",
               inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
+              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "gpt-5.4", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.4"),
         .init(modelId: "gpt-5.4-mini", displayName: "GPT-5.4 Mini",
               inputPricePerMillion: 0.75, cachedInputPricePerMillion: 0.075, outputPricePerMillion: 4.50,
+              cacheCreationPricePerMillion: 0.75,
               effectiveModelId: "gpt-5.4-mini", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.4-mini"),
         .init(modelId: "gpt-5.4-nano", displayName: "GPT-5.4 Nano",
               inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.25,
+              cacheCreationPricePerMillion: 0.20,
               effectiveModelId: "gpt-5.4-nano", isOfficial: true, note: nil,
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.3-codex", displayName: "GPT-5.3 Codex",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 1.75,
               effectiveModelId: "gpt-5.3-codex", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "codex-auto-review", displayName: "Codex Auto Review",
               inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
+              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "gpt-5.4", isOfficial: false,
               note: "No separate public price is available. Estimated using GPT-5.4 standard pricing.",
               sourceUrl: "https://learn.chatgpt.com/docs/sandboxing/auto-review"),
         .init(modelId: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 1.75,
               effectiveModelId: "gpt-5.3-codex", isOfficial: false,
               note: "No public Spark API price was found. Using GPT-5.3 Codex pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.3-codex"),
         .init(modelId: "gpt-5.2", displayName: "GPT-5.2",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 1.75,
               effectiveModelId: "gpt-5.2", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.2-codex"),
         .init(modelId: "gpt-5.2-codex", displayName: "GPT-5.2 Codex",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 1.75,
               effectiveModelId: "gpt-5.2-codex", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.2-codex"),
         .init(modelId: "gpt-5-codex", displayName: "GPT-5 Codex",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.25,
               effectiveModelId: "gpt-5-codex", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5-codex"),
         .init(modelId: "gpt-5.1-codex-max", displayName: "GPT-5.1 Codex Max",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.25,
               effectiveModelId: "gpt-5.1-codex-max", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex-max"),
         .init(modelId: "gpt-5.1-codex", displayName: "GPT-5.1 Codex",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.25,
               effectiveModelId: "gpt-5.1-codex", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex"),
         .init(modelId: "gpt-5.1-codex-mini", displayName: "GPT-5.1 Codex Mini",
               inputPricePerMillion: 0.25, cachedInputPricePerMillion: 0.025, outputPricePerMillion: 2.00,
+              cacheCreationPricePerMillion: 0.25,
               effectiveModelId: "gpt-5.1-codex-mini", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex-mini"),
 
@@ -312,56 +393,163 @@ enum BundledPricingCatalog {
               sourceUrl: "https://docs.z.ai/guides/overview/pricing")
     ]
 
-    /// Synthetic `*-fast` rows for every entry in `CodexFastMode.multipliers`.
-    /// We require the base model to exist in `base` so a typo in the
-    /// multiplier dict surfaces immediately rather than installing zero
-    /// prices. Source URL points at the base model's pricing page (the
-    /// Fast tier multipliers don't have their own canonical doc).
+    /// Synthetic Short-context Fast rows.
     private static let fastVariants: [PricingEntry] = {
         let byId = Dictionary(uniqueKeysWithValues: base.map { ($0.modelId, $0) })
-        return CodexFastMode.multipliers.compactMap { (baseId, mul) -> PricingEntry? in
+        return CodexFastMode.multipliers.keys.sorted().compactMap { baseId in
+            let mul = CodexFastMode.multipliers[baseId] ?? 1
             guard let b = byId[baseId] else {
                 assertionFailure("CodexFastMode multiplier references unknown base model '\(baseId)'")
                 return nil
             }
-            return PricingEntry(
+            return scaledVariant(
+                from: b,
                 modelId: b.modelId + CodexFastMode.suffix,
-                displayName: "\(b.displayName) (Fast)",
-                inputPricePerMillion: b.inputPricePerMillion * mul,
-                cachedInputPricePerMillion: b.cachedInputPricePerMillion * mul,
-                outputPricePerMillion: b.outputPricePerMillion * mul,
-                cacheCreationPricePerMillion: b.cacheCreationPricePerMillion * mul,
-                effectiveModelId: b.effectiveModelId,
-                isOfficial: false,
-                note: "Codex Fast-Mode tier (= \(mul)× standard). Synthetic row used for turns recorded as Priority.",
-                sourceUrl: b.sourceUrl)
+                displayName: "\(b.displayName) (Fast Short)",
+                inputMultiplier: mul,
+                outputMultiplier: mul,
+                note: "Materialized Fast Short price (= \(mul)× Standard Short).")
         }
-        // Sort so installation is deterministic across launches / test runs.
-        .sorted { $0.modelId < $1.modelId }
     }()
 
-    /// Synthetic `*-flex` rows derived from OpenAI's published Flex rates.
+    /// Synthetic Short-context Flex rows.
     private static let flexVariants: [PricingEntry] = {
         let byId = Dictionary(uniqueKeysWithValues: base.map { ($0.modelId, $0) })
-        return CodexFlexMode.multipliers.compactMap { (baseId, mul) -> PricingEntry? in
+        return CodexFlexMode.multipliers.keys.sorted().compactMap { baseId in
+            let mul = CodexFlexMode.multipliers[baseId] ?? 1
             guard let b = byId[baseId] else {
                 assertionFailure("CodexFlexMode multiplier references unknown base model '\(baseId)'")
                 return nil
             }
-            return PricingEntry(
+            return scaledVariant(
+                from: b,
                 modelId: b.modelId + CodexFlexMode.suffix,
-                displayName: "\(b.displayName) (Flex)",
-                inputPricePerMillion: b.inputPricePerMillion * mul,
-                cachedInputPricePerMillion: b.cachedInputPricePerMillion * mul,
-                outputPricePerMillion: b.outputPricePerMillion * mul,
-                cacheCreationPricePerMillion: b.cacheCreationPricePerMillion * mul,
-                effectiveModelId: b.effectiveModelId,
-                isOfficial: false,
-                note: "Codex Flex tier (= \(mul)× standard). Synthetic row selected by recorded flex preference.",
+                displayName: "\(b.displayName) (Flex Short)",
+                inputMultiplier: mul,
+                outputMultiplier: mul,
+                note: "Materialized Flex Short price (= \(mul)× Standard Short).",
                 sourceUrl: "https://developers.openai.com/api/docs/pricing?latest-pricing=flex")
         }
-        .sorted { $0.modelId < $1.modelId }
     }()
+
+    /// Materialized Standard Long rows for every model with published
+    /// long-context pricing.
+    private static let longVariants: [PricingEntry] = {
+        let byId = Dictionary(uniqueKeysWithValues: base.map { ($0.modelId, $0) })
+        return CodexLongContextPricing.modelIds.sorted().compactMap { baseId in
+            guard let b = byId[baseId] else { return nil }
+            return longVariant(from: b)
+        }
+    }()
+
+    /// GPT-5.6 publishes Fast Long prices. Older Priority requests deliberately
+    /// select the Standard Long row instead, so no older Fast Long row exists.
+    private static let fastLongVariants: [PricingEntry] = {
+        let byId = Dictionary(uniqueKeysWithValues: fastVariants.map { ($0.effectiveModelId, $0) })
+        return CodexLongContextPricing.fastModelIds.sorted().compactMap { baseId in
+            guard let b = byId[baseId] else { return nil }
+            return longVariant(from: b)
+        }
+    }()
+
+    /// Flex retains its tier in Long context when both features are supported.
+    private static let flexLongVariants: [PricingEntry] = {
+        let byId = Dictionary(uniqueKeysWithValues: flexVariants.map { ($0.effectiveModelId, $0) })
+        return CodexLongContextPricing.modelIds
+            .intersection(CodexFlexMode.multipliers.keys)
+            .sorted()
+            .compactMap { baseId in
+                guard let b = byId[baseId] else { return nil }
+                return longVariant(from: b)
+            }
+    }()
+
+    /// Historical rows use the same Short/Long × Standard/Flex/Fast matrix as
+    /// current pricing. The event selector chooses one final row; valuation
+    /// never reapplies historical tier or context multipliers.
+    private static let historicalVariants: [PricingEntry] = {
+        CodexPriceHistory.periods.flatMap { period -> [PricingEntry] in
+            let standard = PricingEntry(
+                modelId: period.catalogRowId,
+                displayName: "\(period.modelId) (Historical Short)",
+                inputPricePerMillion: period.inputPricePerMillion,
+                cachedInputPricePerMillion: period.cachedInputPricePerMillion,
+                outputPricePerMillion: period.outputPricePerMillion,
+                cacheCreationPricePerMillion: period.cacheWritePricePerMillion,
+                effectiveModelId: period.modelId,
+                isOfficial: true,
+                note: "Historical price before \(period.endsBefore).",
+                sourceUrl: "https://developers.openai.com/api/docs/pricing")
+            var shortRows = [standard]
+            if let mul = CodexFastMode.multipliers[period.modelId] {
+                shortRows.append(scaledVariant(
+                    from: standard,
+                    modelId: standard.modelId + CodexFastMode.suffix,
+                    displayName: "\(period.modelId) (Historical Fast Short)",
+                    inputMultiplier: mul,
+                    outputMultiplier: mul,
+                    note: "Materialized historical Fast Short price."))
+            }
+            if let mul = CodexFlexMode.multipliers[period.modelId] {
+                shortRows.append(scaledVariant(
+                    from: standard,
+                    modelId: standard.modelId + CodexFlexMode.suffix,
+                    displayName: "\(period.modelId) (Historical Flex Short)",
+                    inputMultiplier: mul,
+                    outputMultiplier: mul,
+                    note: "Materialized historical Flex Short price."))
+            }
+
+            guard CodexLongContextPricing.modelIds.contains(period.modelId) else {
+                return shortRows
+            }
+            var rows = shortRows + [longVariant(from: standard)]
+            if CodexLongContextPricing.fastModelIds.contains(period.modelId),
+               let fast = shortRows.first(where: {
+                   $0.modelId.hasSuffix(CodexFastMode.suffix)
+               }) {
+                rows.append(longVariant(from: fast))
+            }
+            if let flex = shortRows.first(where: {
+                $0.modelId.hasSuffix(CodexFlexMode.suffix)
+            }) {
+                rows.append(longVariant(from: flex))
+            }
+            return rows
+        }.sorted { $0.modelId < $1.modelId }
+    }()
+
+    private static func longVariant(from entry: PricingEntry) -> PricingEntry {
+        scaledVariant(
+            from: entry,
+            modelId: entry.modelId + CodexLongContextPricing.suffix,
+            displayName: "\(entry.displayName) (Long)",
+            inputMultiplier: CodexLongContextPricing.inputPriceMultiplier,
+            outputMultiplier: CodexLongContextPricing.outputPriceMultiplier,
+            note: "Materialized Long price for requests above 272K input tokens.")
+    }
+
+    private static func scaledVariant(
+        from entry: PricingEntry,
+        modelId: String,
+        displayName: String,
+        inputMultiplier: Double,
+        outputMultiplier: Double,
+        note: String,
+        sourceUrl: String? = nil
+    ) -> PricingEntry {
+        PricingEntry(
+            modelId: modelId,
+            displayName: displayName,
+            inputPricePerMillion: entry.inputPricePerMillion * inputMultiplier,
+            cachedInputPricePerMillion: entry.cachedInputPricePerMillion * inputMultiplier,
+            outputPricePerMillion: entry.outputPricePerMillion * outputMultiplier,
+            cacheCreationPricePerMillion: entry.cacheCreationPricePerMillion * inputMultiplier,
+            effectiveModelId: entry.effectiveModelId,
+            isOfficial: false,
+            note: note,
+            sourceUrl: sourceUrl ?? entry.sourceUrl)
+    }
 }
 
 enum PricingService {
@@ -450,9 +638,10 @@ enum PricingService {
     /// has a pricing entry. Provider-branched:
     ///
     ///   - **codex** (OpenAI): `input_tokens` is the gross figure that already
-    ///     includes the cached portion, so the input rate only applies to
-    ///     `max(input - cached, 0)`. `output_tokens` already includes reasoning;
-    ///     no cache_creation involved.
+    ///     includes cached reads and cache writes. Ordinary input therefore
+    ///     uses `max(input - cached - cache_write, 0)`; cache writes use the
+    ///     precomputed catalog or historical write rate selected for the event.
+    ///     `output_tokens` already includes reasoning.
     ///
     ///   - **claude**: the API breaks tokens out by category — `input_tokens`
     ///     is the **uncached** portion, `cache_read_input_tokens` is billed at
@@ -461,10 +650,13 @@ enum PricingService {
     ///     2x base input. No subtraction needed.
     ///
     /// For codex events, a stored `priority` or `flex` preference selects the
-    /// matching synthetic tier row when supported. A stored `default` or an
-    /// unknown preference selects the base Standard row. Requests above 272K
-    /// input tokens use OpenAI's long-context multipliers; Priority falls back
-    /// to Standard pricing there because Priority does not support long context.
+    /// matching materialized tier row when supported. A stored `default` or an
+    /// unknown preference selects Standard. Requests above 272K select a
+    /// materialized Long row; GPT-5.6 Priority keeps Fast there, while models
+    /// without Fast Long rows select Standard Long. Only rows normalized to
+    /// `price_source = 'bundled'`
+    /// participate, and Codex events are restricted to the explicit Codex
+    /// model set; unsupported legacy and Claude/GLM rows remain inert.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
@@ -527,13 +719,14 @@ enum PricingService {
         // settings, but missing tier evidence is now always Standard.
         _ = codexFastModeBilling
         let effectiveExpr = effectiveModelIdSQL()
-        let inputMultiplierExpr = longContextMultiplierSQL(
-            multiplier: CodexLongContextPricing.inputMultiplier)
-        let outputMultiplierExpr = longContextMultiplierSQL(
-            multiplier: CodexLongContextPricing.outputMultiplier)
-        let inputPriceExpr = codexPricePerMillionSQL(component: .input)
-        let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
-        let outputPriceExpr = codexPricePerMillionSQL(component: .output)
+        let codexModelIds = BundledPricingCatalog.codexModelIds.sorted()
+        for id in codexModelIds {
+            assert(!id.contains("'"),
+                   "Codex catalog model id '\(id)' is not safe to interpolate")
+        }
+        let quotedCodexModelIds = codexModelIds
+            .map { "'\($0)'" }
+            .joined(separator: ",")
         let scopeClause: String
         let updateTarget: String
         let arguments: StatementArguments
@@ -597,178 +790,119 @@ enum PricingService {
                           * pc.output_price_per_million
                       ) / 1000000.0
                     ELSE
-                      (MAX(usage_events.input_tokens - usage_events.cached_input_tokens, 0)
-                          * (\(inputPriceExpr))
-                          * \(inputMultiplierExpr)
+                      (MAX(usage_events.input_tokens
+                               - usage_events.cached_input_tokens
+                               - usage_events.cache_creation_tokens, 0)
+                          * pc.input_price_per_million
                        + usage_events.cached_input_tokens
-                          * (\(cachedInputPriceExpr))
-                          * \(inputMultiplierExpr)
+                          * pc.cached_input_price_per_million
+                       + usage_events.cache_creation_tokens
+                          * pc.cache_creation_price_per_million
                        + usage_events.output_tokens
-                          * (\(outputPriceExpr))
-                          * \(outputMultiplierExpr)
+                          * pc.output_price_per_million
                       ) / 1000000.0
                   END
               FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
+                AND pc.price_source = 'bundled'
+                AND (usage_events.provider <> 'codex'
+                     OR pc.model_id IN (\(quotedCodexModelIds)))
             )
             WHERE EXISTS (
               SELECT 1 FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
+                AND pc.price_source = 'bundled'
+                AND (usage_events.provider <> 'codex'
+                     OR pc.model_id IN (\(quotedCodexModelIds)))
             )
             \(scopeClause)
             """
         try db.execute(sql: sql, arguments: arguments)
     }
 
-    private enum CodexPriceComponent {
-        case input
-        case cachedInput
-        case output
-
-        var catalogColumn: String {
-            switch self {
-            case .input: "input_price_per_million"
-            case .cachedInput: "cached_input_price_per_million"
-            case .output: "output_price_per_million"
-            }
-        }
-
-        func price(in period: CodexHistoricalPricePeriod) -> Double {
-            switch self {
-            case .input: period.inputPricePerMillion
-            case .cachedInput: period.cachedInputPricePerMillion
-            case .output: period.outputPricePerMillion
-            }
-        }
-    }
-
-    /// Selects a fixed historical list price when an event predates a known
-    /// adjustment. Current events use the bundled Standard/Fast/Flex row.
-    private static func codexPricePerMillionSQL(
-        component: CodexPriceComponent
-    ) -> String {
-        guard !CodexPriceHistory.periods.isEmpty else {
-            return "pc.\(component.catalogColumn)"
-        }
-        let cases = CodexPriceHistory.periods.map { period -> String in
-            assert(!period.modelId.contains("'") && !period.endsBefore.contains("'"),
-                   "Codex historical pricing values must be safe to interpolate")
-            if let startsOn = period.startsOn {
-                assert(!startsOn.contains("'"),
-                       "Codex historical pricing values must be safe to interpolate")
-            }
-            let lowerBound = period.startsOn.map {
-                "AND usage_events.timestamp >= '\($0)'"
-            } ?? ""
-            let tierMultiplier = codexHistoricalTierMultiplierSQL(
-                modelId: period.modelId)
-            return """
-              WHEN usage_events.provider = 'codex'
-                   AND usage_events.model_id = '\(period.modelId)'
-                   \(lowerBound)
-                   AND usage_events.timestamp < '\(period.endsBefore)'
-                THEN \(component.price(in: period)) * (\(tierMultiplier))
-            """
-        }.joined(separator: "\n")
-        return """
-        CASE
-        \(cases)
-          ELSE pc.\(component.catalogColumn)
-        END
-        """
-    }
-
-    /// `pc` already points at the event's selected Standard/Fast/Flex row.
-    /// Reapply that tier to a fixed historical base price without tying old
-    /// events to whatever the current catalog happens to contain.
-    private static func codexHistoricalTierMultiplierSQL(
-        modelId: String
-    ) -> String {
-        var cases: [String] = []
-        if let multiplier = CodexFastMode.multipliers[modelId] {
-            cases.append("WHEN pc.model_id = '\(modelId)\(CodexFastMode.suffix)' THEN \(multiplier)")
-        }
-        if let multiplier = CodexFlexMode.multipliers[modelId] {
-            cases.append("WHEN pc.model_id = '\(modelId)\(CodexFlexMode.suffix)' THEN \(multiplier)")
-        }
-        return """
-        CASE
-          \(cases.joined(separator: "\n  "))
-          ELSE 1.0
-        END
-        """
-    }
-
-    /// SQL expression that resolves to the catalog `model_id` we should
-    /// price this event against. A recognized codex event's stored tier
-    /// preference wins; unknown rows stay Standard. Long-context Priority
-    /// requests also use Standard because that service tier is unsupported.
-    /// Other providers and models keep `usage_events.model_id`.
+    /// Resolves one fully materialized catalog row from event timestamp,
+    /// context band, and stored service-tier preference. Pricing SQL reads the
+    /// selected row directly and never reapplies price multipliers.
     ///
     /// We string-interpolate the model id lists and suffixes because
     /// they're code-controlled (sourced from the tier maps), never
     /// user input. Single-quote escaping is unnecessary here, but the
     /// model id assertion below makes the assumption explicit.
     private static func effectiveModelIdSQL() -> String {
-        guard !CodexFastMode.multipliers.isEmpty,
-              !CodexFlexMode.multipliers.isEmpty
-        else {
-            return "usage_events.model_id"
-        }
-        // Determinism + simpler diffs.
         let fastIds = CodexFastMode.multipliers.keys.sorted()
         let flexIds = CodexFlexMode.multipliers.keys.sorted()
         let longContextIds = CodexLongContextPricing.modelIds.sorted()
-        for id in Set(fastIds + flexIds + longContextIds) {
+        let fastLongContextIds = CodexLongContextPricing.fastModelIds.sorted()
+        for id in Set(fastIds + flexIds + longContextIds + fastLongContextIds) {
             assert(!id.contains("'"),
                    "Codex tier multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
         }
         let quotedFast = fastIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedFlex = flexIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedLongContext = longContextIds.map { "'\($0)'" }.joined(separator: ",")
+        let quotedFastLongContext = fastLongContextIds
+            .map { "'\($0)'" }
+            .joined(separator: ",")
         let fastSuffix = CodexFastMode.suffix
         let flexSuffix = CodexFlexMode.suffix
+        let longSuffix = CodexLongContextPricing.suffix
+        let basePriceRow = historicalBasePriceRowSQL()
         return """
         CASE
           WHEN usage_events.provider = 'codex'
           THEN CASE
             WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
+                 AND usage_events.model_id IN (\(quotedFastLongContext))
+                 AND usage_events.codex_service_tier_preference = 'priority'
+              THEN (\(basePriceRow)) || '\(fastSuffix)\(longSuffix)'
+            WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
                  AND usage_events.model_id IN (\(quotedLongContext))
                  AND usage_events.codex_service_tier_preference = 'flex'
                  AND usage_events.model_id IN (\(quotedFlex))
-              THEN usage_events.model_id || '\(flexSuffix)'
+              THEN (\(basePriceRow)) || '\(flexSuffix)\(longSuffix)'
             WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
                  AND usage_events.model_id IN (\(quotedLongContext))
-              THEN usage_events.model_id
+              THEN (\(basePriceRow)) || '\(longSuffix)'
             WHEN usage_events.codex_service_tier_preference = 'priority'
                  AND usage_events.model_id IN (\(quotedFast))
-              THEN usage_events.model_id || '\(fastSuffix)'
+              THEN (\(basePriceRow)) || '\(fastSuffix)'
             WHEN usage_events.codex_service_tier_preference = 'flex'
                  AND usage_events.model_id IN (\(quotedFlex))
-              THEN usage_events.model_id || '\(flexSuffix)'
-            WHEN usage_events.codex_service_tier_preference = 'default'
-              THEN usage_events.model_id
-            ELSE usage_events.model_id
+              THEN (\(basePriceRow)) || '\(flexSuffix)'
+            ELSE \(basePriceRow)
           END
           ELSE usage_events.model_id
         END
         """
     }
 
-    private static func longContextMultiplierSQL(multiplier: Double) -> String {
-        let modelIds = CodexLongContextPricing.modelIds.sorted()
-        for id in modelIds {
-            assert(!id.contains("'"),
-                   "Codex long-context model id '\(id)' has a single quote — SQL not safe to interpolate")
+    private static func historicalBasePriceRowSQL() -> String {
+        guard !CodexPriceHistory.periods.isEmpty else {
+            return "usage_events.model_id"
         }
-        let quoted = modelIds.map { "'\($0)'" }.joined(separator: ",")
+        let cases = CodexPriceHistory.periods.map { period -> String in
+            for value in [period.catalogRowId, period.modelId, period.endsBefore] {
+                assert(!value.contains("'"),
+                       "Codex historical price metadata is not safe to interpolate")
+            }
+            if let startsOn = period.startsOn {
+                assert(!startsOn.contains("'"),
+                       "Codex historical price metadata is not safe to interpolate")
+            }
+            let lowerBound = period.startsOn.map {
+                "AND usage_events.timestamp >= '\($0)'"
+            } ?? ""
+            return """
+              WHEN usage_events.model_id = '\(period.modelId)'
+                   \(lowerBound)
+                   AND usage_events.timestamp < '\(period.endsBefore)'
+                THEN '\(period.catalogRowId)'
+            """
+        }.joined(separator: "\n")
         return """
         CASE
-          WHEN usage_events.provider = 'codex'
-               AND usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
-               AND usage_events.model_id IN (\(quoted))
-            THEN \(multiplier)
-          ELSE 1.0
+        \(cases)
+          ELSE usage_events.model_id
         END
         """
     }

@@ -52,6 +52,7 @@ struct UsageDelta: Equatable, Sendable {
     let serviceTierPreference: CodexServiceTierPreference?
     let inputTokens: Int64
     let cachedInputTokens: Int64
+    let cacheWriteInputTokens: Int64
     let outputTokens: Int64
     let reasoningOutputTokens: Int64
     let totalTokens: Int64
@@ -148,12 +149,14 @@ struct UsageSnapshotKey: Codable, Hashable, Sendable, Comparable {
         [
             total.inputTokens,
             total.cachedInputTokens,
+            total.cacheWriteInputTokens,
             total.outputTokens,
             total.reasoningOutputTokens,
             total.totalTokens,
             last == nil ? 0 : 1,
             last?.inputTokens ?? 0,
             last?.cachedInputTokens ?? 0,
+            last?.cacheWriteInputTokens ?? 0,
             last?.outputTokens ?? 0,
             last?.reasoningOutputTokens ?? 0,
             last?.totalTokens ?? 0,
@@ -679,6 +682,7 @@ struct CodexRolloutReducer {
                     serviceTierPreference: state.activeTurn?.serviceTierPreference,
                     inputTokens: tokenDelta.inputTokens,
                     cachedInputTokens: tokenDelta.cachedInputTokens,
+                    cacheWriteInputTokens: tokenDelta.cacheWriteInputTokens,
                     outputTokens: tokenDelta.outputTokens,
                     reasoningOutputTokens: tokenDelta.reasoningOutputTokens,
                     totalTokens: tokenDelta.totalTokens,
@@ -766,6 +770,7 @@ struct CodexRolloutReducer {
         let hasComponentBuckets =
             usage.inputTokens != 0
             || usage.cachedInputTokens != 0
+            || usage.cacheWriteInputTokens != 0
             || usage.outputTokens != 0
             || usage.reasoningOutputTokens != 0
         // Some historical Codex rows carry a huge `total_tokens` value while
@@ -783,6 +788,7 @@ struct CodexRolloutReducer {
         let wentBackwards =
             current.inputTokens < previous.inputTokens
             || current.cachedInputTokens < previous.cachedInputTokens
+            || current.cacheWriteInputTokens < previous.cacheWriteInputTokens
             || current.outputTokens < previous.outputTokens
             || current.reasoningOutputTokens < previous.reasoningOutputTokens
             || current.totalTokens < previous.totalTokens
@@ -791,6 +797,8 @@ struct CodexRolloutReducer {
         return meaningfulUsage(TokenUsageWire(
             inputTokens: current.inputTokens - previous.inputTokens,
             cachedInputTokens: current.cachedInputTokens - previous.cachedInputTokens,
+            cacheWriteInputTokens:
+                current.cacheWriteInputTokens - previous.cacheWriteInputTokens,
             outputTokens: current.outputTokens - previous.outputTokens,
             reasoningOutputTokens: current.reasoningOutputTokens - previous.reasoningOutputTokens,
             totalTokens: current.totalTokens - previous.totalTokens))

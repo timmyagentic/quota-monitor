@@ -307,6 +307,118 @@ struct MigrationsTests {
         }
     }
 
+    @Test("Codex cache-write migration invalidates checkpoints and reprices existing events")
+    func codexCacheWriteMigrationForcesCodexReread() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-codex-cache-write-v21")
+        let manager = try DatabaseManager(url: url)
+        let migrationId = "v21-codex-cache-write-reread"
+        let stamp = "2026-08-24T00:00:00Z"
+
+        try manager.pool.write { db in
+            try db.execute(
+                sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+                arguments: [migrationId])
+            try db.execute(sql: """
+                UPDATE pricing_catalog
+                SET cache_creation_price_per_million = 0
+                WHERE model_id IN (
+                    'gpt-5.6-terra',
+                    'gpt-5.6-terra-fast',
+                    'gpt-5.6-terra-fast-long'
+                )
+                """)
+            try db.execute(sql: """
+                INSERT INTO sessions
+                    (session_id, root_session_id, started_at, updated_at,
+                     last_model_id, created_at, imported_at, provider)
+                VALUES
+                    ('codex-cache-write', 'codex-cache-write', ?, ?,
+                     'gpt-5.6-terra', ?, ?, 'codex'),
+                    ('claude-control', 'claude-control', ?, ?,
+                     'claude-opus-5', ?, ?, 'claude')
+                """, arguments: [
+                    stamp, stamp, stamp, stamp,
+                    stamp, stamp, stamp, stamp,
+                ])
+            try db.execute(sql: """
+                INSERT INTO import_state
+                    (source_path, session_id, file_size, file_mtime_ms,
+                     last_imported_at, byte_offset, parser_checkpoint,
+                     metadata_probe_complete)
+                VALUES
+                    ('/custom/codex/rollout.jsonl', 'codex-cache-write',
+                     111, 222, ?, 111, X'0102', 1),
+                    ('/custom/claude/session.jsonl', 'claude-control',
+                     333, 444, ?, 333, X'0304', 1)
+                """, arguments: [stamp, stamp])
+            // This row was priced before GPT-5.6 Priority kept Fast pricing
+            // above 272K input tokens and before Codex cache-write prices were
+            // materialized in the catalog. The source may no longer be
+            // readable, so v21 must repair the stored value in addition to
+            // requesting a full reread.
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (session_id, timestamp, model_id,
+                     input_tokens, cached_input_tokens, output_tokens,
+                     reasoning_output_tokens, total_tokens, value_usd,
+                     provider, cache_creation_tokens,
+                     codex_service_tier_preference)
+                VALUES
+                    ('codex-cache-write', ?, 'gpt-5.6-terra',
+                     300000, 0, 0, 0, 300000, 1.20,
+                     'codex', 100000, 'priority')
+                """, arguments: [stamp])
+        }
+
+        _ = try DatabaseManager(url: url)
+
+        try manager.pool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT session_id, file_size, file_mtime_ms, byte_offset,
+                       parser_checkpoint, metadata_probe_complete
+                FROM import_state
+                ORDER BY session_id
+                """)
+            let bySession = Dictionary(uniqueKeysWithValues: rows.map {
+                ($0["session_id"] as String, $0)
+            })
+
+            let claude = try #require(bySession["claude-control"])
+            #expect(claude["file_size"] as Int64 == 333)
+            #expect(claude["file_mtime_ms"] as Int64 == 444)
+            #expect(claude["byte_offset"] as Int64 == 333)
+            #expect(claude["parser_checkpoint"] as Data? == Data([0x03, 0x04]))
+
+            let codex = try #require(bySession["codex-cache-write"])
+            #expect(codex["file_size"] as Int64 == -1)
+            #expect(codex["file_mtime_ms"] as Int64 == -1)
+            #expect(codex["byte_offset"] as Int64 == 0)
+            #expect(codex["parser_checkpoint"] as Data? == nil)
+            #expect(codex["metadata_probe_complete"] as Bool == true)
+
+            let repriced = try Double.fetchOne(db, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE session_id = 'codex-cache-write'
+                """)
+            #expect(abs((repriced ?? 0) - 2.60) < 1e-9)
+
+            let fastCacheWritePrice = try Double.fetchOne(db, sql: """
+                SELECT cache_creation_price_per_million
+                FROM pricing_catalog
+                WHERE model_id = 'gpt-5.6-terra-fast'
+                """)
+            #expect(abs((fastCacheWritePrice ?? 0) - 5.00) < 1e-9)
+
+            let fastLongCacheWritePrice = try Double.fetchOne(db, sql: """
+                SELECT cache_creation_price_per_million
+                FROM pricing_catalog
+                WHERE model_id = 'gpt-5.6-terra-fast-long'
+                """)
+            #expect(abs((fastLongCacheWritePrice ?? 0) - 10.00) < 1e-9)
+        }
+    }
+
     @Test("usage_events has covering indexes for History aggregates")
     func usageEventsHistoryCoveringIndexesExist() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-usage-events-index")
@@ -410,7 +522,7 @@ struct MigrationsTests {
                 """, arguments: [stamp, stamp])
         }
 
-        try migrator.migrate(queue)
+        try migrator.migrate(queue, upTo: "v20-session-summaries-keyset")
 
         try queue.read { db in
             let fetchedPopulated = try Row.fetchOne(db, sql: """
@@ -485,7 +597,7 @@ struct MigrationsTests {
                 """, arguments: [stamp, stamp])
         }
 
-        try migrator.migrate(queue)
+        try migrator.migrate(queue, upTo: "v17-codex-parser-checkpoints")
 
         try queue.read { db in
             let columns = try String.fetchAll(db, sql: """

@@ -595,7 +595,7 @@ struct SessionTitleProjectMetadataTests {
                    provider, cache_creation_tokens, model_inferred)
                 VALUES
                   ('real-title', '2026-06-01T00:00:00Z', 'gpt-5.5',
-                   10, 0, 5, 0, 15, 0.01, 'codex', 0, 0),
+                   10, 0, 5, 0, 15, 0.01, 'codex', 4, 0),
                   ('project-only', '2026-06-01T00:01:00Z', 'gpt-5.5',
                    20, 0, 5, 0, 25, 0.02, 'codex', 0, 0)
                 """)
@@ -607,12 +607,13 @@ struct SessionTitleProjectMetadataTests {
         let lines = try String(contentsOf: output, encoding: .utf8)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
-        #expect(lines.first == "id,session_id,timestamp,model_id,input,cached,output,reasoning,total,value_usd,title,agent")
+        #expect(lines.first == "id,session_id,timestamp,model_id,input,cached,cache_write,output,reasoning,total,value_usd,title,agent")
 
         let realTitleFields = lines[1].split(separator: ",", omittingEmptySubsequences: false).map(String.init)
         let projectOnlyFields = lines[2].split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-        #expect(realTitleFields[10] == "Split session titles from project metadata")
-        #expect(projectOnlyFields[10] == "project-name-fallback-demo")
+        #expect(realTitleFields[6] == "4")
+        #expect(realTitleFields[11] == "Split session titles from project metadata")
+        #expect(projectOnlyFields[11] == "project-name-fallback-demo")
     }
 
     @Test("Codex scan persists real title and project metadata")
