@@ -6,7 +6,7 @@ import GRDB
 // Codex value formula:
 //   value_usd =   max(input - cached - cache_write, 0) * input_price/1M
 //               + cached                                * cached_price/1M
-//               + cache_write                           * (input_price * 1.25)/1M
+//               + cache_write                           * cache_write_price/1M
 //               + output                                * output_price/1M
 //
 // Why not `+ reasoning_output_tokens * output_price`? Empirical check across 300
@@ -25,8 +25,8 @@ struct PricingEntry: Sendable, Hashable {
     let inputPricePerMillion: Double
     let cachedInputPricePerMillion: Double
     let outputPricePerMillion: Double
-    /// Claude 5-minute cache-write rate. Codex derives its cache-write price
-    /// directly from the selected input rate instead of reading this field.
+    /// Provider-specific cache-write rate: Claude 5-minute cache creation or
+    /// Codex prompt-cache writes. Values are materialized in the catalog.
     let cacheCreationPricePerMillion: Double
     let effectiveModelId: String
     let isOfficial: Bool
@@ -68,7 +68,7 @@ struct PricingEntry: Sendable, Hashable {
 /// Update this when OpenAI publishes a new Fast tier ratio or a new
 /// model gains a Fast variant — and update the bundled rows below.
 enum CodexFastMode {
-    /// model_id → multiplier (applied to input, cached, output rates).
+    /// model_id → multiplier (applied to input, cached, cache-write, and output rates).
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
         "gpt-5.6-sol": 2.0,
@@ -84,7 +84,8 @@ enum CodexFastMode {
 }
 
 /// Codex Flex uses the published Flex-processing rates. These are half of
-/// standard input, cached-input, and output prices for the supported models.
+/// standard input, cached-input, cache-write, and output prices for the
+/// supported models.
 /// As with Fast, rollout preference is pricing evidence rather than proof of
 /// the tier ultimately served by OpenAI.
 enum CodexFlexMode {
@@ -128,6 +129,7 @@ struct CodexHistoricalPricePeriod: Sendable, Hashable {
     let endsBefore: String
     let inputPricePerMillion: Double
     let cachedInputPricePerMillion: Double
+    let cacheWritePricePerMillion: Double
     let outputPricePerMillion: Double
 }
 
@@ -143,6 +145,7 @@ enum CodexPriceHistory {
             endsBefore: "2026-07-30",
             inputPricePerMillion: 2.50,
             cachedInputPricePerMillion: 0.25,
+            cacheWritePricePerMillion: 3.125,
             outputPricePerMillion: 15.00),
         .init(
             modelId: "gpt-5.6-luna",
@@ -150,6 +153,7 @@ enum CodexPriceHistory {
             endsBefore: "2026-07-30",
             inputPricePerMillion: 1.00,
             cachedInputPricePerMillion: 0.10,
+            cacheWritePricePerMillion: 1.25,
             outputPricePerMillion: 6.00),
     ]
 }
@@ -166,75 +170,92 @@ enum BundledPricingCatalog {
         // recorded for a session. Matches openai.com gpt-5 pricing.
         .init(modelId: "gpt-5", displayName: "GPT-5 (legacy fallback)",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.5625,
               effectiveModelId: "gpt-5", isOfficial: true,
               note: "Used for sessions that lack turn_context model metadata.",
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
+              cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "gpt-5.6-sol", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-terra", displayName: "GPT-5.6 Terra",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 12.00,
+              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "gpt-5.6-terra", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-luna", displayName: "GPT-5.6 Luna",
               inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.20,
+              cacheCreationPricePerMillion: 0.25,
               effectiveModelId: "gpt-5.6-luna", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.5", displayName: "GPT-5.5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
+              cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "gpt-5.5", isOfficial: true, note: nil,
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.4", displayName: "GPT-5.4",
               inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
+              cacheCreationPricePerMillion: 3.125,
               effectiveModelId: "gpt-5.4", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.4"),
         .init(modelId: "gpt-5.4-mini", displayName: "GPT-5.4 Mini",
               inputPricePerMillion: 0.75, cachedInputPricePerMillion: 0.075, outputPricePerMillion: 4.50,
+              cacheCreationPricePerMillion: 0.9375,
               effectiveModelId: "gpt-5.4-mini", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.4-mini"),
         .init(modelId: "gpt-5.4-nano", displayName: "GPT-5.4 Nano",
               inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.25,
+              cacheCreationPricePerMillion: 0.25,
               effectiveModelId: "gpt-5.4-nano", isOfficial: true, note: nil,
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.3-codex", displayName: "GPT-5.3 Codex",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 2.1875,
               effectiveModelId: "gpt-5.3-codex", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "codex-auto-review", displayName: "Codex Auto Review",
               inputPricePerMillion: 2.50, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 15.00,
+              cacheCreationPricePerMillion: 3.125,
               effectiveModelId: "gpt-5.4", isOfficial: false,
               note: "No separate public price is available. Estimated using GPT-5.4 standard pricing.",
               sourceUrl: "https://learn.chatgpt.com/docs/sandboxing/auto-review"),
         .init(modelId: "gpt-5.3-codex-spark", displayName: "GPT-5.3 Codex Spark",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 2.1875,
               effectiveModelId: "gpt-5.3-codex", isOfficial: false,
               note: "No public Spark API price was found. Using GPT-5.3 Codex pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-5.3-codex"),
         .init(modelId: "gpt-5.2", displayName: "GPT-5.2",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 2.1875,
               effectiveModelId: "gpt-5.2", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.2-codex"),
         .init(modelId: "gpt-5.2-codex", displayName: "GPT-5.2 Codex",
               inputPricePerMillion: 1.75, cachedInputPricePerMillion: 0.175, outputPricePerMillion: 14.00,
+              cacheCreationPricePerMillion: 2.1875,
               effectiveModelId: "gpt-5.2-codex", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.2-codex"),
         .init(modelId: "gpt-5-codex", displayName: "GPT-5 Codex",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.5625,
               effectiveModelId: "gpt-5-codex", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5-codex"),
         .init(modelId: "gpt-5.1-codex-max", displayName: "GPT-5.1 Codex Max",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.5625,
               effectiveModelId: "gpt-5.1-codex-max", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex-max"),
         .init(modelId: "gpt-5.1-codex", displayName: "GPT-5.1 Codex",
               inputPricePerMillion: 1.25, cachedInputPricePerMillion: 0.125, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 1.5625,
               effectiveModelId: "gpt-5.1-codex", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex"),
         .init(modelId: "gpt-5.1-codex-mini", displayName: "GPT-5.1 Codex Mini",
               inputPricePerMillion: 0.25, cachedInputPricePerMillion: 0.025, outputPricePerMillion: 2.00,
+              cacheCreationPricePerMillion: 0.3125,
               effectiveModelId: "gpt-5.1-codex-mini", isOfficial: true, note: nil,
               sourceUrl: "https://platform.openai.com/docs/models/gpt-5.1-codex-mini"),
 
@@ -458,9 +479,9 @@ enum PricingService {
     ///
     ///   - **codex** (OpenAI): `input_tokens` is the gross figure that already
     ///     includes cached reads and cache writes. Ordinary input therefore
-    ///     uses `max(input - cached - cache_write, 0)`; cache writes always use
-    ///     the selected input rate times 1.25. `output_tokens` already includes
-    ///     reasoning.
+    ///     uses `max(input - cached - cache_write, 0)`; cache writes use the
+    ///     precomputed catalog or historical write rate selected for the event.
+    ///     `output_tokens` already includes reasoning.
     ///
     ///   - **claude**: the API breaks tokens out by category — `input_tokens`
     ///     is the **uncached** portion, `cache_read_input_tokens` is billed at
@@ -542,6 +563,7 @@ enum PricingService {
             multiplier: CodexLongContextPricing.outputMultiplier)
         let inputPriceExpr = codexPricePerMillionSQL(component: .input)
         let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
+        let cacheWritePriceExpr = codexPricePerMillionSQL(component: .cacheWrite)
         let outputPriceExpr = codexPricePerMillionSQL(component: .output)
         let scopeClause: String
         let updateTarget: String
@@ -615,8 +637,7 @@ enum PricingService {
                           * (\(cachedInputPriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.cache_creation_tokens
-                          * (\(inputPriceExpr))
-                          * 1.25
+                          * (\(cacheWritePriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.output_tokens
                           * (\(outputPriceExpr))
@@ -638,12 +659,14 @@ enum PricingService {
     private enum CodexPriceComponent {
         case input
         case cachedInput
+        case cacheWrite
         case output
 
         var catalogColumn: String {
             switch self {
             case .input: "input_price_per_million"
             case .cachedInput: "cached_input_price_per_million"
+            case .cacheWrite: "cache_creation_price_per_million"
             case .output: "output_price_per_million"
             }
         }
@@ -652,6 +675,7 @@ enum PricingService {
             switch self {
             case .input: period.inputPricePerMillion
             case .cachedInput: period.cachedInputPricePerMillion
+            case .cacheWrite: period.cacheWritePricePerMillion
             case .output: period.outputPricePerMillion
             }
         }

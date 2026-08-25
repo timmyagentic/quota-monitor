@@ -44,7 +44,7 @@
 | `input_price_per_million` | 标准输入价格。 |
 | `cached_input_price_per_million` | cache read / cached input 价格。 |
 | `output_price_per_million` | 输出价格。 |
-| `cache_creation_price_per_million` | Claude 5 分钟 cache write 价格；Codex 不读取此列，而是从最终选中的 input 价格直接乘 `1.25x`。 |
+| `cache_creation_price_per_million` | Provider-specific cache write 价格：Claude 保存 5 分钟 cache creation 单价；Codex 保存随包预先算好的 prompt-cache write 单价。 |
 
 旧数据库仍可能包含 `price_source`、`fetched_at`、`above_200k_*` 和 `max_*` 列。这些列只为保持既有 append-only migration 链可升级而保留；当前运行时会把受支持行统一恢复为内置目录，并清空旧的外部来源元数据，不再用这些列选择价格。
 
@@ -56,11 +56,11 @@
 
 `CodexFastMode.multipliers` 在代码里维护支持 Fast 估算的模型及倍率，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。每个合成 `<model_id>-fast` 行会把对应模型的 input、cached input、cache write 和 output 单价都乘以该倍率；Codex 金额公式本身不变。未列入该映射的 Codex 模型，以及所有 Claude 事件，都不会使用这些倍率。
 
-`CodexFlexMode.multipliers` 维护 OpenAI 已公布 Flex 价格的模型。当前这些模型的 input、cached input 与 output 都是 Standard 的 `0.5x`，因此合成 `<model_id>-flex` 行统一由基础价格乘以 `0.5` 得出；Fast 和 Flex 行每次都从同一份随包基础价格确定性派生，避免派生价格漂移。
+`CodexFlexMode.multipliers` 维护 OpenAI 已公布 Flex 价格的模型。当前这些模型的 input、cached input、cache write 与 output 都是 Standard 的 `0.5x`，因此合成 `<model_id>-flex` 行统一由基础价格乘以 `0.5` 得出；Fast 和 Flex 行每次都从同一份随包基础价格确定性派生并写入 SQLite catalog，避免派生价格漂移。
 
 ## 生效日期与历史价格
 
-价格变更不能只覆盖当前目录，否则完整回填会把旧用量按新价格重算。`CodexPriceHistory.periods` 保存已经发生的固定价格区间，`backfillAllValues` 根据 `usage_events.timestamp` 选择事件发生时适用的价格，再叠加 Standard / Fast / Flex 和长上下文倍率。
+价格变更不能只覆盖当前目录，否则完整回填会把旧用量按新价格重算。`CodexPriceHistory.periods` 保存已经发生的固定价格区间，其中 input、cached input、cache write 与 output 都是确定单价；`backfillAllValues` 根据 `usage_events.timestamp` 选择事件发生时适用的价格，再叠加 Standard / Fast / Flex 和长上下文倍率。
 
 当前 GPT-5.6 Terra 与 Luna 以 `2026-07-30` 为切换点：此前事件使用上市价格，当日及之后使用随包当前价格。ISO-8601 UTC 时间戳可以直接稳定比较。以后供应商调价时，必须同时保留旧区间并更新当前内置行，不能只修改当前数字。
 
@@ -78,7 +78,7 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`default`、`flex`、`NULL` 四种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast 或 Flex。
 
-迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额，确保旧版未知→Fast 金额和缺失的长上下文倍率不会滞留；`v21-codex-cache-write-reread` 会立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次，让原始 rollout 已不可读的事件也能采用新的档位和长上下文规则，同时让仍可读的历史前缀补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`，因此默认 home、自定义 `CODEX_HOME` 和 App Store 中用户选择的 Codex home 都在重读范围内。
+迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额，确保旧版未知→Fast 金额和缺失的长上下文倍率不会滞留；`v21-codex-cache-write-reread` 会安装包含 Codex cache-write 单价的当前 catalog、立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次，让原始 rollout 已不可读的事件也能采用新的目录与长上下文规则，同时让仍可读的历史前缀补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`，因此默认 home、自定义 `CODEX_HOME` 和 App Store 中用户选择的 Codex home 都在重读范围内。
 
 ### 价格行优先级
 
@@ -107,7 +107,7 @@ value_usd =
     max(input_tokens - cached_input_tokens - cache_creation_tokens, 0)
         * input_price_per_million * input_multiplier
     + cached_input_tokens * cached_input_price_per_million * input_multiplier
-    + cache_creation_tokens * input_price_per_million * 1.25 * input_multiplier
+    + cache_creation_tokens * cache_creation_price_per_million * input_multiplier
     + output_tokens * output_price_per_million * output_multiplier
   ) / 1_000_000
 ```
@@ -117,7 +117,7 @@ value_usd =
 注意点：
 
 - `input_tokens` 是 gross input，已经包含 cached input 与 cache write input，所以普通输入只对 `input - cached - cache_write` 计费。
-- `cache_write_input_tokens` 通过 provider-neutral 的 `cache_creation_tokens` 列保存；价格始终是事件最终选中的 Standard / Fast / Flex、历史有效 input 单价乘 `1.25x`，不维护独立 Codex write 价格，也不需要 fallback。它是输入明细，不额外加入 `total_tokens`。
+- `cache_write_input_tokens` 通过 provider-neutral 的 `cache_creation_tokens` 列保存；内置 Standard / Fast / Flex catalog 和历史价格段都提前保存等于对应 uncached input 单价 `1.25x` 的确定 write 单价。回填只读取最终选中的 `cache_creation_price_per_million`，不在事件 SQL 中乘 `1.25x`，也没有 fallback。它是输入明细，不额外加入 `total_tokens`。
 - `output_tokens` 已经包含 reasoning output；`reasoning_output_tokens` 是拆分字段，不额外计费，否则会重复计算。
 - 旧 Codex session 缺少模型时 fallback 到 `gpt-5`，并设置 `model_inferred = true`，UI 可提示该行是近似估算。
 - 每行先按“价格行优先级”选择基础行或合成 `*-fast` / `*-flex` 行，再按请求输入量决定是否应用长上下文倍率。

@@ -85,8 +85,8 @@ enum Migrations {
         // v2: historical schema expansion. The migration identifier and
         // columns remain for databases created by older releases; current
         // runtime pricing is bundled-only and resets this legacy metadata.
-        //   - cache_creation_price_per_million: Claude 5-minute cache-write
-        //     rate. Codex derives prompt-cache writes from its input price.
+        //   - cache_creation_price_per_million: provider-specific cache-write
+        //     rate for Claude 5-minute creation and Codex prompt-cache writes.
         //   - above_*, price_source, fetched_at, and max_* are retained only so
         //     the append-only migration chain can open existing databases.
         migrator.registerMigration("v2-litellm-pricing") { db in
@@ -624,8 +624,9 @@ enum Migrations {
         // source through a full parse so committed prefixes cannot retain the
         // old implicit zero. Reprice stored events immediately as well: source
         // rollouts may be unavailable, and this release also changes how
-        // GPT-5.6 Priority long-context rows select Fast pricing. Claude
-        // checkpoints are unrelated and stay untouched.
+        // GPT-5.6 Priority long-context rows select Fast pricing. Install the
+        // current catalog first because it also materializes Codex cache-write
+        // rates. Claude checkpoints are unrelated and stay untouched.
         migrator.registerMigration("v21-codex-cache-write-reread") { db in
             try db.execute(sql: """
                 UPDATE import_state
@@ -637,6 +638,7 @@ enum Migrations {
                     SELECT session_id FROM sessions WHERE provider = 'codex'
                 )
                 """)
+            _ = try PricingService.installBundledCatalog(in: db)
             try PricingService.backfillAllValues(in: db)
         }
     }

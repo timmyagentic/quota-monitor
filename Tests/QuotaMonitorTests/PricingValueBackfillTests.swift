@@ -174,19 +174,20 @@ struct PricingValueBackfillTests {
                 "codex math expected 1.62, got \(values[0])")
     }
 
-    @Test("codex: cache-write price is selected input price times 1.25")
-    func codexCacheWritesDeriveFromInputPrice() throws {
+    @Test("codex: cache writes use the selected catalog price directly")
+    func codexCacheWritesUseCatalogPrice() throws {
         let db = try makeDatabase()
         try insertPriceRow(
             in: db,
             modelId: "gpt-5.6-test",
             input: 1.00,
             cached: 0.10,
-            output: 8.00)
+            output: 8.00,
+            cacheCreation: 9.00)
         // input_tokens includes both cached reads and cache writes:
         //   ordinary input = 1M - 0.2M cached - 0.3M writes = 0.5M -> $0.50
         //   cached reads   = 0.2M * $0.10                      -> $0.02
-        //   cache writes   = 0.3M * $1.25                      -> $0.375
+        //   cache writes   = 0.3M * catalog $9.00              -> $2.70
         //   output         = 0.1M * $8                         -> $0.80
         try insertUsageEvent(
             in: db,
@@ -202,7 +203,7 @@ struct PricingValueBackfillTests {
         }
 
         let value = try #require(valueUSD(in: db).first)
-        #expect(abs(value - 1.695) < 1e-9)
+        #expect(abs(value - 4.02) < 1e-9)
     }
 
     // MARK: - claude formula: every category billed independently
@@ -312,7 +313,7 @@ struct PricingValueBackfillTests {
                   input: 1.40, cached: 0.26, cacheCreation: 0,
                   output: 4.40, isOfficial: true),
             .init(modelId: "codex-auto-review",
-                  input: 2.50, cached: 0.25, cacheCreation: 0,
+                  input: 2.50, cached: 0.25, cacheCreation: 3.125,
                   output: 15.00, isOfficial: false),
         ]
 
@@ -729,6 +730,35 @@ struct PricingValueBackfillTests {
         #expect(abs((row?["output_price_per_million"] as Double? ?? 0) - 15.00) < 1e-6)
     }
 
+    @Test("bundled Codex catalog materializes cache-write prices")
+    func bundledCodexCatalogMaterializesCacheWritePrices() {
+        let entries = BundledPricingCatalog.entries.filter {
+            $0.modelId.hasPrefix("gpt-") || $0.modelId == "codex-auto-review"
+        }
+
+        #expect(!entries.isEmpty)
+        for entry in entries {
+            #expect(entry.cacheCreationPricePerMillion > 0,
+                    "\(entry.modelId) must ship a cache-write price")
+            #expect(abs(entry.cacheCreationPricePerMillion
+                        - entry.inputPricePerMillion * 1.25) < 1e-9,
+                    "\(entry.modelId) cache-write price must be precomputed")
+        }
+    }
+
+    @Test("historical Codex prices materialize cache-write prices")
+    func historicalCodexPricesMaterializeCacheWritePrices() {
+        let prices = Dictionary(uniqueKeysWithValues:
+            CodexPriceHistory.periods.map {
+                ($0.modelId, $0.cacheWritePricePerMillion)
+            })
+
+        #expect(prices == [
+            "gpt-5.6-terra": 3.125,
+            "gpt-5.6-luna": 1.25,
+        ])
+    }
+
     @Test("database initialization seeds post-July-30 GPT-5.6 prices and tiers")
     func databaseInitializationSeedsCurrentGPT56Prices() throws {
         let db = try makeDatabase()
@@ -754,12 +784,12 @@ struct PricingValueBackfillTests {
                 row["output_price_per_million"] as Double))
         })
         let expected: [String: (Double, Double, Double, Double)] = [
-            "gpt-5.6-terra": (2.00, 0.20, 0, 12.00),
-            "gpt-5.6-terra-fast": (4.00, 0.40, 0, 24.00),
-            "gpt-5.6-terra-flex": (1.00, 0.10, 0, 6.00),
-            "gpt-5.6-luna": (0.20, 0.02, 0, 1.20),
-            "gpt-5.6-luna-fast": (0.40, 0.04, 0, 2.40),
-            "gpt-5.6-luna-flex": (0.10, 0.01, 0, 0.60),
+            "gpt-5.6-terra": (2.00, 0.20, 2.50, 12.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 5.00, 24.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 1.25, 6.00),
+            "gpt-5.6-luna": (0.20, 0.02, 0.25, 1.20),
+            "gpt-5.6-luna-fast": (0.40, 0.04, 0.50, 2.40),
+            "gpt-5.6-luna-flex": (0.10, 0.01, 0.125, 0.60),
         ]
 
         #expect(prices.count == expected.count)
@@ -979,7 +1009,8 @@ struct PricingValueBackfillTests {
             modelId: "gpt-5.6-terra",
             input: 2.00,
             cached: 0.20,
-            output: 12.00)
+            output: 12.00,
+            cacheCreation: 2.50)
         try insertUsageEvent(
             in: db,
             provider: "codex",
@@ -1027,13 +1058,15 @@ struct PricingValueBackfillTests {
             modelId: "gpt-5.6-terra",
             input: 2.00,
             cached: 0.20,
-            output: 12.00)
+            output: 12.00,
+            cacheCreation: 2.50)
         try insertPriceRow(
             in: db,
             modelId: "gpt-5.6-terra-fast",
             input: 4.00,
             cached: 0.40,
-            output: 24.00)
+            output: 24.00,
+            cacheCreation: 5.00)
         try insertUsageEvent(
             in: db,
             provider: "codex",
@@ -1063,13 +1096,15 @@ struct PricingValueBackfillTests {
             modelId: "gpt-5.6-terra",
             input: 2.00,
             cached: 0.20,
-            output: 12.00)
+            output: 12.00,
+            cacheCreation: 2.50)
         try insertPriceRow(
             in: db,
             modelId: "gpt-5.6-terra-flex",
             input: 1.00,
             cached: 0.10,
-            output: 6.00)
+            output: 6.00,
+            cacheCreation: 1.25)
         try insertUsageEvent(
             in: db,
             provider: "codex",

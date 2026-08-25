@@ -319,6 +319,13 @@ struct MigrationsTests {
                 sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
                 arguments: [migrationId])
             try db.execute(sql: """
+                UPDATE pricing_catalog
+                SET cache_creation_price_per_million = 0
+                WHERE model_id IN (
+                    'gpt-5.6-terra', 'gpt-5.6-terra-fast'
+                )
+                """)
+            try db.execute(sql: """
                 INSERT INTO sessions
                     (session_id, root_session_id, started_at, updated_at,
                      last_model_id, created_at, imported_at, provider)
@@ -343,19 +350,21 @@ struct MigrationsTests {
                      333, 444, ?, 333, X'0304', 1)
                 """, arguments: [stamp, stamp])
             // This row was priced before GPT-5.6 Priority kept Fast pricing
-            // above 272K input tokens. The source may no longer be readable,
-            // so v21 must repair the stored value in addition to requesting a
-            // full reread.
+            // above 272K input tokens and before Codex cache-write prices were
+            // materialized in the catalog. The source may no longer be
+            // readable, so v21 must repair the stored value in addition to
+            // requesting a full reread.
             try db.execute(sql: """
                 INSERT INTO usage_events
                     (session_id, timestamp, model_id,
                      input_tokens, cached_input_tokens, output_tokens,
                      reasoning_output_tokens, total_tokens, value_usd,
-                     provider, codex_service_tier_preference)
+                     provider, cache_creation_tokens,
+                     codex_service_tier_preference)
                 VALUES
                     ('codex-cache-write', ?, 'gpt-5.6-terra',
                      300000, 0, 0, 0, 300000, 1.20,
-                     'codex', 'priority')
+                     'codex', 100000, 'priority')
                 """, arguments: [stamp])
         }
 
@@ -390,7 +399,14 @@ struct MigrationsTests {
                 FROM usage_events
                 WHERE session_id = 'codex-cache-write'
                 """)
-            #expect(abs((repriced ?? 0) - 2.40) < 1e-9)
+            #expect(abs((repriced ?? 0) - 2.60) < 1e-9)
+
+            let fastCacheWritePrice = try Double.fetchOne(db, sql: """
+                SELECT cache_creation_price_per_million
+                FROM pricing_catalog
+                WHERE model_id = 'gpt-5.6-terra-fast'
+                """)
+            #expect(abs((fastCacheWritePrice ?? 0) - 5.00) < 1e-9)
         }
     }
 
