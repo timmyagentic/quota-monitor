@@ -44,7 +44,7 @@
 | `input_price_per_million` | 标准输入价格。 |
 | `cached_input_price_per_million` | cache read / cached input 价格。 |
 | `output_price_per_million` | 输出价格。 |
-| `cache_creation_price_per_million` | Provider cache write 价格：Claude 使用 5 分钟 cache write 价；支持提示缓存写入的 GPT-5.6 使用 uncached input 的 `1.25x`。 |
+| `cache_creation_price_per_million` | Claude 5 分钟 cache write 价格；Codex 不读取此列，而是从最终选中的 input 价格直接乘 `1.25x`。 |
 
 旧数据库仍可能包含 `price_source`、`fetched_at`、`above_200k_*` 和 `max_*` 列。这些列只为保持既有 append-only migration 链可升级而保留；当前运行时会把受支持行统一恢复为内置目录，并清空旧的外部来源元数据，不再用这些列选择价格。
 
@@ -107,7 +107,7 @@ value_usd =
     max(input_tokens - cached_input_tokens - cache_creation_tokens, 0)
         * input_price_per_million * input_multiplier
     + cached_input_tokens * cached_input_price_per_million * input_multiplier
-    + cache_creation_tokens * cache_creation_price_per_million * input_multiplier
+    + cache_creation_tokens * input_price_per_million * 1.25 * input_multiplier
     + output_tokens * output_price_per_million * output_multiplier
   ) / 1_000_000
 ```
@@ -117,8 +117,7 @@ value_usd =
 注意点：
 
 - `input_tokens` 是 gross input，已经包含 cached input 与 cache write input，所以普通输入只对 `input - cached - cache_write` 计费。
-- `cache_write_input_tokens` 通过 provider-neutral 的 `cache_creation_tokens` 列保存，GPT-5.6 按对应 Standard / Fast / Flex uncached input 单价的 `1.25x` 计费；它是输入明细，不额外加入 `total_tokens`。
-- 如果模型目录没有发布专用 cache write 价格，该部分保守地保留普通 input 单价，不会因为从 ordinary input 中拆分出来而变成 `$0`。
+- `cache_write_input_tokens` 通过 provider-neutral 的 `cache_creation_tokens` 列保存；价格始终是事件最终选中的 Standard / Fast / Flex、历史有效 input 单价乘 `1.25x`，不维护独立 Codex write 价格，也不需要 fallback。它是输入明细，不额外加入 `total_tokens`。
 - `output_tokens` 已经包含 reasoning output；`reasoning_output_tokens` 是拆分字段，不额外计费，否则会重复计算。
 - 旧 Codex session 缺少模型时 fallback 到 `gpt-5`，并设置 `model_inferred = true`，UI 可提示该行是近似估算。
 - 每行先按“价格行优先级”选择基础行或合成 `*-fast` / `*-flex` 行，再按请求输入量决定是否应用长上下文倍率。

@@ -174,16 +174,15 @@ struct PricingValueBackfillTests {
                 "codex math expected 1.62, got \(values[0])")
     }
 
-    @Test("codex: cache writes are removed from ordinary input and billed at 1.25x input")
-    func codexCacheWritesUseDedicatedRate() throws {
+    @Test("codex: cache-write price is selected input price times 1.25")
+    func codexCacheWritesDeriveFromInputPrice() throws {
         let db = try makeDatabase()
         try insertPriceRow(
             in: db,
             modelId: "gpt-5.6-test",
             input: 1.00,
             cached: 0.10,
-            output: 8.00,
-            cacheCreation: 1.25)
+            output: 8.00)
         // input_tokens includes both cached reads and cache writes:
         //   ordinary input = 1M - 0.2M cached - 0.3M writes = 0.5M -> $0.50
         //   cached reads   = 0.2M * $0.10                      -> $0.02
@@ -204,34 +203,6 @@ struct PricingValueBackfillTests {
 
         let value = try #require(valueUSD(in: db).first)
         #expect(abs(value - 1.695) < 1e-9)
-    }
-
-    @Test("codex: cache writes without a dedicated rate retain ordinary input pricing")
-    func codexCacheWritesWithoutDedicatedRateUseInputPrice() throws {
-        let db = try makeDatabase()
-        try insertPriceRow(
-            in: db,
-            modelId: "gpt-without-cache-write-price",
-            input: 1.00,
-            cached: 0.10,
-            output: 8.00)
-        try insertUsageEvent(
-            in: db,
-            provider: "codex",
-            modelId: "gpt-without-cache-write-price",
-            input: 1_000_000,
-            cached: 200_000,
-            output: 100_000,
-            codexCacheWrite: 300_000)
-
-        try db.pool.write { conn in
-            try PricingService.backfillAllValues(in: conn)
-        }
-
-        let value = try #require(valueUSD(in: db).first)
-        // No write price exists, so the 0.3M write subset keeps the ordinary
-        // $1/M input rate instead of becoming free: 0.5 + 0.02 + 0.3 + 0.8.
-        #expect(abs(value - 1.62) < 1e-9)
     }
 
     // MARK: - claude formula: every category billed independently
@@ -783,12 +754,12 @@ struct PricingValueBackfillTests {
                 row["output_price_per_million"] as Double))
         })
         let expected: [String: (Double, Double, Double, Double)] = [
-            "gpt-5.6-terra": (2.00, 0.20, 2.50, 12.00),
-            "gpt-5.6-terra-fast": (4.00, 0.40, 5.00, 24.00),
-            "gpt-5.6-terra-flex": (1.00, 0.10, 1.25, 6.00),
-            "gpt-5.6-luna": (0.20, 0.02, 0.25, 1.20),
-            "gpt-5.6-luna-fast": (0.40, 0.04, 0.50, 2.40),
-            "gpt-5.6-luna-flex": (0.10, 0.01, 0.125, 0.60),
+            "gpt-5.6-terra": (2.00, 0.20, 0, 12.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 0, 24.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 0, 6.00),
+            "gpt-5.6-luna": (0.20, 0.02, 0, 1.20),
+            "gpt-5.6-luna-fast": (0.40, 0.04, 0, 2.40),
+            "gpt-5.6-luna-flex": (0.10, 0.01, 0, 0.60),
         ]
 
         #expect(prices.count == expected.count)
@@ -1008,8 +979,7 @@ struct PricingValueBackfillTests {
             modelId: "gpt-5.6-terra",
             input: 2.00,
             cached: 0.20,
-            output: 12.00,
-            cacheCreation: 2.50)
+            output: 12.00)
         try insertUsageEvent(
             in: db,
             provider: "codex",
@@ -1057,15 +1027,13 @@ struct PricingValueBackfillTests {
             modelId: "gpt-5.6-terra",
             input: 2.00,
             cached: 0.20,
-            output: 12.00,
-            cacheCreation: 2.50)
+            output: 12.00)
         try insertPriceRow(
             in: db,
             modelId: "gpt-5.6-terra-fast",
             input: 4.00,
             cached: 0.40,
-            output: 24.00,
-            cacheCreation: 5.00)
+            output: 24.00)
         try insertUsageEvent(
             in: db,
             provider: "codex",
@@ -1095,15 +1063,13 @@ struct PricingValueBackfillTests {
             modelId: "gpt-5.6-terra",
             input: 2.00,
             cached: 0.20,
-            output: 12.00,
-            cacheCreation: 2.50)
+            output: 12.00)
         try insertPriceRow(
             in: db,
             modelId: "gpt-5.6-terra-flex",
             input: 1.00,
             cached: 0.10,
-            output: 6.00,
-            cacheCreation: 1.25)
+            output: 6.00)
         try insertUsageEvent(
             in: db,
             provider: "codex",

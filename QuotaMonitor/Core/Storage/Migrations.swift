@@ -85,9 +85,8 @@ enum Migrations {
         // v2: historical schema expansion. The migration identifier and
         // columns remain for databases created by older releases; current
         // runtime pricing is bundled-only and resets this legacy metadata.
-        //   - cache_creation_price_per_million: provider cache-write rate;
-        //     Claude uses its 5-minute price and supported OpenAI models use
-        //     their prompt-cache write price.
+        //   - cache_creation_price_per_million: Claude 5-minute cache-write
+        //     rate. Codex derives prompt-cache writes from its input price.
         //   - above_*, price_source, fetched_at, and max_* are retained only so
         //     the append-only migration chain can open existing databases.
         migrator.registerMigration("v2-litellm-pricing") { db in

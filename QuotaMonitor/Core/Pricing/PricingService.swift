@@ -6,7 +6,7 @@ import GRDB
 // Codex value formula:
 //   value_usd =   max(input - cached - cache_write, 0) * input_price/1M
 //               + cached                                * cached_price/1M
-//               + cache_write                           * cache_write_price/1M
+//               + cache_write                           * (input_price * 1.25)/1M
 //               + output                                * output_price/1M
 //
 // Why not `+ reasoning_output_tokens * output_price`? Empirical check across 300
@@ -25,8 +25,8 @@ struct PricingEntry: Sendable, Hashable {
     let inputPricePerMillion: Double
     let cachedInputPricePerMillion: Double
     let outputPricePerMillion: Double
-    /// Provider cache-write rate: Claude 5-minute cache creation or OpenAI
-    /// prompt-cache writes. Zero means Codex retains ordinary input pricing.
+    /// Claude 5-minute cache-write rate. Codex derives its cache-write price
+    /// directly from the selected input rate instead of reading this field.
     let cacheCreationPricePerMillion: Double
     let effectiveModelId: String
     let isOfficial: Bool
@@ -171,18 +171,15 @@ enum BundledPricingCatalog {
               sourceUrl: "https://openai.com/api/pricing/"),
         .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 30.00,
-              cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "gpt-5.6-sol", isOfficial: true, note: nil,
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-terra", displayName: "GPT-5.6 Terra",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 12.00,
-              cacheCreationPricePerMillion: 2.50,
               effectiveModelId: "gpt-5.6-terra", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
         .init(modelId: "gpt-5.6-luna", displayName: "GPT-5.6 Luna",
               inputPricePerMillion: 0.20, cachedInputPricePerMillion: 0.02, outputPricePerMillion: 1.20,
-              cacheCreationPricePerMillion: 0.25,
               effectiveModelId: "gpt-5.6-luna", isOfficial: true,
               note: "Current price since 2026-07-30; earlier usage keeps launch pricing.",
               sourceUrl: "https://developers.openai.com/api/docs/pricing"),
@@ -461,9 +458,9 @@ enum PricingService {
     ///
     ///   - **codex** (OpenAI): `input_tokens` is the gross figure that already
     ///     includes cached reads and cache writes. Ordinary input therefore
-    ///     uses `max(input - cached - cache_write, 0)`; cache writes use their
-    ///     published 1.25x rate, or ordinary input when no dedicated rate is
-    ///     available. `output_tokens` already includes reasoning.
+    ///     uses `max(input - cached - cache_write, 0)`; cache writes always use
+    ///     the selected input rate times 1.25. `output_tokens` already includes
+    ///     reasoning.
     ///
     ///   - **claude**: the API breaks tokens out by category — `input_tokens`
     ///     is the **uncached** portion, `cache_read_input_tokens` is billed at
@@ -545,13 +542,6 @@ enum PricingService {
             multiplier: CodexLongContextPricing.outputMultiplier)
         let inputPriceExpr = codexPricePerMillionSQL(component: .input)
         let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
-        let explicitCacheWritePriceExpr = codexPricePerMillionSQL(component: .cacheWrite)
-        let cacheWritePriceExpr = """
-        COALESCE(
-          NULLIF((\(explicitCacheWritePriceExpr)), 0),
-          (\(inputPriceExpr))
-        )
-        """
         let outputPriceExpr = codexPricePerMillionSQL(component: .output)
         let scopeClause: String
         let updateTarget: String
@@ -625,7 +615,8 @@ enum PricingService {
                           * (\(cachedInputPriceExpr))
                           * \(inputMultiplierExpr)
                        + usage_events.cache_creation_tokens
-                          * (\(cacheWritePriceExpr))
+                          * (\(inputPriceExpr))
+                          * 1.25
                           * \(inputMultiplierExpr)
                        + usage_events.output_tokens
                           * (\(outputPriceExpr))
@@ -647,14 +638,12 @@ enum PricingService {
     private enum CodexPriceComponent {
         case input
         case cachedInput
-        case cacheWrite
         case output
 
         var catalogColumn: String {
             switch self {
             case .input: "input_price_per_million"
             case .cachedInput: "cached_input_price_per_million"
-            case .cacheWrite: "cache_creation_price_per_million"
             case .output: "output_price_per_million"
             }
         }
@@ -663,7 +652,6 @@ enum PricingService {
             switch self {
             case .input: period.inputPricePerMillion
             case .cachedInput: period.cachedInputPricePerMillion
-            case .cacheWrite: period.inputPricePerMillion * 1.25
             case .output: period.outputPricePerMillion
             }
         }

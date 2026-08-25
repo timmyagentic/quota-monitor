@@ -42,7 +42,7 @@ window copy.
 
 ### Fixed
 
-- **Complete GPT-5.6 input pricing.** Codex imports now retain prompt-cache writes and bill them at 1.25× uncached input, while models without a dedicated write price keep ordinary input pricing instead of dropping that usage; requests above 272K input apply 2× pricing to ordinary, cached, and cache-write input plus 1.5× output for the full request, while published GPT-5.6 Fast long-context rates remain on the Fast tier.
+- **Complete GPT-5.6 input pricing.** Codex imports now retain prompt-cache writes and derive their price directly as 1.25× the selected Standard, Flex, or Fast input rate; requests above 272K input apply 2× pricing to ordinary, cached, and cache-write input plus 1.5× output for the full request, while published GPT-5.6 Fast long-context rates remain on the Fast tier.
 - **Consistent rolling trend windows.** The 7-day, 30-day, 90-day, and one-year trend views now count only usage from the exact trailing 7 × 24, 30 × 24, 90 × 24, or 365 × 24 hours before grouping it by local date, so an older part of the boundary day no longer inflates tokens, cost, or cache hit rate.
 
 ## [1.0.3] — 2026-08-16
