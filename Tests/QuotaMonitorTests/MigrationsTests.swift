@@ -307,7 +307,7 @@ struct MigrationsTests {
         }
     }
 
-    @Test("Codex cache-write migration invalidates only Codex checkpoints")
+    @Test("Codex cache-write migration invalidates checkpoints and reprices existing events")
     func codexCacheWriteMigrationForcesCodexReread() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-cache-write-v21")
         let manager = try DatabaseManager(url: url)
@@ -342,6 +342,21 @@ struct MigrationsTests {
                     ('/custom/claude/session.jsonl', 'claude-control',
                      333, 444, ?, 333, X'0304', 1)
                 """, arguments: [stamp, stamp])
+            // This row was priced before GPT-5.6 Priority kept Fast pricing
+            // above 272K input tokens. The source may no longer be readable,
+            // so v21 must repair the stored value in addition to requesting a
+            // full reread.
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (session_id, timestamp, model_id,
+                     input_tokens, cached_input_tokens, output_tokens,
+                     reasoning_output_tokens, total_tokens, value_usd,
+                     provider, codex_service_tier_preference)
+                VALUES
+                    ('codex-cache-write', ?, 'gpt-5.6-terra',
+                     300000, 0, 0, 0, 300000, 1.20,
+                     'codex', 'priority')
+                """, arguments: [stamp])
         }
 
         _ = try DatabaseManager(url: url)
@@ -369,6 +384,13 @@ struct MigrationsTests {
             #expect(codex["byte_offset"] as Int64 == 0)
             #expect(codex["parser_checkpoint"] as Data? == nil)
             #expect(codex["metadata_probe_complete"] as Bool == true)
+
+            let repriced = try Double.fetchOne(db, sql: """
+                SELECT value_usd
+                FROM usage_events
+                WHERE session_id = 'codex-cache-write'
+                """)
+            #expect(abs((repriced ?? 0) - 2.40) < 1e-9)
         }
     }
 
@@ -475,7 +497,7 @@ struct MigrationsTests {
                 """, arguments: [stamp, stamp])
         }
 
-        try migrator.migrate(queue)
+        try migrator.migrate(queue, upTo: "v20-session-summaries-keyset")
 
         try queue.read { db in
             let fetchedPopulated = try Row.fetchOne(db, sql: """

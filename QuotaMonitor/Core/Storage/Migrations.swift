@@ -621,9 +621,11 @@ enum Migrations {
         // v21: Codex rollouts now expose `cache_write_input_tokens` as a
         // disjoint subset of `input_tokens`. Reuse the provider-neutral
         // cache_creation_tokens storage column, but force every known Codex
-        // source through a full parse so committed prefixes and their derived
-        // prices cannot retain the old implicit zero. Claude rows/checkpoints
-        // are unrelated and stay untouched.
+        // source through a full parse so committed prefixes cannot retain the
+        // old implicit zero. Reprice stored events immediately as well: source
+        // rollouts may be unavailable, and this release also changes how
+        // GPT-5.6 Priority long-context rows select Fast pricing. Claude
+        // checkpoints are unrelated and stay untouched.
         migrator.registerMigration("v21-codex-cache-write-reread") { db in
             try db.execute(sql: """
                 UPDATE import_state
@@ -635,6 +637,7 @@ enum Migrations {
                     SELECT session_id FROM sessions WHERE provider = 'codex'
                 )
                 """)
+            try PricingService.backfillAllValues(in: db)
         }
     }
 }

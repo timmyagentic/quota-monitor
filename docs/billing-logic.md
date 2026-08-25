@@ -78,7 +78,7 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`default`、`flex`、`NULL` 四种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast 或 Flex。
 
-迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额，确保旧版未知→Fast 金额和缺失的长上下文倍率不会滞留；`v21-codex-cache-write-reread` 会清除 Codex checkpoint 并强制从头重读一次，让已提交的历史前缀补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`，因此默认 home、自定义 `CODEX_HOME` 和 App Store 中用户选择的 Codex home 都在重读范围内。
+迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额，确保旧版未知→Fast 金额和缺失的长上下文倍率不会滞留；`v21-codex-cache-write-reread` 会立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次，让原始 rollout 已不可读的事件也能采用新的档位和长上下文规则，同时让仍可读的历史前缀补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`，因此默认 home、自定义 `CODEX_HOME` 和 App Store 中用户选择的 Codex home 都在重读范围内。
 
 ### 价格行优先级
 
