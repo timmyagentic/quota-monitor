@@ -494,7 +494,8 @@ enum PricingService {
     /// unknown preference selects the base Standard row. Requests above 272K
     /// input tokens use OpenAI's long-context multipliers. GPT-5.6 Priority
     /// keeps Fast pricing there; models without Fast long-context rows fall
-    /// back to Standard.
+    /// back to Standard. Only rows normalized to `price_source = 'bundled'`
+    /// participate; unsupported legacy local/LiteLLM rows remain inert.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
@@ -646,10 +647,12 @@ enum PricingService {
                   END
               FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
+                AND pc.price_source = 'bundled'
             )
             WHERE EXISTS (
               SELECT 1 FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
+                AND pc.price_source = 'bundled'
             )
             \(scopeClause)
             """

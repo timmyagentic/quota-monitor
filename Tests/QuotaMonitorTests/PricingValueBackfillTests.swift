@@ -18,6 +18,7 @@ import GRDB
 ///     breakdown
 ///   - rows with model_id NOT in pricing_catalog stay at their previous
 ///     value_usd (the WHERE EXISTS clause)
+///   - non-bundled legacy catalog rows are also excluded from valuation
 ///   - second run is idempotent (math is deterministic)
 @Suite("PricingService.backfillAllValues")
 struct PricingValueBackfillTests {
@@ -383,12 +384,6 @@ struct PricingValueBackfillTests {
             cacheCreation1h: 1_000_000,
             seedValueUSD: 0)
 
-        try db.pool.write { conn in
-            try PricingService.backfillAllValues(in: conn)
-        }
-        let increasedValue = try #require(valueUSD(in: db).first)
-        #expect(abs(increasedValue - 28.05) < 1e-6)
-
         let repaired = try db.pool.write { conn in
             let changed = try PricingService.installBundledCatalog(in: conn)
             try PricingService.backfillAllValues(in: conn)
@@ -463,6 +458,35 @@ struct PricingValueBackfillTests {
                 "known-model: 500_000 * 2.00 / 1M = 1.00, got \(values[0])")
         #expect(abs(values[1] - 99.99) < 1e-6,
                 "ghost-model row must NOT be overwritten; expected 99.99 to survive, got \(values[1])")
+    }
+
+    @Test("non-bundled legacy catalog rows do not participate in valuation")
+    func nonBundledLegacyCatalogRowsAreIgnored() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db,
+            modelId: "legacy-litellm-model",
+            input: 1.00,
+            cached: 0.10,
+            output: 8.00,
+            cacheCreation: 0,
+            priceSource: "litellm")
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "legacy-litellm-model",
+            input: 1_000_000,
+            cached: 0,
+            output: 0,
+            codexCacheWrite: 300_000,
+            seedValueUSD: 99.99)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        #expect(abs(value - 99.99) < 1e-9)
     }
 
     // MARK: - idempotency

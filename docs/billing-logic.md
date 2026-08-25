@@ -52,7 +52,7 @@
 
 `BundledPricingCatalog.entries` 是唯一价格来源。它随应用版本发布，覆盖当前支持的 OpenAI / Codex、Claude、GLM 模型，以及 Codex Fast / Flex 估算使用的合成 `*-fast`、`*-flex` 行。应用不会联网下载价格，不提供单行本地覆盖，也不会保留旧版外部目录对随包价格的优先级。
 
-`PricingService.installBundledCatalog` 每次打开数据库都会 upsert 全部内置行。若计算相关字段发生变化，或受支持行需要从旧版外部 / 本地来源归一为 `bundled`，启动流程会重算既有 `usage_events.value_usd`；即使旧行数值碰巧等于当前内置价，也会执行这次升级回填，修复旧版本地覆盖曾绕过生效日期而留下的历史金额。原始 token、事件时间和会话数据不受影响。
+`PricingService.installBundledCatalog` 每次打开数据库都会 upsert 全部内置行。若计算相关字段发生变化，或受支持行需要从旧版外部 / 本地来源归一为 `bundled`，启动流程会重算既有 `usage_events.value_usd`；即使旧行数值碰巧等于当前内置价，也会执行这次升级回填，修复旧版本地覆盖曾绕过生效日期而留下的历史金额。金额回填只接受 `price_source = 'bundled'` 的行；不在内置目录中的旧 LiteLLM/local 行可以继续留在兼容 schema 中，但不再参与估价，也不会触发 cache-write 为 0 的分支。原始 token、事件时间和会话数据不受影响。
 
 `CodexFastMode.multipliers` 在代码里维护支持 Fast 估算的模型及倍率，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。每个合成 `<model_id>-fast` 行会把对应模型的 input、cached input、cache write 和 output 单价都乘以该倍率；Codex 金额公式本身不变。未列入该映射的 Codex 模型，以及所有 Claude 事件，都不会使用这些倍率。
 
