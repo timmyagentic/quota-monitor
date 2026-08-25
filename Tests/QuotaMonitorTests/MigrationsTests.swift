@@ -322,7 +322,9 @@ struct MigrationsTests {
                 UPDATE pricing_catalog
                 SET cache_creation_price_per_million = 0
                 WHERE model_id IN (
-                    'gpt-5.6-terra', 'gpt-5.6-terra-fast'
+                    'gpt-5.6-terra',
+                    'gpt-5.6-terra-fast',
+                    'gpt-5.6-terra-fast-long'
                 )
                 """)
             try db.execute(sql: """
@@ -407,6 +409,13 @@ struct MigrationsTests {
                 WHERE model_id = 'gpt-5.6-terra-fast'
                 """)
             #expect(abs((fastCacheWritePrice ?? 0) - 5.00) < 1e-9)
+
+            let fastLongCacheWritePrice = try Double.fetchOne(db, sql: """
+                SELECT cache_creation_price_per_million
+                FROM pricing_catalog
+                WHERE model_id = 'gpt-5.6-terra-fast-long'
+                """)
+            #expect(abs((fastLongCacheWritePrice ?? 0) - 10.00) < 1e-9)
         }
     }
 

@@ -208,6 +208,28 @@ struct PricingValueBackfillTests {
         #expect(abs(value - 4.02) < 1e-9)
     }
 
+    @Test("pre-GPT-5.6 cache writes have no additional charge")
+    func earlierCodexCacheWritesUseOrdinaryInputPrice() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "gpt-5.5",
+            input: 200_000,
+            cached: 0,
+            output: 0,
+            codexCacheWrite: 60_000,
+            timestamp: "2026-08-24T00:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // 0.14M ordinary + 0.06M cache writes, both at $5/M.
+        #expect(abs(value - 1.00) < 1e-9)
+    }
+
     // MARK: - claude formula: every category billed independently
 
     @Test("claude: value sums input + cached + output + cache_creation independently (no subtraction)")
@@ -315,7 +337,7 @@ struct PricingValueBackfillTests {
                   input: 1.40, cached: 0.26, cacheCreation: 0,
                   output: 4.40, isOfficial: true),
             .init(modelId: "codex-auto-review",
-                  input: 2.50, cached: 0.25, cacheCreation: 3.125,
+                  input: 2.50, cached: 0.25, cacheCreation: 2.50,
                   output: 15.00, isOfficial: false),
         ]
 
@@ -778,6 +800,8 @@ struct PricingValueBackfillTests {
 
     @Test("bundled Codex catalog materializes cache-write prices")
     func bundledCodexCatalogMaterializesCacheWritePrices() {
+        let allModelIds = BundledPricingCatalog.entries.map(\.modelId)
+        #expect(Set(allModelIds).count == allModelIds.count)
         let expectedModelIds = Set(BundledPricingCatalog.entries.lazy.filter {
             $0.modelId.hasPrefix("gpt-") || $0.modelId == "codex-auto-review"
         }.map(\.modelId))
@@ -789,10 +813,13 @@ struct PricingValueBackfillTests {
 
         #expect(!entries.isEmpty)
         for entry in entries {
+            let writeMultiplier = entry.effectiveModelId.hasPrefix("gpt-5.6-")
+                ? 1.25
+                : 1.0
             #expect(entry.cacheCreationPricePerMillion > 0,
                     "\(entry.modelId) must ship a cache-write price")
             #expect(abs(entry.cacheCreationPricePerMillion
-                        - entry.inputPricePerMillion * 1.25) < 1e-9,
+                        - entry.inputPricePerMillion * writeMultiplier) < 1e-9,
                     "\(entry.modelId) cache-write price must be precomputed")
         }
     }
@@ -805,6 +832,7 @@ struct PricingValueBackfillTests {
             })
 
         #expect(prices == [
+            "gpt-5.6-sol": 6.25,
             "gpt-5.6-terra": 3.125,
             "gpt-5.6-luna": 1.25,
         ])
@@ -850,6 +878,95 @@ struct PricingValueBackfillTests {
             #expect(abs((prices[modelId]?.2 ?? -1) - price.2) < 1e-9)
             #expect(abs((prices[modelId]?.3 ?? -1) - price.3) < 1e-9)
         }
+    }
+
+    @Test("GPT-5.6 catalog materializes the official Short and Long matrix")
+    func gpt56CatalogMaterializesOfficialContextMatrix() {
+        let expected: [String: (Double, Double, Double, Double)] = [
+            "gpt-5.6-sol": (4.00, 0.40, 5.00, 20.00),
+            "gpt-5.6-sol-long": (8.00, 0.80, 10.00, 30.00),
+            "gpt-5.6-sol-flex": (2.00, 0.20, 2.50, 10.00),
+            "gpt-5.6-sol-flex-long": (4.00, 0.40, 5.00, 15.00),
+            "gpt-5.6-sol-fast": (8.00, 0.80, 10.00, 40.00),
+            "gpt-5.6-sol-fast-long": (16.00, 1.60, 20.00, 60.00),
+            "gpt-5.6-terra": (2.00, 0.20, 2.50, 12.00),
+            "gpt-5.6-terra-long": (4.00, 0.40, 5.00, 18.00),
+            "gpt-5.6-terra-flex": (1.00, 0.10, 1.25, 6.00),
+            "gpt-5.6-terra-flex-long": (2.00, 0.20, 2.50, 9.00),
+            "gpt-5.6-terra-fast": (4.00, 0.40, 5.00, 24.00),
+            "gpt-5.6-terra-fast-long": (8.00, 0.80, 10.00, 36.00),
+            "gpt-5.6-luna": (0.20, 0.02, 0.25, 1.20),
+            "gpt-5.6-luna-long": (0.40, 0.04, 0.50, 1.80),
+            "gpt-5.6-luna-flex": (0.10, 0.01, 0.125, 0.60),
+            "gpt-5.6-luna-flex-long": (0.20, 0.02, 0.25, 0.90),
+            "gpt-5.6-luna-fast": (0.40, 0.04, 0.50, 2.40),
+            "gpt-5.6-luna-fast-long": (0.80, 0.08, 1.00, 3.60),
+        ]
+        let entries = Dictionary(uniqueKeysWithValues:
+            BundledPricingCatalog.entries.compactMap { entry in
+                expected[entry.modelId] == nil ? nil : (entry.modelId, entry)
+            })
+
+        #expect(entries.count == expected.count)
+        for (modelId, price) in expected {
+            let entry = entries[modelId]
+            #expect(abs((entry?.inputPricePerMillion ?? -1) - price.0) < 1e-9)
+            #expect(abs((entry?.cachedInputPricePerMillion ?? -1) - price.1) < 1e-9)
+            #expect(abs((entry?.cacheCreationPricePerMillion ?? -1) - price.2) < 1e-9)
+            #expect(abs((entry?.outputPricePerMillion ?? -1) - price.3) < 1e-9)
+        }
+    }
+
+    @Test("GPT-5.6 Sol switches price at the official announcement timestamp")
+    func gpt56SolPriceCutoverUsesOfficialAnnouncementTimestamp() throws {
+        let db = try makeDatabase()
+        for timestamp in [
+            "2026-08-21T19:34:09.999Z",
+            "2026-08-21T19:34:10.000Z",
+        ] {
+            try insertUsageEvent(
+                in: db,
+                provider: "codex",
+                modelId: "gpt-5.6-sol",
+                input: 200_000,
+                cached: 40_000,
+                output: 20_000,
+                codexCacheWrite: 60_000,
+                timestamp: timestamp)
+        }
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        #expect(values.count == 2)
+        #expect(abs(values[0] - 1.495) < 1e-9)
+        #expect(abs(values[1] - 1.116) < 1e-9)
+    }
+
+    @Test("Codex long context reads a materialized catalog row")
+    func codexLongContextReadsMaterializedCatalogRow() throws {
+        let db = try makeDatabase()
+        try insertPriceRow(
+            in: db, modelId: "gpt-5.4",
+            input: 2.50, cached: 0.25, output: 15.00,
+            cacheCreation: 2.50)
+        try insertPriceRow(
+            in: db, modelId: "gpt-5.4-long",
+            input: 7.00, cached: 0.70, output: 11.00,
+            cacheCreation: 7.00)
+        try insertUsageEvent(
+            in: db, provider: "codex", modelId: "gpt-5.4",
+            input: 300_000, cached: 100_000, output: 10_000,
+            codexCacheWrite: 100_000)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        #expect(abs(value - 1.58) < 1e-9)
     }
 
     @Test("GPT-5.6 Terra and Luna use launch prices before July 30 and reduced prices from July 30")
@@ -1035,7 +1152,7 @@ struct PricingValueBackfillTests {
         #expect(abs(backToStandard[0] - 3.50) < 1e-6)
     }
 
-    @Test("codex Standard long context doubles input and uses 1.5x output")
+    @Test("codex Standard long context selects the materialized Standard Long row")
     func codexStandardLongContextPricing() throws {
         let db = try makeDatabase()
         try insertPriceRow(in: db, modelId: "gpt-5.4",
@@ -1052,7 +1169,7 @@ struct PricingValueBackfillTests {
         #expect(abs(values[0] - 1.275) < 1e-6)
     }
 
-    @Test("GPT-5.6 long context doubles ordinary, cached, and cache-write input")
+    @Test("GPT-5.6 long context uses materialized prices for every input category")
     func gpt56LongContextPricesEveryInputCategory() throws {
         let db = try makeDatabase()
         try insertPriceRow(
@@ -1177,7 +1294,7 @@ struct PricingValueBackfillTests {
         #expect(abs(value - 0.56) < 1e-9)
     }
 
-    @Test("codex Flex long context applies long-context multipliers to Flex rates")
+    @Test("codex Flex long context selects the materialized Flex Long row")
     func codexFlexLongContextPricing() throws {
         let db = try makeDatabase()
         try insertPriceRow(in: db, modelId: "gpt-5.4",

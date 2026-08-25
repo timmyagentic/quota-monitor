@@ -625,7 +625,8 @@ enum Migrations {
         // old implicit zero. Reprice stored events immediately as well: source
         // rollouts may be unavailable, and this release also changes how
         // GPT-5.6 Priority long-context rows select Fast pricing. Install the
-        // current catalog first because it also materializes Codex cache-write
+        // current catalog first because it materializes the complete
+        // Short/Long × tier and historical matrix, including cache-write
         // rates. Claude checkpoints are unrelated and stay untouched.
         migrator.registerMigration("v21-codex-cache-write-reread") { db in
             try db.execute(sql: """
