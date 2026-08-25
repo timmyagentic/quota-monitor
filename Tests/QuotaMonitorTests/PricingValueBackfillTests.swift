@@ -19,6 +19,7 @@ import GRDB
 ///   - rows with model_id NOT in pricing_catalog stay at their previous
 ///     value_usd (the WHERE EXISTS clause)
 ///   - non-bundled legacy catalog rows are also excluded from valuation
+///   - bundled Claude/GLM rows cannot enter the Codex pricing branch
 ///   - second run is idempotent (math is deterministic)
 @Suite("PricingService.backfillAllValues")
 struct PricingValueBackfillTests {
@@ -156,14 +157,14 @@ struct PricingValueBackfillTests {
         let db = try makeDatabase()
         // 1.00 / 0.10 / 8.00 per-million: simple decimals so the expected
         // dollar amount is obvious.
-        try insertPriceRow(in: db, modelId: "gpt-test",
+        try insertPriceRow(in: db, modelId: "gpt-5.2",
                            input: 1.00, cached: 0.10, output: 8.00)
         // 1_000_000 input, 200_000 cached, 100_000 output:
         //   uncached input = 1_000_000 - 200_000 = 800_000 → 0.80
         //   cached         = 200_000 * 0.10 / 1M       = 0.02
         //   output         = 100_000 * 8.00 / 1M       = 0.80
         //   total = 1.62
-        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-test",
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.2",
                              input: 1_000_000, cached: 200_000, output: 100_000)
 
         try db.pool.write { conn in
@@ -180,7 +181,7 @@ struct PricingValueBackfillTests {
         let db = try makeDatabase()
         try insertPriceRow(
             in: db,
-            modelId: "gpt-5.6-test",
+            modelId: "gpt-5.2",
             input: 1.00,
             cached: 0.10,
             output: 8.00,
@@ -193,7 +194,7 @@ struct PricingValueBackfillTests {
         try insertUsageEvent(
             in: db,
             provider: "codex",
-            modelId: "gpt-5.6-test",
+            modelId: "gpt-5.2",
             input: 1_000_000,
             cached: 200_000,
             output: 100_000,
@@ -435,12 +436,12 @@ struct PricingValueBackfillTests {
     @Test("rows whose model_id has no pricing_catalog match keep their prior value_usd untouched")
     func unknownModelIdLeavesValueAlone() throws {
         let db = try makeDatabase()
-        // Catalog has only "known-model".
-        try insertPriceRow(in: db, modelId: "known-model",
+        // Override one recognized Codex catalog row with hand-checkable rates.
+        try insertPriceRow(in: db, modelId: "gpt-5.2",
                            input: 2.00, cached: 0.20, output: 10.00)
-        // One event uses "known-model" (will be recomputed) and one uses
+        // One event uses the recognized row (will be recomputed) and one uses
         // "ghost-model" (no catalog row → must be left alone).
-        try insertUsageEvent(in: db, provider: "codex", modelId: "known-model",
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.2",
                              input: 500_000, cached: 0, output: 0,
                              seedValueUSD: -1)
         // ghost-model: seed value 99.99 — must survive the backfill.
@@ -455,7 +456,7 @@ struct PricingValueBackfillTests {
         #expect(values.count == 2)
         // Order is by id ASC, which mirrors insert order.
         #expect(abs(values[0] - 1.00) < 1e-6,
-                "known-model: 500_000 * 2.00 / 1M = 1.00, got \(values[0])")
+                "recognized model: 500_000 * 2.00 / 1M = 1.00, got \(values[0])")
         #expect(abs(values[1] - 99.99) < 1e-6,
                 "ghost-model row must NOT be overwritten; expected 99.99 to survive, got \(values[1])")
     }
@@ -465,7 +466,7 @@ struct PricingValueBackfillTests {
         let db = try makeDatabase()
         try insertPriceRow(
             in: db,
-            modelId: "legacy-litellm-model",
+            modelId: "gpt-5.2",
             input: 1.00,
             cached: 0.10,
             output: 8.00,
@@ -474,7 +475,28 @@ struct PricingValueBackfillTests {
         try insertUsageEvent(
             in: db,
             provider: "codex",
-            modelId: "legacy-litellm-model",
+            modelId: "gpt-5.2",
+            input: 1_000_000,
+            cached: 0,
+            output: 0,
+            codexCacheWrite: 300_000,
+            seedValueUSD: 99.99)
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        #expect(abs(value - 99.99) < 1e-9)
+    }
+
+    @Test("bundled non-Codex catalog rows do not price Codex cache writes")
+    func bundledNonCodexRowsDoNotPriceCodexCacheWrites() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db,
+            provider: "codex",
+            modelId: "glm-5.2",
             input: 1_000_000,
             cached: 0,
             output: 0,
@@ -575,9 +597,9 @@ struct PricingValueBackfillTests {
     @Test("running backfill twice produces the same value (deterministic)")
     func idempotentOnSecondRun() throws {
         let db = try makeDatabase()
-        try insertPriceRow(in: db, modelId: "gpt-test",
+        try insertPriceRow(in: db, modelId: "gpt-5.2",
                            input: 1.00, cached: 0.10, output: 8.00)
-        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-test",
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.2",
                              input: 1_000_000, cached: 200_000, output: 100_000)
 
         try db.pool.write { conn in
@@ -596,7 +618,7 @@ struct PricingValueBackfillTests {
     func targetedBackfillMatchesFullBackfillBitForBit() throws {
         let db = try makeDatabase()
         try insertPriceRow(
-            in: db, modelId: "gpt-test",
+            in: db, modelId: "gpt-5.2",
             input: 1.00, cached: 0.10, output: 8.00)
         try insertPriceRow(
             in: db, modelId: "gpt-5.5",
@@ -610,7 +632,7 @@ struct PricingValueBackfillTests {
 
         let affected = "targeted-pricing-session"
         try insertUsageEvent(
-            in: db, provider: "codex", modelId: "gpt-test",
+            in: db, provider: "codex", modelId: "gpt-5.2",
             input: 1_000_000, cached: 200_000, output: 100_000,
             seedValueUSD: -10, sessionId: affected)
         try insertUsageEvent(
@@ -636,7 +658,7 @@ struct PricingValueBackfillTests {
             seedValueUSD: -14, sessionId: affected)
 
         let unaffected = try insertUsageEvent(
-            in: db, provider: "codex", modelId: "gpt-test",
+            in: db, provider: "codex", modelId: "gpt-5.2",
             input: 500_000, cached: 100_000, output: 50_000,
             seedValueUSD: -99)
 
@@ -756,8 +778,13 @@ struct PricingValueBackfillTests {
 
     @Test("bundled Codex catalog materializes cache-write prices")
     func bundledCodexCatalogMaterializesCacheWritePrices() {
-        let entries = BundledPricingCatalog.entries.filter {
+        let expectedModelIds = Set(BundledPricingCatalog.entries.lazy.filter {
             $0.modelId.hasPrefix("gpt-") || $0.modelId == "codex-auto-review"
+        }.map(\.modelId))
+        #expect(BundledPricingCatalog.codexModelIds == expectedModelIds)
+
+        let entries = BundledPricingCatalog.entries.filter {
+            BundledPricingCatalog.codexModelIds.contains($0.modelId)
         }
 
         #expect(!entries.isEmpty)
@@ -1240,25 +1267,25 @@ struct PricingValueBackfillTests {
     @Test("a bundled catalog revision reprices only matching rows")
     func bundledCatalogRevisionRepricesAffectedRowsOnly() throws {
         let db = try makeDatabase()
-        try insertPriceRow(in: db, modelId: "model-a",
+        try insertPriceRow(in: db, modelId: "gpt-5.2",
                            input: 1.00, cached: 0.10, output: 1.00)
-        try insertPriceRow(in: db, modelId: "model-b",
+        try insertPriceRow(in: db, modelId: "gpt-5.2-codex",
                            input: 2.00, cached: 0.20, output: 2.00)
-        try insertUsageEvent(in: db, provider: "codex", modelId: "model-a",
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.2",
                              input: 1_000_000, cached: 0, output: 1_000_000)
-        try insertUsageEvent(in: db, provider: "codex", modelId: "model-b",
+        try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-5.2-codex",
                              input: 1_000_000, cached: 0, output: 1_000_000)
 
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn)
         }
         let before = try valueUSD(in: db)
-        // model-a: 1*1 + 1*1 = 2.00; model-b: 2 + 2 = 4.00
+        // First row: 1*1 + 1*1 = 2.00; second row: 2 + 2 = 4.00.
         #expect(abs(before[0] - 2.00) < 1e-6)
         #expect(abs(before[1] - 4.00) < 1e-6)
 
-        // Simulate a later app release revising model-a upward. model-b is unchanged.
-        try insertPriceRow(in: db, modelId: "model-a",
+        // Simulate a later app release revising the first row upward.
+        try insertPriceRow(in: db, modelId: "gpt-5.2",
                            input: 10.00, cached: 1.00, output: 10.00,
                            priceSource: "bundled")
         try db.pool.write { conn in
@@ -1266,8 +1293,8 @@ struct PricingValueBackfillTests {
         }
         let after = try valueUSD(in: db)
         #expect(abs(after[0] - 20.00) < 1e-6,
-                "model-a should reprice to 20.00, got \(after[0])")
+                "revised model should reprice to 20.00, got \(after[0])")
         #expect(abs(after[1] - 4.00) < 1e-6,
-                "model-b must not change when only model-a's row was edited, got \(after[1])")
+                "unrevised model must stay at 4.00, got \(after[1])")
     }
 }

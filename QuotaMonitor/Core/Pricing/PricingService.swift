@@ -165,6 +165,40 @@ enum BundledPricingCatalog {
     /// selection can JOIN against them directly.
     static let entries: [PricingEntry] = base + fastVariants + flexVariants
 
+    /// Bundled rows that are valid for Codex rollout valuation. Provider
+    /// scoping prevents Claude/GLM rows from accidentally entering the Codex
+    /// formula merely because a rollout contains the same model id.
+    static let codexModelIds: Set<String> = {
+        var ids = codexBaseModelIds
+        ids.formUnion(CodexFastMode.multipliers.keys.map {
+            $0 + CodexFastMode.suffix
+        })
+        ids.formUnion(CodexFlexMode.multipliers.keys.map {
+            $0 + CodexFlexMode.suffix
+        })
+        return ids
+    }()
+
+    private static let codexBaseModelIds: Set<String> = [
+        "gpt-5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.4-nano",
+        "gpt-5.3-codex",
+        "codex-auto-review",
+        "gpt-5.3-codex-spark",
+        "gpt-5.2",
+        "gpt-5.2-codex",
+        "gpt-5-codex",
+        "gpt-5.1-codex-max",
+        "gpt-5.1-codex",
+        "gpt-5.1-codex-mini",
+    ]
+
     private static let base: [PricingEntry] = [
         // Legacy fallback used by RolloutParser when no model_id was ever
         // recorded for a session. Matches openai.com gpt-5 pricing.
@@ -495,7 +529,8 @@ enum PricingService {
     /// input tokens use OpenAI's long-context multipliers. GPT-5.6 Priority
     /// keeps Fast pricing there; models without Fast long-context rows fall
     /// back to Standard. Only rows normalized to `price_source = 'bundled'`
-    /// participate; unsupported legacy local/LiteLLM rows remain inert.
+    /// participate, and Codex events are restricted to the explicit Codex
+    /// model set; unsupported legacy and Claude/GLM rows remain inert.
     ///
     /// Cheap (sub-second for tens of thousands of rows).
     static func backfillAllValues(
@@ -566,6 +601,14 @@ enum PricingService {
         let cachedInputPriceExpr = codexPricePerMillionSQL(component: .cachedInput)
         let cacheWritePriceExpr = codexPricePerMillionSQL(component: .cacheWrite)
         let outputPriceExpr = codexPricePerMillionSQL(component: .output)
+        let codexModelIds = BundledPricingCatalog.codexModelIds.sorted()
+        for id in codexModelIds {
+            assert(!id.contains("'"),
+                   "Codex catalog model id '\(id)' is not safe to interpolate")
+        }
+        let quotedCodexModelIds = codexModelIds
+            .map { "'\($0)'" }
+            .joined(separator: ",")
         let scopeClause: String
         let updateTarget: String
         let arguments: StatementArguments
@@ -648,11 +691,15 @@ enum PricingService {
               FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
                 AND pc.price_source = 'bundled'
+                AND (usage_events.provider <> 'codex'
+                     OR pc.model_id IN (\(quotedCodexModelIds)))
             )
             WHERE EXISTS (
               SELECT 1 FROM pricing_catalog pc
               WHERE pc.model_id = \(effectiveExpr)
                 AND pc.price_source = 'bundled'
+                AND (usage_events.provider <> 'codex'
+                     OR pc.model_id IN (\(quotedCodexModelIds)))
             )
             \(scopeClause)
             """

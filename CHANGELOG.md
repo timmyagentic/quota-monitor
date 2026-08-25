@@ -42,7 +42,7 @@ window copy.
 
 ### Fixed
 
-- **Complete GPT-5.6 input pricing.** Codex imports now retain prompt-cache writes, while every bundled Standard, Flex, Fast, and historical price row materializes its cache-write rate at 1.25× uncached input for direct event valuation; unsupported legacy local/LiteLLM rows no longer participate in pricing. Requests above 272K input apply 2× pricing to ordinary, cached, and cache-write input plus 1.5× output for the full request, while published GPT-5.6 Fast long-context rates remain on the Fast tier. The upgrade migration installs those catalog rates and reprices stored events immediately, so corrected totals do not depend on the original rollout still being readable.
+- **Complete GPT-5.6 input pricing.** Codex imports now retain prompt-cache writes, while every bundled Standard, Flex, Fast, and historical price row materializes its cache-write rate at 1.25× uncached input for direct event valuation; unsupported legacy local/LiteLLM rows and bundled Claude/GLM rows cannot enter the Codex pricing branch. Requests above 272K input apply 2× pricing to ordinary, cached, and cache-write input plus 1.5× output for the full request, while published GPT-5.6 Fast long-context rates remain on the Fast tier. The upgrade migration installs those catalog rates and reprices stored events immediately, so corrected totals do not depend on the original rollout still being readable.
 - **Consistent rolling trend windows.** The 7-day, 30-day, 90-day, and one-year trend views now count only usage from the exact trailing 7 × 24, 30 × 24, 90 × 24, or 365 × 24 hours before grouping it by local date, so an older part of the boundary day no longer inflates tokens, cost, or cache hit rate.
 
 ## [1.0.3] — 2026-08-16
