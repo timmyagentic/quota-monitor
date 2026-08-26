@@ -129,6 +129,8 @@ struct MainWindowLayoutTests {
         #expect(!overview.contains("showsStatStrip: false"))
         #expect(overview.contains("scope: $env.activityDataScope"))
         #expect(overview.contains("indexed: indexedActivityContent(for: snapshot)"))
+        #expect(overview.contains(
+            "indexedIsLoading: env.isLoadingDashboardActivity"))
         #expect(overview.contains("account: accountActivityContent(for: snapshot)"))
         #expect(overview.contains("allowsAccountScope: env.providerFilter == .codex"))
         #expect(statline < forecast)
@@ -151,6 +153,9 @@ struct MainWindowLayoutTests {
         #expect(source.contains("ActivityHeatmap("))
         #expect(source.contains(".accessibilityHint(L10n.activityDataSourceHint)"))
         #expect(source.contains("parts.append(L10n.activityRefreshingAccount)"))
+        #expect(source.contains(
+            "effectiveScope == .indexed && indexedIsLoading && !indexed.hasData"))
+        #expect(source.contains("L10n.activityLoadingIndexed"))
         #expect(!mainWindow.contains("$env.activityDataScope"))
         #expect(mainWindow.contains(
             "if tab == .dashboard {\n                        env.refreshAll"))

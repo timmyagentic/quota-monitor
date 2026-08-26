@@ -73,6 +73,9 @@ extension L10n {
     static var activityLoadingAccount: String {
         sa("Loading account activity…", "正在载入账户活动…")
     }
+    static var activityLoadingIndexed: String {
+        sa("Loading local activity…", "正在载入本地活动…")
+    }
     static var activityAccountUnavailable: String {
         sa(
             "Account activity is temporarily unavailable.",

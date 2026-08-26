@@ -1539,6 +1539,7 @@ final class AppEnvironment {
                     let snapshot = DashboardSnapshot(
                         primary: payload.primary,
                         activity: existingActivity)
+                    self.isLoadingDashboardActivity = true
                     self.storeDashboardSnapshot(
                         snapshot,
                         key: cacheKey,
