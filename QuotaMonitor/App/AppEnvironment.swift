@@ -116,7 +116,17 @@ final class AppEnvironment {
     /// trailing scan; cancelled when the watcher stops.
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
     var isLoadingDashboard = false
+    var isLoadingDashboardActivity = false
     private var dashboardRefreshCoalescer = DashboardRefreshCoalescer()
+    private var dashboardRefreshGeneration = RefreshGeneration()
+    private var dashboardActivityRefreshGeneration = RefreshGeneration()
+    private var dashboardReadModelGeneration = 0
+    private var dashboardSnapshotCache = DashboardSnapshotMemoryCache()
+    private var dashboardSnapshotSaveGeneration = RefreshGeneration()
+    private var displayedDashboardCacheKey: DashboardSnapshotCacheKey?
+    private let dashboardSnapshotStore = DashboardSnapshotStore()
+    private let dashboardSnapshotPersistence = DashboardSnapshotPersistence()
+    private static let dashboardSnapshotMaxAge: TimeInterval = 5 * 60
     var lastError: String?
 
     /// True when the status item has been detected as clipped/hidden and
@@ -1213,6 +1223,121 @@ final class AppEnvironment {
         isDashboardVisible ? .dashboardAndMenuBar : .menuBar
     }
 
+    private func currentDashboardCacheKey() -> DashboardSnapshotCacheKey {
+        DashboardSnapshotCacheKey(
+            providerFilter: providerFilter,
+            enabledProviders: SettingsStore.snapshot().enabledProviders,
+            timeZoneIdentifier: TimeZone.current.identifier)
+    }
+
+    /// Synchronously hydrates the small last-good display cache during app
+    /// launch. It is deliberately non-authoritative: the first Dashboard
+    /// presentation still revalidates it in the background.
+    func restoreCachedDashboardSnapshot() {
+        guard let envelope = dashboardSnapshotStore.load() else {
+            DeveloperLog.eventRecord(
+                "dashboard.cache.restore",
+                category: "ui",
+                trigger: "launch",
+                result: "skipped",
+                fields: ["reason": "missing-or-invalid"])
+            return
+        }
+        let key = currentDashboardCacheKey()
+        guard envelope.key == key else {
+            DeveloperLog.eventRecord(
+                "dashboard.cache.restore",
+                category: "ui",
+                trigger: "launch",
+                result: "skipped",
+                fields: ["reason": "incompatible-key"])
+            return
+        }
+        dashboardSnapshotCache.restore(envelope)
+        dashboardSnapshot = envelope.snapshot
+        displayedDashboardCacheKey = key
+        DeveloperLog.eventRecord(
+            "dashboard.cache.restore",
+            category: "ui",
+            trigger: "launch",
+            fields: [
+                "age_ms": .int(max(
+                    0,
+                    Int(Date().timeIntervalSince(envelope.generatedAt) * 1_000)))
+            ])
+    }
+
+    /// Presentation entry point used by Dashboard mounts and window actions.
+    /// A compatible last-good value renders synchronously; only stale/missing
+    /// state schedules the bounded primary refresh in the background.
+    func ensureDashboardVisible() {
+        let key = currentDashboardCacheKey()
+        let decision = dashboardSnapshotCache.decision(
+            for: key,
+            currentGeneration: dashboardReadModelGeneration,
+            now: Date(),
+            maxAge: Self.dashboardSnapshotMaxAge)
+        if let snapshot = decision.snapshot {
+            dashboardSnapshot = snapshot
+            displayedDashboardCacheKey = key
+        } else if displayedDashboardCacheKey != key {
+            // Never render totals from a different provider/time-zone key
+            // while the first compatible snapshot is loading.
+            dashboardSnapshot = nil
+            billingBlocks = nil
+            displayedDashboardCacheKey = nil
+        }
+        DeveloperLog.eventRecord(
+            "dashboard.visible.ensure",
+            category: "ui",
+            trigger: "mount",
+            result: decision.needsRefresh ? "refreshing" : "cache-hit",
+            fields: [
+                "cache_reason": .string(decision.reason.rawValue),
+                "has_snapshot": .bool(decision.snapshot != nil)
+            ])
+        guard decision.needsRefresh else { return }
+        refreshDashboard(trigger: "mount")
+    }
+
+    /// Called only after a committed read-model mutation. Existing snapshots
+    /// stay displayable but become stale-while-revalidate candidates.
+    func markDashboardReadModelChanged() {
+        dashboardReadModelGeneration &+= 1
+    }
+
+    private func storeDashboardSnapshot(
+        _ snapshot: DashboardSnapshot,
+        key: DashboardSnapshotCacheKey,
+        generation: Int,
+        generatedAt: Date
+    ) {
+        dashboardSnapshotCache.store(
+            snapshot,
+            for: key,
+            generation: generation,
+            generatedAt: generatedAt)
+        if key == currentDashboardCacheKey() {
+            dashboardSnapshot = snapshot
+            displayedDashboardCacheKey = key
+        }
+        let envelope = DashboardSnapshotCacheEnvelope(
+            key: key,
+            generatedAt: generatedAt,
+            snapshot: snapshot)
+        let saveGeneration = dashboardSnapshotSaveGeneration.advance()
+        Task { [dashboardSnapshotPersistence] in
+            let saved = await dashboardSnapshotPersistence.save(
+                envelope,
+                sequence: saveGeneration)
+            DeveloperLog.eventRecord(
+                "dashboard.cache.persist",
+                category: "ui",
+                trigger: "refresh",
+                result: saved ? "success" : "failure")
+        }
+    }
+
     func refreshVisibleSummaries(
         trigger: String = "internal",
         parentOperation: DeveloperLogOperation? = nil
@@ -1323,7 +1448,10 @@ final class AppEnvironment {
             providerFilter: providerFilter,
             enabledProviders: SettingsStore.snapshot().enabledProviders,
             includesMenuBar: includeMenuBar)
-        let requiresFreshPass = trigger != "internal"
+        let cacheKey = currentDashboardCacheKey()
+        let readModelGeneration = dashboardReadModelGeneration
+        let requiresFreshPass = DashboardRefreshCoalescer.requiresFreshPass(
+            for: trigger)
         guard dashboardRefreshCoalescer.begin(
             inputs: inputs,
             requiresFreshPass: requiresFreshPass
@@ -1339,6 +1467,9 @@ final class AppEnvironment {
             return
         }
         isLoadingDashboard = true
+        let refreshGeneration = dashboardRefreshGeneration.advance()
+        let activityGeneration = dashboardActivityRefreshGeneration.advance()
+        isLoadingDashboardActivity = false
         let menuBarGeneration = inputs.includesMenuBar
             ? menuBarRefreshGeneration.advance()
             : nil
@@ -1370,7 +1501,7 @@ final class AppEnvironment {
             do {
                 let (db, _) = try self.ensureServices()
                 let payload = try await db.pool.read { conn in
-                    let snapshot = try Aggregator.loadDashboard(
+                    let primary = try Aggregator.loadDashboardPrimary(
                         db: conn,
                         provider: inputs.providerFilter,
                         enabledProviders: inputs.enabledProviders)
@@ -1387,15 +1518,32 @@ final class AppEnvironment {
                         nil
                     }
                     return (
-                        dashboard: snapshot,
+                        primary: primary,
                         dashboardBlocks: includesClaude ? allBlocks : nil,
                         menuBar: menuBarSnapshot)
                 }
+                let generatedAt = Date()
                 let publication = await MainActor.run {
-                    guard !self.dashboardRefreshCoalescer.hasPendingRefresh else {
+                    guard !self.dashboardRefreshCoalescer.hasPendingRefresh,
+                          self.dashboardRefreshGeneration.accepts(refreshGeneration),
+                          self.dashboardReadModelGeneration == readModelGeneration,
+                          self.currentDashboardCacheKey() == cacheKey else {
                         return (dashboard: false, menuBar: false)
                     }
-                    self.dashboardSnapshot = payload.dashboard
+                    let existingActivity = self.dashboardSnapshotCache
+                        .snapshot(for: cacheKey)?.activity
+                        ?? (self.displayedDashboardCacheKey == cacheKey
+                            ? self.dashboardSnapshot?.activity
+                            : nil)
+                        ?? .empty
+                    let snapshot = DashboardSnapshot(
+                        primary: payload.primary,
+                        activity: existingActivity)
+                    self.storeDashboardSnapshot(
+                        snapshot,
+                        key: cacheKey,
+                        generation: readModelGeneration,
+                        generatedAt: generatedAt)
                     self.billingBlocks = payload.dashboardBlocks
                     if let menuBar = payload.menuBar,
                        let menuBarGeneration,
@@ -1413,6 +1561,17 @@ final class AppEnvironment {
                         "published_dashboard": .bool(publication.dashboard),
                         "updated_menu_bar": .bool(publication.menuBar)
                     ])
+                if publication.dashboard {
+                    await MainActor.run {
+                        self.refreshDashboardActivity(
+                            inputs: inputs,
+                            cacheKey: cacheKey,
+                            refreshGeneration: activityGeneration,
+                            readModelGeneration: readModelGeneration,
+                            generatedAt: generatedAt,
+                            parentOperation: op)
+                    }
+                }
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }
                 DeveloperLog.failOperation(
@@ -1426,6 +1585,75 @@ final class AppEnvironment {
                     self.refreshMenuBar(
                         trigger: "dashboard-fallback",
                         parentOperation: op)
+                }
+            }
+        }
+    }
+
+    private func refreshDashboardActivity(
+        inputs: DashboardRefreshInputs,
+        cacheKey: DashboardSnapshotCacheKey,
+        refreshGeneration: Int,
+        readModelGeneration: Int,
+        generatedAt: Date,
+        parentOperation: DeveloperLogOperation?
+    ) {
+        guard dashboardActivityRefreshGeneration.accepts(refreshGeneration) else { return }
+        isLoadingDashboardActivity = true
+        let op = DeveloperLog.startOperation(
+            "dashboard.activity.refresh",
+            category: "ui",
+            trigger: "primary",
+            parent: parentOperation,
+            fields: ["filter": .string(inputs.providerFilter.rawValue)])
+        Task { [weak self, op] in
+            guard let self else { return }
+            defer {
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          self.dashboardActivityRefreshGeneration.accepts(
+                            refreshGeneration) else { return }
+                    self.isLoadingDashboardActivity = false
+                }
+            }
+            do {
+                let (db, _) = try self.ensureServices()
+                let activity = try await db.pool.read { conn in
+                    try Aggregator.fetchActivity(
+                        db: conn,
+                        provider: inputs.providerFilter,
+                        enabledProviders: inputs.enabledProviders)
+                }
+                let published = await MainActor.run {
+                    guard self.dashboardActivityRefreshGeneration.accepts(
+                        refreshGeneration),
+                          self.dashboardReadModelGeneration == readModelGeneration,
+                          self.currentDashboardCacheKey() == cacheKey,
+                          let current = self.dashboardSnapshotCache.snapshot(for: cacheKey)
+                    else {
+                        return false
+                    }
+                    self.storeDashboardSnapshot(
+                        current.replacingActivity(activity),
+                        key: cacheKey,
+                        generation: readModelGeneration,
+                        generatedAt: generatedAt)
+                    return true
+                }
+                DeveloperLog.finishOperation(
+                    op,
+                    result: published ? "success" : "superseded",
+                    fields: ["published_activity": .bool(published)])
+            } catch {
+                let isCurrent = await MainActor.run {
+                    self.dashboardActivityRefreshGeneration.accepts(
+                        refreshGeneration)
+                }
+                if isCurrent {
+                    await MainActor.run { self.lastError = String(describing: error) }
+                    DeveloperLog.failOperation(op, error: error)
+                } else {
+                    DeveloperLog.finishOperation(op, result: "superseded")
                 }
             }
         }

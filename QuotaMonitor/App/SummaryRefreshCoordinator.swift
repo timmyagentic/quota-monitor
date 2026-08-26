@@ -32,6 +32,10 @@ struct DashboardRefreshCoalescer: Sendable {
     private(set) var hasPendingRefresh = false
     private var pendingIncludesMenuBar = false
 
+    static func requiresFreshPass(for trigger: String) -> Bool {
+        trigger != "internal" && trigger != "mount" && trigger != "coalesced"
+    }
+
     mutating func begin(
         inputs: DashboardRefreshInputs,
         requiresFreshPass: Bool

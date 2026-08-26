@@ -599,6 +599,44 @@ struct AggregatorTests {
                 "Activity remains the one intentionally separate all-history read")
     }
 
+    @Test("Dashboard primary publication does not wait for Activity raw history")
+    func dashboardPrimarySkipsActivityRawRead() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 15, hour: 12)))
+        let database = try makeDatabase()
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "recent-primary",
+            at: now.addingTimeInterval(-60 * 60), valueUSD: 1, tokens: 100)
+
+        let values = try database.pool.read { db in
+            var statements: [String] = []
+            db.trace { event in
+                guard case .statement(let statement) = event else { return }
+                statements.append(statement.expandedSQL)
+            }
+            let primary = try Aggregator.loadDashboardPrimary(
+                db: db, now: now, calendar: calendar)
+            db.trace(options: [])
+            return (primary, statements)
+        }
+        let recentUsageReads = values.1.filter { statement in
+            statement.contains("AS cache_eligible_input_tokens")
+                && statement.contains("ue.session_id")
+        }
+        let activityReads = values.1.filter { statement in
+            statement.contains("SELECT timestamp, value_usd, total_tokens")
+                && statement.contains("FROM usage_events")
+        }
+
+        #expect(values.0.trends.last30Days.daily.reduce(Int64(0)) {
+            $0 + $1.tokens
+        } == 100)
+        #expect(recentUsageReads.count == 1)
+        #expect(activityReads.isEmpty)
+    }
+
     @Test("Recent rollup derives trends, monthly and composition from one clock")
     func recentUsageRollupPreservesDashboardSlices() throws {
         var calendar = Calendar(identifier: .gregorian)

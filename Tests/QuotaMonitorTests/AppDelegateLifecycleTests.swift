@@ -72,6 +72,11 @@ struct AppDelegateLifecycleTests {
             from: "func applicationDidFinishLaunching",
             to: "private func closeStrayWindows"))
 
+        let restored = try Self.offset(
+            of: "env.restoreCachedDashboardSnapshot()", in: launch)
+        let refreshed = try Self.offset(
+            of: "env.refreshAll(throttle: false, trigger: \"launch\")", in: launch)
+        #expect(restored < refreshed)
         #expect(launch.contains("env.refreshMenuBar(trigger: \"launch\")"))
         #expect(!launch.contains("env.refreshDashboard("))
     }

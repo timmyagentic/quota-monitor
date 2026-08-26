@@ -167,6 +167,23 @@ struct MainWindowLayoutTests {
             "env.refreshCodexAccountUsage(trigger: \"manual\")"))
     }
 
+    @Test("Dashboard mount restores last-good content instead of forcing a refresh")
+    func dashboardMountUsesVisibleSnapshotPolicy() throws {
+        let dashboard = try Self.source(
+            named: "QuotaMonitor/Features/Dashboard/DashboardView.swift")
+        let menuActions = try Self.source(
+            named: "QuotaMonitor/Features/MenuBar/MenuBarWindowActions.swift")
+        let windowActions = try Self.source(
+            named: "QuotaMonitor/App/WindowCrossLinkActions.swift")
+
+        #expect(dashboard.contains("env.ensureDashboardVisible()"))
+        #expect(!dashboard.contains("env.refreshVisibleSummaries()"))
+        #expect(menuActions.contains(
+            "refreshDashboard: { env.ensureDashboardVisible() }"))
+        #expect(windowActions.contains(
+            "refreshDashboard: { env.ensureDashboardVisible() }"))
+    }
+
     @Test("Dashboard load derives recent summaries from one rollup")
     func dashboardLoadUsesOneRecentUsageRollup() throws {
         let reports = try Self.source(
@@ -178,6 +195,7 @@ struct MainWindowLayoutTests {
         #expect(reports.contains("modelShares30d: recent.modelShares30d"))
         #expect(reports.contains("modelSharesPrior30d: recent.modelSharesPrior30d"))
         #expect(reports.contains("providerShares30d: recent.providerShares30d"))
+        #expect(reports.contains("static func loadDashboardPrimary("))
     }
 
     @Test("Dashboard trends only exposes stacked bar mode")

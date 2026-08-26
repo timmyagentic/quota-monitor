@@ -25,7 +25,7 @@ struct DashboardView: View {
         .background(DashboardBackground())
         .textSelection(.enabled)
         .task {
-            env.refreshVisibleSummaries()
+            env.ensureDashboardVisible()
             env.refreshCodexAccountUsage(minInterval: 60, trigger: "dashboard")
         }
     }

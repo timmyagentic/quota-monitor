@@ -41,6 +41,16 @@ struct TrendsSection: View {
             }
         }
         .dashboardPanel(cornerRadius: 12, padding: 14)
+        .onAppear {
+            DeveloperLog.eventRecord(
+                "dashboard.trends.visible",
+                category: "ui",
+                trigger: "render",
+                fields: [
+                    "range_days": .int(range.days),
+                    "daily_points": .int(windowedDaily.count)
+                ])
+        }
     }
 
     // MARK: - controls

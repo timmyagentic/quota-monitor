@@ -12,7 +12,7 @@ import GRDB
 // correct local day even across DST transitions (a single current-offset
 // would mis-group events from the other DST half of the year).
 
-struct ActivitySnapshot: Sendable, Equatable {
+struct ActivitySnapshot: Sendable, Equatable, Codable {
     /// All-time `SUM(total_tokens)`. Includes cached-read tokens, matching
     /// how the menu bar / overview count tokens — so the headline lines up
     /// with the rest of the app and reaches CodeX-scale figures.

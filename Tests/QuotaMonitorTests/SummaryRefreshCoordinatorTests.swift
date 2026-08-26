@@ -39,6 +39,16 @@ struct SummaryRefreshCoordinatorTests {
         #expect(trailing == nil)
     }
 
+    @Test("mount is cache-aware while named freshness triggers still trail")
+    func mountDoesNotForceATrailingPass() {
+        #expect(!DashboardRefreshCoalescer.requiresFreshPass(for: "internal"))
+        #expect(!DashboardRefreshCoalescer.requiresFreshPass(for: "mount"))
+        #expect(!DashboardRefreshCoalescer.requiresFreshPass(for: "coalesced"))
+        for trigger in ["scan", "settings", "manual", "scan-fallback"] {
+            #expect(DashboardRefreshCoalescer.requiresFreshPass(for: trigger))
+        }
+    }
+
     @Test("scan and settings requests coalesce into one trailing pass")
     func freshnessRequestsQueueOneTrailingPass() {
         var coalescer = DashboardRefreshCoalescer()

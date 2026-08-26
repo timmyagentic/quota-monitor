@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import QuotaMonitor
 
@@ -94,6 +95,15 @@ struct ScanRefreshDecisionTests {
             refreshDashboard: false))
     }
 
+    @Test("Committed scan changes invalidate the last-good Dashboard generation")
+    func changedScanMarksDashboardCacheDirty() throws {
+        let source = try sourceFile(named: "QuotaMonitor/App/ScanController.swift")
+        let changedBlock = try #require(source.range(of: "if merged.didChangeReadModel {"))
+        let tail = source[changedBlock.lowerBound...]
+
+        #expect(tail.prefix(220).contains("self.markDashboardReadModelChanged()"))
+    }
+
     @Test("Read-model changes choose one visible Dashboard summary path")
     func changedScanRefreshesVisibleDashboard() {
         let decision = AppEnvironment.scanRefreshDecision(
@@ -119,5 +129,17 @@ struct ScanRefreshDecisionTests {
             errors: [])
 
         #expect(report.didChangeReadModel)
+    }
+
+    private func sourceFile(named relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while url.path != "/" {
+            let candidate = url.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            url.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }

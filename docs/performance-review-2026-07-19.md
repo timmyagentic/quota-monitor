@@ -23,7 +23,8 @@ more for every scan, poll, and dashboard open than a fresh one, forever.
 | Dashboard Reload button | unthrottled | the same full `refreshAll()` path |
 | Codex live poller | ~300 s | `codex app-server` spawn + JSON-RPC |
 | Claude usage poller | ~600 s | `/api/oauth/usage` GET |
-| Dashboard open / price edit / Fast-Mode toggle / provider-filter change | on demand | `refreshDashboard()` → `Aggregator.loadDashboard` |
+| Dashboard open | on demand | restore a compatible last-good snapshot synchronously; refresh only when missing, dirty, or older than 5 min |
+| Price edit / Fast-Mode toggle / provider-filter change | on demand | generation-guarded primary refresh, followed by independent Activity refresh |
 
 "Every scan" below therefore means *every ~5 seconds* while Claude Code is in use, and every
 menu-bar open otherwise.
@@ -42,7 +43,7 @@ cost described below still exists.
 | Finding | Status | Current evidence |
 | --- | --- | --- |
 | P0.1 full-history repricing | Delivered | PR #135 scopes incremental pricing to changed events. |
-| P0.2 repeated Dashboard scans | Partial | One recent rollup now derives all Trends windows, 12 monthly buckets, current/prior model shares, and 30-day provider shares. Activity remains one separate all-history raw read; overview and lifetime model shares remain independent aggregates. |
+| P0.2 repeated Dashboard scans | Partial | One recent rollup derives all Trends windows, 12 monthly buckets, current/prior model shares, and 30-day provider shares. Compatible last-good snapshots make warm/relaunch presentation immediate, and the primary payload publishes before Activity. The Activity raw read, overview, and lifetime model shares remain independent background costs. |
 | P0.3 full Codex rollout reparsing | Delivered | PR #121 adds validated incremental checkpoints and tail parsing. |
 | P0.4 broad session-tree and metadata walks | Partial | PR #133 gates tree reconciliation on imported sessions. PR #169 fingerprints Codex metadata sources, reuses unchanged metadata, and proactively repairs only the latest 7 days; changed-session tree reconciliation is still broad, while older inactive metadata remains best-effort. |
 | P1.1 synchronous login-shell discovery | Partial | PR #124 prefers the CLI bundled with ChatGPT before shell probing, but the remaining fallback path is still synchronous. |
@@ -67,6 +68,9 @@ cost described below still exists.
 - The current candidate consolidates recent Dashboard rows and visible summary refreshes,
   moving P2.11 from Open to Partial while keeping P0.2 Partial until Activity's all-history
   path is measured and narrowed.
+- Dashboard presentation is now stale-while-revalidate: unchanged warm opens perform no read,
+  relaunches restore a schema/key/time-zone-checked atomic snapshot, and a dirty snapshot stays
+  visible while the primary payload refreshes. Activity runs only after that payload publishes.
 - `main` advanced by 6 commits from `797237d` to `0aadea5`.
 - PRs #165, #166, #167, and #168 move P2.9, P1.5, P2.7, and P2.8 from Open to
   Delivered with focused regression coverage for each cache boundary.
@@ -107,12 +111,15 @@ cost described below still exists.
   one statement. On the same 140,431-event real-data shadow, a warmed baseline Dashboard read plus
   its chained menu refresh took 3,564 ms (3,498 + 66); the combined candidate took 3,391 ms, about
   5% faster. `fetchActivity` remains the one intentional all-history raw read and dominates the
-  remaining cost.
+  remaining background cost. The visible path now persists a last-good snapshot and splits the
+  primary payload from Activity, so a warm/relaunch presentation is no longer gated by either
+  query; SQL trace coverage also proves `loadDashboardPrimary` issues no Activity raw read.
 - **Remaining problem:** overview and lifetime model shares still revisit all matching history,
   and Activity brings the full raw result into Swift for lifetime total, peak day, streaks, and
   the heatmap.
-- **Impact:** repeated recent-window parsing is removed, but Activity still grows with total
-  history on each Dashboard refresh.
+- **Impact:** repeated recent-window parsing is removed and Activity no longer blocks visible
+  Trends, but that background calculation still grows with total history whenever revalidation
+  is genuinely required.
 - **Next direction:** measure a rebuildable daily summary or narrower all-time aggregate path
   before changing Activity's Calendar/DST semantics.
 

@@ -126,6 +126,28 @@ extension Aggregator {
         now: Date = Date(),
         calendar: Calendar = .current
     ) throws -> DashboardSnapshot {
+        let primary = try loadDashboardPrimary(
+            db: db,
+            provider: provider,
+            enabledProviders: enabledProviders,
+            now: now,
+            calendar: calendar)
+        let activity = try fetchActivity(
+            db: db, provider: provider, enabledProviders: enabledProviders,
+            now: now, calendar: calendar)
+        return DashboardSnapshot(primary: primary, activity: activity)
+    }
+
+    /// The visible Dashboard path publishes this bounded/core payload before
+    /// starting Activity's all-history raw read. The full `loadDashboard`
+    /// helper above remains the atomic convenience API for reports and tests.
+    static func loadDashboardPrimary(
+        db: Database,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> DashboardPrimarySnapshot {
         let overview = try fetchOverview(
             db: db, provider: provider, enabledProviders: enabledProviders)
         // One recent raw-row scan derives every elapsed-time Trends range,
@@ -147,10 +169,7 @@ extension Aggregator {
         let quota = provider == .claude
             ? nil
             : try fetchCodexQuota(db: db)
-        let activity = try fetchActivity(
-            db: db, provider: provider, enabledProviders: enabledProviders,
-            now: now, calendar: calendar)
-        return DashboardSnapshot(
+        return DashboardPrimarySnapshot(
             overview: overview,
             daily: daily,
             dailyExtended: dailyExtended,
@@ -161,8 +180,7 @@ extension Aggregator {
             modelSharesPrior30d: recent.modelSharesPrior30d,
             providerShares30d: recent.providerShares30d,
             recentRateLimits: history,
-            codexQuota: quota,
-            activity: activity)
+            codexQuota: quota)
     }
 
     static func fetchOverview(

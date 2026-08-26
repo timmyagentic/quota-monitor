@@ -36,18 +36,21 @@ window copy.
 - Dashboard trend ranges now match the rolling usage totals shown elsewhere, including the partial day at the start of each range.
 - Rewritten Codex history now comes back on the very next scan instead of waiting for the file to go quiet.
 - Dashboard refreshes now pull the latest local history through one consistent summary pass, so current totals appear sooner on large histories.
+- Previously loaded Dashboard trends now appear immediately when the window reopens or the app relaunches, while newer data refreshes in the background.
 
 ### Changed
 
 - **Recover rewritten rollouts without waiting.** Rebuilding a rewritten Codex rollout no longer requires the file to sit untouched for two seconds first. That wait never protected committed rows — a rollout caught mid-record already keeps them — while a source whose modification time reads as being in the future could be put off indefinitely.
 - **One complete Refresh action.** Dashboard Reload now uses the same full latest-data path as the menu bar, including live quota requests and local Codex/Claude history scans, while History and Sessions keep their focused pagination reloads.
 - **One recent Dashboard pass.** Trends, monthly totals, current and prior model shares, and the provider split now derive from one mixed-timestamp-aware event read with the same clock, provider scope, local calendar, and DST boundaries.
+- **Last-good Dashboard presentation.** Compatible snapshots stay visible across window remounts and relaunches, ordinary reopen actions skip unchanged reads, and stale snapshots remain on screen while one generation-guarded refresh updates them.
 
 ### Fixed
 
 - **Complete GPT-5.6 and long-context pricing.** Codex imports retain prompt-cache writes, and the bundled catalog now materializes every supported Short/Long × Standard/Flex/Fast and historical row so each event selects one final price without runtime price multipliers. GPT-5.6 Sol switches from its launch price to the official promotional price at OpenAI's `2026-08-21T19:34:10Z` public announcement; Terra/Luna keep their July 30 cutover. GPT-5.6+ cache writes use 1.25× input, while earlier models use input price with no extra write charge. Unsupported legacy local/LiteLLM rows and bundled Claude/GLM rows cannot enter the Codex branch. The upgrade migration installs the complete catalog and immediately reprices stored events even if their original rollout is unavailable.
 - **Consistent rolling trend windows.** The 7-day, 30-day, 90-day, and one-year trend views now count only usage from the exact trailing 7 × 24, 30 × 24, 90 × 24, or 365 × 24 hours before grouping it by local date, so an older part of the boundary day no longer inflates tokens, cost, or cache hit rate.
 - **Keep the newest summary refresh.** Scan, Settings, and overlapping Dashboard requests now coalesce into one trailing pass with the latest filter and enabled tools; stale in-flight menu or Dashboard reads can no longer overwrite newer results.
+- **Trends no longer wait for Activity.** Dashboard totals, Forecast, Trends, and Composition publish before the separate all-history Activity calculation, so the slowest card cannot hold the rest of the window behind a loading state.
 
 ## [1.0.3] — 2026-08-16
 

@@ -194,6 +194,7 @@ extension AppEnvironment {
                     self.lastScanReport = merged
                     if merged.didChangeReadModel {
                         self.sessionsDataGeneration &+= 1
+                        self.markDashboardReadModelChanged()
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
                     // A resolved-but-unopenable App Store bookmark imported
