@@ -195,6 +195,10 @@ struct MainWindowLayoutTests {
         let environment = try Self.source(
             named: "QuotaMonitor/App/AppEnvironment.swift")
         #expect(environment.contains("billingBlocks = envelope.billingBlocks"))
+        #expect(environment.contains("billingBlocks = decision.billingBlocks"))
+        #expect(environment.contains(
+            "isLoadingDashboardActivity = dashboardSnapshotCache"))
+        #expect(environment.contains(".isActivityIncomplete(for: cacheKey)"))
     }
 
     @Test("Dashboard load derives recent summaries from one rollup")

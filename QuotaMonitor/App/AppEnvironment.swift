@@ -1280,6 +1280,7 @@ final class AppEnvironment {
             maxAge: Self.dashboardSnapshotMaxAge)
         if let snapshot = decision.snapshot {
             dashboardSnapshot = snapshot
+            billingBlocks = decision.billingBlocks
             displayedDashboardCacheKey = key
         } else if displayedDashboardCacheKey != key {
             // Never render totals from a different provider/time-zone key
@@ -1297,9 +1298,13 @@ final class AppEnvironment {
                 "cache_reason": .string(decision.reason.rawValue),
                 "has_snapshot": .bool(decision.snapshot != nil)
             ])
-        guard decision.needsRefresh else { return }
-        guard decision.reason != .incompleteActivity
-                || !isLoadingDashboardActivity else { return }
+        let activityWasLoading = isLoadingDashboardActivity
+        if decision.reason == .incompleteActivity {
+            isLoadingDashboardActivity = true
+        }
+        guard DashboardSnapshotMemoryCache.shouldStartRefresh(
+            for: decision,
+            activityWasLoading: activityWasLoading) else { return }
         refreshDashboard(trigger: "mount")
     }
 
@@ -1321,7 +1326,8 @@ final class AppEnvironment {
             for: key,
             generation: generation,
             generatedAt: generatedAt,
-            activityComplete: activityComplete)
+            activityComplete: activityComplete,
+            billingBlocks: billingBlocks)
         if key == currentDashboardCacheKey() {
             dashboardSnapshot = snapshot
             displayedDashboardCacheKey = key
@@ -1477,7 +1483,8 @@ final class AppEnvironment {
         isLoadingDashboard = true
         let refreshGeneration = dashboardRefreshGeneration.advance()
         let activityGeneration = dashboardActivityRefreshGeneration.advance()
-        isLoadingDashboardActivity = false
+        isLoadingDashboardActivity = dashboardSnapshotCache
+            .isActivityIncomplete(for: cacheKey)
         let menuBarGeneration = inputs.includesMenuBar
             ? menuBarRefreshGeneration.advance()
             : nil
@@ -1548,13 +1555,13 @@ final class AppEnvironment {
                         primary: payload.primary,
                         activity: existingActivity)
                     self.isLoadingDashboardActivity = true
+                    self.billingBlocks = payload.dashboardBlocks
                     self.storeDashboardSnapshot(
                         snapshot,
                         key: cacheKey,
                         generation: readModelGeneration,
                         generatedAt: generatedAt,
                         activityComplete: false)
-                    self.billingBlocks = payload.dashboardBlocks
                     if let menuBar = payload.menuBar,
                        let menuBarGeneration,
                        self.menuBarRefreshGeneration.accepts(menuBarGeneration) {
@@ -1583,7 +1590,12 @@ final class AppEnvironment {
                     }
                 }
             } catch {
-                await MainActor.run { self.lastError = String(describing: error) }
+                await MainActor.run {
+                    if self.dashboardRefreshGeneration.accepts(refreshGeneration) {
+                        self.isLoadingDashboardActivity = false
+                    }
+                    self.lastError = String(describing: error)
+                }
                 DeveloperLog.failOperation(
                     op,
                     error: error,

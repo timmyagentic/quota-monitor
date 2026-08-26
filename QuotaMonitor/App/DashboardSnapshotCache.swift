@@ -27,6 +27,7 @@ enum DashboardSnapshotCacheReason: String, Sendable, Equatable {
 
 struct DashboardSnapshotCacheDecision: Sendable, Equatable {
     let snapshot: DashboardSnapshot?
+    let billingBlocks: BillingBlocks.Snapshot?
     let needsRefresh: Bool
     let reason: DashboardSnapshotCacheReason
 }
@@ -36,23 +37,34 @@ private struct DashboardSnapshotMemoryEntry: Sendable {
     let generation: Int?
     let generatedAt: Date
     let activityComplete: Bool
+    let billingBlocks: BillingBlocks.Snapshot?
 }
 
 struct DashboardSnapshotMemoryCache: Sendable {
     private var entries: [DashboardSnapshotCacheKey: DashboardSnapshotMemoryEntry] = [:]
+
+    static func shouldStartRefresh(
+        for decision: DashboardSnapshotCacheDecision,
+        activityWasLoading: Bool
+    ) -> Bool {
+        guard decision.needsRefresh else { return false }
+        return decision.reason != .incompleteActivity || !activityWasLoading
+    }
 
     mutating func store(
         _ snapshot: DashboardSnapshot,
         for key: DashboardSnapshotCacheKey,
         generation: Int,
         generatedAt: Date,
-        activityComplete: Bool = true
+        activityComplete: Bool = true,
+        billingBlocks: BillingBlocks.Snapshot? = nil
     ) {
         entries[key] = DashboardSnapshotMemoryEntry(
             snapshot: snapshot,
             generation: generation,
             generatedAt: generatedAt,
-            activityComplete: activityComplete)
+            activityComplete: activityComplete,
+            billingBlocks: billingBlocks)
     }
 
     mutating func restore(_ envelope: DashboardSnapshotCacheEnvelope) {
@@ -60,7 +72,8 @@ struct DashboardSnapshotMemoryCache: Sendable {
             snapshot: envelope.snapshot,
             generation: nil,
             generatedAt: envelope.generatedAt,
-            activityComplete: true)
+            activityComplete: true,
+            billingBlocks: envelope.billingBlocks)
     }
 
     mutating func markActivityIncomplete(for key: DashboardSnapshotCacheKey) {
@@ -69,11 +82,16 @@ struct DashboardSnapshotMemoryCache: Sendable {
             snapshot: entry.snapshot,
             generation: entry.generation,
             generatedAt: entry.generatedAt,
-            activityComplete: false)
+            activityComplete: false,
+            billingBlocks: entry.billingBlocks)
     }
 
     func snapshot(for key: DashboardSnapshotCacheKey) -> DashboardSnapshot? {
         entries[key]?.snapshot
+    }
+
+    func isActivityIncomplete(for key: DashboardSnapshotCacheKey) -> Bool {
+        entries[key]?.activityComplete == false
     }
 
     func decision(
@@ -85,35 +103,41 @@ struct DashboardSnapshotMemoryCache: Sendable {
         guard let entry = entries[key] else {
             return DashboardSnapshotCacheDecision(
                 snapshot: nil,
+                billingBlocks: nil,
                 needsRefresh: true,
                 reason: .missing)
         }
         guard entry.activityComplete else {
             return DashboardSnapshotCacheDecision(
                 snapshot: entry.snapshot,
+                billingBlocks: entry.billingBlocks,
                 needsRefresh: true,
                 reason: .incompleteActivity)
         }
         guard let generation = entry.generation else {
             return DashboardSnapshotCacheDecision(
                 snapshot: entry.snapshot,
+                billingBlocks: entry.billingBlocks,
                 needsRefresh: true,
                 reason: .restored)
         }
         guard generation == currentGeneration else {
             return DashboardSnapshotCacheDecision(
                 snapshot: entry.snapshot,
+                billingBlocks: entry.billingBlocks,
                 needsRefresh: true,
                 reason: .generationChanged)
         }
         guard now.timeIntervalSince(entry.generatedAt) <= maxAge else {
             return DashboardSnapshotCacheDecision(
                 snapshot: entry.snapshot,
+                billingBlocks: entry.billingBlocks,
                 needsRefresh: true,
                 reason: .expired)
         }
         return DashboardSnapshotCacheDecision(
             snapshot: entry.snapshot,
+            billingBlocks: entry.billingBlocks,
             needsRefresh: false,
             reason: .fresh)
     }
