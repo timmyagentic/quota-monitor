@@ -4,6 +4,16 @@ import Testing
 @Suite("Post-scan refresh decisions")
 struct ScanRefreshDecisionTests {
 
+    @Test("only explicit scan triggers request no-change summary fallbacks")
+    func explicitScanTriggersRequestFallbacks() {
+        for trigger in ["manual", "popover", "qa"] {
+            #expect(AppEnvironment.scanTriggerRefreshesWithoutChanges(trigger))
+        }
+        for trigger in ["launch", "onboarding", "claude-file-watch"] {
+            #expect(!AppEnvironment.scanTriggerRefreshesWithoutChanges(trigger))
+        }
+    }
+
     @Test("Background no-op scan keeps populated summaries untouched")
     func backgroundNoOpScanSkipsSummaryRefreshes() {
         let decision = AppEnvironment.scanRefreshDecision(
