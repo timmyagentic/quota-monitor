@@ -46,6 +46,26 @@ struct DashboardSnapshotCacheTests {
         #expect(decision.reason == .generationChanged)
     }
 
+    @Test("failed Activity keeps the snapshot visible but requires revalidation")
+    func incompleteActivityStaysVisibleAndRetries() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let key = cacheKey()
+        let snapshot = sampleSnapshot(tokens: 100)
+        var cache = DashboardSnapshotMemoryCache()
+        cache.store(snapshot, for: key, generation: 7, generatedAt: now)
+
+        cache.markActivityIncomplete(for: key)
+        let decision = cache.decision(
+            for: key,
+            currentGeneration: 7,
+            now: now.addingTimeInterval(30),
+            maxAge: 300)
+
+        #expect(decision.snapshot == snapshot)
+        #expect(decision.needsRefresh)
+        #expect(decision.reason == .incompleteActivity)
+    }
+
     @Test("expired and restored snapshots display before revalidation")
     func expiredAndRestoredSnapshotsStayVisible() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)

@@ -22,6 +22,7 @@ enum DashboardSnapshotCacheReason: String, Sendable, Equatable {
     case generationChanged = "generation-changed"
     case expired
     case restored
+    case incompleteActivity = "incomplete-activity"
 }
 
 struct DashboardSnapshotCacheDecision: Sendable, Equatable {
@@ -34,6 +35,7 @@ private struct DashboardSnapshotMemoryEntry: Sendable {
     let snapshot: DashboardSnapshot
     let generation: Int?
     let generatedAt: Date
+    let activityComplete: Bool
 }
 
 struct DashboardSnapshotMemoryCache: Sendable {
@@ -43,19 +45,31 @@ struct DashboardSnapshotMemoryCache: Sendable {
         _ snapshot: DashboardSnapshot,
         for key: DashboardSnapshotCacheKey,
         generation: Int,
-        generatedAt: Date
+        generatedAt: Date,
+        activityComplete: Bool = true
     ) {
         entries[key] = DashboardSnapshotMemoryEntry(
             snapshot: snapshot,
             generation: generation,
-            generatedAt: generatedAt)
+            generatedAt: generatedAt,
+            activityComplete: activityComplete)
     }
 
     mutating func restore(_ envelope: DashboardSnapshotCacheEnvelope) {
         entries[envelope.key] = DashboardSnapshotMemoryEntry(
             snapshot: envelope.snapshot,
             generation: nil,
-            generatedAt: envelope.generatedAt)
+            generatedAt: envelope.generatedAt,
+            activityComplete: true)
+    }
+
+    mutating func markActivityIncomplete(for key: DashboardSnapshotCacheKey) {
+        guard let entry = entries[key] else { return }
+        entries[key] = DashboardSnapshotMemoryEntry(
+            snapshot: entry.snapshot,
+            generation: entry.generation,
+            generatedAt: entry.generatedAt,
+            activityComplete: false)
     }
 
     func snapshot(for key: DashboardSnapshotCacheKey) -> DashboardSnapshot? {
@@ -73,6 +87,12 @@ struct DashboardSnapshotMemoryCache: Sendable {
                 snapshot: nil,
                 needsRefresh: true,
                 reason: .missing)
+        }
+        guard entry.activityComplete else {
+            return DashboardSnapshotCacheDecision(
+                snapshot: entry.snapshot,
+                needsRefresh: true,
+                reason: .incompleteActivity)
         }
         guard let generation = entry.generation else {
             return DashboardSnapshotCacheDecision(

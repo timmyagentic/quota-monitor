@@ -1297,6 +1297,8 @@ final class AppEnvironment {
                 "has_snapshot": .bool(decision.snapshot != nil)
             ])
         guard decision.needsRefresh else { return }
+        guard decision.reason != .incompleteActivity
+                || !isLoadingDashboardActivity else { return }
         refreshDashboard(trigger: "mount")
     }
 
@@ -1310,13 +1312,15 @@ final class AppEnvironment {
         _ snapshot: DashboardSnapshot,
         key: DashboardSnapshotCacheKey,
         generation: Int,
-        generatedAt: Date
+        generatedAt: Date,
+        activityComplete: Bool = true
     ) {
         dashboardSnapshotCache.store(
             snapshot,
             for: key,
             generation: generation,
-            generatedAt: generatedAt)
+            generatedAt: generatedAt,
+            activityComplete: activityComplete)
         if key == currentDashboardCacheKey() {
             dashboardSnapshot = snapshot
             displayedDashboardCacheKey = key
@@ -1544,7 +1548,8 @@ final class AppEnvironment {
                         snapshot,
                         key: cacheKey,
                         generation: readModelGeneration,
-                        generatedAt: generatedAt)
+                        generatedAt: generatedAt,
+                        activityComplete: false)
                     self.billingBlocks = payload.dashboardBlocks
                     if let menuBar = payload.menuBar,
                        let menuBarGeneration,
@@ -1651,7 +1656,11 @@ final class AppEnvironment {
                         refreshGeneration)
                 }
                 if isCurrent {
-                    await MainActor.run { self.lastError = String(describing: error) }
+                    await MainActor.run {
+                        self.dashboardSnapshotCache.markActivityIncomplete(
+                            for: cacheKey)
+                        self.lastError = String(describing: error)
+                    }
                     DeveloperLog.failOperation(op, error: error)
                 } else {
                     DeveloperLog.finishOperation(op, result: "superseded")
