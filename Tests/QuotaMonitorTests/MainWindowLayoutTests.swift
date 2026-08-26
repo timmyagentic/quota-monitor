@@ -175,6 +175,8 @@ struct MainWindowLayoutTests {
             named: "QuotaMonitor/Features/MenuBar/MenuBarWindowActions.swift")
         let windowActions = try Self.source(
             named: "QuotaMonitor/App/WindowCrossLinkActions.swift")
+        let menuBarHelp = try Self.source(
+            named: "QuotaMonitor/Features/MenuBarHelp/MenuBarHelpView.swift")
 
         #expect(dashboard.contains("env.ensureDashboardVisible()"))
         #expect(!dashboard.contains("env.refreshVisibleSummaries()"))
@@ -182,6 +184,8 @@ struct MainWindowLayoutTests {
             "refreshDashboard: { env.ensureDashboardVisible() }"))
         #expect(windowActions.contains(
             "refreshDashboard: { env.ensureDashboardVisible() }"))
+        #expect(menuBarHelp.contains("env.ensureDashboardVisible()"))
+        #expect(!menuBarHelp.contains("env.refreshVisibleSummaries()"))
     }
 
     @Test("Dashboard load derives recent summaries from one rollup")
