@@ -84,4 +84,25 @@ struct SummaryRefreshCoordinatorTests {
         #expect(!changedBegan)
         #expect(trailing == true)
     }
+
+    @Test("discarded active combined pass keeps its menu-bar requirement")
+    func activeCombinedRequirementSurvivesDashboardOnlyMount() {
+        var coalescer = DashboardRefreshCoalescer()
+        let dashboardOnly = DashboardRefreshInputs(
+            providerFilter: .all,
+            enabledProviders: ["codex", "claude"],
+            includesMenuBar: false)
+
+        let began = coalescer.begin(inputs: all, requiresFreshPass: true)
+        let mountBegan = coalescer.begin(
+            inputs: dashboardOnly,
+            requiresFreshPass: false)
+        let hadPendingRefresh = coalescer.hasPendingRefresh
+        let trailing = coalescer.finish()
+
+        #expect(began)
+        #expect(!mountBegan)
+        #expect(hadPendingRefresh)
+        #expect(trailing == true)
+    }
 }

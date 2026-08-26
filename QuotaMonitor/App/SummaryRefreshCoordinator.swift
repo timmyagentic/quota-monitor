@@ -47,7 +47,13 @@ struct DashboardRefreshCoalescer: Sendable {
 
         if activeInputs != inputs || requiresFreshPass {
             hasPendingRefresh = true
-            pendingIncludesMenuBar = pendingIncludesMenuBar || inputs.includesMenuBar
+            // A pending request suppresses publication from the active pass.
+            // Preserve the strongest surface from both passes so a
+            // dashboard-only mount cannot discard an already-requested menu
+            // refresh from scan/settings.
+            pendingIncludesMenuBar = pendingIncludesMenuBar
+                || activeInputs.includesMenuBar
+                || inputs.includesMenuBar
         }
         return false
     }
