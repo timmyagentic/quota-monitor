@@ -1325,6 +1325,8 @@ final class AppEnvironment {
             dashboardSnapshot = snapshot
             displayedDashboardCacheKey = key
         }
+        guard DashboardSnapshotPersistence.shouldPersist(
+            activityComplete: activityComplete) else { return }
         let envelope = DashboardSnapshotCacheEnvelope(
             key: key,
             generatedAt: generatedAt,

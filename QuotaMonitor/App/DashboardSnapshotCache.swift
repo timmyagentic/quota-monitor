@@ -192,6 +192,10 @@ actor DashboardSnapshotPersistence {
         self.store = store
     }
 
+    nonisolated static func shouldPersist(activityComplete: Bool) -> Bool {
+        activityComplete
+    }
+
     func save(_ envelope: DashboardSnapshotCacheEnvelope, sequence: Int) -> Bool {
         guard sequence > latestSequence else { return true }
         latestSequence = sequence

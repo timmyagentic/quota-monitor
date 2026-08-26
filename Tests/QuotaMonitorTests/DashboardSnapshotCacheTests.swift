@@ -166,6 +166,14 @@ struct DashboardSnapshotCacheTests {
         #expect(store.load() == nil)
     }
 
+    @Test("only Activity-complete snapshots are eligible for persistence")
+    func persistenceRequiresCompleteActivity() {
+        #expect(!DashboardSnapshotPersistence.shouldPersist(
+            activityComplete: false))
+        #expect(DashboardSnapshotPersistence.shouldPersist(
+            activityComplete: true))
+    }
+
     @Test("primary publication can preserve and later replace Activity")
     func primarySnapshotDoesNotWaitForActivity() throws {
         let original = sampleSnapshot(tokens: 100)
