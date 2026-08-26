@@ -120,23 +120,26 @@ struct DashboardSnapshotMemoryCache: Sendable {
 }
 
 struct DashboardSnapshotCacheEnvelope: Sendable, Equatable, Codable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     let schemaVersion: Int
     let key: DashboardSnapshotCacheKey
     let generatedAt: Date
     let snapshot: DashboardSnapshot
+    let billingBlocks: BillingBlocks.Snapshot?
 
     init(
         schemaVersion: Int = currentSchemaVersion,
         key: DashboardSnapshotCacheKey,
         generatedAt: Date,
-        snapshot: DashboardSnapshot
+        snapshot: DashboardSnapshot,
+        billingBlocks: BillingBlocks.Snapshot? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.key = key
         self.generatedAt = generatedAt
         self.snapshot = snapshot
+        self.billingBlocks = billingBlocks
     }
 }
 

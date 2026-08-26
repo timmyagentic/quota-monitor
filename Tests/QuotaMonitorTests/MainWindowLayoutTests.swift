@@ -191,6 +191,10 @@ struct MainWindowLayoutTests {
             "refreshDashboard: { env.ensureDashboardVisible() }"))
         #expect(menuBarHelp.contains("env.ensureDashboardVisible()"))
         #expect(!menuBarHelp.contains("env.refreshVisibleSummaries()"))
+
+        let environment = try Self.source(
+            named: "QuotaMonitor/App/AppEnvironment.swift")
+        #expect(environment.contains("billingBlocks = envelope.billingBlocks"))
     }
 
     @Test("Dashboard load derives recent summaries from one rollup")

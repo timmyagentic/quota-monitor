@@ -1255,6 +1255,7 @@ final class AppEnvironment {
         }
         dashboardSnapshotCache.restore(envelope)
         dashboardSnapshot = envelope.snapshot
+        billingBlocks = envelope.billingBlocks
         displayedDashboardCacheKey = key
         DeveloperLog.eventRecord(
             "dashboard.cache.restore",
@@ -1330,7 +1331,8 @@ final class AppEnvironment {
         let envelope = DashboardSnapshotCacheEnvelope(
             key: key,
             generatedAt: generatedAt,
-            snapshot: snapshot)
+            snapshot: snapshot,
+            billingBlocks: billingBlocks)
         let saveGeneration = dashboardSnapshotSaveGeneration.advance()
         Task { [dashboardSnapshotPersistence] in
             let saved = await dashboardSnapshotPersistence.save(

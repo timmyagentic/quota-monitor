@@ -129,10 +129,16 @@ struct DashboardSnapshotCacheTests {
             .appendingPathComponent("dashboard-cache-\(UUID().uuidString)", isDirectory: true)
         let url = dir.appendingPathComponent("snapshot.json")
         let store = DashboardSnapshotStore(fileURL: url)
+        let billingBlocks = BillingBlocks.Snapshot(
+            currentBlock: nil,
+            burnRate: nil,
+            projection: nil,
+            recentBlocks: [])
         let envelope = DashboardSnapshotCacheEnvelope(
             key: cacheKey(),
             generatedAt: Date(timeIntervalSince1970: 1_800_000_000),
-            snapshot: sampleSnapshot(tokens: 321))
+            snapshot: sampleSnapshot(tokens: 321),
+            billingBlocks: billingBlocks)
 
         try store.save(envelope)
         let loaded = try #require(store.load())
@@ -140,6 +146,7 @@ struct DashboardSnapshotCacheTests {
         let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
 
         #expect(loaded == envelope)
+        #expect(loaded.billingBlocks == billingBlocks)
         #expect(permissions.intValue & 0o777 == 0o600)
     }
 

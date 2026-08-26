@@ -16,7 +16,7 @@ enum BillingBlocks {
 
     // MARK: - Public types
 
-    struct TokenCounts: Sendable, Equatable, Hashable {
+    struct TokenCounts: Sendable, Equatable, Hashable, Codable {
         var input: Int64 = 0
         var output: Int64 = 0
         var cacheCreation: Int64 = 0
@@ -27,7 +27,7 @@ enum BillingBlocks {
         var nonCache: Int64 { input + output }
     }
 
-    struct Block: Sendable, Identifiable, Equatable, Hashable {
+    struct Block: Sendable, Identifiable, Equatable, Hashable, Codable {
         let id: String
         let startTime: Date
         /// Nominal end (`startTime + 5h`) for normal blocks; for gap blocks it's
@@ -43,14 +43,14 @@ enum BillingBlocks {
         let models: [String]
     }
 
-    struct BurnRate: Sendable, Equatable {
+    struct BurnRate: Sendable, Equatable, Codable {
         let tokensPerMinute: Double
         /// Non-cache tokens/min — used for HIGH/MODERATE/NORMAL color band.
         let nonCacheTokensPerMinute: Double
         let costPerHour: Double
     }
 
-    struct Projection: Sendable, Equatable {
+    struct Projection: Sendable, Equatable, Codable {
         let totalTokens: Int64
         let totalCost: Double
         let remainingMinutes: Int
@@ -58,7 +58,7 @@ enum BillingBlocks {
 
     /// What the Dashboard / menu bar render. Only the current (or most recent)
     /// block is included for now — recent-block history is a follow-up.
-    struct Snapshot: Sendable, Equatable {
+    struct Snapshot: Sendable, Equatable, Codable {
         let currentBlock: Block?
         let burnRate: BurnRate?
         let projection: Projection?
