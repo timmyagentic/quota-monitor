@@ -13,7 +13,7 @@ struct WindowCrossLinkActions {
     ) -> WindowCrossLinkActions {
         WindowCrossLinkActions(
             openWindow: openWindow,
-            refreshDashboard: { env.refreshDashboard() })
+            refreshDashboard: { env.refreshVisibleSummaries() })
     }
 
     @MainActor

@@ -65,7 +65,7 @@ struct MenuBarHelpView: View {
                 Spacer()
                 Button(L10n.openDashboard) {
                     WindowManager.shared.show("dashboard")
-                    env.refreshDashboard()
+                    env.refreshVisibleSummaries()
                 }
                 Button(L10n.menuBarHiddenHintDismiss) {
                     WindowManager.shared.close("menubar-help")

@@ -563,6 +563,129 @@ struct AggregatorTests {
         #expect(snapshot.modelShares30d.reduce(Int64(0)) { $0 + $1.tokens } == 1_000)
     }
 
+    @Test("Dashboard load reads recent usage once and keeps Activity separate")
+    func loadDashboardUsesOneRecentRawRead() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 15, hour: 12)))
+        let database = try makeDatabase()
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "recent",
+            at: now.addingTimeInterval(-60 * 60), valueUSD: 1, tokens: 100)
+
+        let statements = try database.pool.read { db in
+            var statements: [String] = []
+            db.trace { event in
+                guard case .statement(let statement) = event else { return }
+                statements.append(statement.expandedSQL)
+            }
+            _ = try Aggregator.loadDashboard(
+                db: db, now: now, calendar: calendar)
+            db.trace(options: [])
+            return statements
+        }
+        let recentUsageReads = statements.filter { statement in
+            statement.contains("AS cache_eligible_input_tokens")
+                && statement.contains("ue.session_id")
+        }
+        let activityReads = statements.filter { statement in
+            statement.contains("SELECT timestamp, value_usd, total_tokens")
+                && statement.contains("FROM usage_events")
+        }
+
+        #expect(recentUsageReads.count == 1)
+        #expect(activityReads.count == 1,
+                "Activity remains the one intentionally separate all-history read")
+    }
+
+    @Test("Recent rollup derives trends, monthly and composition from one clock")
+    func recentUsageRollupPreservesDashboardSlices() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let now = try #require(calendar.date(from: DateComponents(
+            year: 2026, month: 8, day: 15, hour: 12)))
+        let database = try makeDatabase()
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "shared",
+            at: now.addingTimeInterval(-2 * 60 * 60), valueUSD: 1, tokens: 100)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "shared",
+            at: now.addingTimeInterval(-60 * 60), valueUSD: 2, tokens: 200)
+        try seedEvent(
+            in: database, provider: "claude", sessionId: "prior",
+            at: now.addingTimeInterval(-40 * 24 * 60 * 60),
+            valueUSD: 4, tokens: 400)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "future",
+            at: now.addingTimeInterval(60 * 60), valueUSD: 100, tokens: 10_000)
+
+        let snapshot = try database.pool.read { db in
+            try Aggregator.loadDashboard(db: db, now: now, calendar: calendar)
+        }
+
+        #expect(snapshot.trends.last30Days.daily.reduce(Int64(0)) {
+            $0 + $1.tokens
+        } == 300)
+        #expect(snapshot.monthly.last?.tokens == 300)
+        #expect(snapshot.monthly.last?.sessionCount == 1)
+        #expect(snapshot.modelShares30d.first?.tokens == 300)
+        #expect(snapshot.modelShares30d.first?.eventCount == 2)
+        #expect(snapshot.modelSharesPrior30d.first?.tokens == 400)
+        #expect(snapshot.providerShares30d.first {
+            $0.provider == "codex"
+        }?.tokens == 300)
+        #expect(snapshot.providerShares30d.first {
+            $0.provider == "claude"
+        }?.tokens == 0)
+    }
+
+    @Test("Recent rollup preserves the established component-query results")
+    func recentUsageRollupMatchesComponentQueries() throws {
+        let now = Date()
+        let calendar = Calendar.current
+        let database = try makeDatabase()
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "recent-codex",
+            at: now.addingTimeInterval(-5 * 24 * 60 * 60),
+            valueUSD: 2, tokens: 200)
+        try seedEvent(
+            in: database, provider: "claude", sessionId: "prior-claude",
+            at: now.addingTimeInterval(-45 * 24 * 60 * 60),
+            valueUSD: 3, tokens: 300)
+        try seedEvent(
+            in: database, provider: "codex", sessionId: "older-codex",
+            at: now.addingTimeInterval(-200 * 24 * 60 * 60),
+            valueUSD: 4, tokens: 400)
+
+        let values = try database.pool.read { db in
+            let snapshot = try Aggregator.loadDashboard(
+                db: db, now: now, calendar: calendar)
+            let monthly = try Aggregator.fetchMonthly(
+                db: db,
+                months: 12,
+                now: now,
+                timeZone: calendar.timeZone)
+            let currentModels = try Aggregator.fetchModelShares(
+                db: db,
+                provider: .all,
+                sinceDays: 30,
+                untilDaysAgo: 0)
+            let priorModels = try Aggregator.fetchModelShares(
+                db: db,
+                provider: .all,
+                sinceDays: 60,
+                untilDaysAgo: 30)
+            let providers = try Aggregator.fetchProviderShares30d(db: db)
+            return (snapshot, monthly, currentModels, priorModels, providers)
+        }
+
+        #expect(values.0.monthly == values.1)
+        #expect(values.0.modelShares30d == values.2)
+        #expect(values.0.modelSharesPrior30d == values.3)
+        #expect(values.0.providerShares30d == values.4)
+    }
+
     // MARK: - Codex quota source isolation
 
     @Test("fetchCodexQuota ignores Claude OAuth samples that share rate_limit_samples")

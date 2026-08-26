@@ -231,7 +231,10 @@ extension AppEnvironment {
                             parentOperation: op)
                     }
                     if decision.refreshDashboard {
-                        self.refreshDashboard(trigger: "scan", parentOperation: op)
+                        self.refreshDashboard(
+                            includeMenuBar: true,
+                            trigger: "scan",
+                            parentOperation: op)
                     }
                 }
             } catch {
@@ -355,9 +358,12 @@ extension AppEnvironment {
             || trigger == "qa"
         let shouldRefreshSummaries = didChangeReadModel
             || refreshWithoutImportChanges
+        let needsInitialMenuSnapshot = !hasMenuBarSnapshot
         return ScanRefreshDecision(
-            refreshMenuBar: shouldRefreshSummaries || !hasMenuBarSnapshot,
-            refreshDashboard: shouldRefreshSummaries && isDashboardVisible)
+            refreshMenuBar: !isDashboardVisible
+                && (shouldRefreshSummaries || needsInitialMenuSnapshot),
+            refreshDashboard: isDashboardVisible
+                && (shouldRefreshSummaries || needsInitialMenuSnapshot))
     }
 
     /// Pure App Store scan-scope decisions, extracted so they can be unit-tested

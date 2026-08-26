@@ -372,7 +372,7 @@ final class AppWindowController: NSWindowController, NSWindowDelegate {
             WindowManager.shared.handleWillClose()
         },
         onDashboardDidRestore: @escaping @MainActor () -> Void = {
-            AppEnvironment.shared.refreshDashboard(trigger: "window-restore")
+            AppEnvironment.shared.refreshVisibleSummaries(trigger: "window-restore")
         }
     ) {
         self.id = id

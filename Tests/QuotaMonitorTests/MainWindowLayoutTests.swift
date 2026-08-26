@@ -153,7 +153,31 @@ struct MainWindowLayoutTests {
         #expect(source.contains("parts.append(L10n.activityRefreshingAccount)"))
         #expect(!mainWindow.contains("$env.activityDataScope"))
         #expect(mainWindow.contains(
-            "if tab == .dashboard {\n                        env.refreshCodexAccountUsage"))
+            "if tab == .dashboard {\n                        env.refreshAll"))
+    }
+
+    @Test("Dashboard Reload shares the complete manual refresh path")
+    func dashboardReloadUsesCompleteManualRefresh() throws {
+        let mainWindow = try Self.source(
+            named: "QuotaMonitor/Features/MainWindow/MainWindowView.swift")
+
+        #expect(mainWindow.contains(
+            "env.refreshAll(throttle: false, trigger: \"manual\")"))
+        #expect(!mainWindow.contains(
+            "env.refreshCodexAccountUsage(trigger: \"manual\")"))
+    }
+
+    @Test("Dashboard load derives recent summaries from one rollup")
+    func dashboardLoadUsesOneRecentUsageRollup() throws {
+        let reports = try Self.source(
+            named: "QuotaMonitor/Core/Analytics/AggregatorReports.swift")
+
+        #expect(reports.contains("let recent = try fetchRecentUsageRollup("))
+        #expect(reports.contains("trends: recent.trends"))
+        #expect(reports.contains("monthly: recent.monthly"))
+        #expect(reports.contains("modelShares30d: recent.modelShares30d"))
+        #expect(reports.contains("modelSharesPrior30d: recent.modelSharesPrior30d"))
+        #expect(reports.contains("providerShares30d: recent.providerShares30d"))
     }
 
     @Test("Dashboard trends only exposes stacked bar mode")

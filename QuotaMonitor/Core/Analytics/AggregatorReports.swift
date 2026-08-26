@@ -69,6 +69,32 @@ private struct RollingTrendAccumulator {
     }
 }
 
+private struct RecentModelShareTotal {
+    let displayName: String
+    var valueUSD: Double = 0
+    var tokens: Int64 = 0
+    var eventCount: Int = 0
+}
+
+private struct RecentMonthlyTotal {
+    var valueUSD: Double = 0
+    var tokens: Int64 = 0
+    var sessionIDs: Set<String> = []
+}
+
+private struct RecentProviderShareTotal {
+    var valueUSD: Double = 0
+    var tokens: Int64 = 0
+}
+
+private struct RecentUsageRollup {
+    let trends: DashboardTrendData
+    let monthly: [MonthlyPoint]
+    let modelShares30d: [ModelShare]
+    let modelSharesPrior30d: [ModelShare]
+    let providerShares30d: [ProviderShare]
+}
+
 // Top-level dashboard / overview / per-model / per-provider queries.
 // All methods compose inside one read transaction via `loadDashboard`.
 
@@ -82,58 +108,61 @@ extension Aggregator {
         calendar: Calendar = .current
     ) async throws -> DashboardSnapshot {
         try await pool.read { db in
-            let overview = try fetchOverview(
-                db: db, provider: provider, enabledProviders: enabledProviders)
-            // One raw-row scan derives every exact elapsed-time Trends range.
-            // This keeps the partial boundary day accurate without repeating
-            // the one-year database scan for each range and stack mode.
-            let trends = try fetchRollingTrends(
-                db: db, provider: provider,
+            try loadDashboard(
+                db: db,
+                provider: provider,
                 enabledProviders: enabledProviders,
-                now: now, calendar: calendar)
-            let dailyExtended = trends.last365Days.daily
-            let daily = Array(dailyExtended.suffix(14))
-            let monthly = try fetchMonthly(
-                db: db, months: 12, provider: provider,
-                enabledProviders: enabledProviders)
-            let shares = try fetchModelShares(
-                db: db, provider: provider, enabledProviders: enabledProviders)
-            // 30d + prior-30d slices fuel the Composition section's bar
-            // list, banner ("X drives Y% of cost"), and the auto-insight
-            // delta sentence.
-            let shares30d = try fetchModelShares(
-                db: db, provider: provider, sinceDays: 30, untilDaysAgo: 0,
-                enabledProviders: enabledProviders)
-            let sharesPrior30d = try fetchModelShares(
-                db: db, provider: provider, sinceDays: 60, untilDaysAgo: 30,
-                enabledProviders: enabledProviders)
-            let providerShares30d = try fetchProviderShares30d(
-                db: db, provider: provider, enabledProviders: enabledProviders)
-            // Codex quota/history queries filter the shared rate-limit table
-            // to Codex sources (`live` + `jsonl`). Hide the Codex section for
-            // the Claude-only dashboard view.
-            let history = provider == .claude
-                ? []
-                : try fetchRateLimitHistory(db: db, hours: 24)
-            let quota = provider == .claude
-                ? nil
-                : try fetchCodexQuota(db: db)
-            let activity = try fetchActivity(
-                db: db, provider: provider, enabledProviders: enabledProviders)
-            return DashboardSnapshot(
-                overview: overview,
-                daily: daily,
-                dailyExtended: dailyExtended,
-                trends: trends,
-                monthly: monthly,
-                modelShares: shares,
-                modelShares30d: shares30d,
-                modelSharesPrior30d: sharesPrior30d,
-                providerShares30d: providerShares30d,
-                recentRateLimits: history,
-                codexQuota: quota,
-                activity: activity)
+                now: now,
+                calendar: calendar)
         }
+    }
+
+    /// Synchronous-in-transaction variant used when a caller needs Dashboard
+    /// and adjacent summary surfaces from the same GRDB read snapshot.
+    static func loadDashboard(
+        db: Database,
+        provider: ProviderFilter = .all,
+        enabledProviders: Set<String>? = nil,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> DashboardSnapshot {
+        let overview = try fetchOverview(
+            db: db, provider: provider, enabledProviders: enabledProviders)
+        // One recent raw-row scan derives every elapsed-time Trends range,
+        // monthly buckets, and current/prior Composition slices.
+        let recent = try fetchRecentUsageRollup(
+            db: db, provider: provider,
+            enabledProviders: enabledProviders,
+            now: now, calendar: calendar)
+        let dailyExtended = recent.trends.last365Days.daily
+        let daily = Array(dailyExtended.suffix(14))
+        let shares = try fetchModelShares(
+            db: db, provider: provider, enabledProviders: enabledProviders)
+        // Codex quota/history queries filter the shared rate-limit table
+        // to Codex sources (`live` + `jsonl`). Hide the Codex section for
+        // the Claude-only dashboard view.
+        let history = provider == .claude
+            ? []
+            : try fetchRateLimitHistory(db: db, hours: 24)
+        let quota = provider == .claude
+            ? nil
+            : try fetchCodexQuota(db: db)
+        let activity = try fetchActivity(
+            db: db, provider: provider, enabledProviders: enabledProviders,
+            now: now, calendar: calendar)
+        return DashboardSnapshot(
+            overview: overview,
+            daily: daily,
+            dailyExtended: dailyExtended,
+            trends: recent.trends,
+            monthly: recent.monthly,
+            modelShares: shares,
+            modelShares30d: recent.modelShares30d,
+            modelSharesPrior30d: recent.modelSharesPrior30d,
+            providerShares30d: recent.providerShares30d,
+            recentRateLimits: history,
+            codexQuota: quota,
+            activity: activity)
     }
 
     static func fetchOverview(
@@ -322,18 +351,47 @@ extension Aggregator {
         now: Date = Date(),
         calendar: Calendar = .current
     ) throws -> DashboardTrendData {
+        try fetchRecentUsageRollup(
+            db: db,
+            provider: provider,
+            enabledProviders: enabledProviders,
+            now: now,
+            calendar: calendar).trends
+    }
+
+    /// Reads the recent event window once, then derives every Dashboard slice
+    /// whose time horizon is bounded to the latest year.
+    private static func fetchRecentUsageRollup(
+        db: Database,
+        provider: ProviderFilter,
+        enabledProviders: Set<String>?,
+        now: Date,
+        calendar: Calendar
+    ) throws -> RecentUsageRollup {
         let scope = ProviderScope(
             filter: provider, enabledProviders: enabledProviders)
         let cutoffs = Dictionary(uniqueKeysWithValues:
             RollingTrendWindow.allCases.map { ($0, $0.lowerBound(from: now)) })
         let oldestCutoff = cutoffs[.last365Days] ?? .distantPast
+
+        var monthlyCalendar = Calendar(identifier: .gregorian)
+        monthlyCalendar.timeZone = calendar.timeZone
+        let monthComponents = monthlyCalendar.dateComponents([.year, .month], from: now)
+        let thisMonth = monthlyCalendar.date(from: monthComponents) ?? now
+        let monthlyStart = monthlyCalendar.date(
+            byAdding: .month, value: -11, to: thisMonth) ?? oldestCutoff
+        let current30Lower = now.addingTimeInterval(-30 * 24 * 60 * 60)
+        let prior30Lower = now.addingTimeInterval(-60 * 24 * 60 * 60)
+        let prior30Upper = current30Lower
+        let earliestCutoff = min(oldestCutoff, min(monthlyStart, prior30Lower))
+
         // Query conservatively from the UTC date before the partial boundary
         // day, then apply exact parsed-Date bounds below. Every timestamp shape
         // accepted by `parseTimestamp` begins with yyyy-MM-dd, but their later
         // separators and offsets are not lexically comparable. A date-only
         // bound keeps the timestamp index useful without dropping SQLite-form
         // or offset timestamps before they can be parsed.
-        let queryStart = calendar.startOfDay(for: oldestCutoff)
+        let queryStart = calendar.startOfDay(for: earliestCutoff)
         let conservativeQueryStart = queryStart.addingTimeInterval(-24 * 60 * 60)
         let lowerBound = String(
             ISO8601.fractional.string(from: conservativeQueryStart).prefix(10))
@@ -343,6 +401,7 @@ extension Aggregator {
             SELECT
                 ue.timestamp,
                 ue.provider,
+                ue.session_id,
                 ue.model_id,
                 COALESCE(pc.display_name, ue.model_id) AS model_label,
                 ue.value_usd,
@@ -357,21 +416,18 @@ extension Aggregator {
 
         var accumulators: [RollingTrendWindow: RollingTrendAccumulator] = [:]
         var prior30DayValueUSD = 0.0
-        let prior30Lower = now.addingTimeInterval(-60 * 24 * 60 * 60)
-        let prior30Upper = now.addingTimeInterval(-30 * 24 * 60 * 60)
+        var monthlyTotals: [Date: RecentMonthlyTotal] = [:]
+        var modelShares30d: [String: RecentModelShareTotal] = [:]
+        var modelSharesPrior30d: [String: RecentModelShareTotal] = [:]
+        var providerShares30d: [String: RecentProviderShareTotal] = [:]
 
         for row in rows {
             let timestamp: String = row["timestamp"] ?? ""
             guard let date = parseTimestamp(timestamp),
-                  date >= oldestCutoff,
-                  date < now
+                  date >= earliestCutoff
             else { continue }
 
             let valueUSD: Double = row["value_usd"] ?? 0
-            if date >= prior30Lower, date < prior30Upper {
-                prior30DayValueUSD += valueUSD
-            }
-
             let rawProvider: String = row["provider"] ?? "unknown"
             let normalizedProvider = normalizedTrendValue(
                 rawProvider, fallback: "unknown")
@@ -387,17 +443,58 @@ extension Aggregator {
             let cacheEligibleInputTokens: Int64 =
                 row["cache_eligible_input_tokens"] ?? 0
 
-            for window in RollingTrendWindow.allCases {
-                guard let cutoff = cutoffs[window], date >= cutoff else { continue }
-                accumulators[window, default: RollingTrendAccumulator()].add(
-                    day: day,
-                    provider: normalizedProvider,
-                    modelKey: modelKey,
-                    modelLabel: modelLabel,
-                    valueUSD: valueUSD,
-                    tokens: tokens,
-                    cacheReadTokens: cacheReadTokens,
-                    cacheEligibleInputTokens: cacheEligibleInputTokens)
+            if date < now {
+                for window in RollingTrendWindow.allCases {
+                    guard let cutoff = cutoffs[window], date >= cutoff else { continue }
+                    accumulators[window, default: RollingTrendAccumulator()].add(
+                        day: day,
+                        provider: normalizedProvider,
+                        modelKey: modelKey,
+                        modelLabel: modelLabel,
+                        valueUSD: valueUSD,
+                        tokens: tokens,
+                        cacheReadTokens: cacheReadTokens,
+                        cacheEligibleInputTokens: cacheEligibleInputTokens)
+                }
+
+                if date >= current30Lower {
+                    addModelShare(
+                        to: &modelShares30d,
+                        modelKey: modelKey,
+                        displayName: modelLabel,
+                        valueUSD: valueUSD,
+                        tokens: tokens)
+                } else if date >= prior30Lower, date < prior30Upper {
+                    addModelShare(
+                        to: &modelSharesPrior30d,
+                        modelKey: modelKey,
+                        displayName: modelLabel,
+                        valueUSD: valueUSD,
+                        tokens: tokens)
+                    prior30DayValueUSD += valueUSD
+                }
+            }
+
+            if date >= current30Lower, date < now {
+                var providerTotal = providerShares30d[normalizedProvider]
+                    ?? RecentProviderShareTotal()
+                providerTotal.valueUSD += valueUSD
+                providerTotal.tokens += tokens
+                providerShares30d[normalizedProvider] = providerTotal
+            }
+
+            if date >= monthlyStart, date < now {
+                let components = monthlyCalendar.dateComponents(
+                    [.year, .month], from: date)
+                if let month = monthlyCalendar.date(from: components) {
+                    var total = monthlyTotals[month] ?? RecentMonthlyTotal()
+                    total.valueUSD += valueUSD
+                    total.tokens += tokens
+                    if let sessionID: String = row["session_id"] {
+                        total.sessionIDs.insert(sessionID)
+                    }
+                    monthlyTotals[month] = total
+                }
             }
         }
 
@@ -418,12 +515,73 @@ extension Aggregator {
                     accumulator.modelTotals))
         }
 
-        return DashboardTrendData(
+        let trends = DashboardTrendData(
             last7Days: snapshot(for: .last7Days),
             last30Days: snapshot(for: .last30Days),
             last90Days: snapshot(for: .last90Days),
             last365Days: snapshot(for: .last365Days),
             prior30DayValueUSD: prior30DayValueUSD)
+
+        let monthly = (0..<12).reversed().compactMap { offset -> MonthlyPoint? in
+            guard let month = monthlyCalendar.date(
+                byAdding: .month, value: -offset, to: thisMonth)
+            else { return nil }
+            let total = monthlyTotals[month] ?? RecentMonthlyTotal()
+            return MonthlyPoint(
+                month: month,
+                valueUSD: total.valueUSD,
+                tokens: total.tokens,
+                sessionCount: total.sessionIDs.count)
+        }
+
+        let providerShares = scope.zeroFillProviders().map { providerID in
+            let total = providerShares30d[providerID]
+                ?? RecentProviderShareTotal()
+            return ProviderShare(
+                provider: providerID,
+                valueUSD: total.valueUSD,
+                tokens: total.tokens)
+        }
+
+        return RecentUsageRollup(
+            trends: trends,
+            monthly: monthly,
+            modelShares30d: makeModelShares(modelShares30d),
+            modelSharesPrior30d: makeModelShares(modelSharesPrior30d),
+            providerShares30d: providerShares)
+    }
+
+    private static func addModelShare(
+        to totals: inout [String: RecentModelShareTotal],
+        modelKey: String,
+        displayName: String,
+        valueUSD: Double,
+        tokens: Int64
+    ) {
+        var total = totals[modelKey] ?? RecentModelShareTotal(
+            displayName: displayName)
+        total.valueUSD += valueUSD
+        total.tokens += tokens
+        total.eventCount += 1
+        totals[modelKey] = total
+    }
+
+    private static func makeModelShares(
+        _ totals: [String: RecentModelShareTotal]
+    ) -> [ModelShare] {
+        totals.map { modelID, total in
+            ModelShare(
+                modelId: modelID,
+                displayName: total.displayName,
+                valueUSD: total.valueUSD,
+                tokens: total.tokens,
+                eventCount: total.eventCount)
+        }
+        .sorted {
+            if $0.valueUSD != $1.valueUSD { return $0.valueUSD > $1.valueUSD }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName)
+                == .orderedAscending
+        }
     }
 
     private static func normalizedTrendValue(

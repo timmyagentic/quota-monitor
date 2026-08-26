@@ -13,7 +13,7 @@ struct MenuBarWindowActions {
     static func live(env: AppEnvironment) -> MenuBarWindowActions {
         MenuBarWindowActions(
             requestWindow: { WindowManager.shared.show($0) },
-            refreshDashboard: { env.refreshDashboard() })
+            refreshDashboard: { env.refreshVisibleSummaries() })
     }
 
     // `requestWindow` is `WindowManager.show`, which already activates the app

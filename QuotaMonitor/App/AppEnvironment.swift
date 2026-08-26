@@ -96,6 +96,7 @@ final class AppEnvironment {
     /// dropped. At most one queued re-run — `true` stays `true` whether
     /// 1 or 10 calls arrived during the in-flight window.
     private var menuBarRefreshPending = false
+    private var menuBarRefreshGeneration = RefreshGeneration()
     var scanProgressStates: [String: ScanProviderProgress] = [:]
     var scanProgressRunID: UUID?
     var isRefreshingRateLimits = false
@@ -115,6 +116,7 @@ final class AppEnvironment {
     /// trailing scan; cancelled when the watcher stops.
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
     var isLoadingDashboard = false
+    private var dashboardRefreshCoalescer = DashboardRefreshCoalescer()
     var lastError: String?
 
     /// True when the status item has been detected as clipped/hidden and
@@ -162,7 +164,7 @@ final class AppEnvironment {
                         "old_value": .string(oldValue.rawValue),
                         "new_value": .string(providerFilter.rawValue)
                     ])
-                refreshDashboard(trigger: "settings")
+                refreshVisibleSummaries(trigger: "settings")
             }
         }
     }
@@ -642,11 +644,17 @@ final class AppEnvironment {
     /// the UI immediately matches the new set.
     func applyEnabledProviders() {
         let enabled = SettingsStore.snapshot().enabledProviders
+        let resetsProviderFilter = providerFilter != .all
+            && !enabled.contains(providerFilter.rawValue)
         DeveloperLog.eventRecord(
             "settings.enabled_providers.apply",
             category: "settings",
             trigger: "settings",
             fields: ["enabled_providers": .string(enabled.sorted().joined(separator: ","))])
+        if resetsProviderFilter {
+            // didSet schedules the one visible summary refresh for this change.
+            providerFilter = .all
+        }
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             stopCodexPoller()
             stopClaudePoller()
@@ -657,8 +665,9 @@ final class AppEnvironment {
                 trigger: "settings",
                 result: "skipped",
                 fields: ["reason": "local-qa"])
-            refreshMenuBar(trigger: "settings")
-            refreshDashboard(trigger: "settings")
+            if !resetsProviderFilter {
+                refreshVisibleSummaries(trigger: "settings")
+            }
             return
         }
         do {
@@ -693,16 +702,11 @@ final class AppEnvironment {
         // synthesize a single-provider filter — the union view (`.all`)
         // is always a valid fallback even when only one provider is
         // active (it just renders the one that's left).
-        if !enabled.contains(providerFilter.rawValue),
-           providerFilter != .all {
-            providerFilter = .all  // didSet refreshes dashboard
-        } else {
-            // didSet on providerFilter would have done this for us in
-            // the snap branch; in the no-snap branch we still need to
-            // re-render because composition / forecast filtering changed.
-            refreshDashboard(trigger: "settings")
+        if !resetsProviderFilter {
+            // didSet on providerFilter handled the reset branch. Otherwise
+            // refresh exactly one summary route for the enabled-provider change.
+            refreshVisibleSummaries(trigger: "settings")
         }
-        refreshMenuBar(trigger: "settings")
     }
 
     /// Apply runtime-mutable settings without restarting the app.
@@ -1203,6 +1207,30 @@ final class AppEnvironment {
         Task { await cp.pollOnce(force: force) }
     }
 
+    nonisolated static func summaryRefreshTarget(
+        isDashboardVisible: Bool
+    ) -> SummaryRefreshTarget {
+        isDashboardVisible ? .dashboardAndMenuBar : .menuBar
+    }
+
+    func refreshVisibleSummaries(
+        trigger: String = "internal",
+        parentOperation: DeveloperLogOperation? = nil
+    ) {
+        let isDashboardVisible = NSApp?.windows.contains { window in
+            window.identifier?.rawValue == "dashboard" && window.isVisible
+        } ?? false
+        switch Self.summaryRefreshTarget(isDashboardVisible: isDashboardVisible) {
+        case .menuBar:
+            refreshMenuBar(trigger: trigger, parentOperation: parentOperation)
+        case .dashboardAndMenuBar:
+            refreshDashboard(
+                includeMenuBar: true,
+                trigger: trigger,
+                parentOperation: parentOperation)
+        }
+    }
+
     /// Load the menu-bar snapshot. Always queries both providers + the
     /// Anthropic 5h block, regardless of `providerFilter`. Cheap enough to
     /// run on every popover open / scan / refresh.
@@ -1219,10 +1247,8 @@ final class AppEnvironment {
     ) {
         guard !isLoadingMenuBar else {
             // Coalesce: a refresh is already running. Mark a trailing
-            // re-run so the chained call (typically from
-            // `refreshDashboard` / `runScan` tail) doesn't get silently
-            // dropped — which used to leave `menuBarSnapshot` lagging
-            // one tick behind `dashboardSnapshot`. The trailing call
+            // re-run so independent launch/scan/settings callers don't get
+            // silently dropped. The trailing call
             // can't reuse `precomputedBlocks` (they may be stale by
             // the time it fires) so it'll re-read BillingBlocks.
             menuBarRefreshPending = true
@@ -1236,6 +1262,7 @@ final class AppEnvironment {
             return
         }
         isLoadingMenuBar = true
+        let generation = menuBarRefreshGeneration.advance()
         let op = DeveloperLog.startOperation(
             "menubar.refresh",
             category: "ui",
@@ -1256,93 +1283,163 @@ final class AppEnvironment {
             do {
                 let (db, _) = try self.ensureServices()
                 let snap: MenuBarSnapshot = try await db.pool.read { conn in
-                    let perProvider = try Aggregator.fetchPerProviderStats(db: conn)
                     let blocks = try precomputedBlocks
                         ?? BillingBlocks.loadSnapshot(db: conn, provider: .claude)
-                    return MenuBarSnapshot(
-                        codex: perProvider["codex"] ?? MenuBarSnapshot.empty("codex"),
-                        claude: perProvider["claude"] ?? MenuBarSnapshot.empty("claude"),
-                        anthropicBlocks: blocks)
+                    return try Self.loadMenuBarSnapshot(db: conn, blocks: blocks)
                 }
-                await MainActor.run { self.menuBarSnapshot = snap }
-                DeveloperLog.finishOperation(op)
+                let installed = await MainActor.run {
+                    guard self.menuBarRefreshGeneration.accepts(generation) else {
+                        return false
+                    }
+                    self.menuBarSnapshot = snap
+                    return true
+                }
+                DeveloperLog.finishOperation(
+                    op,
+                    result: installed ? "success" : "superseded")
             } catch {
-                await MainActor.run { self.lastError = String(describing: error) }
-                DeveloperLog.failOperation(op, error: error)
+                let isCurrent = await MainActor.run {
+                    guard self.menuBarRefreshGeneration.accepts(generation) else {
+                        return false
+                    }
+                    self.lastError = String(describing: error)
+                    return true
+                }
+                if isCurrent {
+                    DeveloperLog.failOperation(op, error: error)
+                } else {
+                    DeveloperLog.finishOperation(op, result: "superseded")
+                }
             }
         }
     }
 
     func refreshDashboard(
+        includeMenuBar: Bool = false,
         trigger: String = "internal",
         parentOperation: DeveloperLogOperation? = nil
     ) {
-        guard !isLoadingDashboard else {
+        let inputs = DashboardRefreshInputs(
+            providerFilter: providerFilter,
+            enabledProviders: SettingsStore.snapshot().enabledProviders,
+            includesMenuBar: includeMenuBar)
+        let requiresFreshPass = trigger != "internal"
+        guard dashboardRefreshCoalescer.begin(
+            inputs: inputs,
+            requiresFreshPass: requiresFreshPass
+        ) else {
+            let queued = dashboardRefreshCoalescer.hasPendingRefresh
             DeveloperLog.eventRecord(
                 "dashboard.refresh.skip",
                 category: "ui",
                 operation: parentOperation,
                 trigger: trigger,
-                result: "skipped",
-                fields: ["reason": "already-loading"])
+                result: queued ? "queued" : "skipped",
+                fields: ["reason": queued ? "trailing-refresh" : "duplicate"])
             return
         }
         isLoadingDashboard = true
+        let menuBarGeneration = inputs.includesMenuBar
+            ? menuBarRefreshGeneration.advance()
+            : nil
 
-        let filter = providerFilter
-        let enabledProviders = SettingsStore.snapshot().enabledProviders
         let op = DeveloperLog.startOperation(
             "dashboard.refresh",
             category: "ui",
             trigger: trigger,
             parent: parentOperation,
             fields: [
-                "filter": .string(filter.rawValue),
-                "enabled_providers": .string(enabledProviders.sorted().joined(separator: ","))
+                "filter": .string(inputs.providerFilter.rawValue),
+                "enabled_providers": .string(
+                    inputs.enabledProviders.sorted().joined(separator: ",")),
+                "include_menu_bar": .bool(inputs.includesMenuBar)
             ])
         Task { [weak self, op] in
             guard let self else { return }
-            defer { Task { @MainActor in self.isLoadingDashboard = false } }
+            defer {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isLoadingDashboard = false
+                    if let includeMenuBar = self.dashboardRefreshCoalescer.finish() {
+                        self.refreshDashboard(
+                            includeMenuBar: includeMenuBar,
+                            trigger: "coalesced")
+                    }
+                }
+            }
             do {
                 let (db, _) = try self.ensureServices()
-                let snapshot = try await Aggregator.loadDashboard(
-                    from: db.pool,
-                    provider: filter,
-                    enabledProviders: enabledProviders)
-                // Billing blocks are an Anthropic concept — only meaningful
-                // when the active filter includes Claude data.
-                let includesClaude = filter != .codex
-                    && enabledProviders.contains("claude")
-                let resolvedBlocks: BillingBlocks.Snapshot? = includesClaude
-                    ? try await db.pool.read { conn in
-                        try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
+                let payload = try await db.pool.read { conn in
+                    let snapshot = try Aggregator.loadDashboard(
+                        db: conn,
+                        provider: inputs.providerFilter,
+                        enabledProviders: inputs.enabledProviders)
+                    let includesClaude = inputs.providerFilter != .codex
+                        && inputs.enabledProviders.contains("claude")
+                    let needsBlocks = includesClaude || inputs.includesMenuBar
+                    let allBlocks: BillingBlocks.Snapshot? = needsBlocks
+                        ? try BillingBlocks.loadSnapshot(db: conn, provider: .claude)
+                        : nil
+                    let menuBarSnapshot: MenuBarSnapshot? = if inputs.includesMenuBar,
+                                                               let allBlocks {
+                        try Self.loadMenuBarSnapshot(db: conn, blocks: allBlocks)
+                    } else {
+                        nil
                     }
-                    : nil
-                await MainActor.run {
-                    self.dashboardSnapshot = snapshot
-                    self.billingBlocks = resolvedBlocks
+                    return (
+                        dashboard: snapshot,
+                        dashboardBlocks: includesClaude ? allBlocks : nil,
+                        menuBar: menuBarSnapshot)
                 }
-                // Menu bar is provider-agnostic — refresh alongside the
-                // dashboard so price edits, filter toggles, and settings
-                // changes keep both views in sync.
-                self.refreshMenuBar(
-                    precomputedBlocks: resolvedBlocks,
-                    trigger: "dashboard",
-                    parentOperation: op)
+                let publication = await MainActor.run {
+                    guard !self.dashboardRefreshCoalescer.hasPendingRefresh else {
+                        return (dashboard: false, menuBar: false)
+                    }
+                    self.dashboardSnapshot = payload.dashboard
+                    self.billingBlocks = payload.dashboardBlocks
+                    if let menuBar = payload.menuBar,
+                       let menuBarGeneration,
+                       self.menuBarRefreshGeneration.accepts(menuBarGeneration) {
+                        self.menuBarSnapshot = menuBar
+                        return (dashboard: true, menuBar: true)
+                    }
+                    return (dashboard: true, menuBar: false)
+                }
                 DeveloperLog.finishOperation(
                     op,
                     fields: [
-                        "filter": .string(filter.rawValue),
-                        "has_billing_blocks": .bool(resolvedBlocks != nil)
+                        "filter": .string(inputs.providerFilter.rawValue),
+                        "has_billing_blocks": .bool(payload.dashboardBlocks != nil),
+                        "published_dashboard": .bool(publication.dashboard),
+                        "updated_menu_bar": .bool(publication.menuBar)
                     ])
             } catch {
                 await MainActor.run { self.lastError = String(describing: error) }
                 DeveloperLog.failOperation(
                     op,
                     error: error,
-                    fields: ["filter": .string(filter.rawValue)])
+                    fields: ["filter": .string(inputs.providerFilter.rawValue)])
+                if inputs.includesMenuBar {
+                    // The combined request superseded any older menu read. If
+                    // its heavier Dashboard portion fails, restore the light
+                    // surface independently instead of leaving both stale.
+                    self.refreshMenuBar(
+                        trigger: "dashboard-fallback",
+                        parentOperation: op)
+                }
             }
         }
+    }
+
+    private nonisolated static func loadMenuBarSnapshot(
+        db: Database,
+        blocks: BillingBlocks.Snapshot
+    ) throws -> MenuBarSnapshot {
+        let perProvider = try Aggregator.fetchPerProviderStats(db: db)
+        return MenuBarSnapshot(
+            codex: perProvider["codex"] ?? MenuBarSnapshot.empty("codex"),
+            claude: perProvider["claude"] ?? MenuBarSnapshot.empty("claude"),
+            anthropicBlocks: blocks)
     }
 
     /// Bring a just-opened window (Dashboard / Settings / Onboarding)

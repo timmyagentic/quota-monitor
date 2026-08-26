@@ -126,6 +126,47 @@ struct AggregatorDSTTests {
         #expect(abs(total - 7.00) < 0.0001, "March sits outside the 3-month window")
     }
 
+    @Test("Dashboard recent rollup keeps near-midnight events in their local month")
+    func dashboardRecentRollupUsesLocalMonthAcrossDST() throws {
+        let cal = nyCalendar()
+        let db = try makeDatabase()
+        let now = try #require(cal.date(from: DateComponents(
+            year: 2025, month: 6, day: 20, hour: 12)))
+        // June 1 03:30 UTC is still May 31 at 23:30 EDT.
+        try seed(
+            in: db,
+            sessionId: "may-boundary",
+            timestamp: "2025-06-01T03:30:00Z",
+            tokens: 120,
+            valueUSD: 2)
+        try seed(
+            in: db,
+            sessionId: "june",
+            timestamp: "2025-06-01T04:30:00Z",
+            tokens: 80,
+            valueUSD: 1)
+
+        let snapshot = try db.pool.read { connection in
+            try Aggregator.loadDashboard(
+                db: connection,
+                now: now,
+                calendar: cal)
+        }
+        let may = try #require(snapshot.monthly.first {
+            cal.component(.year, from: $0.month) == 2025
+                && cal.component(.month, from: $0.month) == 5
+        })
+        let june = try #require(snapshot.monthly.first {
+            cal.component(.year, from: $0.month) == 2025
+                && cal.component(.month, from: $0.month) == 6
+        })
+
+        #expect(may.tokens == 120)
+        #expect(may.sessionCount == 1)
+        #expect(june.tokens == 80)
+        #expect(june.sessionCount == 1)
+    }
+
     // MARK: - fetchDayDetail
 
     @Test("fetchDayDetail scopes to the queried day's own local-day range across DST")
