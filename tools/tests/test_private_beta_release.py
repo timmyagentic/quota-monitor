@@ -205,6 +205,18 @@ class PrivateBetaReleaseTests(unittest.TestCase):
         self.assertNotIn("github.com", item)
         self.assertNotIn("raw.githubusercontent.com", item)
 
+        invalid_build = self.public_appcast().replace(
+            "<sparkle:version>10000039000</sparkle:version>",
+            "<sparkle:version>not-a-build</sparkle:version>",
+        )
+        with self.assertRaisesRegex(RuntimeError, "numeric build"):
+            MODULE.private_stable_item(
+                invalid_build,
+                version="1.0.3",
+                base_url="https://example.test/api/private-beta",
+                artifact_name="QuotaMonitor-1.0.3.dmg",
+            )
+
     def test_private_appcast_keeps_beta_first_and_latest_stable(self):
         stable_item = MODULE.private_stable_item(
             self.public_appcast(),

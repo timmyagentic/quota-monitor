@@ -158,7 +158,8 @@ def private_stable_item(
     raw_length = enclosure.get("length", "").strip()
     if not signature or not raw_length.isdigit() or int(raw_length) <= 0:
         raise RuntimeError("public Stable item has invalid signature metadata")
-    if item.findtext(SPARKLE_VERSION) is None:
+    raw_build = (item.findtext(SPARKLE_VERSION) or "").strip()
+    if not raw_build.isdigit() or int(raw_build) <= 0:
         raise RuntimeError("public Stable item has no numeric build")
 
     enclosure.set(
