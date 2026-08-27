@@ -50,7 +50,6 @@ struct DashboardView: View {
             ActivitySection(
                 scope: $env.activityDataScope,
                 indexed: indexedActivityContent(for: snapshot),
-                indexedIsLoading: env.isLoadingDashboardActivity,
                 account: accountActivityContent(for: snapshot),
                 accountState: env.codexAccountUsageState,
                 allowsAccountScope: env.providerFilter == .codex)

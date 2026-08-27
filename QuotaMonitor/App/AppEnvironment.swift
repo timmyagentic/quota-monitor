@@ -1255,7 +1255,6 @@ final class AppEnvironment {
         }
         dashboardSnapshotCache.restore(envelope)
         dashboardSnapshot = envelope.snapshot
-        billingBlocks = envelope.billingBlocks
         displayedDashboardCacheKey = key
         DeveloperLog.eventRecord(
             "dashboard.cache.restore",
@@ -1280,7 +1279,6 @@ final class AppEnvironment {
             maxAge: Self.dashboardSnapshotMaxAge)
         if let snapshot = decision.snapshot {
             dashboardSnapshot = snapshot
-            billingBlocks = decision.billingBlocks
             displayedDashboardCacheKey = key
         } else if displayedDashboardCacheKey != key {
             // Never render totals from a different provider/time-zone key
@@ -1298,13 +1296,7 @@ final class AppEnvironment {
                 "cache_reason": .string(decision.reason.rawValue),
                 "has_snapshot": .bool(decision.snapshot != nil)
             ])
-        let activityWasLoading = isLoadingDashboardActivity
-        if decision.reason == .incompleteActivity {
-            isLoadingDashboardActivity = true
-        }
-        guard DashboardSnapshotMemoryCache.shouldStartRefresh(
-            for: decision,
-            activityWasLoading: activityWasLoading) else { return }
+        guard decision.needsRefresh else { return }
         refreshDashboard(trigger: "mount")
     }
 
@@ -1318,27 +1310,21 @@ final class AppEnvironment {
         _ snapshot: DashboardSnapshot,
         key: DashboardSnapshotCacheKey,
         generation: Int,
-        generatedAt: Date,
-        activityComplete: Bool = true
+        generatedAt: Date
     ) {
         dashboardSnapshotCache.store(
             snapshot,
             for: key,
             generation: generation,
-            generatedAt: generatedAt,
-            activityComplete: activityComplete,
-            billingBlocks: billingBlocks)
+            generatedAt: generatedAt)
         if key == currentDashboardCacheKey() {
             dashboardSnapshot = snapshot
             displayedDashboardCacheKey = key
         }
-        guard DashboardSnapshotPersistence.shouldPersist(
-            activityComplete: activityComplete) else { return }
         let envelope = DashboardSnapshotCacheEnvelope(
             key: key,
             generatedAt: generatedAt,
-            snapshot: snapshot,
-            billingBlocks: billingBlocks)
+            snapshot: snapshot)
         let saveGeneration = dashboardSnapshotSaveGeneration.advance()
         Task { [dashboardSnapshotPersistence] in
             let saved = await dashboardSnapshotPersistence.save(
@@ -1483,8 +1469,7 @@ final class AppEnvironment {
         isLoadingDashboard = true
         let refreshGeneration = dashboardRefreshGeneration.advance()
         let activityGeneration = dashboardActivityRefreshGeneration.advance()
-        isLoadingDashboardActivity = dashboardSnapshotCache
-            .isActivityIncomplete(for: cacheKey)
+        isLoadingDashboardActivity = false
         let menuBarGeneration = inputs.includesMenuBar
             ? menuBarRefreshGeneration.advance()
             : nil
@@ -1554,14 +1539,12 @@ final class AppEnvironment {
                     let snapshot = DashboardSnapshot(
                         primary: payload.primary,
                         activity: existingActivity)
-                    self.isLoadingDashboardActivity = true
-                    self.billingBlocks = payload.dashboardBlocks
                     self.storeDashboardSnapshot(
                         snapshot,
                         key: cacheKey,
                         generation: readModelGeneration,
-                        generatedAt: generatedAt,
-                        activityComplete: false)
+                        generatedAt: generatedAt)
+                    self.billingBlocks = payload.dashboardBlocks
                     if let menuBar = payload.menuBar,
                        let menuBarGeneration,
                        self.menuBarRefreshGeneration.accepts(menuBarGeneration) {
@@ -1590,12 +1573,7 @@ final class AppEnvironment {
                     }
                 }
             } catch {
-                await MainActor.run {
-                    if self.dashboardRefreshGeneration.accepts(refreshGeneration) {
-                        self.isLoadingDashboardActivity = false
-                    }
-                    self.lastError = String(describing: error)
-                }
+                await MainActor.run { self.lastError = String(describing: error) }
                 DeveloperLog.failOperation(
                     op,
                     error: error,
@@ -1672,11 +1650,7 @@ final class AppEnvironment {
                         refreshGeneration)
                 }
                 if isCurrent {
-                    await MainActor.run {
-                        self.dashboardSnapshotCache.markActivityIncomplete(
-                            for: cacheKey)
-                        self.lastError = String(describing: error)
-                    }
+                    await MainActor.run { self.lastError = String(describing: error) }
                     DeveloperLog.failOperation(op, error: error)
                 } else {
                     DeveloperLog.finishOperation(op, result: "superseded")

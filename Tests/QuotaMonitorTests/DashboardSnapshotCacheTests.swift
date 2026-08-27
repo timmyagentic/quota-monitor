@@ -46,26 +46,6 @@ struct DashboardSnapshotCacheTests {
         #expect(decision.reason == .generationChanged)
     }
 
-    @Test("failed Activity keeps the snapshot visible but requires revalidation")
-    func incompleteActivityStaysVisibleAndRetries() throws {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let key = cacheKey()
-        let snapshot = sampleSnapshot(tokens: 100)
-        var cache = DashboardSnapshotMemoryCache()
-        cache.store(snapshot, for: key, generation: 7, generatedAt: now)
-
-        cache.markActivityIncomplete(for: key)
-        let decision = cache.decision(
-            for: key,
-            currentGeneration: 7,
-            now: now.addingTimeInterval(30),
-            maxAge: 300)
-
-        #expect(decision.snapshot == snapshot)
-        #expect(decision.needsRefresh)
-        #expect(decision.reason == .incompleteActivity)
-    }
-
     @Test("expired and restored snapshots display before revalidation")
     func expiredAndRestoredSnapshotsStayVisible() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -123,94 +103,16 @@ struct DashboardSnapshotCacheTests {
         ).snapshot == nil)
     }
 
-    @Test("in-memory cache restores matching billing blocks per key")
-    func memoryCacheKeepsBillingBlocksPerKey() throws {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let allKey = cacheKey()
-        let codexKey = DashboardSnapshotCacheKey(
-            providerFilter: .codex,
-            enabledProviders: ["codex", "claude"],
-            timeZoneIdentifier: "Asia/Shanghai")
-        let blocks = BillingBlocks.Snapshot(
-            currentBlock: nil,
-            burnRate: nil,
-            projection: nil,
-            recentBlocks: [])
-        var cache = DashboardSnapshotMemoryCache()
-        cache.store(
-            sampleSnapshot(tokens: 100),
-            for: allKey,
-            generation: 1,
-            generatedAt: now,
-            billingBlocks: blocks)
-        cache.store(
-            sampleSnapshot(tokens: 50),
-            for: codexKey,
-            generation: 1,
-            generatedAt: now,
-            billingBlocks: nil)
-
-        let restored = cache.decision(
-            for: allKey,
-            currentGeneration: 1,
-            now: now,
-            maxAge: 300)
-
-        #expect(restored.billingBlocks == blocks)
-        #expect(cache.decision(
-            for: codexKey,
-            currentGeneration: 1,
-            now: now,
-            maxAge: 300
-        ).billingBlocks == nil)
-    }
-
-    @Test("cache exposes incomplete Activity state while retry is pending")
-    func cacheExposesIncompleteActivity() throws {
-        let key = cacheKey()
-        var cache = DashboardSnapshotMemoryCache()
-        cache.store(
-            sampleSnapshot(tokens: 100),
-            for: key,
-            generation: 1,
-            generatedAt: Date(),
-            activityComplete: false)
-
-        #expect(cache.isActivityIncomplete(for: key))
-    }
-
-    @Test("incomplete Activity retries once but not while a retry is running")
-    func incompleteActivityRetryPolicy() throws {
-        let decision = DashboardSnapshotCacheDecision(
-            snapshot: sampleSnapshot(tokens: 100),
-            billingBlocks: nil,
-            needsRefresh: true,
-            reason: .incompleteActivity)
-
-        #expect(DashboardSnapshotMemoryCache.shouldStartRefresh(
-            for: decision,
-            activityWasLoading: false))
-        #expect(!DashboardSnapshotMemoryCache.shouldStartRefresh(
-            for: decision,
-            activityWasLoading: true))
-    }
-
     @Test("persistent last-good snapshot round-trips atomically with private permissions")
     func persistentSnapshotRoundTrips() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("dashboard-cache-\(UUID().uuidString)", isDirectory: true)
         let url = dir.appendingPathComponent("snapshot.json")
         let store = DashboardSnapshotStore(fileURL: url)
-        let billingBlocks = BillingBlocks.Snapshot(
-            currentBlock: nil,
-            burnRate: nil,
-            projection: nil,
-            recentBlocks: [])
         let envelope = DashboardSnapshotCacheEnvelope(
             key: cacheKey(),
             generatedAt: Date(timeIntervalSince1970: 1_800_000_000),
-            snapshot: sampleSnapshot(tokens: 321),
-            billingBlocks: billingBlocks)
+            snapshot: sampleSnapshot(tokens: 321))
 
         try store.save(envelope)
         let loaded = try #require(store.load())
@@ -218,7 +120,6 @@ struct DashboardSnapshotCacheTests {
         let permissions = try #require(attributes[.posixPermissions] as? NSNumber)
 
         #expect(loaded == envelope)
-        #expect(loaded.billingBlocks == billingBlocks)
         #expect(permissions.intValue & 0o777 == 0o600)
     }
 
@@ -243,14 +144,6 @@ struct DashboardSnapshotCacheTests {
         let data = try JSONEncoder().encode(unsupported)
         try data.write(to: url, options: .atomic)
         #expect(store.load() == nil)
-    }
-
-    @Test("only Activity-complete snapshots are eligible for persistence")
-    func persistenceRequiresCompleteActivity() {
-        #expect(!DashboardSnapshotPersistence.shouldPersist(
-            activityComplete: false))
-        #expect(DashboardSnapshotPersistence.shouldPersist(
-            activityComplete: true))
     }
 
     @Test("primary publication can preserve and later replace Activity")

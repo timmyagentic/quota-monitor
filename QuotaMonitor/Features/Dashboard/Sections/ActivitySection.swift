@@ -28,7 +28,6 @@ struct ActivitySection: View {
     @Environment(SettingsStore.self) private var settings
     @Binding var scope: ActivityDataScope
     let indexed: Content
-    let indexedIsLoading: Bool
     let account: Content?
     let accountState: CodexAccountUsageState
     let allowsAccountScope: Bool
@@ -67,9 +66,7 @@ struct ActivitySection: View {
                 sourceSummary
             }
 
-            if effectiveScope == .indexed && indexedIsLoading && !indexed.hasData {
-                indexedPlaceholder
-            } else if let selectedContent {
+            if let selectedContent {
                 content(selectedContent)
                     .id(effectiveScope)
             } else if effectiveScope == .account {
@@ -136,11 +133,7 @@ struct ActivitySection: View {
     }
 
     private var sourceSummaryText: String {
-        guard effectiveScope == .account else {
-            return indexedIsLoading && !indexed.hasData
-                ? L10n.activityLoadingIndexed
-                : indexed.summary
-        }
+        guard effectiveScope == .account else { return indexed.summary }
         if accountState.isStale {
             return "\(L10n.activityShowingCachedData) · \(account?.summary ?? "")"
         }
@@ -158,19 +151,6 @@ struct ActivitySection: View {
     }
 
     // MARK: - content
-
-    private var indexedPlaceholder: some View {
-        VStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel(L10n.activityLoadingIndexed)
-            Text(L10n.activityLoadingIndexed)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, minHeight: 176)
-        .accessibilityElement(children: .combine)
-    }
 
     private func content(_ content: Content) -> some View {
         VStack(alignment: .leading, spacing: 12) {
