@@ -52,23 +52,21 @@ struct MainWindowView: View {
                 }
             }
 
-            // Reload — right. Bumps `reloadToken` so the inner view's
-            // `.id(...)` changes, which re-mounts whatever tab the user
-            // is on and re-fires its `.task`:
-            //   - Dashboard → refreshDashboard()
-            //   - History / Sessions → reset their pagination state
-            // SwiftUI cancels the prior `.task` on id change, so spam-
-            // clicking is safe; no explicit disabled gate needed.
+            // Reload — right. Dashboard shares the menu bar's complete manual
+            // refresh. History/Sessions bump `reloadToken` to reset pagination;
+            // SwiftUI cancels the prior task when that id changes.
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     if tab == .dashboard {
-                        env.refreshCodexAccountUsage(trigger: "manual")
+                        env.refreshAll(throttle: false, trigger: "manual")
+                    } else {
+                        reloadToken &+= 1
                     }
-                    reloadToken &+= 1
                 } label: {
                     Label(L10n.reload, systemImage: "arrow.clockwise")
                 }
                 .help(L10n.reload)
+                .disabled(tab == .dashboard && env.isScanning)
             }
 
             ToolbarItem(placement: .primaryAction) {

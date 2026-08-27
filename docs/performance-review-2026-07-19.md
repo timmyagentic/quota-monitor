@@ -20,19 +20,22 @@ more for every scan, poll, and dashboard open than a fresh one, forever.
 | Claude file watcher (`~/.claude` writes) | ~every 5 s during an active Claude session | Claude-scoped `runScan()` |
 | Popover open | throttled to 20 s (scan) / 30 s (rate limits) | full `runScan()` + refreshes |
 | Manual Refresh button | unthrottled | full `runScan()` + refreshes |
+| Dashboard Reload button | unthrottled | the same full `refreshAll()` path |
 | Codex live poller | ~300 s | `codex app-server` spawn + JSON-RPC |
 | Claude usage poller | ~600 s | `/api/oauth/usage` GET |
-| Dashboard open / price edit / Fast-Mode toggle / provider-filter change | on demand | `refreshDashboard()` → `Aggregator.loadDashboard` |
+| Dashboard open | on demand | restore a compatible last-good snapshot synchronously; refresh only when missing, dirty, or older than 5 min |
+| Price edit / Fast-Mode toggle / provider-filter change | on demand | generation-guarded primary refresh, followed by independent Activity refresh |
 
 "Every scan" below therefore means *every ~5 seconds* while Claude Code is in use, and every
 menu-bar open otherwise.
 
 ---
 
-## Delivery status — refreshed 2026-08-09
+## Delivery status — refreshed 2026-08-26
 
-Status was checked against `origin/main` at `0aadea5`. The original 20 findings
-are **not all complete**: **10 are delivered, 5 are partially delivered, and 5
+Status was checked against the refresh-query candidate based on `origin/main` at
+`6069983`. The original 20 findings
+are **not all complete**: **10 are delivered, 6 are partially delivered, and 4
 remain open**. “Delivered” means the referenced merge commit is an ancestor of
 that exact main head. “Partial” means a material part shipped, but the original
 cost described below still exists.
@@ -40,7 +43,7 @@ cost described below still exists.
 | Finding | Status | Current evidence |
 | --- | --- | --- |
 | P0.1 full-history repricing | Delivered | PR #135 scopes incremental pricing to changed events. |
-| P0.2 repeated Dashboard scans | Partial | PR #144 removes the redundant 14-day daily scan by deriving it from the 365-day result. `loadDashboard` still performs independent overview, daily, two breakdown, monthly, three model-share, provider-share, and all-time activity reads. |
+| P0.2 repeated Dashboard scans | Partial | One recent rollup derives all Trends windows, 12 monthly buckets, current/prior model shares, and 30-day provider shares. Compatible last-good snapshots make warm/relaunch presentation immediate, and the primary payload publishes before Activity. The Activity raw read, overview, and lifetime model shares remain independent background costs. |
 | P0.3 full Codex rollout reparsing | Delivered | PR #121 adds validated incremental checkpoints and tail parsing. |
 | P0.4 broad session-tree and metadata walks | Partial | PR #133 gates tree reconciliation on imported sessions. PR #169 fingerprints Codex metadata sources, reuses unchanged metadata, and proactively repairs only the latest 7 days; changed-session tree reconciliation is still broad, while older inactive metadata remains best-effort. |
 | P1.1 synchronous login-shell discovery | Partial | PR #124 prefers the CLI bundled with ChatGPT before shell probing, but the remaining fallback path is still synchronous. |
@@ -58,10 +61,16 @@ cost described below still exists.
 | P2.8 repeated Trends series derivation | Delivered | PR #168 derives one cached series for each distinct input and passes it to chart, selection, and legend consumers. |
 | P2.9 per-render formatter allocation | Delivered | PR #165 routes the affected rows through a shared formatter cache keyed by language, time zone, and style. |
 | P2.10 model-share index coverage | Open | Current usage-event indexes still omit `model_id` from the timestamp-leading covering indexes. |
-| P2.11 small read, network, and logging costs | Open | The two Dashboard/BillingBlocks reads, monthly session sets, separate reset-credit request, developer-log file churn, and other small items remain. |
+| P2.11 small read, network, and logging costs | Partial | Dashboard, BillingBlocks, and its menu summary now share one read transaction; scan/settings no longer start a second menu query. Separate reset-credit networking, developer-log file churn, and other small items remain. |
 
 ### Delta since the earlier 2026-08-09 refresh
 
+- The current candidate consolidates recent Dashboard rows and visible summary refreshes,
+  moving P2.11 from Open to Partial while keeping P0.2 Partial until Activity's all-history
+  path is measured and narrowed.
+- Dashboard presentation is now stale-while-revalidate: unchanged warm opens perform no read,
+  relaunches restore a schema/key/time-zone-checked atomic snapshot, and a dirty snapshot stays
+  visible while the primary payload refreshes. Activity runs only after that payload publishes.
 - `main` advanced by 6 commits from `797237d` to `0aadea5`.
 - PRs #165, #166, #167, and #168 move P2.9, P1.5, P2.7, and P2.8 from Open to
   Delivered with focused regression coverage for each cache boundary.
@@ -96,23 +105,23 @@ cost described below still exists.
 ### P0.2 `loadDashboard` performs many independent full-window scans, including all-time reads
 
 - [ ] Fixed
-- **Current evidence:** `Core/Analytics/AggregatorReports.swift:9-71` sequentially runs an
-  overview read, a 365-day daily read, two 365-day breakdown reads, a 12-month read, three
-  model-share reads, a 30-day provider-share read, and `fetchActivity`. The 14-day series is
-  now derived from the 365-day result (PR #144), but the remaining reads are independent.
-  `Core/Analytics/AggregatorActivity.swift:48-105` still loads every matching event for the
-  lifetime/activity calculation.
-- **Problem:** the daily and breakdown passes repeatedly materialize and parse overlapping
-  rows. The overview, lifetime model share, and activity paths also revisit all matching
-  history; activity brings the full raw result into Swift to compute a scalar lifetime total,
-  peak day, streaks, and the heatmap.
-- **Impact:** work still grows with total history and the same 365-day window is decoded three
-  times before monthly/share/activity work begins. The refresh is triggered on Dashboard open,
-  price edits, provider-filter changes, and scan completion while the Dashboard is visible.
-- **Fix direction:** treat this as a measured data-path project. Fetch the 365-day event window
-  once and derive daily/breakdown/monthly views without changing local-calendar/DST semantics.
-  Move only safe lifetime aggregates into SQL, fetch distinct active-day markers for streaks,
-  and add large-history regression fixtures before combining queries.
+- **Current evidence:** `fetchRecentUsageRollup` performs one conservatively bounded raw read and
+  derives every exact Trends window, monthly distinct-session bucket, current/prior model share,
+  and recent provider share with one parsed timestamp per event. SQL trace tests pin that read to
+  one statement. On the same 140,431-event real-data shadow, a warmed baseline Dashboard read plus
+  its chained menu refresh took 3,564 ms (3,498 + 66); the combined candidate took 3,391 ms, about
+  5% faster. `fetchActivity` remains the one intentional all-history raw read and dominates the
+  remaining background cost. The visible path now persists a last-good snapshot and splits the
+  primary payload from Activity, so a warm/relaunch presentation is no longer gated by either
+  query; SQL trace coverage also proves `loadDashboardPrimary` issues no Activity raw read.
+- **Remaining problem:** overview and lifetime model shares still revisit all matching history,
+  and Activity brings the full raw result into Swift for lifetime total, peak day, streaks, and
+  the heatmap.
+- **Impact:** repeated recent-window parsing is removed and Activity no longer blocks visible
+  Trends, but that background calculation still grows with total history whenever revalidation
+  is genuinely required.
+- **Next direction:** measure a rebuildable daily summary or narrower all-time aggregate path
+  before changing Activity's Calendar/DST semantics.
 
 ### P0.3 Codex re-parses the whole rollout file for any grown file
 
@@ -263,15 +272,14 @@ cost described below still exists.
   table lookups. The 30-day windows are bounded; lifetime is not. Fix only after `EXPLAIN QUERY
   PLAN` and representative measurement: consider a covering index beginning with timestamp
   (and provider for filtered views) that includes `model_id`, value, and tokens.
-- [ ] **P2.11 Small singles.** `refreshDashboard` opens two read transactions
-  (`AppEnvironment.swift:1320-1334`; fold `BillingBlocks` into `loadDashboard` or return both from
-  one pool read); `fetchMonthly` retains per-month `Set<String>` values for every session id in
-  the 12-month window; `sessions.parent_session_id`/`provider` remain unindexed (small table,
-  only act if it grows); Codex reset credits still use a separate GET from the account/rate-limit
-  pollers; `DeveloperFileLogger.append` still stats and open/seek/closes per record (developer
-  mode only); launch intentionally requests a menu snapshot before the scan tail requests
-  another, relying on coalescing; Claude cross-day bucketing still calls shared
-  `ISO8601DateFormatter` parsing repeatedly in message loops.
+- [~] **P2.11 Small singles.** Dashboard, BillingBlocks, and the visible menu summary now share
+  one database read snapshot; scan/settings select exactly one summary route, and overlapping
+  menu/Dashboard reads use generation gates so stale results cannot win. Month-level session
+  sets remain bounded to 12 months; `sessions.parent_session_id`/`provider` remain unindexed
+  (small table, only act if it grows); Codex reset credits still use a separate GET from the
+  account/rate-limit pollers; `DeveloperFileLogger.append` still stats and open/seek/closes per
+  record (developer mode only); the launch-time early menu snapshot remains intentional; Claude
+  cross-day bucketing still calls shared `ISO8601DateFormatter` parsing repeatedly in loops.
 
 ## Verified healthy (checked; do not "fix")
 
@@ -304,9 +312,9 @@ cost described below still exists.
 1. **Finish the bounded scan-progress win** — complete P1.2 with publication coalescing and a
    child observation boundary. PR #155 already removed the routine-render risk, so the
    remaining change can stay narrow and measurable.
-2. **Measure before consolidating Dashboard reads** — benchmark P0.2 with a large, DST-spanning
-   fixture; then combine compatible 365-day passes and fold P2.11's BillingBlocks read into the
-   same transaction without changing provider/model semantics.
+2. **Measure Activity's remaining all-history read** — compatible recent passes and the
+   BillingBlocks/menu summary are now consolidated. Keep any next step rebuildable and prove
+   Calendar/DST behavior against a large fixture before changing the all-time path.
 3. **Narrow the remaining broad scan work** — keep P0.4's accepted 7-day/best-effort metadata
    policy, scope tree reconciliation to affected sessions, and move P1.1 fallback shell
    discovery off the main actor.

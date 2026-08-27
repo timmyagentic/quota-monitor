@@ -20,6 +20,14 @@ extension AppEnvironment {
         trigger: String = "manual",
         parentOperation: DeveloperLogOperation? = nil
     ) {
+        var scheduledScan = false
+        defer {
+            if !scheduledScan {
+                refreshSummariesAfterSkippedScan(
+                    trigger: trigger,
+                    parentOperation: parentOperation)
+            }
+        }
         guard !isScanning else {
             DeveloperLog.eventRecord(
                 "scan.run.skip",
@@ -93,6 +101,7 @@ extension AppEnvironment {
             return
         }
         isScanning = true
+        scheduledScan = true
         lastError = nil
         scanPresentation = Self.scanPresentation(forTrigger: trigger)
         let scanRunID = beginScanProgress()
@@ -185,6 +194,7 @@ extension AppEnvironment {
                     self.lastScanReport = merged
                     if merged.didChangeReadModel {
                         self.sessionsDataGeneration &+= 1
+                        self.markDashboardReadModelChanged()
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
                     // A resolved-but-unopenable App Store bookmark imported
@@ -231,7 +241,10 @@ extension AppEnvironment {
                             parentOperation: op)
                     }
                     if decision.refreshDashboard {
-                        self.refreshDashboard(trigger: "scan", parentOperation: op)
+                        self.refreshDashboard(
+                            includeMenuBar: true,
+                            trigger: "scan",
+                            parentOperation: op)
                     }
                 }
             } catch {
@@ -240,6 +253,11 @@ extension AppEnvironment {
                     op,
                     error: error,
                     fields: ["scan_run_id": .string(scanRunID.uuidString)])
+                await MainActor.run {
+                    self.refreshSummariesAfterSkippedScan(
+                        trigger: trigger,
+                        parentOperation: op)
+                }
             }
         }
     }
@@ -350,14 +368,31 @@ extension AppEnvironment {
         hasMenuBarSnapshot: Bool,
         isDashboardVisible: Bool
     ) -> ScanRefreshDecision {
-        let refreshWithoutImportChanges = trigger == "manual"
-            || trigger == "popover"
-            || trigger == "qa"
+        let refreshWithoutImportChanges = scanTriggerRefreshesWithoutChanges(trigger)
         let shouldRefreshSummaries = didChangeReadModel
             || refreshWithoutImportChanges
+        let needsInitialMenuSnapshot = !hasMenuBarSnapshot
         return ScanRefreshDecision(
-            refreshMenuBar: shouldRefreshSummaries || !hasMenuBarSnapshot,
-            refreshDashboard: shouldRefreshSummaries && isDashboardVisible)
+            refreshMenuBar: !isDashboardVisible
+                && (shouldRefreshSummaries || needsInitialMenuSnapshot),
+            refreshDashboard: isDashboardVisible
+                && (shouldRefreshSummaries || needsInitialMenuSnapshot))
+    }
+
+    nonisolated static func scanTriggerRefreshesWithoutChanges(
+        _ trigger: String
+    ) -> Bool {
+        trigger == "manual" || trigger == "popover" || trigger == "qa"
+    }
+
+    private func refreshSummariesAfterSkippedScan(
+        trigger: String,
+        parentOperation: DeveloperLogOperation?
+    ) {
+        guard Self.scanTriggerRefreshesWithoutChanges(trigger) else { return }
+        refreshVisibleSummaries(
+            trigger: "scan-fallback",
+            parentOperation: parentOperation)
     }
 
     /// Pure App Store scan-scope decisions, extracted so they can be unit-tested

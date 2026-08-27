@@ -92,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             codexQuotaOverlayController = overlayController
             overlayController.start()
         }
+        env.restoreCachedDashboardSnapshot()
         env.refreshAll(throttle: false, trigger: "launch")
         // Keep one launch-time menu snapshot request even when the initial
         // history scan is a no-op. DashboardView loads its heavier snapshot

@@ -1,8 +1,19 @@
+import Foundation
 import Testing
 @testable import QuotaMonitor
 
 @Suite("Post-scan refresh decisions")
 struct ScanRefreshDecisionTests {
+
+    @Test("only explicit scan triggers request no-change summary fallbacks")
+    func explicitScanTriggersRequestFallbacks() {
+        for trigger in ["manual", "popover", "qa"] {
+            #expect(AppEnvironment.scanTriggerRefreshesWithoutChanges(trigger))
+        }
+        for trigger in ["launch", "onboarding", "claude-file-watch"] {
+            #expect(!AppEnvironment.scanTriggerRefreshesWithoutChanges(trigger))
+        }
+    }
 
     @Test("Background no-op scan keeps populated summaries untouched")
     func backgroundNoOpScanSkipsSummaryRefreshes() {
@@ -43,7 +54,20 @@ struct ScanRefreshDecisionTests {
             refreshDashboard: false))
     }
 
-    @Test("Explicit no-op refresh recomputes time-dependent summaries")
+    @Test("Visible Dashboard fills a missing first menu snapshot through one route")
+    func visibleDashboardFillsMissingMenuSnapshot() {
+        let decision = AppEnvironment.scanRefreshDecision(
+            didChangeReadModel: false,
+            trigger: "launch",
+            hasMenuBarSnapshot: false,
+            isDashboardVisible: true)
+
+        #expect(decision == ScanRefreshDecision(
+            refreshMenuBar: false,
+            refreshDashboard: true))
+    }
+
+    @Test("Explicit no-op refresh chooses one visible Dashboard summary path")
     func explicitNoOpRefreshesSummaries() {
         for trigger in ["manual", "popover", "qa"] {
             let decision = AppEnvironment.scanRefreshDecision(
@@ -53,7 +77,7 @@ struct ScanRefreshDecisionTests {
                 isDashboardVisible: true)
 
             #expect(decision == ScanRefreshDecision(
-                refreshMenuBar: true,
+                refreshMenuBar: false,
                 refreshDashboard: true))
         }
     }
@@ -71,7 +95,16 @@ struct ScanRefreshDecisionTests {
             refreshDashboard: false))
     }
 
-    @Test("Read-model changes refresh both visible summary surfaces")
+    @Test("Committed scan changes invalidate the last-good Dashboard generation")
+    func changedScanMarksDashboardCacheDirty() throws {
+        let source = try sourceFile(named: "QuotaMonitor/App/ScanController.swift")
+        let changedBlock = try #require(source.range(of: "if merged.didChangeReadModel {"))
+        let tail = source[changedBlock.lowerBound...]
+
+        #expect(tail.prefix(220).contains("self.markDashboardReadModelChanged()"))
+    }
+
+    @Test("Read-model changes choose one visible Dashboard summary path")
     func changedScanRefreshesVisibleDashboard() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: true,
@@ -80,7 +113,7 @@ struct ScanRefreshDecisionTests {
             isDashboardVisible: true)
 
         #expect(decision == ScanRefreshDecision(
-            refreshMenuBar: true,
+            refreshMenuBar: false,
             refreshDashboard: true))
     }
 
@@ -96,5 +129,17 @@ struct ScanRefreshDecisionTests {
             errors: [])
 
         #expect(report.didChangeReadModel)
+    }
+
+    private func sourceFile(named relativePath: String) throws -> String {
+        var url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        while url.path != "/" {
+            let candidate = url.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return try String(contentsOf: candidate, encoding: .utf8)
+            }
+            url.deleteLastPathComponent()
+        }
+        throw CocoaError(.fileNoSuchFile)
     }
 }

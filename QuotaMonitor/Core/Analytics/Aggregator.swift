@@ -15,7 +15,7 @@ import GRDB
 
 // MARK: - Types
 
-struct OverviewStats: Sendable, Equatable {
+struct OverviewStats: Sendable, Equatable, Codable {
     let totalValueUSD: Double
     let totalTokens: Int64
     let totalSessions: Int
@@ -24,7 +24,7 @@ struct OverviewStats: Sendable, Equatable {
     let lastEventAt: String?
 }
 
-struct DailyPoint: Sendable, Identifiable, Equatable {
+struct DailyPoint: Sendable, Identifiable, Equatable, Codable {
     let date: Date
     var id: Date { date }
     let valueUSD: Double
@@ -62,7 +62,7 @@ enum RollingTrendWindow: Int, CaseIterable, Sendable, Hashable {
     }
 }
 
-struct DailyBreakdownPoint: Sendable, Identifiable, Equatable {
+struct DailyBreakdownPoint: Sendable, Identifiable, Equatable, Codable {
     let date: Date
     let provider: String
     let key: String
@@ -75,13 +75,13 @@ struct DailyBreakdownPoint: Sendable, Identifiable, Equatable {
     }
 }
 
-struct TrendWindowSnapshot: Sendable, Equatable {
+struct TrendWindowSnapshot: Sendable, Equatable, Codable {
     let daily: [DailyPoint]
     let providerBreakdown: [DailyBreakdownPoint]
     let modelBreakdown: [DailyBreakdownPoint]
 }
 
-struct DashboardTrendData: Sendable, Equatable {
+struct DashboardTrendData: Sendable, Equatable, Codable {
     let last7Days: TrendWindowSnapshot
     let last30Days: TrendWindowSnapshot
     let last90Days: TrendWindowSnapshot
@@ -103,7 +103,7 @@ struct DashboardTrendData: Sendable, Equatable {
 /// Mirrors ccusage's `monthly` report (`monthly.ts`) and pacer's
 /// `subscription_month` window — but our scope is just visualization,
 /// no subscription anchoring.
-struct MonthlyPoint: Sendable, Identifiable, Equatable {
+struct MonthlyPoint: Sendable, Identifiable, Equatable, Codable {
     let month: Date
     var id: Date { month }
     let valueUSD: Double
@@ -111,7 +111,7 @@ struct MonthlyPoint: Sendable, Identifiable, Equatable {
     let sessionCount: Int
 }
 
-struct ModelShare: Sendable, Identifiable, Equatable {
+struct ModelShare: Sendable, Identifiable, Equatable, Codable {
     let modelId: String
     let displayName: String
     var id: String { modelId }
@@ -120,7 +120,7 @@ struct ModelShare: Sendable, Identifiable, Equatable {
     let eventCount: Int
 }
 
-struct DashboardSnapshot: Sendable, Equatable {
+struct DashboardPrimarySnapshot: Sendable, Equatable, Codable {
     let overview: OverviewStats
     let daily: [DailyPoint]          // last 14 days, oldest first
     /// Local-day buckets intersecting the trailing 365 × 24-hour window,
@@ -149,11 +149,61 @@ struct DashboardSnapshot: Sendable, Equatable {
     /// when no rate-limit samples have ever been recorded. Mirrors pacer's
     /// quota5h / quota7d cards (`MenuBarPopup.tsx:247`).
     let codexQuota: CodexQuotaSnapshot?
-    /// Lifetime / engagement profile (lifetime tokens, peak day, longest
-    /// task, active-day streaks) plus the trailing ~1-year daily series
-    /// behind the ActivitySection heatmap. Provider-aware via
-    /// `loadDashboard`. See `AggregatorActivity.swift`.
+}
+
+struct DashboardSnapshot: Sendable, Equatable, Codable {
+    let primary: DashboardPrimarySnapshot
     let activity: ActivitySnapshot
+
+    init(primary: DashboardPrimarySnapshot, activity: ActivitySnapshot) {
+        self.primary = primary
+        self.activity = activity
+    }
+
+    init(
+        overview: OverviewStats,
+        daily: [DailyPoint],
+        dailyExtended: [DailyPoint],
+        trends: DashboardTrendData,
+        monthly: [MonthlyPoint],
+        modelShares: [ModelShare],
+        modelShares30d: [ModelShare],
+        modelSharesPrior30d: [ModelShare],
+        providerShares30d: [ProviderShare],
+        recentRateLimits: [RateLimitHistoryPoint],
+        codexQuota: CodexQuotaSnapshot?,
+        activity: ActivitySnapshot
+    ) {
+        self.primary = DashboardPrimarySnapshot(
+            overview: overview,
+            daily: daily,
+            dailyExtended: dailyExtended,
+            trends: trends,
+            monthly: monthly,
+            modelShares: modelShares,
+            modelShares30d: modelShares30d,
+            modelSharesPrior30d: modelSharesPrior30d,
+            providerShares30d: providerShares30d,
+            recentRateLimits: recentRateLimits,
+            codexQuota: codexQuota)
+        self.activity = activity
+    }
+
+    var overview: OverviewStats { primary.overview }
+    var daily: [DailyPoint] { primary.daily }
+    var dailyExtended: [DailyPoint] { primary.dailyExtended }
+    var trends: DashboardTrendData { primary.trends }
+    var monthly: [MonthlyPoint] { primary.monthly }
+    var modelShares: [ModelShare] { primary.modelShares }
+    var modelShares30d: [ModelShare] { primary.modelShares30d }
+    var modelSharesPrior30d: [ModelShare] { primary.modelSharesPrior30d }
+    var providerShares30d: [ProviderShare] { primary.providerShares30d }
+    var recentRateLimits: [RateLimitHistoryPoint] { primary.recentRateLimits }
+    var codexQuota: CodexQuotaSnapshot? { primary.codexQuota }
+
+    func replacingActivity(_ activity: ActivitySnapshot) -> DashboardSnapshot {
+        DashboardSnapshot(primary: primary, activity: activity)
+    }
 }
 
 struct ProviderScope: Sendable, Equatable {
@@ -216,7 +266,7 @@ struct ProviderScope: Sendable, Equatable {
 /// the Composition tool breakdown. Keeping it as its own type rather than
 /// reusing `ProviderStats` because we only need a few scalars here and
 /// `ProviderStats` carries a lot of menu-bar-specific fields.
-struct ProviderShare: Sendable, Identifiable, Equatable {
+struct ProviderShare: Sendable, Identifiable, Equatable, Codable {
     let provider: String  // "codex" | "claude"
     var id: String { provider }
     let valueUSD: Double
@@ -228,7 +278,7 @@ struct ProviderShare: Sendable, Identifiable, Equatable {
 /// Codex rows come from `live` app-server REST samples and `jsonl` imports
 /// parsed from token_count.rate_limits. Claude OAuth rows share the storage
 /// table but are filtered out by the Codex read-side queries.
-struct CodexQuotaSnapshot: Sendable, Equatable {
+struct CodexQuotaSnapshot: Sendable, Equatable, Codable {
     let primary: CodexQuotaWindow?
     let secondary: CodexQuotaWindow?
     /// Burn rate per bucket derived from the last hour of samples, if we
@@ -240,7 +290,7 @@ struct CodexQuotaSnapshot: Sendable, Equatable {
 /// Linear extrapolation of `used_percent` over the recent sample series.
 /// Mirrors what ccusage's `BurnRateCalculator.projectExhaustionTime` does
 /// for Anthropic, applied to OpenAI's quota counters instead.
-struct CodexBurnRate: Sendable, Equatable {
+struct CodexBurnRate: Sendable, Equatable, Codable {
     /// Percentage points consumed per minute (>0 means usage rising).
     let percentPerMinute: Double
     /// Sample count fed into the regression — UI shows "n samples" caption.
@@ -255,7 +305,7 @@ struct CodexBurnRate: Sendable, Equatable {
     }
 }
 
-struct CodexQuotaWindow: Sendable, Equatable {
+struct CodexQuotaWindow: Sendable, Equatable, Codable {
     let bucket: String              // "primary" | "secondary"
     let sourceKind: String          // "live" | "jsonl"
     let planType: String?
@@ -340,7 +390,7 @@ struct MenuBarSnapshot: Sendable, Equatable {
     }
 }
 
-struct RateLimitHistoryPoint: Sendable, Identifiable, Equatable {
+struct RateLimitHistoryPoint: Sendable, Identifiable, Equatable, Codable {
     let id: Int64
     let sampleAt: Date
     let bucket: String          // "primary" | "secondary"
@@ -388,7 +438,7 @@ struct SessionRow: Sendable, Identifiable, Equatable {
 
 /// Top-level provider filter applied to every dashboard / list query.
 /// `.all` is the union view; `.codex` and `.claude` restrict to one source.
-enum ProviderFilter: String, CaseIterable, Identifiable, Sendable, Hashable {
+enum ProviderFilter: String, CaseIterable, Identifiable, Sendable, Hashable, Codable {
     case all
     case codex
     case claude
@@ -523,7 +573,7 @@ struct DaySummary: Sendable, Identifiable, Equatable {
     let sessionCount: Int
 }
 
-struct CacheUsageSummary: Sendable, Equatable {
+struct CacheUsageSummary: Sendable, Equatable, Codable {
     let readTokens: Int64
     let eligibleInputTokens: Int64
 
