@@ -1,12 +1,406 @@
-<div class="release-summary">
-<ul>
-<li>Codex 原地重写已有日志后，历史统计现在会自动恢复，最近的 token 用量不再永久缺失。</li>
-</ul>
+<style class="qm-release-style">
+.qm-release-page {
+  --release-ink: var(--qm-text, #1d1d1f);
+  --release-muted: var(--qm-secondary, #6e6e73);
+  --release-accent: var(--qm-accent, #007aff);
+  --release-green: #22a966;
+  --release-amber: #c88b18;
+  --release-coral: #df6254;
+  --release-violet: #8b5cf6;
+  --release-line: color-mix(in srgb, var(--release-ink), transparent 88%);
+  --release-wash: color-mix(in srgb, var(--release-accent), transparent 94%);
+  color: var(--release-ink);
+  padding: 0 2px 32px;
+}
+.qm-release-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(190px, .7fr);
+  gap: 28px;
+  align-items: end;
+  min-height: 236px;
+  padding: 32px 30px 28px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--release-line);
+  background:
+    radial-gradient(circle at 88% 18%,
+      color-mix(in srgb, var(--release-violet), transparent 80%), transparent 35%),
+    linear-gradient(128deg,
+      color-mix(in srgb, var(--release-accent), transparent 88%),
+      color-mix(in srgb, var(--release-green), transparent 93%) 48%,
+      color-mix(in srgb, var(--release-amber), transparent 91%));
+}
+.qm-release-eyebrow,
+.qm-release-nav-label,
+.qm-release-chapter-number {
+  color: var(--release-accent);
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.qm-release-title {
+  max-width: 11em;
+  margin: 8px 0 0;
+  font-size: clamp(29px, 5vw, 42px);
+  line-height: .98;
+  letter-spacing: -.045em;
+}
+.qm-release-subtitle {
+  max-width: 36em;
+  margin: 14px 0 0;
+  color: var(--release-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.qm-release-metrics {
+  display: flex;
+  gap: 18px;
+  margin-top: 22px;
+  color: var(--release-muted);
+  font-size: 11px;
+}
+.qm-release-metrics strong {
+  display: block;
+  margin-bottom: 1px;
+  color: var(--release-ink);
+  font-size: 19px;
+  line-height: 1;
+}
+.qm-release-version {
+  justify-self: end;
+  text-align: right;
+}
+.qm-release-version span {
+  display: block;
+  margin-bottom: -5px;
+  color: var(--release-muted);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.qm-release-version strong {
+  display: block;
+  max-width: 5.2em;
+  overflow-wrap: anywhere;
+  color: var(--release-accent);
+  background: linear-gradient(135deg,
+    var(--release-accent), var(--release-violet) 48%, var(--release-coral));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-size: clamp(58px, 10vw, 94px);
+  font-weight: 780;
+  line-height: .82;
+  letter-spacing: -.075em;
+}
+.qm-release-overview {
+  padding: 26px 30px 30px;
+  border-bottom: 1px solid var(--release-line);
+}
+.qm-release-section-title {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+.qm-release-section-hint {
+  margin: 5px 0 0;
+  color: var(--release-muted);
+  font-size: 11.5px;
+}
+.qm-release-summary {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  counter-reset: release-summary;
+}
+.qm-release-summary li {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 13px 0;
+  border-top: 1px solid var(--release-line);
+  counter-increment: release-summary;
+}
+.qm-release-summary li::before {
+  content: counter(release-summary, decimal-leading-zero);
+  padding-top: 1px;
+  color: var(--release-accent);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .08em;
+}
+.qm-release-summary p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.48;
+}
+.qm-release-atlas {
+  display: grid;
+  grid-template-columns: 156px minmax(0, 1fr);
+  gap: 32px;
+  padding: 30px;
+}
+.qm-release-nav {
+  position: sticky;
+  top: 14px;
+  align-self: start;
+}
+.qm-release-nav-label {
+  margin: 0 0 10px;
+  color: var(--release-muted);
+}
+.qm-release-nav button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 8px 8px 11px;
+  border: 0;
+  border-left: 2px solid var(--release-line);
+  color: var(--release-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color 180ms ease, border-color 180ms ease,
+              background 180ms ease;
+}
+.qm-release-nav button:hover,
+.qm-release-nav button[aria-current="true"] {
+  border-left-color: var(--release-accent);
+  color: var(--release-ink);
+  background: var(--release-wash);
+}
+.qm-release-nav-count {
+  color: var(--release-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qm-release-chapters-header {
+  padding: 0 0 22px;
+}
+.qm-release-chapter {
+  scroll-margin-top: 14px;
+  padding: 25px 0 12px;
+  border-top: 1px solid var(--release-line);
+}
+.qm-release-chapter:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+.qm-release-chapter-heading {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.qm-release-chapter-number {
+  color: var(--chapter-tone, var(--release-accent));
+}
+.qm-release-chapter h3 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.15;
+  letter-spacing: -.02em;
+}
+.qm-release-chapter-count {
+  color: var(--release-muted);
+  font-size: 10.5px;
+}
+.qm-release-change-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 46px;
+}
+.qm-release-change-list li {
+  padding: 12px 0;
+  border-top: 1px solid var(--release-line);
+  color: var(--release-muted);
+  font-size: 11.8px;
+  line-height: 1.5;
+}
+.qm-release-change-list b {
+  color: var(--release-ink);
+  font-size: 12.2px;
+  font-weight: 650;
+}
+.qm-release-chapter:nth-of-type(4n+1) { --chapter-tone: var(--release-accent); }
+.qm-release-chapter:nth-of-type(4n+2) { --chapter-tone: var(--release-green); }
+.qm-release-chapter:nth-of-type(4n+3) { --chapter-tone: var(--release-amber); }
+.qm-release-chapter:nth-of-type(4n) { --chapter-tone: var(--release-coral); }
+.release-animate {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 420ms cubic-bezier(.2, .8, .2, 1),
+              transform 420ms cubic-bezier(.2, .8, .2, 1);
+}
+.release-animate.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-color-scheme: dark) {
+  .qm-release-page {
+    --release-line: color-mix(in srgb, var(--release-ink), transparent 84%);
+    --release-wash: color-mix(in srgb, var(--release-accent), transparent 88%);
+  }
+}
+@media (max-width: 640px) {
+  .qm-release-hero {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 0;
+  }
+  .qm-release-version {
+    justify-self: start;
+    text-align: left;
+  }
+  .qm-release-version strong { font-size: 64px; }
+  .qm-release-atlas {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+  }
+  .qm-release-nav {
+    position: static;
+    display: flex;
+    gap: 4px;
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+  .qm-release-nav-label { display: none; }
+  .qm-release-nav button {
+    flex: 0 0 auto;
+    width: auto;
+    border-left: 0;
+    border-bottom: 2px solid var(--release-line);
+  }
+  .qm-release-nav button:hover,
+  .qm-release-nav button[aria-current="true"] {
+    border-bottom-color: var(--release-accent);
+  }
+}
+@media (prefers-contrast: more) {
+  .qm-release-page { --release-line: currentColor; }
+  .qm-release-hero { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .release-animate {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .qm-release-nav button { transition: none; }
+}
+</style>
+<section class="qm-release-page" aria-label="更新亮点">
+<header class="qm-release-hero release-animate">
+<div>
+<p class="qm-release-eyebrow">更新亮点</p>
+<h1 class="qm-release-title">迈入 1.0.3，全新篇章。</h1>
+<p class="qm-release-subtitle">先看这次版本的全貌，再按章节浏览每一项变化。</p>
+<div class="qm-release-metrics">
+<span><strong>10</strong>项变化</span>
+<span><strong>2</strong>个章节</span>
 </div>
-<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
-<div class="release-details">
+</div>
+<div class="qm-release-version">
+<span>版本</span>
+<strong>1.0.3</strong>
+</div>
+</header>
+<section class="qm-release-overview">
+<h2 class="qm-release-section-title">快速了解这次更新</h2>
+<p class="qm-release-section-hint">先抓住主线，下面还有完整变化可供浏览。</p>
+<ol class="qm-release-summary">
+<li class="release-animate"><p>Codex 费用估算现在会计入提示缓存写入，并对 Standard、Flex 与 Fast turn 应用完整的 GPT-5.6 长上下文价格。</p></li>
+<li class="release-animate"><p>Dashboard 趋势现在会与周边汇总使用完全相同的滚动时间窗，已加载过的图表会立即出现，更新数据则在后台继续刷新。</p></li>
+<li class="release-animate"><p>Codex 日志被重写后会在下一次扫描恢复；一次完整刷新即可带回当前汇总，最慢的 Activity 卡片也不会再挡住 Dashboard 其他内容。</p></li>
+<li class="release-animate"><p>Private Beta 用户无需离开私有更新通道即可发现对应 Stable，设置页也会正确说明 Claude 独立的十分钟刷新节奏。</p></li>
+</ol>
+</section>
+<div class="qm-release-atlas">
+<nav class="qm-release-nav" aria-label="更新章节">
+<p class="qm-release-nav-label">更新章节</p>
+<button type="button" data-target="qm-release-chapter-1" aria-controls="qm-release-chapter-1" aria-current="true"><span>变更</span><span class="qm-release-nav-count">4</span></button>
+<button type="button" data-target="qm-release-chapter-2" aria-controls="qm-release-chapter-2" aria-current="false"><span>修复</span><span class="qm-release-nav-count">6</span></button>
+</nav>
+<main class="qm-release-chapters">
+<header class="qm-release-chapters-header release-animate">
+<h2 class="qm-release-section-title">完整变化，分章呈现</h2>
+<p class="qm-release-section-hint">所有更新都在这里，浏览时不会迷失位置。</p>
+</header>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-1">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">01</span>
+<h3>变更</h3>
+<span class="qm-release-chapter-count">4 项变化</span>
+</div>
+<ul class="qm-release-change-list">
+<li><b>统一完整刷新操作。</b> Dashboard 的重新加载现在与菜单栏共用完整的最新数据流程，包括实时额度请求及本地 Codex／Claude 历史扫描；History 与 Sessions 仍保留聚焦的分页重载。</li>
+<li><b>近期 Dashboard 只读一遍。</b> 趋势、月度统计、当前与前一周期模型占比及 Provider 占比现在会从一次兼容混合时间戳的事件读取中派生，并共用相同时间、Provider 范围、本地日历与 DST 边界。</li>
+<li><b>始终先展示上次有效 Dashboard。</b> 兼容快照会跨窗口重挂载和应用重启保留；普通重开在数据未变化时跳过读取，快照过期时也会继续留在屏幕上，只由一次带 generation 门禁的后台刷新原位更新。</li>
+<li><b>Private Beta 内直接晋级 Stable。</b> 更新的 Stable 构建现在可以与最新 Private Beta 一起镜像到鉴权 feed，已授权设备无需切换通道即可发现构建号更高的 Stable，并且所有携带设备 token 的请求都只会发往 Quota Monitor 自有域名。</li>
+</ul>
+</section>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-2">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">02</span>
 <h3>修复</h3>
-<ul>
-<li><b>恢复被重写的 Codex 历史。</b>当已提交的 checkpoint 不再匹配当前日志时，Quota Monitor 会等待文件稳定、从头解析，并在事务中替换该会话；文件尾仍不完整时继续保留上一次正确数据，等待后续扫描。</li>
-</ul>
+<span class="qm-release-chapter-count">6 项变化</span>
 </div>
+<ul class="qm-release-change-list">
+<li><b>完整计算 GPT-5.6 与长上下文费用。</b> Codex 导入会保留提示缓存写入；内置 catalog 现在物化所有受支持的 Short/Long × Standard/Flex/Fast 与历史最终价格行，事件只选择一个最终行，不再运行时乘价格倍率。GPT-5.6 Sol 在 OpenAI <code>2026-08-21T19:34:10Z</code> 官方公开公告时从上市价切到促销价，Terra/Luna 保留 7 月 30 日切点；GPT-5.6+ cache write 按 input 的 1.25 倍，旧模型无额外 write charge、按 input 1.0 倍。旧 LiteLLM/local 行以及 bundled Claude/GLM 行不能进入 Codex 分支。升级迁移会安装完整目录并立即重算已有事件，即使原始 rollout 已不可读，金额也不会继续滞留。</li>
+<li><b>统一趋势的滚动时间口径。</b> 7 天、30 天、90 天与一年趋势现在会先按精确的最近 7 × 24、30 × 24、90 × 24 或 365 × 24 小时筛选用量，再按本地日期分组，边界日中更早的那部分记录不会再抬高 token、费用或缓存命中率。</li>
+<li><b>立即恢复被重写的 Codex 历史。</b> 当已提交的 checkpoint 不再匹配当前日志时，Quota Monitor 会在下一次扫描从头解析完整文件并在事务中替换该会话；文件尾仍不完整时继续保留上一次正确数据，也不再用两秒等待把未来修改时间的来源无限期推迟。</li>
+<li><b>始终采用最新摘要刷新。</b> Scan、Settings 与重叠的 Dashboard 请求现在会合并为最多一次 trailing pass，并使用最新筛选与启用工具；旧的菜单栏或 Dashboard 读取不再覆盖更新结果。</li>
+<li><b>趋势不再等待 Activity。</b> Dashboard 汇总、Forecast、趋势与构成会先发布，全历史 Activity 随后独立计算，最慢的卡片不再让整个窗口停留在加载状态。</li>
+<li><b>准确说明 Claude 刷新节奏。</b> 高级设置现在会说明 Claude live quota 独立地约每十分钟刷新，不再显示已经过时的两小时间隔。</li>
+</ul>
+</section>
+</main>
+</div>
+<script class="qm-release-script">
+(function () {
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var animated = document.querySelectorAll('.release-animate');
+  if (reducedMotion || !('IntersectionObserver' in window)) {
+    animated.forEach(function (element) { element.classList.add('visible'); });
+  } else {
+    var revealObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.08 });
+    animated.forEach(function (element) { revealObserver.observe(element); });
+  }
+
+  var buttons = Array.from(document.querySelectorAll('.qm-release-nav button'));
+  var chapters = Array.from(document.querySelectorAll('.qm-release-chapter'));
+  function selectChapter(id) {
+    buttons.forEach(function (button) {
+      button.setAttribute('aria-current', button.dataset.target === id ? 'true' : 'false');
+    });
+  }
+  buttons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      var chapter = document.getElementById(button.dataset.target);
+      if (!chapter) return;
+      selectChapter(button.dataset.target);
+      chapter.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' });
+    });
+  });
+  if (chapters.length && 'IntersectionObserver' in window) {
+    var chapterObserver = new IntersectionObserver(function (entries) {
+      var visible = entries.filter(function (entry) { return entry.isIntersecting; });
+      if (visible.length) selectChapter(visible[0].target.id);
+    }, { rootMargin: '-10% 0px -68% 0px', threshold: 0 });
+    chapters.forEach(function (chapter) { chapterObserver.observe(chapter); });
+  }
+})();
+</script>
+</section>

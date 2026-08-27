@@ -188,6 +188,22 @@ class DeveloperIDReleaseTests(unittest.TestCase):
         self.assertIn("    needs: test", quota_job)
         self.assertIn("    needs: test", codex_job)
 
+    def test_release_gate_requires_unreleased_to_be_empty(self):
+        workflow = self.read_text(".github/workflows/release.yml")
+        shared_job = self.workflow_job(
+            workflow,
+            "test",
+            "release-quota-monitor",
+        )
+        release_notes_step = self.workflow_step(
+            shared_job,
+            "Validate release notes",
+            "Run tooling tests",
+        )
+
+        self.assertIn("tools/validate-release-notes.py", release_notes_step)
+        self.assertIn("--require-unreleased-empty", release_notes_step)
+
     def test_shared_gate_probes_the_fixed_live_statistics_service_before_swift(self):
         workflow = self.read_text(".github/workflows/release.yml")
         pull_request_workflow = self.read_text(".github/workflows/tests.yml")

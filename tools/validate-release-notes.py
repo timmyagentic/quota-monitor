@@ -62,6 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("version", help="Version to validate, e.g. 0.2.31")
     parser.add_argument("english", nargs="?", default="CHANGELOG.md")
     parser.add_argument("chinese", nargs="?", default="CHANGELOG.zh-Hans.md")
+    parser.add_argument(
+        "--require-unreleased-empty",
+        action="store_true",
+        help="fail when the release-prep changelogs still contain Unreleased content",
+    )
     return parser.parse_args()
 
 
@@ -220,10 +225,26 @@ def validate_details(
         issues.append(f"{file_name}: release notes need at least one detail bullet")
 
 
-def validate_file(path: pathlib.Path, version: str, lang: str, issues: list[str]) -> None:
+def validate_file(
+    path: pathlib.Path,
+    version: str,
+    lang: str,
+    issues: list[str],
+    *,
+    require_unreleased_empty: bool,
+) -> None:
     text = read_text(path, issues)
     if not text:
         return
+
+    if require_unreleased_empty:
+        unreleased = extract_section(text, "Unreleased")
+        if unreleased is None:
+            issues.append(f"{path.name}: missing empty ## [Unreleased] section")
+        elif unreleased.strip():
+            issues.append(
+                f"{path.name}: Unreleased must be empty before creating a release tag"
+            )
 
     section = extract_section(text, version)
     if section is None:
@@ -239,8 +260,20 @@ def main() -> int:
     args = parse_args()
     issues: list[str] = []
 
-    validate_file(pathlib.Path(args.english), args.version, "en", issues)
-    validate_file(pathlib.Path(args.chinese), args.version, "zh-Hans", issues)
+    validate_file(
+        pathlib.Path(args.english),
+        args.version,
+        "en",
+        issues,
+        require_unreleased_empty=args.require_unreleased_empty,
+    )
+    validate_file(
+        pathlib.Path(args.chinese),
+        args.version,
+        "zh-Hans",
+        issues,
+        require_unreleased_empty=args.require_unreleased_empty,
+    )
 
     if issues:
         for issue in issues:
