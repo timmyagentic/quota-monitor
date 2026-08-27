@@ -12,7 +12,14 @@ VALIDATOR = REPO_ROOT / "tools" / "validate-release-notes.py"
 
 
 class ValidateReleaseNotesTests(unittest.TestCase):
-    def run_validator(self, en_text: str, zh_text: str, version: str = "1.2.3"):
+    def run_validator(
+        self,
+        en_text: str,
+        zh_text: str,
+        version: str = "1.2.3",
+        *,
+        require_unreleased_empty: bool = False,
+    ):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = pathlib.Path(tmp)
             en_path = tmp_path / "CHANGELOG.md"
@@ -20,8 +27,17 @@ class ValidateReleaseNotesTests(unittest.TestCase):
             en_path.write_text(textwrap.dedent(en_text).strip() + "\n", encoding="utf-8")
             zh_path.write_text(textwrap.dedent(zh_text).strip() + "\n", encoding="utf-8")
 
+            command = [
+                sys.executable,
+                str(VALIDATOR),
+                version,
+                str(en_path),
+                str(zh_path),
+            ]
+            if require_unreleased_empty:
+                command.append("--require-unreleased-empty")
             return subprocess.run(
-                [sys.executable, str(VALIDATOR), version, str(en_path), str(zh_path)],
+                command,
                 cwd=REPO_ROOT,
                 text=True,
                 capture_output=True,
@@ -58,6 +74,83 @@ class ValidateReleaseNotesTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("release notes ok", result.stdout)
+
+    def test_release_gate_accepts_an_empty_unreleased_section(self):
+        result = self.run_validator(
+            """
+            # Changelog
+
+            ## [Unreleased]
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - Release notes are complete
+
+            ### Changed
+            - **Release notes.** Every shipped change is included.
+            """,
+            """
+            # 更新日志
+
+            ## [Unreleased]
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - 发布说明已经完整收口
+
+            ### 变更
+            - **发布说明。** 所有已发布变化都已纳入。
+            """,
+            require_unreleased_empty=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_release_gate_rejects_content_left_in_unreleased(self):
+        result = self.run_validator(
+            """
+            # Changelog
+
+            ## [Unreleased]
+
+            #### Summary
+            - This shipped change was left behind
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - Release notes look valid but are incomplete
+
+            ### Changed
+            - **Release notes.** The version section has valid formatting.
+            """,
+            """
+            # 更新日志
+
+            ## [Unreleased]
+
+            ### 修复
+            - **遗漏变化。** 这条已经发布的变化仍留在未发布小节。
+
+            ## [1.2.3] - 2026-06-03
+
+            #### Summary
+            - 版本小节格式正确但内容不完整
+
+            ### 变更
+            - **发布说明。** 版本小节拥有正确格式。
+            """,
+            require_unreleased_empty=True,
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("CHANGELOG.md: Unreleased must be empty", result.stderr)
+        self.assertIn(
+            "CHANGELOG.zh-Hans.md: Unreleased must be empty",
+            result.stderr,
+        )
 
     def test_rejects_missing_summary(self):
         result = self.run_validator(

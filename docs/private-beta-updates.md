@@ -7,6 +7,13 @@ private R2 bucket and are reachable only through authenticated Worker routes.
 No Beta command in this repository creates a GitHub tag, GitHub Release, or
 public appcast entry.
 
+The authenticated appcast can contain both the latest Private Beta item and a
+mirrored copy of the latest Stable item. Stable bytes remain the exact public
+GitHub Release bytes, but their authenticated enclosure and release-note URLs
+point back through the private Worker. This lets an enrolled Beta device
+discover a higher Stable build without sending its Bearer token to GitHub or
+another third-party origin.
+
 ## Security model
 
 - A maintainer creates a 15-minute, one-use enrollment code through the admin
@@ -15,6 +22,9 @@ public appcast entry.
   stored in a device-only Keychain item; D1 stores only its SHA-256 digest.
 - Sparkle sends the device token as a Bearer header for the private appcast,
   localized notes, and DMG range requests.
+- Every URL in the authenticated appcast must stay under the private Worker;
+  never link a private-feed item directly to GitHub or another origin because
+  Sparkle applies the updater's Bearer header to its requests.
 - Missing, invalid, expired, and revoked credentials receive the same
   non-cacheable 404 response. Private objects are never exposed as public R2
   URLs.
@@ -82,8 +92,9 @@ python3 tools/private-beta-release.py --beta-sequence 1 --dry-run
 The real command runs the existing Developer ID packaging path, including
 notarization and stapling, signs the DMG with Sparkle EdDSA, writes a checksum,
 atomically acquires a 30-minute R2 publication lease through the admin route,
-refuses to replace an existing versioned object, uploads all versioned objects,
-and updates `private-beta/appcast.xml` last. The admin token is read from
+refuses to replace an existing versioned object, preserves the newest
+channel-less Stable item already present in the private feed, uploads all
+versioned objects, and updates `private-beta/appcast.xml` last. The admin token is read from
 `PRIVATE_BETA_ADMIN_TOKEN` or, when unset, from a hidden prompt; it is never put
 in a URL or command-line argument:
 
@@ -94,6 +105,37 @@ python3 tools/private-beta-release.py --beta-sequence 1
 Only one publisher can hold the lease. A failed or interrupted publisher leaves
 the lease in place until its expiry, so another run cannot interleave artifact
 and appcast writes. Successful publication releases the lease immediately.
+
+### Sync a Stable release into the private feed
+
+After the public Stable Release exists and its QuotaMonitor Appcast PR has
+merged, download the actual published DMG and sidecar into `dist/` from a fresh
+checkout of the new public `main`, then run:
+
+```sh
+gh release download vX.Y.Z \
+  --repo timmyagentic/quota-monitor \
+  --pattern 'QuotaMonitor-X.Y.Z.dmg*' \
+  --dir dist
+python3 tools/private-beta-release.py \
+  --sync-stable \
+  --stable-artifact dist/QuotaMonitor-X.Y.Z.dmg \
+  --stable-checksum dist/QuotaMonitor-X.Y.Z.dmg.sha256 \
+  --public-appcast appcast.xml
+```
+
+The sync command requires the existing Wrangler login and reads the admin token
+from the same hidden prompt or environment boundary as a Beta publication. It
+verifies the sidecar SHA-256 and recomputes the Appcast length and Sparkle signature,
+mirrors the exact Stable DMG, checksum, and bilingual notes to immutable
+private paths, preserves current Private Beta items, and uploads the merged
+appcast last under the same publication lock. Existing identical objects are
+reused only after byte-for-byte comparison; different bytes fail closed.
+
+Do not run Stable sync before the public Appcast PR merges: the public item is
+the signed source of truth. After sync, fetch the authenticated feed and both
+enclosures, verify the Stable build sorts above same-version Beta builds, and
+confirm unauthenticated feed, notes, and artifact routes still return 404.
 
 ### Encrypted CI packaging handoff
 
@@ -142,14 +184,15 @@ unchanged public stable feed have all been verified.
 
 The internal build number is numeric and monotonic. For a given semantic
 version, Private Beta sequences occupy slots 1–8999 and the stable build uses
-slot 9000, so stable supersedes every Beta of that version. A later semantic
-version sorts above the preceding stable version.
+slot 9000, so the mirrored Stable item supersedes every Beta of that version.
+A later semantic version sorts above the preceding stable version.
 
 ## Verification boundary
 
 Automated tests cover the D1 schema, enrollment, token hashing, revocation,
 hidden failures, rate limiting, R2 streaming/ranges, cache headers, Sparkle
-channel configuration, Keychain token validation, and build ordering. A real
+channel configuration, private-only authenticated URLs, Stable mirror
+hash/length/signature validation, Keychain token validation, and build ordering. A real
 end-to-end update still requires reviewed Cloudflare provisioning, a signed and
 notarized Beta artifact, an enrolled Developer ID build, and a controlled
 installation test. Until those operator steps are performed, production

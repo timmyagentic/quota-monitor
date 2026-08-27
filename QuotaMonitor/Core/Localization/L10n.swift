@@ -800,11 +800,11 @@ enum L10n {
     static var sectionClaudeCode: String { "Claude Code" }
     /// Explainer under the Codex polling stepper. Calls out two things
     /// new users get wrong: (1) this only drives the Codex CLI quota
-    /// fetch, not Claude; (2) Claude's interval is fixed at 2 h to avoid
-    /// Anthropic's HTTP 429 throttle.
+    /// fetch, not Claude; (2) Claude uses its own 10-minute cadence and
+    /// backs off independently when Anthropic returns HTTP 429.
     static var codexPollingHelp: String {
-        t(en: "How often Codex's local rate-limit quota is fetched. Claude's quota is polled separately every 2 hours and isn't affected by this.",
-          zh: "多久从本地 Codex 拉取一次速率限制配额。Claude 的配额由独立的 2 小时间隔拉取，不受此设置影响。")
+        t(en: "How often Codex's local rate-limit quota is fetched. Claude's quota is polled separately about every 10 minutes and isn't affected by this.",
+          zh: "多久从本地 Codex 拉取一次速率限制配额。Claude 的配额会独立地约每 10 分钟拉取一次，不受此设置影响。")
     }
     static var sectionDatabase: String { t(en: "Database", zh: "数据库") }
     static var sectionExport: String { t(en: "Export", zh: "导出") }

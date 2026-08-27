@@ -174,7 +174,7 @@ tests through a normal PR before a new release tag is created.
      in optional richer HTML notes.
    - Before opening the release PR, run:
      ```sh
-     python3 tools/validate-release-notes.py X.Y.Z
+     python3 tools/validate-release-notes.py X.Y.Z --require-unreleased-empty
      ```
    - Optional richer notes: `ReleaseNotes/X.Y.Z.en.html` +
      `ReleaseNotes/X.Y.Z.zh-Hans.html` override the changelog-derived HTML if
@@ -246,6 +246,30 @@ tests through a normal PR before a new release tag is created.
    merges, every running copy of QuotaMonitor sees the new version on its
    next scheduled check (default 24 h; raw.githubusercontent caches ~5 min).
    The GitHub release page hosts the actual DMG download.
+
+7. **Mirror the Stable item into the authenticated Private Beta feed.** Do
+   this only after step 6, from a fresh checkout of the new public `main`, and
+   use the actual published Release assets rather than a local rebuild:
+   ```sh
+   gh release download vX.Y.Z \
+     --repo timmyagentic/quota-monitor \
+     --pattern 'QuotaMonitor-X.Y.Z.dmg*' \
+     --dir dist
+   python3 tools/private-beta-release.py \
+     --sync-stable \
+     --stable-artifact dist/QuotaMonitor-X.Y.Z.dmg \
+     --stable-checksum dist/QuotaMonitor-X.Y.Z.dmg.sha256 \
+     --public-appcast appcast.xml
+   ```
+   The sync validates the public sidecar and recomputes the Sparkle signature
+   and length, mirrors
+   the exact Stable bytes and bilingual notes under authenticated Worker URLs,
+   preserves the latest Private Beta item, and updates the private appcast
+   last under the publication lock. Never place a GitHub enclosure directly in
+   the authenticated feed: Sparkle applies the device Bearer header to updater
+   requests, so every private-feed URL must remain on Quota Monitor's Worker.
+   Finish by verifying authenticated Beta + Stable discovery, exact DMG
+   readback, and unauthenticated 404 behavior.
 
 That's it. The Ed25519 signature in the appcast item is what old Sparkle
 clients verify before swapping the bundle, while the Developer ID signature and

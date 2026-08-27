@@ -40,6 +40,21 @@ struct BrandingLocalizationTests {
         #expect(en == "Claude live quota API rate limited, retry in 5 min · updated 11:24")
     }
 
+    @Test("Codex polling help matches the separate ten-minute Claude cadence")
+    func codexPollingHelpMatchesClaudeCadence() {
+        let en = LocalizationTestSupport.withLanguage(.english) {
+            L10n.codexPollingHelp
+        }
+        let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
+            L10n.codexPollingHelp
+        }
+
+        #expect(en == "How often Codex's local rate-limit quota is fetched. Claude's quota is polled separately about every 10 minutes and isn't affected by this.")
+        #expect(zh == "多久从本地 Codex 拉取一次速率限制配额。Claude 的配额会独立地约每 10 分钟拉取一次，不受此设置影响。")
+        #expect(!en.contains("2 hours"))
+        #expect(!zh.contains("2 小时"))
+    }
+
     @Test("Codex reset-card copy is concise in both languages")
     func codexResetCardCopy() {
         let zh = LocalizationTestSupport.withLanguage(.simplifiedChinese) {
