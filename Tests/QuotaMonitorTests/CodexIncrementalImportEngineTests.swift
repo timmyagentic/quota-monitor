@@ -115,6 +115,155 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database) == nil)
     }
 
+    @Test("same session continuation rollouts preserve every non-overlapping fragment")
+    func sameSessionContinuationRolloutsPreserveAllFragments() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        let initial = try await harness.engine.performScan()
+        #expect(initial.importedSessions == 1)
+        #expect(initial.importedEvents == 1)
+        let originalRows = try await usageRows(in: harness.database)
+
+        let directory = harness.rollout.deletingLastPathComponent()
+        let firstFragment = directory.appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        let secondFragment = directory.appendingPathComponent(
+            "rollout-2026-07-21T00-00-00-\(sessionId)_99999999-8888-4777-8666-555555555555.jsonl")
+        try rolloutData([
+            metaLine(timestamp: "2026-07-20T00:00:00.000Z"),
+            taskLine(
+                timestamp: "2026-07-20T00:00:01.000Z",
+                turnId: "aaaaaaaa-0000-7000-8000-000000000001"),
+            contextLine(
+                timestamp: "2026-07-20T00:00:02.000Z",
+                turnId: "aaaaaaaa-0000-7000-8000-000000000001"),
+            tokenLine(
+                timestamp: "2026-07-20T00:00:03.000Z",
+                total: usage(input: 40, cached: 5, output: 5, reasoning: 1),
+                last: usage(input: 40, cached: 5, output: 5, reasoning: 1)),
+        ]).write(to: firstFragment)
+        try rolloutData([
+            metaLine(timestamp: "2026-07-21T00:00:00.000Z"),
+            taskLine(
+                timestamp: "2026-07-21T00:00:01.000Z",
+                turnId: "bbbbbbbb-0000-7000-8000-000000000002"),
+            contextLine(
+                timestamp: "2026-07-21T00:00:02.000Z",
+                turnId: "bbbbbbbb-0000-7000-8000-000000000002"),
+            tokenLine(
+                timestamp: "2026-07-21T00:00:03.000Z",
+                total: usage(input: 70, cached: 10, output: 7, reasoning: 2),
+                last: usage(input: 70, cached: 10, output: 7, reasoning: 2)),
+        ]).write(to: secondFragment)
+
+        let continued = try await harness.engine.performScan()
+        #expect(continued.scannedFiles == 3)
+        #expect(continued.changedFiles == 2)
+        #expect(continued.importedSessions == 2)
+        #expect(continued.importedEvents == 2)
+        #expect(continued.errors.isEmpty)
+
+        let rows = try await usageRows(in: harness.database)
+        #expect(rows.map(\.totalTokens) == [110, 45, 77])
+        #expect(rows.first == originalRows.first)
+        #expect(try await usageCountsBySource(in: harness.database) == [
+            harness.rollout.lastPathComponent: 1,
+            firstFragment.lastPathComponent: 1,
+            secondFragment.lastPathComponent: 1,
+        ])
+        let discovered = SessionScanner.scan(codexHome: harness.codexHome)
+        #expect(discovered.count == 3)
+        for file in discovered {
+            #expect(try await optionalImportState(
+                at: file.path,
+                in: harness.database) != nil)
+        }
+        let sessionCount = try await harness.database.pool.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM sessions WHERE session_id = ?",
+                arguments: [sessionId])
+        }
+        #expect(sessionCount == 1)
+
+        let unchanged = try await harness.engine.performScan()
+        #expect(unchanged.changedFiles == 0)
+        #expect(unchanged.importedEvents == 0)
+        #expect(try await usageRows(in: harness.database) == rows)
+
+        let tail = tokenLine(
+            timestamp: "2026-07-20T00:00:04.000Z",
+            total: usage(input: 60, cached: 7, output: 8, reasoning: 2),
+            last: usage(input: 20, cached: 2, output: 3, reasoning: 1)) + "\n"
+        try append(Data(tail.utf8), to: firstFragment)
+        let appended = try await harness.engine.performScan()
+        #expect(appended.changedFiles == 1)
+        #expect(appended.incrementalFiles == 1)
+        #expect(appended.importedEvents == 1)
+        #expect(appended.errors.isEmpty)
+        let appendedRows = try await usageRows(in: harness.database)
+        #expect(appendedRows.map(\.totalTokens) == [110, 45, 23, 77])
+        #expect(appendedRows[0].id == rows[0].id)
+        #expect(appendedRows[1].id == rows[1].id)
+        #expect(appendedRows[3].id == rows[2].id)
+        #expect(try await usageCountsBySource(in: harness.database)[
+            firstFragment.lastPathComponent] == 2)
+        try await harness.database.pool.write { db in
+            for (sourcePath, bucket) in [
+                (firstFragment.path, "primary"),
+                (secondFragment.path, "secondary"),
+            ] {
+                try db.execute(sql: """
+                    INSERT INTO rate_limit_samples
+                        (source_kind, source_session_id, source_path,
+                         bucket, sample_timestamp, resets_at,
+                         used_percent, remaining_percent)
+                    VALUES ('jsonl', ?, ?, ?,
+                            '2026-07-21T00:00:03.000Z',
+                            '2026-07-21T05:00:03.000Z', 10, 90)
+                    """, arguments: [sessionId, sourcePath, bucket])
+            }
+        }
+
+        try overwriteInPlace(rolloutData([
+            metaLine(timestamp: "2026-07-20T00:00:00.000Z"),
+            taskLine(
+                timestamp: "2026-07-20T00:00:01.000Z",
+                turnId: "aaaaaaaa-0000-7000-8000-000000000001"),
+            contextLine(
+                timestamp: "2026-07-20T00:00:02.000Z",
+                turnId: "aaaaaaaa-0000-7000-8000-000000000001"),
+            tokenLine(
+                timestamp: "2026-07-20T00:00:03.000Z",
+                total: usage(input: 90, cached: 15, output: 9, reasoning: 2),
+                last: usage(input: 90, cached: 15, output: 9, reasoning: 2)),
+        ]), at: firstFragment)
+        let rebuilt = try await harness.engine.performScan()
+        #expect(rebuilt.changedFiles == 1)
+        #expect(rebuilt.incrementalFiles == 0)
+        #expect(rebuilt.importedEvents == 1)
+        #expect(rebuilt.errors.isEmpty)
+        let rebuiltRows = try await usageRows(in: harness.database)
+        #expect(rebuiltRows.map(\.totalTokens) == [110, 99, 77])
+        #expect(rebuiltRows[0].id == rows[0].id)
+        #expect(rebuiltRows[2].id == rows[2].id)
+        #expect(try await usageCountsBySource(in: harness.database) == [
+            harness.rollout.lastPathComponent: 1,
+            firstFragment.lastPathComponent: 1,
+            secondFragment.lastPathComponent: 1,
+        ])
+        let survivingSampleSources = try await harness.database.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT source_path
+                FROM rate_limit_samples
+                WHERE source_kind = 'jsonl' AND source_session_id = ?
+                ORDER BY source_path
+                """, arguments: [sessionId])
+        }
+        #expect(survivingSampleSources == [secondFragment.path])
+    }
+
     @Test("one filename UUID with two real session_meta ids stays two sessions")
     func sameFilenameHintDoesNotMergeDifferentSessionMetaIds() async throws {
         let secondSessionId = "99999999-8888-4777-8666-555555555555"
@@ -657,6 +806,9 @@ struct CodexIncrementalImportEngineTests {
             at: relocatedFile.path,
             in: harness.database)
         #expect(archivedState.sessionId == sessionId)
+        #expect(try await usageSourcePaths(in: harness.database) == [
+            relocatedFile.path,
+        ])
 
         let sourcePath = try await harness.database.pool.read { db in
             try String.fetchOne(
@@ -981,6 +1133,9 @@ struct CodexIncrementalImportEngineTests {
         #expect(movedState.sessionId == sessionId)
         #expect(movedState.byteOffset == movedState.fileSize)
         #expect(movedState.byteOffset == beforeState.byteOffset + Int64(tail.utf8.count))
+        #expect(try await usageSourcePaths(in: harness.database) == [
+            movedFile.path,
+        ])
     }
 
     @Test("a fresh active source wins over a divergent archived duplicate")
@@ -1156,15 +1311,19 @@ struct CodexIncrementalImportEngineTests {
         return #"{"timestamp":"\#(timestamp)","type":"session_meta","payload":{"id":"\#(resolvedSessionId)","cwd":"/fixture/incremental-project"}}"#
     }
 
-    private func taskLine(timestamp: String) -> String {
-        #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"task_started","turn_id":"fixture-turn"}}"#
+    private func taskLine(
+        timestamp: String,
+        turnId: String = "fixture-turn"
+    ) -> String {
+        #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"task_started","turn_id":"\#(turnId)"}}"#
     }
 
     private func contextLine(
         timestamp: String,
-        model: String = "gpt-5.4"
+        model: String = "gpt-5.4",
+        turnId: String = "fixture-turn"
     ) -> String {
-        #"{"timestamp":"\#(timestamp)","type":"turn_context","payload":{"turn_id":"fixture-turn","model":"\#(model)"}}"#
+        #"{"timestamp":"\#(timestamp)","type":"turn_context","payload":{"turn_id":"\#(turnId)","model":"\#(model)"}}"#
     }
 
     private func usage(
@@ -1245,6 +1404,37 @@ struct CodexIncrementalImportEngineTests {
                     totalTokens: row["total_tokens"],
                     valueUsd: row["value_usd"])
             }
+        }
+    }
+
+    private func usageCountsBySource(
+        in database: DatabaseManager
+    ) async throws -> [String: Int] {
+        try await database.pool.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT source_path, COUNT(*) AS event_count
+                FROM usage_events
+                WHERE session_id = ?
+                GROUP BY source_path
+                """, arguments: [sessionId])
+            return Dictionary(uniqueKeysWithValues: rows.compactMap { row in
+                guard let sourcePath: String = row["source_path"] else { return nil }
+                return ((sourcePath as NSString).lastPathComponent,
+                        row["event_count"] as Int)
+            })
+        }
+    }
+
+    private func usageSourcePaths(
+        in database: DatabaseManager
+    ) async throws -> [String] {
+        try await database.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT DISTINCT source_path
+                FROM usage_events
+                WHERE session_id = ? AND source_path IS NOT NULL
+                ORDER BY source_path
+                """, arguments: [sessionId])
         }
     }
 

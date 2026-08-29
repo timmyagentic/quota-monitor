@@ -73,6 +73,9 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
     var providerMessageId: String?
     var codexTurnId: String? = nil
     var codexServiceTierPreference: String? = nil
+    /// Physical rollout fragment that produced this Codex delta. Claude rows
+    /// leave it nil and continue to use provider_message_id for idempotency.
+    var sourcePath: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -93,6 +96,7 @@ struct UsageEventRecord: Codable, FetchableRecord, PersistableRecord {
         case providerMessageId = "provider_message_id"
         case codexTurnId = "codex_turn_id"
         case codexServiceTierPreference = "codex_service_tier_preference"
+        case sourcePath = "source_path"
     }
 }
 
@@ -141,6 +145,9 @@ struct RateLimitSampleRecord: Codable, FetchableRecord, PersistableRecord {
     var resetsAt: String
     var usedPercent: Double
     var remainingPercent: Double
+    /// Physical rollout fragment for jsonl samples. Live and OAuth samples
+    /// are not file-backed and leave this nil.
+    var sourcePath: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -154,5 +161,6 @@ struct RateLimitSampleRecord: Codable, FetchableRecord, PersistableRecord {
         case resetsAt = "resets_at"
         case usedPercent = "used_percent"
         case remainingPercent = "remaining_percent"
+        case sourcePath = "source_path"
     }
 }

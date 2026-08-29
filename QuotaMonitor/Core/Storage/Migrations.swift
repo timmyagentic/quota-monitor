@@ -642,5 +642,57 @@ enum Migrations {
             _ = try PricingService.installBundledCatalog(in: db)
             try PricingService.backfillAllValues(in: db)
         }
+
+        // v22: one logical Codex session can be continued across several
+        // rollout files. Attribute derived rows to their physical fragment so
+        // an append or rewrite updates only that fragment instead of deleting
+        // sibling history. Existing rows belong to the session's previously
+        // canonical source and are backfilled before the importer can run.
+        migrator.registerMigration("v22-codex-rollout-fragment-provenance") { db in
+            try db.alter(table: "usage_events") { t in
+                t.add(column: "source_path", .text)
+            }
+            try db.alter(table: "rate_limit_samples") { t in
+                t.add(column: "source_path", .text)
+            }
+            try db.execute(sql: """
+                UPDATE usage_events
+                SET source_path = (
+                    SELECT COALESCE(
+                        sessions.source_path,
+                        (SELECT import_state.source_path
+                         FROM import_state
+                         WHERE import_state.session_id = usage_events.session_id
+                         ORDER BY import_state.last_imported_at DESC
+                         LIMIT 1))
+                    FROM sessions
+                    WHERE sessions.session_id = usage_events.session_id
+                      AND sessions.provider = 'codex'
+                )
+                WHERE provider = 'codex' AND source_path IS NULL
+                """)
+            try db.execute(sql: """
+                UPDATE rate_limit_samples
+                SET source_path = (
+                    SELECT COALESCE(
+                        sessions.source_path,
+                        (SELECT import_state.source_path
+                         FROM import_state
+                         WHERE import_state.session_id = rate_limit_samples.source_session_id
+                         ORDER BY import_state.last_imported_at DESC
+                         LIMIT 1))
+                    FROM sessions
+                    WHERE sessions.session_id = rate_limit_samples.source_session_id
+                      AND sessions.provider = 'codex'
+                )
+                WHERE source_kind = 'jsonl' AND source_path IS NULL
+                """)
+            try db.create(
+                indexOn: "usage_events",
+                columns: ["session_id", "source_path"])
+            try db.create(
+                indexOn: "rate_limit_samples",
+                columns: ["source_session_id", "source_path"])
+        }
     }
 }

@@ -1,6 +1,17 @@
 import AppKit
 import SwiftUI
 
+struct AutomaticHistoryScanPolicy {
+    nonisolated static func shouldScan(
+        lastFullScanAt: Date?,
+        now: Date,
+        calendar: Calendar
+    ) -> Bool {
+        guard let lastFullScanAt else { return true }
+        return !calendar.isDate(lastFullScanAt, inSameDayAs: now)
+    }
+}
+
 /// Owns the menu-bar status item and the launch-time discoverability
 /// orchestration. Attached via `@NSApplicationDelegateAdaptor` in
 /// `QuotaMonitorApp`.
@@ -64,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self,
             selector: #selector(workspaceDidWake),
             name: NSWorkspace.didWakeNotification,
+            object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(calendarDayChanged),
+            name: .NSCalendarDayChanged,
             object: nil)
 
         let controller = StatusItemController(
@@ -207,6 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         codexQuotaOverlayController = nil
         NSWorkspace.shared.notificationCenter.removeObserver(
             self, name: NSWorkspace.didWakeNotification, object: nil)
+        NotificationCenter.default.removeObserver(
+            self, name: .NSCalendarDayChanged, object: nil)
         statusItemController?.stop()
         statusItemController = nil
         whatsNewCoordinator = nil
@@ -214,10 +232,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         updater?.checkInBackgroundIfNeeded()
+        requestAutomaticHistoryScan(trigger: "foreground-day-change")
     }
 
     @objc private func workspaceDidWake(_ notification: Notification) {
         updater?.checkInBackgroundIfNeeded()
+        requestAutomaticHistoryScan(trigger: "wake-day-change")
+    }
+
+    @objc private func calendarDayChanged(_ notification: Notification) {
+        requestAutomaticHistoryScan(trigger: "calendar-day-change")
+    }
+
+    private func requestAutomaticHistoryScan(
+        trigger: String,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) {
+        let env = AppEnvironment.shared
+        let scope = AppEnvironment.scanThrottleKey(forRequested: nil)
+        guard AutomaticHistoryScanPolicy.shouldScan(
+            lastFullScanAt: env.lastScanAtByScope[scope],
+            now: now,
+            calendar: calendar)
+        else {
+            DeveloperLog.eventRecord(
+                "scan.automatic.skip",
+                category: "scan",
+                trigger: trigger,
+                result: "skipped",
+                fields: ["reason": "same-local-day"])
+            return
+        }
+        env.runScan(minInterval: 60, trigger: trigger)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

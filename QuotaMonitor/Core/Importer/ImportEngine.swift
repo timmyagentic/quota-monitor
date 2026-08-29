@@ -24,14 +24,21 @@ actor ImportEngine {
     private struct ProbedSource {
         let file: SessionFile
         let sessionId: String
+        let fragmentName: String
+        let headerFingerprint: Data?
         let directState: ImportStateRecord?
+    }
+
+    private struct SourceKey: Hashable {
+        let sessionId: String
+        let fragmentName: String
     }
 
     private struct ScanCandidate {
         let file: SessionFile
         let sessionId: String
         let expectedState: ImportStateRecord?
-        let replacesExistingHistory: Bool
+        let replacesExistingSource: Bool
     }
 
     private enum PersistMode: Equatable {
@@ -233,12 +240,17 @@ actor ImportEngine {
 
         let codexRootPrefix = codexHome.standardizedFileURL.path + "/"
         var priorBySession: [String: [ImportStateRecord]] = [:]
+        var priorByFragment: [SourceKey: [ImportStateRecord]] = [:]
         for state in priorState.values {
             guard let sessionId = state.sessionId,
                   codexSessions.ids.contains(sessionId)
                     || state.sourcePath.hasPrefix(codexRootPrefix)
             else { continue }
             priorBySession[sessionId, default: []].append(state)
+            let key = SourceKey(
+                sessionId: sessionId,
+                fragmentName: (state.sourcePath as NSString).lastPathComponent)
+            priorByFragment[key, default: []].append(state)
         }
         let sources = Self.selectCanonicalSources(
             discoveredFiles,
@@ -252,10 +264,19 @@ actor ImportEngine {
             if let direct = source.directState {
                 expected = direct
             } else {
+                let key = SourceKey(
+                    sessionId: source.sessionId,
+                    fragmentName: source.fragmentName)
                 expected = Self.relocationState(
-                    from: priorBySession[source.sessionId] ?? [],
+                    from: priorByFragment[key] ?? [],
                     for: file,
                     canonicalPath: codexSessions.canonicalPaths[source.sessionId])
+                    ?? Self.relocationStateMatchingIdentity(
+                        from: priorBySession[source.sessionId] ?? [],
+                        for: file)
+                    ?? Self.relocationStateMatchingFingerprint(
+                        from: priorBySession[source.sessionId] ?? [],
+                        fingerprint: source.headerFingerprint)
             }
 
             if let expected,
@@ -270,8 +291,7 @@ actor ImportEngine {
                         file: file,
                         sessionId: source.sessionId,
                         expectedState: expected,
-                        replacesExistingHistory: codexSessions.ids.contains(
-                            source.sessionId)))
+                        replacesExistingSource: true))
                     continue
                 }
                 if metadataIncompleteCodexPaths.contains(file.path),
@@ -281,8 +301,7 @@ actor ImportEngine {
                             file: file,
                             sessionId: source.sessionId,
                             expectedState: expected,
-                            replacesExistingHistory: codexSessions.ids.contains(
-                                source.sessionId)))
+                            replacesExistingSource: true))
                     } else {
                         currentCodexPathsWithoutBackfillableProjectMetadata.append(file.path)
                     }
@@ -293,7 +312,7 @@ actor ImportEngine {
                 file: file,
                 sessionId: source.sessionId,
                 expectedState: expected,
-                replacesExistingHistory: codexSessions.ids.contains(source.sessionId)))
+                replacesExistingSource: expected != nil))
         }
         if !currentCodexPathsWithoutBackfillableProjectMetadata.isEmpty {
             try await markCodexRolloutsWithoutBackfillableProjectMetadata(
@@ -426,10 +445,10 @@ actor ImportEngine {
         return report
     }
 
-    // A Codex session has one upstream source of truth. Once committed, that
-    // canonical path remains authoritative while it exists. Bucket priority
-    // only chooses a fresh or orphaned source, so an unrelated active copy can
-    // never overwrite already-priced history merely because it is newer.
+    // One logical Codex session may be continued in several rollout files.
+    // Treat each filename as one fragment lineage: active/archive copies with
+    // the same name still compete for a single canonical source, while a new
+    // filename with the same session_meta id contributes additional history.
     private static func selectCanonicalSources(
         _ files: [SessionFile],
         priorState: [String: ImportStateRecord],
@@ -442,41 +461,100 @@ actor ImportEngine {
                 ?? direct?.sessionId
                 ?? file.sessionIdHint
                 ?? "unresolved:\(file.path)"
+            let fragmentName = file.url.lastPathComponent
             bySession[sessionId, default: []].append(ProbedSource(
                 file: file,
                 sessionId: sessionId,
+                fragmentName: fragmentName,
+                headerFingerprint: fragmentFingerprint(
+                    file: file,
+                    directState: direct),
                 directState: direct))
         }
 
-        return bySession.compactMap { sessionId, group in
-            let canonicalPath = canonicalPaths[sessionId]
-            var byIdentity: [RolloutSourceIdentity: ProbedSource] = [:]
-            for source in group {
-                if let current = byIdentity[source.file.sourceIdentity] {
-                    if source.file.path == canonicalPath
-                        || (current.file.path != canonicalPath
-                            && sourceIsPreferred(source, to: current))
-                    {
-                        byIdentity[source.file.sourceIdentity] = source
+        return bySession.flatMap { sessionId, sources in
+            var fragments: [[ProbedSource]] = []
+            for source in sources.sorted(by: { $0.file.path < $1.file.path }) {
+                let matching = fragments.indices.filter { index in
+                    fragments[index].contains {
+                        sourceSharesFragment($0, source)
+                    }
+                }
+                if let first = matching.first {
+                    fragments[first].append(source)
+                    for index in matching.dropFirst().reversed() {
+                        fragments[first].append(contentsOf: fragments.remove(at: index))
                     }
                 } else {
-                    byIdentity[source.file.sourceIdentity] = source
+                    fragments.append([source])
                 }
             }
 
-            let candidates = Array(byIdentity.values)
-            let canonical = candidates.first { $0.file.path == canonicalPath }
-            let active = candidates
-                .filter { $0.file.bucket == "active" }
-                .sorted(by: sourceIsPreferred)
-            let tracked = candidates
-                .filter { $0.directState != nil }
-                .sorted(by: sourceIsPreferred)
-            return canonical
-                ?? active.first
-                ?? tracked.first
-                ?? candidates.sorted(by: sourceIsPreferred).first
+            return fragments.compactMap { group in
+                canonicalSource(
+                    from: group,
+                    canonicalPath: canonicalPaths[sessionId])
+            }
         }.sorted { $0.file.path < $1.file.path }
+    }
+
+    private static func canonicalSource(
+        from group: [ProbedSource],
+        canonicalPath: String?
+    ) -> ProbedSource? {
+        var byIdentity: [RolloutSourceIdentity: ProbedSource] = [:]
+        for source in group {
+            if let current = byIdentity[source.file.sourceIdentity] {
+                if source.file.path == canonicalPath
+                    || (current.file.path != canonicalPath
+                        && sourceIsPreferred(source, to: current))
+                {
+                    byIdentity[source.file.sourceIdentity] = source
+                }
+            } else {
+                byIdentity[source.file.sourceIdentity] = source
+            }
+        }
+
+        let candidates = Array(byIdentity.values)
+        let canonical = candidates.first { $0.file.path == canonicalPath }
+        let active = candidates
+            .filter { $0.file.bucket == "active" }
+            .sorted(by: sourceIsPreferred)
+        let tracked = candidates
+            .filter { $0.directState != nil }
+            .sorted(by: sourceIsPreferred)
+        return canonical
+            ?? tracked.first
+            ?? active.first
+            ?? candidates.sorted(by: sourceIsPreferred).first
+    }
+
+    private static func sourceSharesFragment(
+        _ lhs: ProbedSource,
+        _ rhs: ProbedSource
+    ) -> Bool {
+        if lhs.fragmentName == rhs.fragmentName { return true }
+        guard let lhsFingerprint = lhs.headerFingerprint,
+              let rhsFingerprint = rhs.headerFingerprint
+        else { return false }
+        return lhsFingerprint == rhsFingerprint
+    }
+
+    private static func fragmentFingerprint(
+        file: SessionFile,
+        directState: ImportStateRecord?
+    ) -> Data? {
+        if let data = directState?.parserCheckpoint,
+           let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data) {
+            return checkpoint.prefixHash
+        }
+        guard let reader = try? RolloutRecordReader(fileURL: file.url) else {
+            return nil
+        }
+        defer { try? reader.close() }
+        let end = min(file.fileSize, RolloutParser.fingerprintWindowBytes)
+        return try? reader.sha256(in: 0..<end)
     }
 
     private static func sourceIsPreferred(
@@ -558,6 +636,33 @@ actor ImportEngine {
         return states.count == 1 ? states[0] : nil
     }
 
+    private static func relocationStateMatchingIdentity(
+        from states: [ImportStateRecord],
+        for file: SessionFile
+    ) -> ImportStateRecord? {
+        let matching = states.filter { state in
+            guard let data = state.parserCheckpoint,
+                  let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
+            else { return false }
+            return checkpoint.sourceIdentity == file.sourceIdentity
+        }
+        return matching.count == 1 ? matching[0] : nil
+    }
+
+    private static func relocationStateMatchingFingerprint(
+        from states: [ImportStateRecord],
+        fingerprint: Data?
+    ) -> ImportStateRecord? {
+        guard let fingerprint else { return nil }
+        let matching = states.filter { state in
+            guard let data = state.parserCheckpoint,
+                  let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
+            else { return false }
+            return checkpoint.prefixHash == fingerprint
+        }
+        return matching.count == 1 ? matching[0] : nil
+    }
+
     private static func checkpointSourceIsCurrent(
         _ state: ImportStateRecord,
         file: SessionFile
@@ -616,7 +721,7 @@ actor ImportEngine {
         let replacedIdentity = checkpoint.map {
             $0.sourceIdentity != output.snapshot.sourceIdentity
         } ?? false
-        if (replacedIdentity || candidate.replacesExistingHistory),
+        if (replacedIdentity || candidate.replacesExistingSource),
            output.hasIncompleteTail {
             return nil
         }
@@ -794,21 +899,37 @@ actor ImportEngine {
             let existing = try SessionRecord
                 .filter(Column("session_id") == parsed.sessionId)
                 .fetchOne(db)
+            let sourceMoved = expectedState?.sourcePath != nil
+                && expectedState?.sourcePath != file.path
+            let sourceWasPrimary = sourceMoved
+                && existing?.sourcePath == expectedState?.sourcePath
+            let sessionSourcePath = if existing?.sourcePath == nil || sourceWasPrimary {
+                file.path
+            } else {
+                existing?.sourcePath
+            }
+            let parsedIsLatest = Self.timestamp(
+                parsed.updatedAt,
+                isSameOrAfter: existing?.updatedAt)
 
             let sessionRecord = SessionRecord(
                 sessionId: parsed.sessionId,
-                rootSessionId: parsed.rootSessionId,
-                parentSessionId: parsed.parentSessionId,
+                rootSessionId: existing?.rootSessionId ?? parsed.rootSessionId,
+                parentSessionId: parsed.parentSessionId ?? existing?.parentSessionId,
                 title: parsed.title ?? existing?.title,
                 projectName: parsed.projectName ?? existing?.projectName,
                 cwd: parsed.cwd ?? existing?.cwd,
-                sourcePath: file.path,
-                startedAt: parsed.startedAt,
-                updatedAt: parsed.updatedAt,
-                agentNickname: parsed.agentNickname,
-                agentRole: parsed.agentRole,
-                lastModelId: parsed.lastModelId,
-                latestPlanType: parsed.latestPlanType,
+                sourcePath: sessionSourcePath,
+                startedAt: Self.earliestTimestamp(existing?.startedAt, parsed.startedAt),
+                updatedAt: Self.latestTimestamp(existing?.updatedAt, parsed.updatedAt),
+                agentNickname: parsed.agentNickname ?? existing?.agentNickname,
+                agentRole: parsed.agentRole ?? existing?.agentRole,
+                lastModelId: parsedIsLatest
+                    ? parsed.lastModelId ?? existing?.lastModelId
+                    : existing?.lastModelId ?? parsed.lastModelId,
+                latestPlanType: parsedIsLatest
+                    ? parsed.latestPlanType ?? existing?.latestPlanType
+                    : existing?.latestPlanType ?? parsed.latestPlanType,
                 // Filled in by reconcileSessionTree() after the full scan
                 // when we can see this session's children.
                 containsSubagents: false,
@@ -817,38 +938,49 @@ actor ImportEngine {
                 provider: "codex")
             try sessionRecord.save(db)
 
-            // 2. Full rebuilds replace derived rows; resume batches only append
-            // records after the transactionally committed byte cursor.
+            // 2. A full rebuild replaces only this physical fragment. Sibling
+            // fragments share the logical session and must remain intact.
+            let previousPath = expectedState?.sourcePath
             if mode == .replace {
-                try UsageEventRecord
-                    .filter(Column("session_id") == parsed.sessionId)
-                    .deleteAll(db)
-                try RateLimitSampleRecord
-                    .filter(Column("source_kind") == "jsonl"
-                        && Column("source_session_id") == parsed.sessionId)
-                    .deleteAll(db)
+                for sourcePath in Set([file.path, previousPath].compactMap { $0 }) {
+                    try UsageEventRecord
+                        .filter(Column("session_id") == parsed.sessionId
+                            && Column("source_path") == sourcePath)
+                        .deleteAll(db)
+                    try RateLimitSampleRecord
+                        .filter(Column("source_kind") == "jsonl"
+                            && Column("source_session_id") == parsed.sessionId
+                            && Column("source_path") == sourcePath)
+                        .deleteAll(db)
+                }
+            } else if let previousPath, previousPath != file.path {
+                try db.execute(sql: """
+                    UPDATE usage_events
+                    SET source_path = ?
+                    WHERE session_id = ? AND source_path = ?
+                    """, arguments: [file.path, parsed.sessionId, previousPath])
+                try db.execute(sql: """
+                    UPDATE rate_limit_samples
+                    SET source_path = ?
+                    WHERE source_kind = 'jsonl'
+                      AND source_session_id = ?
+                      AND source_path = ?
+                    """, arguments: [file.path, parsed.sessionId, previousPath])
             }
             let insertedEventIds = try Self.insertUsageEvents(
                 parsed.usageDeltas,
                 sessionId: parsed.sessionId,
+                sourcePath: file.path,
                 in: db)
             try Self.insertRateLimitSamples(
                 parsed.rateLimitSamples,
                 sessionId: parsed.sessionId,
+                sourcePath: file.path,
                 in: db)
 
             // 3. Derive prices before advancing the cursor. Any pricing or
             // checkpoint failure rolls the whole batch back together.
-            if mode == .replace {
-                try PricingService.backfillValues(
-                    in: db,
-                    sessionId: parsed.sessionId,
-                    provider: "codex")
-            } else {
-                try PricingService.backfillValues(
-                    in: db,
-                    eventIds: insertedEventIds)
-            }
+            try PricingService.backfillValues(in: db, eventIds: insertedEventIds)
 
             // 4. Save the reducer state and cursor atomically. The session row
             // names one canonical source, so stale aliases are state only and
@@ -857,10 +989,12 @@ actor ImportEngine {
             if let oldPath = expectedState?.sourcePath, oldPath != file.path {
                 try ImportStateRecord.deleteOne(db, key: oldPath)
             }
-            try db.execute(sql: """
-                DELETE FROM import_state
-                WHERE session_id = ? AND source_path <> ?
-                """, arguments: [parsed.sessionId, file.path])
+            try Self.removeDuplicateSourceStates(
+                sessionId: parsed.sessionId,
+                targetPath: file.path,
+                sourceIdentity: output.snapshot.sourceIdentity,
+                sourceFingerprint: output.prefixHash,
+                in: db)
 
             return PersistCounts(
                 events: parsed.usageDeltas.count,
@@ -907,9 +1041,71 @@ actor ImportEngine {
         }
     }
 
+    private static func removeDuplicateSourceStates(
+        sessionId: String,
+        targetPath: String,
+        sourceIdentity: RolloutSourceIdentity,
+        sourceFingerprint: Data,
+        in db: Database
+    ) throws {
+        let siblings = try ImportStateRecord
+            .filter(Column("session_id") == sessionId
+                && Column("source_path") != targetPath)
+            .fetchAll(db)
+        for sibling in siblings {
+            guard let data = sibling.parserCheckpoint,
+                  let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data),
+                  checkpoint.sourceIdentity == sourceIdentity
+                    || checkpoint.prefixHash == sourceFingerprint
+            else { continue }
+            try UsageEventRecord
+                .filter(Column("session_id") == sessionId
+                    && Column("source_path") == sibling.sourcePath)
+                .deleteAll(db)
+            try RateLimitSampleRecord
+                .filter(Column("source_kind") == "jsonl"
+                    && Column("source_session_id") == sessionId
+                    && Column("source_path") == sibling.sourcePath)
+                .deleteAll(db)
+            try ImportStateRecord.deleteOne(db, key: sibling.sourcePath)
+        }
+    }
+
+    private static func timestamp(
+        _ candidate: String?,
+        isSameOrAfter existing: String?
+    ) -> Bool {
+        guard let candidate else { return false }
+        guard let existing else { return true }
+        if let candidateDate = ISO8601.parse(candidate),
+           let existingDate = ISO8601.parse(existing) {
+            return candidateDate >= existingDate
+        }
+        return candidate >= existing
+    }
+
+    private static func earliestTimestamp(_ lhs: String?, _ rhs: String?) -> String? {
+        guard let lhs else { return rhs }
+        guard let rhs else { return lhs }
+        if let lhsDate = ISO8601.parse(lhs), let rhsDate = ISO8601.parse(rhs) {
+            return lhsDate <= rhsDate ? lhs : rhs
+        }
+        return min(lhs, rhs)
+    }
+
+    private static func latestTimestamp(_ lhs: String?, _ rhs: String?) -> String? {
+        guard let lhs else { return rhs }
+        guard let rhs else { return lhs }
+        if let lhsDate = ISO8601.parse(lhs), let rhsDate = ISO8601.parse(rhs) {
+            return lhsDate >= rhsDate ? lhs : rhs
+        }
+        return max(lhs, rhs)
+    }
+
     private static func insertUsageEvents(
         _ deltas: [UsageDelta],
         sessionId: String,
+        sourcePath: String,
         in db: Database
     ) throws -> [Int64] {
         var insertedIds: [Int64] = []
@@ -934,7 +1130,8 @@ actor ImportEngine {
                 modelInferred: delta.modelInferred,
                 providerMessageId: nil,
                 codexTurnId: delta.turnId,
-                codexServiceTierPreference: delta.serviceTierPreference?.rawValue)
+                codexServiceTierPreference: delta.serviceTierPreference?.rawValue,
+                sourcePath: sourcePath)
             try event.insert(db)
             insertedIds.append(db.lastInsertedRowID)
         }
@@ -944,6 +1141,7 @@ actor ImportEngine {
     private static func insertRateLimitSamples(
         _ drafts: [RateLimitSampleDraft],
         sessionId: String,
+        sourcePath: String,
         in db: Database
     ) throws {
         for draft in drafts {
@@ -965,7 +1163,8 @@ actor ImportEngine {
                 windowStart: windowStart,
                 resetsAt: draft.resetsAt,
                 usedPercent: draft.usedPercent,
-                remainingPercent: draft.remainingPercent)
+                remainingPercent: draft.remainingPercent,
+                sourcePath: sourcePath)
             try sample.insert(db)
         }
     }
