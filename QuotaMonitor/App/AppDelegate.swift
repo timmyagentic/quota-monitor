@@ -264,7 +264,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 fields: ["reason": "same-local-day"])
             return
         }
-        env.runScan(minInterval: 60, trigger: trigger)
+        env.runScan(trigger: trigger)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

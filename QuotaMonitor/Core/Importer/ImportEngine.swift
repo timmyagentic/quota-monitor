@@ -25,8 +25,13 @@ actor ImportEngine {
         let file: SessionFile
         let sessionId: String
         let fragmentName: String
-        let headerFingerprint: Data?
+        let headerFingerprint: FragmentFingerprint?
         let directState: ImportStateRecord?
+    }
+
+    private struct FragmentFingerprint {
+        let length: Int64
+        let hash: Data
     }
 
     private struct SourceKey: Hashable {
@@ -276,7 +281,7 @@ actor ImportEngine {
                         for: file)
                     ?? Self.relocationStateMatchingFingerprint(
                         from: priorBySession[source.sessionId] ?? [],
-                        fingerprint: source.headerFingerprint)
+                        source: source)
             }
 
             if let expected,
@@ -538,23 +543,51 @@ actor ImportEngine {
         guard let lhsFingerprint = lhs.headerFingerprint,
               let rhsFingerprint = rhs.headerFingerprint
         else { return false }
-        return lhsFingerprint == rhsFingerprint
+        let length = min(lhsFingerprint.length, rhsFingerprint.length)
+        guard length > 0,
+              let lhsHash = fingerprintHash(
+                  file: lhs.file,
+                  cached: lhsFingerprint,
+                  length: length),
+              let rhsHash = fingerprintHash(
+                  file: rhs.file,
+                  cached: rhsFingerprint,
+                  length: length)
+        else { return false }
+        return lhsHash == rhsHash
     }
 
     private static func fragmentFingerprint(
         file: SessionFile,
         directState: ImportStateRecord?
-    ) -> Data? {
+    ) -> FragmentFingerprint? {
         if let data = directState?.parserCheckpoint,
            let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data) {
-            return checkpoint.prefixHash
+            return FragmentFingerprint(
+                length: min(checkpoint.offset, RolloutParser.fingerprintWindowBytes),
+                hash: checkpoint.prefixHash)
         }
         guard let reader = try? RolloutRecordReader(fileURL: file.url) else {
             return nil
         }
         defer { try? reader.close() }
         let end = min(file.fileSize, RolloutParser.fingerprintWindowBytes)
-        return try? reader.sha256(in: 0..<end)
+        guard let hash = try? reader.sha256(in: 0..<end) else { return nil }
+        return FragmentFingerprint(length: end, hash: hash)
+    }
+
+    private static func fingerprintHash(
+        file: SessionFile,
+        cached: FragmentFingerprint?,
+        length: Int64
+    ) -> Data? {
+        guard length >= 0, length <= file.fileSize else { return nil }
+        if let cached, cached.length == length { return cached.hash }
+        guard let reader = try? RolloutRecordReader(fileURL: file.url) else {
+            return nil
+        }
+        defer { try? reader.close() }
+        return try? reader.sha256(in: 0..<length)
     }
 
     private static func sourceIsPreferred(
@@ -651,14 +684,20 @@ actor ImportEngine {
 
     private static func relocationStateMatchingFingerprint(
         from states: [ImportStateRecord],
-        fingerprint: Data?
+        source: ProbedSource
     ) -> ImportStateRecord? {
-        guard let fingerprint else { return nil }
         let matching = states.filter { state in
             guard let data = state.parserCheckpoint,
                   let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
             else { return false }
-            return checkpoint.prefixHash == fingerprint
+            let length = min(checkpoint.offset, RolloutParser.fingerprintWindowBytes)
+            guard length > 0,
+                  let sourceHash = fingerprintHash(
+                      file: source.file,
+                      cached: source.headerFingerprint,
+                      length: length)
+            else { return false }
+            return checkpoint.prefixHash == sourceHash
         }
         return matching.count == 1 ? matching[0] : nil
     }
@@ -992,8 +1031,12 @@ actor ImportEngine {
             try Self.removeDuplicateSourceStates(
                 sessionId: parsed.sessionId,
                 targetPath: file.path,
-                sourceIdentity: output.snapshot.sourceIdentity,
-                sourceFingerprint: output.prefixHash,
+                sourceFile: file,
+                sourceFingerprint: FragmentFingerprint(
+                    length: min(
+                        output.endOffset,
+                        RolloutParser.fingerprintWindowBytes),
+                    hash: output.prefixHash),
                 in: db)
 
             return PersistCounts(
@@ -1044,8 +1087,8 @@ actor ImportEngine {
     private static func removeDuplicateSourceStates(
         sessionId: String,
         targetPath: String,
-        sourceIdentity: RolloutSourceIdentity,
-        sourceFingerprint: Data,
+        sourceFile: SessionFile,
+        sourceFingerprint: FragmentFingerprint,
         in db: Database
     ) throws {
         let siblings = try ImportStateRecord
@@ -1054,9 +1097,16 @@ actor ImportEngine {
             .fetchAll(db)
         for sibling in siblings {
             guard let data = sibling.parserCheckpoint,
-                  let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data),
-                  checkpoint.sourceIdentity == sourceIdentity
-                    || checkpoint.prefixHash == sourceFingerprint
+                  let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
+            else { continue }
+            let length = min(checkpoint.offset, RolloutParser.fingerprintWindowBytes)
+            let matchesFingerprint = length > 0
+                && fingerprintHash(
+                    file: sourceFile,
+                    cached: sourceFingerprint,
+                    length: length) == checkpoint.prefixHash
+            guard checkpoint.sourceIdentity == sourceFile.sourceIdentity
+                    || matchesFingerprint
             else { continue }
             try UsageEventRecord
                 .filter(Column("session_id") == sessionId

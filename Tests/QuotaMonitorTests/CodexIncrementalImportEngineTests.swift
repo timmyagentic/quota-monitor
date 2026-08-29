@@ -115,6 +115,49 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database) == nil)
     }
 
+    @Test("a differently named replay extension never double-counts its committed prefix")
+    func replayExtensionRemainsOneFragment() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+
+        _ = try await harness.engine.performScan()
+        let beforeRows = try await usageRows(in: harness.database)
+        let replay = harness.rollout.deletingLastPathComponent().appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        let tail = tokenLine(
+            timestamp: "2026-07-19T00:00:04.000Z",
+            total: usage(input: 160, cached: 25, output: 18, reasoning: 5),
+            last: usage(input: 60, cached: 5, output: 8, reasoning: 2))
+        try rolloutData(prefixLines() + [tail]).write(to: replay)
+        #expect((try Data(contentsOf: replay)).count
+            > (try Data(contentsOf: harness.rollout)).count)
+        #expect((try Data(contentsOf: harness.rollout)).count
+            < Int(RolloutParser.fingerprintWindowBytes))
+
+        let whileCanonicalExists = try await harness.engine.performScan()
+        #expect(whileCanonicalExists.changedFiles == 0)
+        #expect(whileCanonicalExists.importedEvents == 0)
+        #expect(try await usageRows(in: harness.database) == beforeRows)
+        #expect(try await optionalImportState(
+            at: replay.path,
+            in: harness.database) == nil)
+
+        try FileManager.default.removeItem(at: harness.rollout)
+        let continued = try await harness.engine.performScan()
+        #expect(continued.changedFiles == 1)
+        #expect(continued.incrementalFiles == 0)
+        #expect(continued.importedEvents == 2)
+        #expect(continued.errors.isEmpty)
+        let rows = try await usageRows(in: harness.database)
+        #expect(rows.map(\.totalTokens) == [110, 68])
+        #expect(try await optionalImportState(
+            at: harness.rollout.path,
+            in: harness.database) == nil)
+        #expect(try await importState(
+            at: replay.path,
+            in: harness.database).byteOffset > 0)
+    }
+
     @Test("same session continuation rollouts preserve every non-overlapping fragment")
     func sameSessionContinuationRolloutsPreserveAllFragments() async throws {
         let harness = try makeHarness(lines: prefixLines())

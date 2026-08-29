@@ -84,7 +84,8 @@ struct AppDelegateLifecycleTests {
             "removeObserver(\n            self, name: .NSCalendarDayChanged"))
         #expect(automatic.contains("AutomaticHistoryScanPolicy.shouldScan("))
         #expect(automatic.contains("env.lastScanAtByScope[scope]"))
-        #expect(automatic.contains("env.runScan(minInterval: 60, trigger: trigger)"))
+        #expect(automatic.contains("env.runScan(trigger: trigger)"))
+        #expect(!automatic.contains("minInterval:"))
         #expect(!source.contains("historyScanTimer"))
     }
 
