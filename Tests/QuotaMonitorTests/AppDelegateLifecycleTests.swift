@@ -64,6 +64,31 @@ struct AppDelegateLifecycleTests {
         #expect(source.components(separatedBy: "updater?.checkInBackgroundIfNeeded()").count == 3)
     }
 
+    @Test("Local midnight, wake, and foreground recover a stale full-history scan")
+    func lifecycleEventsRecoverStaleHistoryWithoutPolling() throws {
+        let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
+        let launch = String(try Self.sourceSlice(
+            source,
+            from: "func applicationDidFinishLaunching",
+            to: "private func closeStrayWindows"))
+        let automatic = String(try Self.sourceSlice(
+            source,
+            from: "private func requestAutomaticHistoryScan",
+            to: "func applicationShouldTerminateAfterLastWindowClosed"))
+
+        #expect(launch.contains("name: .NSCalendarDayChanged"))
+        #expect(source.contains("requestAutomaticHistoryScan(trigger: \"foreground-day-change\")"))
+        #expect(source.contains("requestAutomaticHistoryScan(trigger: \"wake-day-change\")"))
+        #expect(source.contains("requestAutomaticHistoryScan(trigger: \"calendar-day-change\")"))
+        #expect(source.contains(
+            "removeObserver(\n            self, name: .NSCalendarDayChanged"))
+        #expect(automatic.contains("AutomaticHistoryScanPolicy.shouldScan("))
+        #expect(automatic.contains("env.lastScanAtByScope[scope]"))
+        #expect(automatic.contains("env.runScan(trigger: trigger)"))
+        #expect(!automatic.contains("minInterval:"))
+        #expect(!source.contains("historyScanTimer"))
+    }
+
     @Test("Launch requests a menu snapshot without loading a hidden Dashboard")
     func launchDefersDashboardRefreshUntilVisible() throws {
         let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")

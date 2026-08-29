@@ -24,6 +24,18 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+
+- 长时间运行的 Quota Monitor 现在会在跨过本地午夜后保持 Codex 历史完整，也能正确汇总 Codex 拆到多个 rollout 文件中的同一会话。
+
+### 变更
+
+- **每天只补一次后台历史。** 应用长驻时会在本地自然日变化后发起一次安静且受节流的历史扫描；若 Mac 睡眠跨日，唤醒或重新进入前台也会补跑，不增加轮询，也不延迟 Dashboard 的 last-good 快照首屏。
+
+### 修复
+
+- **保留全部 Codex rollout 分片。** 同一 session ID 下互不重叠的多个 rollout 文件现在会合并进一个逻辑会话；active／archive 副本与内容匹配的 replay 仍只选择一个 canonical 来源。分片级来源归属让 append 或重写只更新自己的事件和额度样本，不再清除或重复计算其他分片。
+
 ## [1.0.3] — 2026-08-27
 
 #### Summary

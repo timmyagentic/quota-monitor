@@ -30,6 +30,18 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Long-running Quota Monitor sessions now keep Codex history complete across local midnight, including conversations that Codex continues across several rollout files.
+
+### Changed
+
+- **Recover history once per new local day.** A running app now requests one quiet, throttled history scan when the calendar day changes, and wake or foreground events recover that scan after sleep without adding a polling loop or delaying the last-good Dashboard snapshot.
+
+### Fixed
+
+- **Preserve every Codex rollout fragment.** Distinct non-overlapping rollout files with the same session ID now contribute to one logical session, while active/archive copies and matching replay duplicates still select one canonical source; fragment-scoped provenance lets appends and rewrites update only their own events and quota samples without erasing or double-counting siblings.
+
 ## [1.0.3] — 2026-08-27
 
 #### Summary

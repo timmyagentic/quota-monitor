@@ -31,7 +31,72 @@ struct MigrationsTests {
 
         #expect(columns.contains("codex_turn_id"))
         #expect(columns.contains("codex_service_tier_preference"))
+        #expect(columns.contains("source_path"))
         #expect(!columns.contains("codex_billing_tier"))
+
+        let sampleColumns = try manager.pool.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT name
+                FROM pragma_table_info('rate_limit_samples')
+                """)
+        }
+        #expect(sampleColumns.contains("source_path"))
+    }
+
+    @Test("rollout fragment migration backfills existing Codex derived rows")
+    func rolloutFragmentMigrationBackfillsSourcePaths() throws {
+        let url = try temporaryDatabaseURL(prefix: "qm-codex-fragment-provenance")
+        let queue = try DatabaseQueue(path: url.path)
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(queue, upTo: "v21-codex-cache-write-reread")
+
+        let sessionId = "fragment-migration-session"
+        let sourcePath = "/fixture/.codex/sessions/rollout-fragment.jsonl"
+        let stamp = "2026-08-29T00:00:00.000Z"
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO sessions
+                    (session_id, root_session_id, source_path,
+                     started_at, updated_at, last_model_id,
+                     created_at, imported_at, provider)
+                VALUES (?, ?, ?, ?, ?, 'gpt-5.4', ?, ?, 'codex')
+                """, arguments: [
+                    sessionId, sessionId, sourcePath,
+                    stamp, stamp, stamp, stamp,
+                ])
+            try db.execute(sql: """
+                INSERT INTO usage_events
+                    (session_id, timestamp, model_id,
+                     input_tokens, cached_input_tokens, output_tokens,
+                     reasoning_output_tokens, total_tokens, value_usd,
+                     provider)
+                VALUES (?, ?, 'gpt-5.4', 10, 2, 3, 1, 13, 0, 'codex')
+                """, arguments: [sessionId, stamp])
+            try db.execute(sql: """
+                INSERT INTO rate_limit_samples
+                    (source_kind, source_session_id, bucket,
+                     sample_timestamp, resets_at,
+                     used_percent, remaining_percent)
+                VALUES ('jsonl', ?, 'primary', ?, ?, 10, 90)
+                """, arguments: [sessionId, stamp, stamp])
+        }
+
+        try migrator.migrate(queue)
+
+        let usageSource = try queue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT source_path FROM usage_events WHERE session_id = ?
+                """, arguments: [sessionId])
+        }
+        let sampleSource = try queue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT source_path FROM rate_limit_samples
+                WHERE source_kind = 'jsonl' AND source_session_id = ?
+                """, arguments: [sessionId])
+        }
+        #expect(usageSource == sourcePath)
+        #expect(sampleSource == sourcePath)
     }
 
     @Test("pricing policy migration reprices unknown Codex tiers as Standard")
