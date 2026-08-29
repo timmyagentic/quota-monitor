@@ -513,12 +513,9 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func summaryPressBegan() {
-        closeDetails()
-    }
-
-    private func summaryDragBegan() {
         guard detailsAreAllowed,
               let panel else {
+            resetSummaryDrag()
             return
         }
         summaryDragStartFrame = panel.frame
@@ -526,6 +523,11 @@ final class CodexQuotaOverlayController: NSObject {
         summaryDragFrame = panel.frame
         summaryDragDidMove = false
         closeDetails()
+    }
+
+    private func summaryDragBegan() {
+        closeDetails()
+        summaryDragChanged()
     }
 
     private func summaryDragChanged() {
@@ -538,22 +540,16 @@ final class CodexQuotaOverlayController: NSObject {
               let summaryDragStartMouseLocation else {
             return
         }
-        let mouseLocation = NSEvent.mouseLocation
-        let candidate = CGRect(
-            x: summaryDragStartFrame.minX
-                + mouseLocation.x
-                - summaryDragStartMouseLocation.x,
-            y: summaryDragStartFrame.minY
-                + mouseLocation.y
-                - summaryDragStartMouseLocation.y,
-            width: summaryDragStartFrame.width,
-            height: summaryDragStartFrame.height)
-        let frame = CodexQuotaOverlayLayout.clampedFrame(
-            candidate,
+        let frame = CodexQuotaOverlayDragFramePolicy.frame(
+            from: summaryDragStartFrame,
+            pressLocation: summaryDragStartMouseLocation,
+            currentLocation: NSEvent.mouseLocation,
             in: codexWindowFrame)
         summaryDragFrame = frame
-        summaryDragDidMove = true
-        panel.setFrame(frame, display: panel.isVisible)
+        summaryDragDidMove = summaryDragDidMove || frame != summaryDragStartFrame
+        if panel.frame != frame {
+            panel.setFrame(frame, display: panel.isVisible)
+        }
     }
 
     private func summaryDragEnded() {

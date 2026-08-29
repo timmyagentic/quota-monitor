@@ -179,13 +179,12 @@ struct CodexQuotaOverlayView: View {
             phase: dragPhase,
             translation: value.translation)
         resetVisualState()
+        onDragEnded()
 
         switch action {
         case .activateDetails:
             onActivate()
-        case .finishDrag:
-            onDragEnded()
-        case .cancel:
+        case .finishDrag, .cancel:
             break
         }
     }
@@ -213,7 +212,7 @@ struct CodexQuotaOverlayView: View {
     private func cancelInteraction() {
         holdTask?.cancel()
         holdTask = nil
-        if dragPhase.isUnlocked {
+        if dragPhase != .idle {
             onDragEnded()
         }
         resetVisualState()

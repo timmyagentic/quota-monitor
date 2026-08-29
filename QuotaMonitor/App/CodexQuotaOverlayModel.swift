@@ -621,3 +621,19 @@ enum CodexQuotaOverlayDragInteractionPolicy {
         }
     }
 }
+
+enum CodexQuotaOverlayDragFramePolicy {
+    static func frame(
+        from startFrame: CGRect,
+        pressLocation: CGPoint,
+        currentLocation: CGPoint,
+        in codexWindowFrame: CGRect
+    ) -> CGRect {
+        let candidate = startFrame.offsetBy(
+            dx: currentLocation.x - pressLocation.x,
+            dy: currentLocation.y - pressLocation.y)
+        return CodexQuotaOverlayLayout.clampedFrame(
+            candidate,
+            in: codexWindowFrame)
+    }
+}
