@@ -625,6 +625,24 @@ struct CodexQuotaOverlayTests {
         #expect(chinese == ["按住 1 秒后拖动", "现在可拖动"])
     }
 
+    @Test("Unlock applies pointer movement accumulated during the hold")
+    func longPressUnlockAppliesAccumulatedMovement() {
+        let startFrame = CGRect(x: 120, y: 40, width: 132, height: 25)
+        let containerFrame = CGRect(x: 0, y: 0, width: 900, height: 700)
+
+        let unlockedFrame = CodexQuotaOverlayDragFramePolicy.frame(
+            from: startFrame,
+            pressLocation: CGPoint(x: 180, y: 52),
+            currentLocation: CGPoint(x: 330, y: 172),
+            in: containerFrame)
+
+        #expect(unlockedFrame == CGRect(
+            x: 270,
+            y: 160,
+            width: 132,
+            height: 25))
+    }
+
     @Test("Reset-card details prefer expirations and fall back to a live count")
     func resetCreditsPresentation() {
         let expirations = [
@@ -822,6 +840,19 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("onHoverChanged"))
         #expect(source.contains("summaryDragBegan"))
         #expect(source.contains("summaryDragChanged"))
+        let pressHandler = try #require(source.range(
+            of: "private func summaryPressBegan()"))
+        let dragBeginHandler = try #require(source.range(
+            of: "private func summaryDragBegan()"))
+        let dragChangedHandler = try #require(source.range(
+            of: "private func summaryDragChanged()"))
+        let pressBody = source[
+            pressHandler.lowerBound..<dragBeginHandler.lowerBound]
+        let dragBeginBody = source[
+            dragBeginHandler.lowerBound..<dragChangedHandler.lowerBound]
+        #expect(pressBody.contains(
+            "summaryDragStartMouseLocation = NSEvent.mouseLocation"))
+        #expect(dragBeginBody.contains("summaryDragChanged()"))
         #expect(viewSource.contains("DragGesture(minimumDistance: 0"))
         #expect(viewSource.contains(
             "CodexQuotaOverlayDragInteractionPolicy.holdDuration"))
