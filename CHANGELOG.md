@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.4] — 2026-08-30
+
 #### Summary
 
 - The Codex quota widget now follows the pointer immediately when its one-second hold unlocks dragging, without pausing or jumping after the cursor has already moved.

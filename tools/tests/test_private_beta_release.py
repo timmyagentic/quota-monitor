@@ -217,6 +217,25 @@ class PrivateBetaReleaseTests(unittest.TestCase):
                 artifact_name="QuotaMonitor-1.0.3.dmg",
             )
 
+    def test_latest_public_stable_version_uses_the_highest_valid_build(self):
+        older = self.public_appcast().replace(
+            "<sparkle:version>10000039000</sparkle:version>",
+            "<sparkle:version>10000029000</sparkle:version>",
+        ).replace("1.0.3", "1.0.2")
+        older_item = older[
+            older.index("    <item>"):
+            older.index("    </item>") + len("    </item>")
+        ]
+        combined = self.public_appcast().replace(
+            "  </channel>",
+            f"{older_item}\n  </channel>",
+        )
+
+        self.assertEqual(
+            MODULE.latest_public_stable_version(combined),
+            "1.0.3",
+        )
+
     def test_private_appcast_keeps_beta_first_and_latest_stable(self):
         stable_item = MODULE.private_stable_item(
             self.public_appcast(),

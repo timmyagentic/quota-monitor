@@ -111,6 +111,26 @@ def serialized_item(item: ET.Element) -> str:
     return ET.tostring(item, encoding="unicode", short_empty_elements=True)
 
 
+def latest_public_stable_version(public_appcast: str) -> str:
+    stable_items: list[tuple[int, str]] = []
+    for item in appcast_channel(public_appcast).findall("item"):
+        item_channel = item.find(SPARKLE_CHANNEL)
+        if item_channel is not None and (item_channel.text or "").strip():
+            continue
+        version = (item.findtext(SPARKLE_SHORT_VERSION) or "").strip()
+        raw_build = (item.findtext(SPARKLE_VERSION) or "").strip()
+        if (
+            not STABLE_VERSION_PATTERN.fullmatch(version)
+            or not raw_build.isdigit()
+            or int(raw_build) <= 0
+        ):
+            continue
+        stable_items.append((int(raw_build), version))
+    if not stable_items:
+        raise RuntimeError("public appcast has no valid Stable item")
+    return max(stable_items, key=lambda candidate: candidate[0])[1]
+
+
 def private_stable_item(
     public_appcast: str,
     *,
@@ -666,7 +686,11 @@ def publish_private_beta(args: argparse.Namespace) -> int:
 
 
 def sync_stable_to_private_beta(args: argparse.Namespace) -> int:
-    version = (ROOT / "Resources/VERSION").read_text().strip()
+    public_appcast = rooted_path(args.public_appcast, ROOT / "appcast.xml")
+    if not public_appcast.is_file():
+        raise RuntimeError(f"missing public appcast: {public_appcast}")
+    public_appcast_document = public_appcast.read_text(encoding="utf-8")
+    version = latest_public_stable_version(public_appcast_document)
     artifact = rooted_path(
         args.stable_artifact,
         ROOT / "dist" / f"QuotaMonitor-{version}.dmg",
@@ -675,18 +699,15 @@ def sync_stable_to_private_beta(args: argparse.Namespace) -> int:
         args.stable_checksum,
         artifact.with_suffix(".dmg.sha256"),
     )
-    public_appcast = rooted_path(args.public_appcast, ROOT / "appcast.xml")
     notes = {
         "en": ROOT / "ReleaseNotes" / f"{version}.en.html",
         "zh-Hans": ROOT / "ReleaseNotes" / f"{version}.zh-Hans.html",
     }
-    if not public_appcast.is_file():
-        raise RuntimeError(f"missing public appcast: {public_appcast}")
     for language, path in notes.items():
         if not path.is_file():
             raise RuntimeError(f"missing {language} release notes: {path}")
     stable_item = private_stable_item(
-        public_appcast.read_text(encoding="utf-8"),
+        public_appcast_document,
         version=version,
         base_url=args.worker_base_url,
         artifact_name=artifact.name,
