@@ -1,0 +1,18 @@
+<div class="release-summary">
+<ul>
+<li>The Codex quota widget now follows the pointer immediately when its one-second hold unlocks dragging, without pausing or jumping after the cursor has already moved.</li>
+<li>Long-running Quota Monitor sessions now keep Codex history complete across local midnight, including conversations that Codex continues across several rollout files.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Changed</h3>
+<ul>
+<li><b>Recover history once per new local day.</b> A running app now requests one quiet, throttled history scan when the calendar day changes, and wake or foreground events recover that scan after sleep without adding a polling loop or delaying the last-good Dashboard snapshot.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><b>Start native widget dragging without a dead zone.</b> The widget now remembers where the press began and applies all pointer movement accumulated during the one-second hold as soon as dragging unlocks, then tracks subsequent movement continuously while preserving the original grab offset.</li>
+<li><b>Preserve every Codex rollout fragment.</b> Distinct non-overlapping rollout files with the same session ID now contribute to one logical session, while active/archive copies and matching replay duplicates still select one canonical source; fragment-scoped provenance lets appends and rewrites update only their own events and quota samples without erasing or double-counting siblings.</li>
+</ul>
+</div>
