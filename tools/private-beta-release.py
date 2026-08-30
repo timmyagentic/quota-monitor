@@ -112,18 +112,23 @@ def serialized_item(item: ET.Element) -> str:
 
 
 def latest_public_stable_version(public_appcast: str) -> str:
+    stable_items: list[tuple[int, str]] = []
     for item in appcast_channel(public_appcast).findall("item"):
         item_channel = item.find(SPARKLE_CHANNEL)
         if item_channel is not None and (item_channel.text or "").strip():
             continue
         version = (item.findtext(SPARKLE_SHORT_VERSION) or "").strip()
         raw_build = (item.findtext(SPARKLE_VERSION) or "").strip()
-        if not STABLE_VERSION_PATTERN.fullmatch(version):
-            raise RuntimeError("public Stable item has an invalid version")
-        if not raw_build.isdigit() or int(raw_build) <= 0:
-            raise RuntimeError("public Stable item has no numeric build")
-        return version
-    raise RuntimeError("public appcast has no Stable item")
+        if (
+            not STABLE_VERSION_PATTERN.fullmatch(version)
+            or not raw_build.isdigit()
+            or int(raw_build) <= 0
+        ):
+            continue
+        stable_items.append((int(raw_build), version))
+    if not stable_items:
+        raise RuntimeError("public appcast has no valid Stable item")
+    return max(stable_items, key=lambda candidate: candidate[0])[1]
 
 
 def private_stable_item(

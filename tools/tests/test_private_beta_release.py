@@ -217,7 +217,7 @@ class PrivateBetaReleaseTests(unittest.TestCase):
                 artifact_name="QuotaMonitor-1.0.3.dmg",
             )
 
-    def test_latest_public_stable_version_comes_from_the_feed_not_the_worktree(self):
+    def test_latest_public_stable_version_uses_the_highest_valid_build(self):
         older = self.public_appcast().replace(
             "<sparkle:version>10000039000</sparkle:version>",
             "<sparkle:version>10000029000</sparkle:version>",
