@@ -279,6 +279,32 @@ struct PricingValueBackfillTests {
                 "5m: 1M * 6.25 + 1h: 1M * (5.00 * 2) = 16.25, got \(values[0])")
     }
 
+    @Test("Claude Fable 5.1 usage uses the official reduced cache-read price")
+    func claudeFable51UsesOfficialPricing() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db,
+            provider: "claude",
+            modelId: "claude-fable-5-1",
+            input: 1_000_000,
+            cached: 1_000_000,
+            output: 1_000_000,
+            cacheCreation: 2_000_000,
+            cacheCreation5m: 1_000_000,
+            cacheCreation1h: 1_000_000,
+            timestamp: "2026-09-01T00:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // 1M input ($10) + 1M cache read ($0.25)
+        // + 1M 5m write ($12.50) + 1M 1h write ($20)
+        // + 1M output ($50) = $92.75.
+        #expect(abs(value - 92.75) < 1e-9)
+    }
+
     @Test("database initialization seeds Claude Opus 4.5 so imported usage can be priced")
     func databaseInitializationSeedsClaudeOpus45() throws {
         let db = try makeDatabase()
@@ -315,6 +341,9 @@ struct PricingValueBackfillTests {
             .init(modelId: "claude-opus-5",
                   input: 5.00, cached: 0.50, cacheCreation: 6.25,
                   output: 25.00, isOfficial: true),
+            .init(modelId: "claude-fable-5-1",
+                  input: 10.00, cached: 0.25, cacheCreation: 12.50,
+                  output: 50.00, isOfficial: true),
             .init(modelId: "claude-sonnet-5",
                   input: 2.00, cached: 0.20, cacheCreation: 2.50,
                   output: 10.00, isOfficial: true),
@@ -352,6 +381,7 @@ struct PricingValueBackfillTests {
                 FROM pricing_catalog
                 WHERE model_id IN (
                   'claude-opus-5',
+                  'claude-fable-5-1',
                   'claude-sonnet-5',
                   'claude-fable-5',
                   'claude-opus-4-8',

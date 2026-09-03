@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Claude Fable 5.1 usage now receives the correct built-in cost estimate, including its reduced prompt-cache read price.
+
+### Added
+
+- **Claude Fable 5.1 pricing.** The bundled catalog now recognizes `claude-fable-5-1` at Anthropic's official $10 input, $0.25 cache-read, $12.50 five-minute cache-write, $20 one-hour cache-write, and $50 output rates per million tokens, while existing Fable 5 history keeps its original pricing.
+
 ## [1.0.4] — 2026-08-31
 
 #### Summary
