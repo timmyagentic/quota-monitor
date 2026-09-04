@@ -71,6 +71,7 @@ enum CodexFastMode {
     /// model_id → multiplier used only to materialize Fast catalog rows.
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
+        "gpt-6-astra": 2.0,
         "gpt-5.6-sol": 2.0,
         "gpt-5.6-terra": 2.0,
         "gpt-5.6-luna": 2.0,
@@ -89,6 +90,7 @@ enum CodexFastMode {
 /// the tier ultimately served by OpenAI.
 enum CodexFlexMode {
     static let multipliers: [String: Double] = [
+        "gpt-6-astra": 0.5,
         "gpt-5.6-sol": 0.5,
         "gpt-5.6-terra": 0.5,
         "gpt-5.6-luna": 0.5,
@@ -100,9 +102,9 @@ enum CodexFlexMode {
     static let suffix = "-flex"
 }
 
-/// Defines which models receive materialized Long rows. GPT-5.6 has published
-/// Fast Long prices; older Fast models without such rows select Standard Long.
-/// Flex retains its tier.
+/// Defines which models receive materialized Long rows. GPT-6 Astra and
+/// GPT-5.6 have published Fast Long prices; older Fast models without such
+/// rows select Standard Long. Flex retains its tier.
 enum CodexLongContextPricing {
     static let inputTokenThreshold: Int64 = 272_000
     /// Used only while materializing bundled Long rows, never in event SQL.
@@ -110,6 +112,7 @@ enum CodexLongContextPricing {
     static let outputPriceMultiplier = 1.5
     static let suffix = "-long"
     static let modelIds: Set<String> = [
+        "gpt-6-astra",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -117,6 +120,7 @@ enum CodexLongContextPricing {
         "gpt-5.4",
     ]
     static let fastModelIds: Set<String> = [
+        "gpt-6-astra",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -199,6 +203,7 @@ enum BundledPricingCatalog {
 
     private static let codexBaseModelIds: Set<String> = [
         "gpt-5",
+        "gpt-6-astra",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -226,6 +231,12 @@ enum BundledPricingCatalog {
               effectiveModelId: "gpt-5", isOfficial: true,
               note: "Used for sessions that lack turn_context model metadata.",
               sourceUrl: "https://openai.com/api/pricing/"),
+        .init(modelId: "gpt-6-astra", displayName: "GPT-6 Astra",
+              inputPricePerMillion: 10.00, cachedInputPricePerMillion: 1.00, outputPricePerMillion: 50.00,
+              cacheCreationPricePerMillion: 12.50,
+              effectiveModelId: "gpt-6-astra", isOfficial: true,
+              note: "Official Standard Short price; tier and >272K variants are materialized separately.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6-astra"),
         .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
               inputPricePerMillion: 4.00, cachedInputPricePerMillion: 0.40, outputPricePerMillion: 20.00,
               cacheCreationPricePerMillion: 5.00,
@@ -448,8 +459,9 @@ enum BundledPricingCatalog {
         }
     }()
 
-    /// GPT-5.6 publishes Fast Long prices. Older Priority requests deliberately
-    /// select the Standard Long row instead, so no older Fast Long row exists.
+    /// GPT-6 Astra and GPT-5.6 publish Fast Long prices. Older Priority
+    /// requests deliberately select the Standard Long row instead, so no
+    /// older Fast Long row exists.
     private static let fastLongVariants: [PricingEntry] = {
         let byId = Dictionary(uniqueKeysWithValues: fastVariants.map { ($0.effectiveModelId, $0) })
         return CodexLongContextPricing.fastModelIds.sorted().compactMap { baseId in
