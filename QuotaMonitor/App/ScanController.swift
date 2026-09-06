@@ -216,9 +216,10 @@ extension AppEnvironment {
                         "errors": .int(merged.errors.count)
                     ])
                 // Frequent watcher scans can skip summary queries when their
-                // importer made no read-model changes. Explicit refreshes
-                // still run them because rolling windows depend on wall time
-                // and sibling pollers can persist data outside ScanReport.
+                // importer made no read-model changes. Explicit refreshes and
+                // local-day-boundary recoveries still run them because rolling
+                // windows depend on wall time and sibling pollers can persist
+                // data outside ScanReport.
                 let decision = await MainActor.run {
                     Self.scanRefreshDecision(
                         didChangeReadModel: merged.didChangeReadModel,
@@ -358,10 +359,10 @@ extension AppEnvironment {
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
     }
 
-    /// Pure post-scan refresh policy. Persisted changes and explicit refreshes
-    /// update the menu snapshot plus a visible Dashboard. Background no-op
-    /// scans do neither, except that a missing first menu snapshot always
-    /// starts or queues a load.
+    /// Pure post-scan refresh policy. Persisted changes, explicit refreshes,
+    /// and local-day-boundary recoveries update the menu snapshot plus a
+    /// visible Dashboard. Other background no-op scans do neither, except
+    /// that a missing first menu snapshot always starts or queues a load.
     nonisolated static func scanRefreshDecision(
         didChangeReadModel: Bool,
         trigger: String,
@@ -382,7 +383,13 @@ extension AppEnvironment {
     nonisolated static func scanTriggerRefreshesWithoutChanges(
         _ trigger: String
     ) -> Bool {
-        trigger == "manual" || trigger == "popover" || trigger == "qa"
+        switch trigger {
+        case "manual", "popover", "qa",
+             "calendar-day-change", "wake-day-change", "foreground-day-change":
+            return true
+        default:
+            return false
+        }
     }
 
     private func refreshSummariesAfterSkippedScan(
