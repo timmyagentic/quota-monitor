@@ -30,15 +30,17 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-09-06
+
 #### Summary
 
-- GPT-6 Astra usage now receives the correct built-in estimate across Standard, Flex, Fast, and long-context requests, including prompt-cache writes.
-- Claude Fable 5.1 usage now receives the correct built-in cost estimate, including its reduced prompt-cache read price.
+- GPT-6 Astra usage now includes cost estimates for Standard, Flex, Fast, and long-context requests, including prompt-cache writes.
+- Claude Fable 5.1 usage now reflects its lower cache-read price, while existing Fable 5 estimates stay unchanged.
 
 ### Added
 
-- **GPT-6 Astra pricing.** The bundled catalog now recognizes `gpt-6-astra` with OpenAI's official $10 input, $1 cached-input, $12.50 cache-write, and $50 output rates per million tokens, while materializing the published 0.5× Flex, 2× Fast, and >272K long-context prices for deterministic historical valuation.
-- **Claude Fable 5.1 pricing.** The bundled catalog now recognizes `claude-fable-5-1` at Anthropic's official $10 input, $0.25 cache-read, $12.50 five-minute cache-write, $20 one-hour cache-write, and $50 output rates per million tokens, while existing Fable 5 history keeps its original pricing.
+- **GPT-6 Astra estimates.** Usage is now priced across Standard, Flex, and Fast modes for both short and long contexts, with cached input and cache writes included.
+- **Claude Fable 5.1 estimates.** Usage now uses the model's published input, output, and cache prices, including the lower cache-read rate, without changing existing Fable 5 pricing.
 
 ## [1.0.4] — 2026-08-31
 
