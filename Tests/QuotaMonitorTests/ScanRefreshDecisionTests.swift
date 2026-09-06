@@ -5,12 +5,18 @@ import Testing
 @Suite("Post-scan refresh decisions")
 struct ScanRefreshDecisionTests {
 
-    @Test("only explicit scan triggers request no-change summary fallbacks")
+    @Test("only explicit and day-boundary scan triggers request no-change summary fallbacks")
     func explicitScanTriggersRequestFallbacks() {
-        for trigger in ["manual", "popover", "qa"] {
+        for trigger in [
+            "manual", "popover", "qa",
+            "calendar-day-change", "wake-day-change", "foreground-day-change"
+        ] {
             #expect(AppEnvironment.scanTriggerRefreshesWithoutChanges(trigger))
         }
-        for trigger in ["launch", "onboarding", "claude-file-watch"] {
+        for trigger in [
+            "launch", "onboarding", "claude-file-watch",
+            "claude-file-watch-trailing", "history-root-change"
+        ] {
             #expect(!AppEnvironment.scanTriggerRefreshesWithoutChanges(trigger))
         }
     }
@@ -79,6 +85,40 @@ struct ScanRefreshDecisionTests {
             #expect(decision == ScanRefreshDecision(
                 refreshMenuBar: false,
                 refreshDashboard: true))
+        }
+    }
+
+    @Test("Day-boundary no-op scans refresh a visible Dashboard")
+    func dayBoundaryNoOpRefreshesVisibleDashboard() {
+        for trigger in [
+            "calendar-day-change", "wake-day-change", "foreground-day-change"
+        ] {
+            let decision = AppEnvironment.scanRefreshDecision(
+                didChangeReadModel: false,
+                trigger: trigger,
+                hasMenuBarSnapshot: true,
+                isDashboardVisible: true)
+
+            #expect(decision == ScanRefreshDecision(
+                refreshMenuBar: false,
+                refreshDashboard: true))
+        }
+    }
+
+    @Test("Day-boundary no-op scans refresh the menu bar while Dashboard is hidden")
+    func dayBoundaryNoOpRefreshesHiddenDashboardMenuBar() {
+        for trigger in [
+            "calendar-day-change", "wake-day-change", "foreground-day-change"
+        ] {
+            let decision = AppEnvironment.scanRefreshDecision(
+                didChangeReadModel: false,
+                trigger: trigger,
+                hasMenuBarSnapshot: true,
+                isDashboardVisible: false)
+
+            #expect(decision == ScanRefreshDecision(
+                refreshMenuBar: true,
+                refreshDashboard: false))
         }
     }
 
