@@ -6,10 +6,13 @@ import SwiftUI
 /// to share between two slightly-different snapshot types.
 struct QuotaRow: View {
     @Environment(SettingsStore.self) private var settings
+    @Environment(LocalizationStore.self) private var localization
 
     let title: String
     let usedPercent: Double
     let resetAt: Date
+    let windowDuration: TimeInterval?
+    var cycle: QuotaCycle? = nil
     let paceLabel: QuotaPaceLabel.Result?
     /// Tint applied to the title chip and progress bar so the row reads as
     /// part of its parent provider block (blue for Codex, orange for
@@ -17,27 +20,33 @@ struct QuotaRow: View {
     var accent: Color = .accentColor
 
     /// Convenience constructor for Codex windows.
-    init(title: String, window: RateLimitSnapshot.Window, accent: Color = .accentColor) {
+    init(title: String, window: RateLimitSnapshot.Window, accent: Color = .accentColor, cycle: QuotaCycle? = nil) {
+        self.cycle = cycle
         self.title = title
         self.usedPercent = window.usedPercent
+        self.windowDuration = window.windowDuration
         self.resetAt = window.resetAt
         self.paceLabel = window.paceLabel()
         self.accent = accent
     }
 
     /// Convenience constructor for Claude OAuth windows.
-    init(title: String, window: ClaudeUsageSnapshot.Window, accent: Color = .accentColor) {
+    init(title: String, window: ClaudeUsageSnapshot.Window, accent: Color = .accentColor, cycle: QuotaCycle? = nil) {
+        self.cycle = cycle
         self.title = title
         self.usedPercent = window.usedPercent
+        self.windowDuration = window.windowDuration
         self.resetAt = window.resetAt
         self.paceLabel = window.paceLabel()
         self.accent = accent
     }
 
     /// Convenience constructor for DB-hydrated Codex quota windows.
-    init(title: String, window: CodexQuotaWindow, accent: Color = .accentColor) {
+    init(title: String, window: CodexQuotaWindow, accent: Color = .accentColor, cycle: QuotaCycle? = nil) {
+        self.cycle = cycle
         self.title = title
         self.usedPercent = window.usedPercent
+        self.windowDuration = window.windowStart.map { window.resetsAt.timeIntervalSince($0) }
         self.resetAt = window.resetsAt
         self.paceLabel = nil
         self.accent = accent
@@ -57,6 +66,7 @@ struct QuotaRow: View {
                 value: progressValue,
                 usedPercent: usedPercent,
                 accessibilityText: "\(Int(displayPercent))%")
+            QuotaCycleTimingView(cycle: cycle, resetAt: resetAt, duration: windowDuration)
             HStack(spacing: 4) {
                 Text(L10n.resetsRelative(relativeReset))
                     .font(.caption2)
@@ -73,7 +83,7 @@ struct QuotaRow: View {
                     Text(L10n.quotaRowStaleLabel)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                } else if let pace = paceLabel {
+                } else if let pace = paceLabel, cycle?.allowsPaceEstimate != false {
                     Text(pace.text)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(paceColor(pace.severity))

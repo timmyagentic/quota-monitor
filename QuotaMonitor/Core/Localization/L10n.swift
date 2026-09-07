@@ -20,6 +20,38 @@ import Foundation
 /// **Mistyping `L10n.refesh` is a compile error.** That's the whole point.
 enum L10n {
 
+    // MARK: - quota cycles
+
+    static var cycleLocalUsage: String { t(en: "This cycle · local records", zh: "本轮用量 · 本机记录") }
+    static var cycleAPIValue: String { t(en: "API equivalent", zh: "API 等价费用") }
+    static var cycleStartUnresolved: String { t(en: "Cycle start unconfirmed", zh: "本轮起点待确认") }
+    static var cycleEstimatedExplanation: String { t(en: "Estimated from the server's next reset and window duration. An earlier manual or promotional reset may be unobserved.", zh: "由服务端下次重置时间与窗口时长推算；可能未观测到此前的手动或活动重置。") }
+    static var cycleObservedExplanation: String { t(en: "Observed a new window aligned with the previously reported reset deadline.", zh: "已观测到新窗口，起点与此前服务端报告的重置时间一致。") }
+    static var cycleChangedExplanation: String { t(en: "The deadline advanced and usage fell between two observations. A reset is possible in this interval; local totals begin at the first new observation.", zh: "两次观测之间重置时间延后、已用额度下降，可能在此期间发生重置；本机统计从首次新观测开始。") }
+    static var cycleUnresolvedExplanation: String { t(en: "Quota or timing changed without enough evidence to locate a reset. Cycle totals resume when a new boundary can be identified.", zh: "额度或时间发生变化，但不足以定位重置时刻；识别到新的周期边界后恢复本轮统计。") }
+    static var cycleLocalScope: String { t(en: "Imported records on this Mac, across accounts. Other devices are excluded; API value is an estimate, not your bill.", zh: "本机已导入记录，包含不同账号；不含其他设备，API 费用为估值。") }
+    static var cyclePartialScope: String { t(en: "From the first observation after a possible reset; the interval between polls is excluded. Local records across accounts; estimated API value.", zh: "从可能重置后的首次观测统计，不含两次采样间隔；本机跨账号记录，API 费用为估值。") }
+    static var cycleNoLocalRecords: String { t(en: "No local records in this interval. This does not mean account usage is zero.", zh: "该时段暂无本机记录，不代表账号用量为零。") }
+    static var cycleNoCurrentWindow: String { t(en: "Waiting for an identifiable current quota window.", zh: "等待可识别起点的当前配额窗口。") }
+    static var cycleCumulativeExplanation: String { t(en: "Cumulative local tokens from each provider's own cycle start. Starts can differ; estimated starts are labelled below.", zh: "按各服务商各自的周期起点累计本机 Token；起点可能不同，推算状态见下方。") }
+    static var cycleHoursAxis: String { t(en: "Hours since cycle start", zh: "距本轮起点（小时）") }
+    static var cycleCurrent5h: String { t(en: "Current 5h", zh: "本轮 5 小时") }
+    static var cycleCurrent7d: String { t(en: "Current 7d", zh: "本轮 7 天") }
+    static func cycleTimeProgress(_ percent: String, estimated: Bool) -> String {
+        t(en: "Time elapsed \(estimated ? "≈" : "")\(percent)", zh: "时间已过 \(estimated ? "≈" : "")\(percent)")
+    }
+    static func cycleStartAt(_ value: String) -> String { t(en: "Start: \(value)", zh: "起点：\(value)") }
+    static func cycleSampleAt(_ value: String) -> String { t(en: "Observed: \(value)", zh: "观测时间：\(value)") }
+    static var cycleRangeLabel: String { t(en: "Usage period", zh: "用量周期") }
+    static func cycleElapsedEstimated(_ value: String) -> String { t(en: "Estimated start · \(value) elapsed", zh: "推算起点 · 已过 \(value)") }
+    static func cycleElapsedObserved(_ value: String) -> String { t(en: "Observed reset · \(value) elapsed", zh: "已观测重置 · 已过 \(value)") }
+    static func cycleElapsedRange(_ value: String) -> String { t(en: "Possible reset · \(value) ago", zh: "可能重置于 \(value) 前") }
+    static func cycleDuration(days: Int, hours: Int, minutes: Int) -> String {
+        if days > 0 { return t(en: "\(days)d \(hours)h", zh: "\(days)天 \(hours)小时") }
+        if hours > 0 { return t(en: "\(hours)h \(minutes)m", zh: "\(hours)小时 \(minutes)分") }
+        return t(en: "\(minutes)m", zh: "\(minutes)分")
+    }
+
     // MARK: - generic actions / verbs
 
     static var refresh: String { t(en: "Refresh", zh: "刷新") }

@@ -55,6 +55,7 @@ struct LocalQAConfiguration: Equatable {
 }
 
 enum LocalQAStep: String, Equatable {
+    case seedQuotaCycles = "seed-quota-cycles"
     case openDashboard = "open-dashboard"
     case openSettings = "open-settings"
     case openMenuBarHelp = "open-menubar-help"

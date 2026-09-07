@@ -694,5 +694,11 @@ enum Migrations {
                 indexOn: "rate_limit_samples",
                 columns: ["source_session_id", "source_path"])
         }
+        migrator.registerMigration("v23-quota-cycle-evidence") { db in
+            try db.create(table: "quota_cycle_state") { t in
+                t.primaryKey("provider", .text)
+                t.column("state", .blob).notNull()
+            }
+        }
     }
 }

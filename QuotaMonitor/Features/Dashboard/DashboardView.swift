@@ -46,7 +46,8 @@ struct DashboardView: View {
             TrendsSection(
                 trends: snapshot.trends,
                 visibleProviders: Set(
-                    ["codex", "claude"].filter(providerIsVisible)))
+                    ["codex", "claude"].filter(providerIsVisible)),
+                quotaCycleUsages: env.quotaCycleUsages)
             ActivitySection(
                 scope: $env.activityDataScope,
                 indexed: indexedActivityContent(for: snapshot),

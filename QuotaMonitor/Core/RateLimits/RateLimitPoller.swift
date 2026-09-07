@@ -178,8 +178,16 @@ actor RateLimitPoller {
             let snapshot = RateLimitSnapshot(from: payload)
             consecutiveRateLimits = 0
             cooldownUntil = nil
+            do {
+                try await persist(snapshot: snapshot)
+            } catch {
+                Log.storage.error("codex quota persistence failed: \(String(describing: error), privacy: .public)")
+                DeveloperLog.eventRecord(
+                    "ratelimits.persist.fail", level: .error, category: "storage",
+                    provider: "codex", result: "failure",
+                    message: String(describing: error))
+            }
             await onSnapshot(snapshot)
-            try await persist(snapshot: snapshot)
             Log.poller.info("poll ok primary=\(snapshot.primary?.usedPercent ?? -1, privacy: .public)% secondary=\(snapshot.secondary?.usedPercent ?? -1, privacy: .public)%")
             DeveloperLog.eventRecord(
                 "ratelimits.poll.finish",
@@ -334,6 +342,7 @@ actor RateLimitPoller {
         let captured = ISO8601.fractional.string(from: snapshot.capturedAt)
         let plan = snapshot.planType
         try await database.pool.write { db in
+            try QuotaCycleStore.record(db: db, snapshot: snapshot)
             if let p = snapshot.primary {
                 try Self.insertSample(
                     db: db, captured: captured, plan: plan,

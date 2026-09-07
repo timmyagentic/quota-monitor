@@ -206,7 +206,9 @@ actor ClaudeUsageClient: ClaudeUsageFetching {
             // keep gating future reads against tokens that are once
             // again valid.
             rejectedTokens.removeAll()
-            return try Self.decode(data: data, capturedAt: Date())
+            var snapshot = try Self.decode(data: data, capturedAt: Date())
+            snapshot.observationScope = QuotaCycle.scope(provider: "claude", value: token)
+            return snapshot
         case 401:
             // Server says the token is bad. Blacklist the exact token so
             // `loadAccessToken` won't keep handing it back from the

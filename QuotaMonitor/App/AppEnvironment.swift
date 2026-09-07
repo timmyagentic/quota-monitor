@@ -50,7 +50,13 @@ final class AppEnvironment {
     var lastCodexAccountUsageRefreshAttemptAt: Date?
     var codexAccountUsageRefreshGeneration = 0
 
-    var latestRateLimits: RateLimitSnapshot?
+    var latestRateLimits: RateLimitSnapshot? {
+        didSet {
+            if latestRateLimits != oldValue { refreshQuotaCycles() }
+        }
+    }
+    var quotaCycleUsages: [QuotaCycleUsage] = []
+    @ObservationIgnored var quotaCycleRefreshGeneration = 0
     var latestCodexResetCredits: CodexResetCreditsSnapshot?
     var lastCodexResetCreditsError: String?
     /// Live Anthropic OAuth `/api/oauth/usage` snapshot, polled every
@@ -58,7 +64,11 @@ final class AppEnvironment {
     /// (subject to the poller's own 60 s spam gap + 429 cooldown).
     /// Mirrors `latestRateLimits` so the menu bar can render Codex +
     /// Claude blocks symmetrically.
-    var latestClaudeUsage: ClaudeUsageSnapshot?
+    var latestClaudeUsage: ClaudeUsageSnapshot? {
+        didSet {
+            if latestClaudeUsage != oldValue { refreshQuotaCycles() }
+        }
+    }
     /// Last error from the Claude poller, surfaced in the menu bar so the
     /// user can see *why* their Claude block is empty (no creds, expired
     /// token, scope problem). Cleared on the next successful poll.
@@ -1475,6 +1485,7 @@ final class AppEnvironment {
         trigger: String = "internal",
         parentOperation: DeveloperLogOperation? = nil
     ) {
+        refreshQuotaCycles()
         let inputs = DashboardRefreshInputs(
             providerFilter: providerFilter,
             enabledProviders: dashboardSettings.enabledProviders,

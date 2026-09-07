@@ -212,8 +212,16 @@ actor ClaudeUsagePoller {
                 cooldownUntil = nil
                 await onCooldownChange(nil)
             }
+            do {
+                try await persist(snapshot: snapshot)
+            } catch {
+                Log.storage.error("claude quota persistence failed: \(String(describing: error), privacy: .public)")
+                DeveloperLog.eventRecord(
+                    "claude_usage.persist.fail", level: .error, category: "storage",
+                    provider: "claude", result: "failure",
+                    message: String(describing: error))
+            }
             await onSnapshot(.success(snapshot))
-            try await persist(snapshot: snapshot)
             Log.poller.info("claude /usage ok 5h=\(snapshot.fiveHour?.usedPercent ?? -1, privacy: .public)% 7d=\(snapshot.sevenDay?.usedPercent ?? -1, privacy: .public)%")
             DeveloperLog.eventRecord(
                 "claude_usage.poll.finish",
@@ -282,6 +290,7 @@ actor ClaudeUsagePoller {
         let captured = ISO8601.fractional.string(from: snapshot.capturedAt)
         let plan = snapshot.tier
         try await database.pool.write { db in
+            try QuotaCycleStore.record(db: db, snapshot: snapshot)
             // Persist aggregate and model-scoped windows under the shared
             // primary/secondary shape, distinguished by source_kind
             // ("claude_oauth") + the model's generic limit_name.

@@ -178,6 +178,39 @@ struct RateLimitPollerTests {
         #expect(snapshots.all.first?.resetCreditsAvailable == 2)
     }
 
+    @Test("sample write failure rolls back cycle state without hiding live Codex quota")
+    func persistenceFailureStillPublishesLiveQuota() async throws {
+        let db = try makeDatabase()
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                CREATE TRIGGER reject_quota_sample BEFORE INSERT ON rate_limit_samples
+                BEGIN SELECT RAISE(ABORT, 'simulated storage failure'); END
+                """)
+        }
+        let mock = MockCodexRateLimitsFetcher(script: [
+            .success(try makePayload(primary: 37, resetCreditsAvailable: 2))
+        ])
+        let snapshots = SnapshotBox()
+        let poller = makePoller(fetcher: mock, db: db, snapshots: snapshots)
+
+        let outcome = await poller.pollOnce()
+
+        #expect(snapshots.all.count == 1)
+        #expect(snapshots.all.first?.primary?.usedPercent == 37)
+        #expect(snapshots.all.first?.resetCreditsAvailable == 2)
+        guard case .success = outcome else {
+            Issue.record("a successful fetch must remain successful when local storage fails")
+            return
+        }
+        let persisted = try await db.pool.read { conn in
+            (try QuotaCycleStore.cycles(db: conn).count,
+             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM rate_limit_samples"))
+        }
+        #expect(persisted.0 == 0)
+        #expect(persisted.1 == 0)
+        #expect(await poller._cooldownUntilForTest == nil)
+    }
+
     @Test("weekly-only wire primary persists as a semantic 7-day window")
     func weeklyOnlyWindowPersistsSemanticBucketAndDuration() async throws {
         let reset = Int(Date(timeIntervalSinceNow: 5 * 86_400).timeIntervalSince1970)

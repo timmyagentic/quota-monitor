@@ -8,6 +8,8 @@ import Foundation
 /// official `claude` CLI's quota indicator — so the shape may evolve. We
 /// decode defensively (every nested field optional).
 struct ClaudeUsageSnapshot: Equatable, Sendable {
+    /// Credential epoch, not an asserted account ID. Rotation breaks continuity.
+    var observationScope: String? = nil
     let capturedAt: Date
     /// "pro" | "max5x" | "max20x" | "team" | "enterprise" | "free" — used
     /// for the badge next to the Claude block. Nil = the API didn't say.
@@ -37,8 +39,10 @@ struct ClaudeUsageSnapshot: Equatable, Sendable {
         sevenDay: Window?,
         sevenDayOpus: Window?,
         sevenDaySonnet: Window?,
-        weeklyScoped: [WeeklyScopedLimit] = []
+        weeklyScoped: [WeeklyScopedLimit] = [],
+        observationScope: String? = nil
     ) {
+        self.observationScope = observationScope
         self.capturedAt = capturedAt
         self.tier = tier
         self.fiveHour = fiveHour
@@ -77,7 +81,8 @@ struct ClaudeUsageSnapshot: Equatable, Sendable {
     }
 
     func preservingStaleFiveHour(from previous: ClaudeUsageSnapshot?) -> ClaudeUsageSnapshot {
-        guard fiveHour == nil,
+        guard observationScope == previous?.observationScope,
+              fiveHour == nil,
               staleFiveHour == nil,
               hasCurrentQuotaWindow,
               let previousWindow = previous?.fiveHour ?? previous?.staleFiveHour,
@@ -92,7 +97,8 @@ struct ClaudeUsageSnapshot: Equatable, Sendable {
             sevenDay: sevenDay,
             sevenDayOpus: sevenDayOpus,
             sevenDaySonnet: sevenDaySonnet,
-            weeklyScoped: weeklyScoped)
+            weeklyScoped: weeklyScoped,
+            observationScope: observationScope)
     }
 
     private var hasCurrentQuotaWindow: Bool {

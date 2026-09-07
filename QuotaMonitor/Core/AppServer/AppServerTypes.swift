@@ -60,6 +60,8 @@ struct InitializeResult: Decodable {
 // path).
 
 struct RateLimitsPayload: Decodable {
+    /// Bound to this quota response by the upstream server; never read from another process.
+    let accountId: String?
     let planType: String?           // free-form! "plus", "pro", "prolite", ...
     let rateLimit: RateLimitGroup?
     let additionalRateLimits: [AdditionalRateLimit]?
@@ -67,6 +69,8 @@ struct RateLimitsPayload: Decodable {
 
     private enum CodingKeys: String, CodingKey {
         // legacy snake_case
+        case accountIdCamel = "accountId"
+        case accountIdSnake = "account_id"
         case planTypeSnake = "plan_type"
         case rateLimitSnake = "rate_limit"
         case additionalRateLimitsSnake = "additional_rate_limits"
@@ -80,6 +84,8 @@ struct RateLimitsPayload: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        accountId = (try? c.decodeIfPresent(String.self, forKey: .accountIdCamel))
+            ?? (try? c.decodeIfPresent(String.self, forKey: .accountIdSnake))
 
         // The new format puts planType inside the `rateLimits` object too;
         // pick whichever is present, preferring the top-level one for parity
