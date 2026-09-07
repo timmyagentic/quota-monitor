@@ -15,6 +15,7 @@ struct QuotaCycleUsage: Equatable, Sendable, Identifiable {
     let valueUSD: Double
     let cacheUsage: CacheUsageSummary
     let eventCount: Int
+    let unpricedEventCount: Int
     let points: [Point]
     var id: String { cycle.id }
 }
@@ -26,7 +27,7 @@ extension Aggregator {
         try cycles.filter { $0.isCurrent(at: now) }.map { cycle in
             guard let start = cycle.start, start <= now else {
                 return QuotaCycleUsage(cycle: cycle, through: now, tokens: 0, valueUSD: 0,
-                                       cacheUsage: .zero, eventCount: 0, points: [])
+                                       cacheUsage: .zero, eventCount: 0, unpricedEventCount: 0, points: [])
             }
             // Offsets and SQLite separators do not sort like fractional UTC.
             // Keep the indexed query bounded, then compare parsed instants.
@@ -49,12 +50,14 @@ extension Aggregator {
             var read: Int64 = 0
             var input: Int64 = 0
             var eventCount = 0
+            var unpricedEventCount = 0
             for row in rows {
                 guard let date = parseTimestamp(row["timestamp"] as String),
                       date >= start, date < now else { continue }
                 eventCount += 1
                 let count: Int64 = row["tokens"]
                 let cost: Double = row["value"]
+                if count > 0 && cost == 0 { unpricedEventCount += 1 }
                 let bucket = Int(date.timeIntervalSince(start) / step)
                 buckets[bucket, default: (0, 0)].tokens += count
                 buckets[bucket, default: (0, 0)].value += cost
@@ -77,7 +80,7 @@ extension Aggregator {
             }
             return QuotaCycleUsage(cycle: cycle, through: now, tokens: tokens, valueUSD: value,
                                    cacheUsage: .init(readTokens: read, eligibleInputTokens: input),
-                                   eventCount: eventCount, points: points)
+                                   eventCount: eventCount, unpricedEventCount: unpricedEventCount, points: points)
         }
     }
 }

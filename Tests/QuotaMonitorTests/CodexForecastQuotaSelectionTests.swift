@@ -4,6 +4,71 @@ import Testing
 
 @Suite("Codex forecast quota selection")
 struct CodexForecastQuotaSelectionTests {
+    @Test("weekly-only accounts offer only the weekly period and normalize a stale selection")
+    func weeklyOnlyPickerDoesNotOfferFiveHours() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let selection = CodexForecastQuotaSelection(primary: nil,
+            secondary: .init(usedPercent: 69, resetsAt: now.addingTimeInterval(500_000)))
+        let available = ForecastCycleSelection.availableBuckets(codex: selection, claude: nil,
+            blockResetAt: nil, visibleProviders: ["codex"], now: now)
+        #expect(available == ["secondary"])
+        #expect(ForecastCycleSelection.resolve("primary", available: available) == "secondary")
+        #expect(ForecastCycleSelection.resolve("secondary", available: []) == nil)
+        let claude = ClaudeUsageSnapshot(capturedAt: now, tier: nil, fiveHour: nil,
+            sevenDay: .init(usedPercent: 69, resetAt: now.addingTimeInterval(500_000), windowDuration: 604_800),
+            sevenDayOpus: nil, sevenDaySonnet: nil)
+        #expect(ForecastCycleSelection.availableBuckets(codex: selection, claude: claude,
+            blockResetAt: now.addingTimeInterval(100), visibleProviders: ["claude"], now: now) == ["secondary"])
+    }
+
+    @Test("selected period controls quota and pace together")
+    func selectedPeriodMasksOtherQuotaAndPace() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let both = CodexForecastQuotaSelection(
+            primary: .init(usedPercent: 20, resetsAt: now.addingTimeInterval(100)),
+            secondary: .init(usedPercent: 69, resetsAt: now.addingTimeInterval(500_000)))
+        let primaryBurn = CodexBurnRate(percentPerMinute: 1, sampleCount: 5)
+        let weeklyBurn = CodexBurnRate(percentPerMinute: 0.1, sampleCount: 3)
+        for bucket in ["primary", "secondary"] {
+            let selected = both.selecting(bucket: bucket, now: now)
+            #expect((selected.primary != nil) == (bucket == "primary"))
+            #expect((selected.secondary != nil) == (bucket == "secondary"))
+            #expect(selected.paceBurn(burn: ["primary": primaryBurn, "secondary": weeklyBurn],
+                cycles: [], now: now) == (bucket == "primary" ? primaryBurn : weeklyBurn))
+        }
+    }
+
+    @Test("trend cycle choices omit missing and hidden windows")
+    func trendChoicesTrackAvailableCycles() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let weekly = cycle("secondary", reset: now.addingTimeInterval(100), basis: .estimated)
+        #expect(TrendRange.available(cycles: [weekly], visibleProviders: ["codex"], now: now)
+            == [.current7d, .last7d, .last30d, .last90d, .lastYear])
+        #expect(TrendRange.available(cycles: [weekly], visibleProviders: ["claude"], now: now)
+            == [.last7d, .last30d, .last90d, .lastYear])
+        #expect(TrendRange.available(cycles: [weekly], visibleProviders: ["codex"],
+            now: now.addingTimeInterval(101)) == [.last7d, .last30d, .last90d, .lastYear])
+    }
+
+    @Test("hidden providers and expired windows cannot add period choices")
+    func availablePeriodsFollowVisibleProviders() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let codex = CodexForecastQuotaSelection(
+            primary: .init(usedPercent: 20, resetsAt: now.addingTimeInterval(-1)),
+            secondary: .init(usedPercent: 69, resetsAt: now.addingTimeInterval(500_000)))
+        let claude = ClaudeUsageSnapshot(capturedAt: now, tier: nil,
+            fiveHour: .init(usedPercent: 20, resetAt: now.addingTimeInterval(100), windowDuration: 18_000),
+            sevenDay: nil, sevenDayOpus: nil, sevenDaySonnet: nil)
+        #expect(ForecastCycleSelection.availableBuckets(codex: codex, claude: claude,
+            blockResetAt: nil, visibleProviders: ["codex"], now: now) == ["secondary"])
+        #expect(ForecastCycleSelection.availableBuckets(codex: codex, claude: claude,
+            blockResetAt: nil, visibleProviders: ["codex", "claude"], now: now) == ["primary", "secondary"])
+        #expect(ForecastCycleSelection.availableBuckets(codex: codex, claude: claude,
+            blockResetAt: nil, visibleProviders: ["claude"], now: now) == ["primary"])
+        #expect(ForecastCycleSelection.availableBuckets(codex: codex, claude: claude,
+            blockResetAt: nil, visibleProviders: [], now: now).isEmpty)
+    }
+
     @Test("weekly-only live snapshot does not revive stored five-hour data")
     func liveSnapshotWinsAsAWhole() {
         let now = Date(timeIntervalSince1970: 1_784_050_000)

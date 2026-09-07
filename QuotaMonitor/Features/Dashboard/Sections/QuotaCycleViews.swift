@@ -90,7 +90,11 @@ struct QuotaCycleMetricsView: View {
                                 .locale(settings.tokenFormatLocale)))
                         metric(L10n.cacheHitRateTitle, value: usage.cacheUsage.hitRate?
                             .formatted(.percent.precision(.fractionLength(1))) ?? "—")
-                        metric(L10n.cycleAPIValue, value: usage.valueUSD.formatted(.currency(code: "USD")))
+                        metric(L10n.cycleAPIValue, value: usage.unpricedEventCount == 0
+                            ? usage.valueUSD.formatted(.currency(code: "USD")) : "—")
+                    }
+                    if usage.unpricedEventCount > 0 {
+                        Text(L10n.cyclePriceIncomplete).font(.caption2).foregroundStyle(.secondary)
                     }
                     Text(usage.cycle.basis == .observedChange
                          ? L10n.cyclePartialScope : L10n.cycleLocalScope)
@@ -183,11 +187,15 @@ struct QuotaCycleChart: View {
                             Text((point?.tokens ?? usage.tokens).formatted(.number.notation(.compactName)
                                 .locale(settings.tokenFormatLocale)))
                                 .monospacedDigit()
-                            Text((point?.valueUSD ?? usage.valueUSD).formatted(.currency(code: "USD")))
+                            Text(usage.unpricedEventCount == 0
+                                 ? (point?.valueUSD ?? usage.valueUSD).formatted(.currency(code: "USD")) : "—")
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }.font(.caption)
                     }
                     Text(L10n.cycleLocalScope).font(.caption2).foregroundStyle(.secondary)
+                    if active.contains(where: { $0.unpricedEventCount > 0 }) {
+                        Text(L10n.cyclePriceIncomplete).font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
             }
         }

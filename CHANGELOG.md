@@ -30,6 +30,16 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Forecasts and local usage now follow the quota period you select, with choices limited to available windows.
+- Previously unpriced supported history is recovered automatically, and incomplete cost estimates are clearly marked.
+
+### Fixed
+
+- **Consistent quota periods.** Weekly-only accounts no longer offer a five-hour period; switching periods updates quota, pace and local usage together, including available trend ranges.
+- **Historical cost recovery.** Startup fills missing values even when the bundled prices are already current, while preserving priced history; records still lacking a price show an unavailable estimate.
+
 ## [1.0.5] — 2026-09-07
 
 #### Summary

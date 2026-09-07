@@ -24,6 +24,7 @@ enum L10n {
 
     static var cycleLocalUsage: String { t(en: "This cycle · local records", zh: "本轮用量 · 本机记录") }
     static var cycleAPIValue: String { t(en: "API equivalent", zh: "API 等价费用") }
+    static var cyclePriceIncomplete: String { t(en: "Some records are not yet priced; the cost estimate is unavailable.", zh: "部分记录尚未计价，费用暂不可用。") }
     static var cycleStartUnresolved: String { t(en: "Cycle start unconfirmed", zh: "本轮起点待确认") }
     static var cycleEstimatedExplanation: String { t(en: "Estimated from the server's next reset and window duration. An earlier manual or promotional reset may be unobserved.", zh: "由服务端下次重置时间与窗口时长推算；可能未观测到此前的手动或活动重置。") }
     static var cycleObservedExplanation: String { t(en: "Observed a new window aligned with the previously reported reset deadline.", zh: "已观测到新窗口，起点与此前服务端报告的重置时间一致。") }

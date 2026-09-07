@@ -78,6 +78,24 @@ struct QuotaCycleStorageTests {
         #expect(claude.cacheUsage == .init(readTokens: 150, eligibleInputTokens: 510))
     }
 
+    @Test func unpricedRecordsKeepTokensButMarkTheCostIncomplete() throws {
+        let manager = try database()
+        try manager.pool.write { db in
+            try seed(db: db, provider: "codex", offset: 0)
+            try seed(db: db, provider: "codex", offset: 300)
+            try db.execute(sql: "UPDATE usage_events SET value_usd = 0 WHERE id = (SELECT MAX(id) FROM usage_events)")
+        }
+        let result = try #require(try manager.pool.read { db in
+            try Aggregator.quotaCycleUsage(db: db,
+                cycles: [QuotaCycle.resolve(observation(), previous: nil)],
+                now: origin.addingTimeInterval(1_000)).first
+        })
+        #expect(result.tokens == 240)
+        #expect(result.eventCount == 2)
+        #expect(result.unpricedEventCount == 1)
+        #expect(result.valueUSD == 0.1)
+    }
+
     @Test func expiredAndUnresolvedCyclesDoNotInventZeroUsage() throws {
         let manager = try database()
         let original = QuotaCycle.resolve(observation(), previous: nil)

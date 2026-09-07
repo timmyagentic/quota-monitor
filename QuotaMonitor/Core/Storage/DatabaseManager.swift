@@ -33,13 +33,16 @@ final class DatabaseManager: Sendable {
         Migrations.register(in: &migrator)
         try migrator.migrate(pool)
         try pool.write { db in
-            if try PricingService.installBundledCatalog(in: db),
-               try db.tableExists("usage_events") {
+            let catalogChanged = try PricingService.installBundledCatalog(in: db)
+            guard try db.tableExists("usage_events") else { return }
+            if catalogChanged {
                 // A newly added model, changed bundled price, or effective-model
                 // mapping must also repair already-finished history. Ordinary
                 // launches skip this catalog-wide UPDATE; changed imports are
                 // priced session-by-session in their own transactions.
                 try PricingService.backfillAllValues(in: db)
+            } else {
+                try PricingService.backfillUnpricedValues(in: db)
             }
         }
     }
