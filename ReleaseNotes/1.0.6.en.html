@@ -1,0 +1,14 @@
+<div class="release-summary">
+<ul>
+<li>Removed the forecast period switcher; quota cards keep their familiar layout and local usage follows an available current window.</li>
+<li>Previously unpriced supported history is recovered automatically, and incomplete cost estimates are clearly marked.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Fixed</h3>
+<ul>
+<li><b>Available quota windows.</b> Forecast cards no longer show a period switcher. Local metrics use the current five-hour window when available, otherwise the weekly window; trend ranges omit missing windows.</li>
+<li><b>Historical cost recovery.</b> Startup fills missing values even when the bundled prices are already current, while preserving priced history; records still lacking a price show an unavailable estimate.</li>
+</ul>
+</div>

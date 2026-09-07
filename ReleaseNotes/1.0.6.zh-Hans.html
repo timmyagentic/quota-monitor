@@ -1,0 +1,14 @@
+<div class="release-summary">
+<ul>
+<li>移除预测区的用量周期切换，保留原有卡片样式，本轮统计自动使用可用窗口。</li>
+<li>自动补齐历史记录中缺失的费用，并明确提示无法完整计价的情况。</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>修复</h3>
+<ul>
+<li><b>可用配额窗口。</b> 预测区不再显示用量周期切换控件；本轮统计优先使用当前五小时窗口，仅有周配额时自动使用周窗口，趋势范围也不再提供缺失的周期。</li>
+<li><b>历史费用恢复。</b> 即使内置价格表已是最新，也会补齐支持模型的历史零费用记录并保留已计价结果；仍有未计价记录时不再把部分费用当作完整估值。</li>
+</ul>
+</div>

@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-09-08
+
 #### Summary
 
 - Removed the forecast period switcher; quota cards keep their familiar layout and local usage follows an available current window.
