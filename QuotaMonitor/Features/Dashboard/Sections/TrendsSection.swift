@@ -11,6 +11,7 @@ struct TrendsSection: View {
 
     let trends: DashboardTrendData
     let visibleProviders: Set<String>
+    var quotaCycleUsages: [QuotaCycleUsage] = []
 
     @State private var range: TrendRange = .last30d
     @State private var stackBy: TrendStack = .provider
@@ -27,7 +28,9 @@ struct TrendsSection: View {
 
             controls
 
-            if windowedDaily.isEmpty || windowedDaily.allSatisfy({ $0.tokens == 0 }) {
+            if let bucket = range.cycleBucket {
+                QuotaCycleChart(usages: quotaCycleUsages, bucket: bucket, visibleProviders: visibleProviders)
+            } else if windowedDaily.isEmpty || windowedDaily.allSatisfy({ $0.tokens == 0 }) {
                 Text(L10n.noData)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
@@ -57,48 +60,31 @@ struct TrendsSection: View {
 
     private var controls: some View {
         HStack(alignment: .center, spacing: 10) {
-            Picker("", selection: $stackBy) {
-                ForEach(TrendStack.allCases) { item in
-                    Text(item.label).tag(item)
+            if range.cycleBucket == nil {
+                Picker("", selection: $stackBy) {
+                    ForEach(TrendStack.allCases) { item in
+                        Text(item.label).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 180)
+                HStack(spacing: 5) {
+                    Circle().fill(DashboardTheme.cache).frame(width: 6, height: 6)
+                    Text(L10n.dailyCacheHitRateTitle)
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            Spacer(minLength: 8)
+            Picker(L10n.cycleRangeLabel, selection: $range) {
+                ForEach(TrendRange.allCases) { candidate in
+                    Text(candidate.label).tag(candidate)
                 }
             }
-            .pickerStyle(.segmented)
             .labelsHidden()
             .frame(width: 180)
-
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(DashboardTheme.cache)
-                    .frame(width: 6, height: 6)
-                Text(L10n.dailyCacheHitRateTitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .accessibilityElement(children: .combine)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 4) {
-                ForEach(TrendRange.allCases) { candidate in
-                    Button {
-                        range = candidate
-                        selectedDay = nil
-                    } label: {
-                        Text(candidate.label)
-                            .font(.caption.weight(range == candidate ? .semibold : .regular))
-                            .foregroundStyle(range == candidate ? .primary : .secondary)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(range == candidate
-                                          ? Color.primary.opacity(0.10)
-                                          : Color.clear)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            .onChange(of: range) { selectedDay = nil }
         }
     }
 
@@ -645,6 +631,8 @@ enum CacheTrendSeriesBuilder {
 }
 
 private enum TrendRange: CaseIterable, Identifiable {
+    case current5h
+    case current7d
     case last7d
     case last30d
     case last90d
@@ -652,8 +640,18 @@ private enum TrendRange: CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    var cycleBucket: String? {
+        switch self {
+        case .current5h: "primary"
+        case .current7d: "secondary"
+        default: nil
+        }
+    }
+
     var days: Int {
         switch self {
+        case .current5h: return 1
+        case .current7d: return 7
         case .last7d: return 7
         case .last30d: return 30
         case .last90d: return 90
@@ -663,6 +661,7 @@ private enum TrendRange: CaseIterable, Identifiable {
 
     var rollingWindow: RollingTrendWindow {
         switch self {
+        case .current5h, .current7d: return .last7Days
         case .last7d: return .last7Days
         case .last30d: return .last30Days
         case .last90d: return .last90Days
@@ -672,6 +671,7 @@ private enum TrendRange: CaseIterable, Identifiable {
 
     var axisStride: Int {
         switch self {
+        case .current5h, .current7d: return 1
         case .last7d: return 1
         case .last30d: return 4
         case .last90d: return 14
@@ -681,6 +681,8 @@ private enum TrendRange: CaseIterable, Identifiable {
 
     var label: String {
         switch self {
+        case .current5h: return L10n.cycleCurrent5h
+        case .current7d: return L10n.cycleCurrent7d
         case .last7d: return L10n.dashboardRange7d
         case .last30d: return L10n.dashboardRange30d
         case .last90d: return L10n.dashboardRange90d
@@ -690,6 +692,8 @@ private enum TrendRange: CaseIterable, Identifiable {
 
     var periodLabel: String {
         switch self {
+        case .current5h: return L10n.cycleCurrent5h
+        case .current7d: return L10n.cycleCurrent7d
         case .last7d: return L10n.last7Days
         case .last30d: return L10n.last30Days
         case .last90d: return L10n.last90Days

@@ -29,10 +29,12 @@ extension MenuBarContentView {
 
             VStack(alignment: .leading, spacing: 6) {
                 if let primary = snapshot.primary {
-                    QuotaRow(title: L10n.quotaCardTitle5h, window: primary, accent: .blue)
+                    QuotaRow(title: L10n.quotaCardTitle5h, window: primary, accent: .blue,
+                             cycle: env.quotaCycle(provider: "codex", bucket: "primary", resetAt: primary.resetAt))
                 }
                 if let secondary = snapshot.secondary {
-                    QuotaRow(title: L10n.quotaCardTitle7d, window: secondary, accent: .blue)
+                    QuotaRow(title: L10n.quotaCardTitle7d, window: secondary, accent: .blue,
+                             cycle: env.quotaCycle(provider: "codex", bucket: "secondary", resetAt: secondary.resetAt))
                 }
                 ForEach(activeAdditional, id: \.id) { row in
                     QuotaRow(title: row.title, window: row.window, accent: .blue)
@@ -180,7 +182,8 @@ extension MenuBarContentView {
         let scopedRows = ClaudeScopedQuotaRows.visibleRows(for: usage)
         VStack(alignment: .leading, spacing: 6) {
             if let w = usage.fiveHourForDisplay {
-                QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange)
+                QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange,
+                         cycle: env.quotaCycle(provider: "claude", bucket: "primary", resetAt: w.resetAt))
             } else if usage.hasRenderableWeeklyQuotaWindow {
                 // Anthropic's /api/oauth/usage drops `five_hour` entirely
                 // after the window resets if the user hasn't prompted
@@ -191,7 +194,8 @@ extension MenuBarContentView {
                 claude5hIdleRow()
             }
             if let w = usage.sevenDay {
-                QuotaRow(title: L10n.quotaCardTitle7dFull, window: w, accent: .orange)
+                QuotaRow(title: L10n.quotaCardTitle7dFull, window: w, accent: .orange,
+                         cycle: env.quotaCycle(provider: "claude", bucket: "secondary", resetAt: w.resetAt))
             }
             // Structured model-specific limits are useful even at 0%; their
             // presence tells the user the allowance exists. Legacy top-level

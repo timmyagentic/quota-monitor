@@ -36,6 +36,13 @@ final class LocalQAController {
         await pause(seconds: 0.8)
         for step in configuration.steps {
             switch step {
+            case .seedQuotaCycles:
+                do {
+                    try await environment.installLocalQAQuotaCycles()
+                } catch {
+                    environment.lastError = String(describing: error)
+                }
+                await pause(seconds: 0.8)
             case .openDashboard:
                 // `WindowManager.show` activates the app then orders the window
                 // front, so the old `activateForWindow()` + URL-scheme

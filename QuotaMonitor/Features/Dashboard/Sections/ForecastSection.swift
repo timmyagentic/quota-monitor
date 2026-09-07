@@ -40,6 +40,9 @@ struct CodexForecastQuotaSelection: Equatable {
 /// list are all gone — model list collapses into a tooltip on the Claude
 /// card header.
 struct ForecastSection: View {
+    @Environment(AppEnvironment.self) private var env
+    @Environment(LocalizationStore.self) private var localization
+    @State private var cycleBucket = "primary"
     let snapshot: DashboardSnapshot
     let blocks: BillingBlocks.Snapshot?
     let claudeUsage: ClaudeUsageSnapshot?
@@ -73,6 +76,12 @@ struct ForecastSection: View {
                 Text(L10n.forecastSectionTitle)
                     .font(.headline)
                 Spacer()
+                Picker(L10n.cycleRangeLabel, selection: $cycleBucket) {
+                    Text(L10n.cycleCurrent5h).tag("primary")
+                    Text(L10n.cycleCurrent7d).tag("secondary")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
             }
 
             // Two cards side-by-side on wide windows; stack when narrow.
@@ -120,14 +129,18 @@ struct ForecastSection: View {
                         title: L10n.quotaCardTitle5h,
                         usedPercent: primary.usedPercent,
                         resetsAt: primary.resetsAt,
-                        burn: dbQuota?.burn["primary"])
+                        burn: dbQuota?.burn["primary"],
+                        cycle: env.quotaCycle(provider: "codex", bucket: "primary", resetAt: primary.resetsAt),
+                        windowDuration: 18_000)
                 }
                 if let secondary = quota.secondary {
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle7d,
                         usedPercent: secondary.usedPercent,
                         resetsAt: secondary.resetsAt,
-                        burn: dbQuota?.burn["secondary"])
+                        burn: dbQuota?.burn["secondary"],
+                        cycle: env.quotaCycle(provider: "codex", bucket: "secondary", resetAt: secondary.resetsAt),
+                        windowDuration: 604_800)
                 }
                 // Pace line: prefer the visible 5h burn rate (more responsive);
                 // fall back to 7d only when that window is also visible.
@@ -137,6 +150,7 @@ struct ForecastSection: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
+                QuotaCycleMetricsView(usage: selectedCycleUsage(provider: "codex"))
             }
         }
     }
@@ -177,7 +191,9 @@ struct ForecastSection: View {
                         title: L10n.quotaCardTitle5h,
                         usedPercent: displayed.usedPercent,
                         resetsAt: displayed.resetAt,
-                        burn: nil)
+                        burn: nil,
+                        cycle: env.quotaCycle(provider: "claude", bucket: "primary", resetAt: displayed.resetAt),
+                        windowDuration: displayed.windowDuration)
                 } else if let block {
                     let pct = blockProgress(block)
                     let resetsAt = block.endTime
@@ -193,14 +209,17 @@ struct ForecastSection: View {
                         title: L10n.quotaCardTitle7dFull,
                         usedPercent: week.usedPercent,
                         resetsAt: week.resetAt,
-                        burn: nil)
+                        burn: nil,
+                        cycle: env.quotaCycle(provider: "claude", bucket: "secondary", resetAt: week.resetAt),
+                        windowDuration: week.windowDuration)
                 }
                 ForEach(scopedRows) { row in
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle7dModel(row.displayName),
                         usedPercent: row.window.usedPercent,
                         resetsAt: row.window.resetAt,
-                        burn: nil)
+                        burn: nil,
+                        windowDuration: row.window.windowDuration)
                 }
                 if let burn {
                     Text(L10n.forecastPaceClaude(
@@ -209,7 +228,14 @@ struct ForecastSection: View {
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
+                QuotaCycleMetricsView(usage: selectedCycleUsage(provider: "claude"))
             }
+        }
+    }
+
+    private func selectedCycleUsage(provider: String) -> QuotaCycleUsage? {
+        env.quotaCycleUsages.first {
+            $0.cycle.observation.provider == provider && $0.cycle.observation.bucket == cycleBucket
         }
     }
 
@@ -294,6 +320,8 @@ struct QuotaProgressRow: View {
     /// true quota usage. Keep those in the traditional increasing
     /// direction even when quota rows are set to "remaining".
     var displayModeOverride: SettingsStore.QuotaDisplayMode?
+    var cycle: QuotaCycle? = nil
+    var windowDuration: TimeInterval? = nil
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { ctx in
@@ -315,6 +343,9 @@ struct QuotaProgressRow: View {
                 }
                 ProgressView(value: progressValue)
                     .tint(bar)
+                if windowDuration != nil || cycle != nil {
+                    QuotaCycleTimingView(cycle: cycle, resetAt: resetsAt, duration: windowDuration)
+                }
                 trailingLabel(now: now, remaining: remaining)
                     .font(.caption2.monospacedDigit())
             }

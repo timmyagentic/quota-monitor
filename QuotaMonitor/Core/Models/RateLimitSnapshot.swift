@@ -75,6 +75,7 @@ enum CodexQuotaWindowClassifier {
 }
 
 struct RateLimitSnapshot: Equatable, Sendable {
+    var observationScope: String? = nil
     let capturedAt: Date
     let planType: String?
     let primary: Window?         // semantic 5-hour window
@@ -121,6 +122,7 @@ struct RateLimitSnapshot: Equatable, Sendable {
 extension RateLimitSnapshot {
     init(from payload: RateLimitsPayload, capturedAt: Date = Date()) {
         let windows = Self.normalizedWindows(from: payload.rateLimit)
+        self.observationScope = payload.accountId.flatMap { QuotaCycle.scope(provider: "codex", value: $0) }
         self.capturedAt = capturedAt
         self.planType = payload.planType
         self.primary = windows.primary

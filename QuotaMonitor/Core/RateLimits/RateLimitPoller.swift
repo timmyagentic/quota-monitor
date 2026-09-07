@@ -178,8 +178,8 @@ actor RateLimitPoller {
             let snapshot = RateLimitSnapshot(from: payload)
             consecutiveRateLimits = 0
             cooldownUntil = nil
-            await onSnapshot(snapshot)
             try await persist(snapshot: snapshot)
+            await onSnapshot(snapshot)
             Log.poller.info("poll ok primary=\(snapshot.primary?.usedPercent ?? -1, privacy: .public)% secondary=\(snapshot.secondary?.usedPercent ?? -1, privacy: .public)%")
             DeveloperLog.eventRecord(
                 "ratelimits.poll.finish",
@@ -334,6 +334,7 @@ actor RateLimitPoller {
         let captured = ISO8601.fractional.string(from: snapshot.capturedAt)
         let plan = snapshot.planType
         try await database.pool.write { db in
+            try QuotaCycleStore.record(db: db, snapshot: snapshot)
             if let p = snapshot.primary {
                 try Self.insertSample(
                     db: db, captured: captured, plan: plan,

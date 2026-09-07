@@ -262,4 +262,23 @@ struct ClaudeUsageClientRefreshWiringTests {
         #expect(StubURLProtocol.requestCount.value == 1,
                 "two concurrent refreshes must collapse to one grant")
     }
+    @Test("Usage evidence is bound to the credential that served the response")
+    func usageScopeFollowsRequestCredential() async throws {
+        let cacheURL = tempCacheURL()
+        defer { try? FileManager.default.removeItem(at: cacheURL.deletingLastPathComponent()) }
+        let token = "fixture-usage-credential"
+        let credentials = ClaudeUsageClient.StoredCredentials(
+            accessToken: token, expiresAtMs: (Date().timeIntervalSince1970 + 3_600) * 1_000,
+            scopes: ["user:profile"], refreshToken: nil)
+        let client = ClaudeUsageClient(
+            session: stubbedSession(json: #"{"five_hour":{"utilization":20,"resets_at":"2026-09-07T12:00:00Z"}}"#),
+            tokenRefresher: nil, oauthCacheURL: cacheURL,
+            externalCredentialSources: { [credentials] },
+            claudeCodeVersionProvider: { "2.1.149" })
+        let snapshot = try await client.fetch()
+        #expect(snapshot.observationScope == QuotaCycle.scope(provider: "claude", value: token))
+        #expect(snapshot.observationScope != token)
+        #expect(snapshot.fiveHour?.usedPercent == 20)
+    }
+
 }
