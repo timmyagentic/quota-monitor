@@ -209,7 +209,7 @@ final class AppEnvironment {
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true,
         database: DatabaseManager? = nil,
-        dashboardSnapshotStore: DashboardSnapshotStore = DashboardSnapshotStore()
+        dashboardSnapshotStore: DashboardSnapshotStore? = nil
     ) {
         self.init(
             appServer: appServer,
@@ -228,15 +228,16 @@ final class AppEnvironment {
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true,
         database: DatabaseManager? = nil,
-        dashboardSnapshotStore: DashboardSnapshotStore = DashboardSnapshotStore()
+        dashboardSnapshotStore: DashboardSnapshotStore? = nil
     ) {
         self.appServer = appServer
         self.codexAccountUsageClient = codexAccountUsageClient
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
         self.database = database
-        self.dashboardSnapshotStore = dashboardSnapshotStore
-        self.dashboardSnapshotPersistence = DashboardSnapshotPersistence(store: dashboardSnapshotStore)
+        let snapshotStore = dashboardSnapshotStore ?? DashboardSnapshotStore()
+        self.dashboardSnapshotStore = snapshotStore
+        self.dashboardSnapshotPersistence = DashboardSnapshotPersistence(store: snapshotStore)
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
         guard startBackgroundTasks else { return }
         // Boot background polling immediately so it doesn't depend on the user
