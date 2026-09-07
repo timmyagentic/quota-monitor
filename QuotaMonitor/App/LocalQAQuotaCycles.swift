@@ -3,13 +3,13 @@ import GRDB
 
 extension AppEnvironment {
     /// Opt-in, synthetic current windows for visible QA. No quota API calls.
-    func installLocalQAQuotaCycles() async throws {
+    func installLocalQAQuotaCycles(weeklyOnly: Bool = false) async throws {
         guard LocalQAEnvironment.isActive() else { return }
         let (database, _) = try ensureServices()
         let now = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
         let codex = RateLimitSnapshot(observationScope: "fixture-codex", capturedAt: now,
             planType: "pro",
-            primary: .init(usedPercent: 42, windowDuration: 18_000, resetAt: now.addingTimeInterval(7_200)),
+            primary: weeklyOnly ? nil : .init(usedPercent: 42, windowDuration: 18_000, resetAt: now.addingTimeInterval(7_200)),
             secondary: .init(usedPercent: 36, windowDuration: 604_800, resetAt: now.addingTimeInterval(432_000)),
             additional: [], resetCreditsAvailable: nil)
         let claude = ClaudeUsageSnapshot(capturedAt: now, tier: "max5x",
@@ -74,10 +74,12 @@ extension AppEnvironment {
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, arguments: [session, ISO8601.fractional.string(from: date),
                             provider == "codex" ? "gpt-6-astra" : "claude-fable-5-1", provider,
-                            input, input / 2, output, input + output, Double(input + output) / 1_000_000])
+                            input, input / 2, output, input + output, 0])
                 }
+                try PricingService.backfillValues(in: db, sessionId: session, provider: provider)
             }
         }
+        if weeklyOnly { providerFilter = .codex }
         latestRateLimits = codex
         latestClaudeUsage = claude
         refreshDashboard(includeMenuBar: true, trigger: "qa-quota-cycles")

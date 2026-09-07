@@ -30,6 +30,16 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Removed the forecast period switcher; quota cards keep their familiar layout and local usage follows an available current window.
+- Previously unpriced supported history is recovered automatically, and incomplete cost estimates are clearly marked.
+
+### Fixed
+
+- **Available quota windows.** Forecast cards no longer show a period switcher. Local metrics use the current five-hour window when available, otherwise the weekly window; trend ranges omit missing windows.
+- **Historical cost recovery.** Startup fills missing values even when the bundled prices are already current, while preserving priced history; records still lacking a price show an unavailable estimate.
+
 ## [1.0.5] — 2026-09-07
 
 #### Summary

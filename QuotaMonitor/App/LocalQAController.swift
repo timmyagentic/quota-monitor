@@ -36,9 +36,9 @@ final class LocalQAController {
         await pause(seconds: 0.8)
         for step in configuration.steps {
             switch step {
-            case .seedQuotaCycles:
+            case .seedQuotaCycles, .seedWeeklyQuotaCycle:
                 do {
-                    try await environment.installLocalQAQuotaCycles()
+                    try await environment.installLocalQAQuotaCycles(weeklyOnly: step == .seedWeeklyQuotaCycle)
                 } catch {
                     environment.lastError = String(describing: error)
                 }

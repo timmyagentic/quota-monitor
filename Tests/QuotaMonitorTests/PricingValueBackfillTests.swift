@@ -646,6 +646,42 @@ struct PricingValueBackfillTests {
                 "startup must repair historical values when bundled pricing changes")
     }
 
+    @Test("startup repairs zero-valued supported history even when the catalog is unchanged")
+    func startupRepairsUnpricedHistoryWithCurrentCatalog() throws {
+        let initial = try makeDatabase()
+        let url = URL(fileURLWithPath: initial.pool.path)
+        let sid = try insertUsageEvent(in: initial, provider: "codex", modelId: "gpt-6-astra",
+            input: 200_000, cached: 195_000, output: 2_000, seedValueUSD: 0,
+            timestamp: "2026-09-07T03:00:00Z")
+        try initial.pool.write { db in
+            let changed = try PricingService.installBundledCatalog(in: db)
+            #expect(!changed)
+        }
+        let reopened = try DatabaseManager(url: url)
+        try reopened.pool.read { db in
+            let value = try #require(try Double.fetchOne(db, sql:
+                "SELECT value_usd FROM usage_events WHERE session_id = ?", arguments: [sid]))
+            #expect(abs(value - 0.345) < 0.000_001)
+            #expect(try Double.fetchOne(db, sql:
+                "SELECT total_value_usd FROM session_summaries WHERE session_id = ?",
+                arguments: [sid]) == value)
+        }
+    }
+
+    @Test("startup zero repair preserves priced and unsupported history")
+    func startupZeroRepairIsScopedAndRepeatable() throws {
+        let initial = try makeDatabase()
+        let url = URL(fileURLWithPath: initial.pool.path)
+        for (model, value) in [("gpt-6-astra", 42.0), ("unknown-model", 0.0), ("unknown-model", 7.0)] {
+            try insertUsageEvent(in: initial, provider: "codex", modelId: model,
+                input: 200_000, cached: 195_000, output: 2_000, seedValueUSD: value)
+        }
+        let reopened = try DatabaseManager(url: url)
+        #expect(try valueUSD(in: reopened) == [42, 0, 7])
+        let again = try DatabaseManager(url: url)
+        #expect(try valueUSD(in: again) == [42, 0, 7])
+    }
+
     @Test("running backfill twice produces the same value (deterministic)")
     func idempotentOnSecondRun() throws {
         let db = try makeDatabase()

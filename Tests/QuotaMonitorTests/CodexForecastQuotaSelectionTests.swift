@@ -4,6 +4,35 @@ import Testing
 
 @Suite("Codex forecast quota selection")
 struct CodexForecastQuotaSelectionTests {
+    @Test("local cycle metrics follow the available quota without a period selector")
+    func localMetricsChooseAnAvailableCurrentWindow() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let primary = CodexForecastQuotaSelection.Window(usedPercent: 20,
+            resetsAt: now.addingTimeInterval(100))
+        let secondary = CodexForecastQuotaSelection.Window(usedPercent: 69,
+            resetsAt: now.addingTimeInterval(500_000))
+        #expect(CodexForecastQuotaSelection(primary: nil, secondary: secondary)
+            .currentCycleBucket(now: now) == "secondary")
+        #expect(CodexForecastQuotaSelection(primary: primary, secondary: secondary)
+            .currentCycleBucket(now: now) == "primary")
+        #expect(CodexForecastQuotaSelection(primary: primary, secondary: secondary)
+            .currentCycleBucket(now: now.addingTimeInterval(101)) == "secondary")
+        #expect(CodexForecastQuotaSelection(primary: nil, secondary: nil)
+            .currentCycleBucket(now: now) == nil)
+    }
+
+    @Test("trend cycle choices omit missing and hidden windows")
+    func trendChoicesTrackAvailableCycles() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let weekly = cycle("secondary", reset: now.addingTimeInterval(100), basis: .estimated)
+        #expect(TrendRange.available(cycles: [weekly], visibleProviders: ["codex"], now: now)
+            == [.current7d, .last7d, .last30d, .last90d, .lastYear])
+        #expect(TrendRange.available(cycles: [weekly], visibleProviders: ["claude"], now: now)
+            == [.last7d, .last30d, .last90d, .lastYear])
+        #expect(TrendRange.available(cycles: [weekly], visibleProviders: ["codex"],
+            now: now.addingTimeInterval(101)) == [.last7d, .last30d, .last90d, .lastYear])
+    }
+
     @Test("weekly-only live snapshot does not revive stored five-hour data")
     func liveSnapshotWinsAsAWhole() {
         let now = Date(timeIntervalSince1970: 1_784_050_000)

@@ -687,6 +687,13 @@ enum PricingService {
             codexFastModeBilling: codexFastModeBilling)
     }
 
+    /// Older app versions can import a newly supported model at zero even
+    /// after a newer version has installed its catalog in the shared DB.
+    /// Repair those rows without repricing already-valued history on launch.
+    static func backfillUnpricedValues(in db: Database) throws {
+        try backfillValues(in: db, scope: .unpriced, codexFastModeBilling: false)
+    }
+
     /// Recalculate values for one rebuilt session without walking every other
     /// session. This intentionally shares the exact SQL expression used by
     /// row-targeted incremental imports and `backfillAllValues`.
@@ -724,6 +731,7 @@ enum PricingService {
 
     private enum BackfillScope {
         case all
+        case unpriced
         case session(sessionId: String, provider: String)
         case eventIds([Int64])
     }
@@ -751,6 +759,15 @@ enum PricingService {
         switch scope {
         case .all:
             scopeClause = ""
+            updateTarget = "UPDATE usage_events"
+            arguments = StatementArguments()
+        case .unpriced:
+            scopeClause = """
+              AND usage_events.value_usd = 0
+              AND (usage_events.input_tokens > 0 OR usage_events.cached_input_tokens > 0
+                   OR usage_events.output_tokens > 0 OR usage_events.cache_creation_tokens > 0
+                   OR usage_events.cache_creation_5m_tokens > 0 OR usage_events.cache_creation_1h_tokens > 0)
+              """
             updateTarget = "UPDATE usage_events"
             arguments = StatementArguments()
         case .session(let sessionId, let provider):

@@ -18,6 +18,10 @@ struct TrendsSection: View {
     @State private var selectedDay: Date?
     @State private var seriesDerivation = TrendSeriesDerivationCache()
 
+    private var availableRanges: [TrendRange] {
+        TrendRange.available(cycles: quotaCycleUsages.map(\.cycle), visibleProviders: visibleProviders)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -44,6 +48,9 @@ struct TrendsSection: View {
             }
         }
         .dashboardPanel(cornerRadius: 12, padding: 14)
+        .onChange(of: availableRanges, initial: true) {
+            if !availableRanges.contains(range) { range = .last30d }
+        }
         .onAppear {
             DeveloperLog.eventRecord(
                 "dashboard.trends.visible",
@@ -78,7 +85,7 @@ struct TrendsSection: View {
             }
             Spacer(minLength: 8)
             Picker(L10n.cycleRangeLabel, selection: $range) {
-                ForEach(TrendRange.allCases) { candidate in
+                ForEach(availableRanges) { candidate in
                     Text(candidate.label).tag(candidate)
                 }
             }
@@ -630,7 +637,7 @@ enum CacheTrendSeriesBuilder {
     }
 }
 
-private enum TrendRange: CaseIterable, Identifiable {
+enum TrendRange: CaseIterable, Identifiable {
     case current5h
     case current7d
     case last7d
@@ -639,6 +646,15 @@ private enum TrendRange: CaseIterable, Identifiable {
     case lastYear
 
     var id: Self { self }
+
+    static func available(
+        cycles: [QuotaCycle], visibleProviders: Set<String>, now: Date = Date()
+    ) -> [Self] {
+        let buckets = Set(cycles.filter {
+            visibleProviders.contains($0.observation.provider) && $0.isCurrent(at: now)
+        }.map(\.observation.bucket))
+        return allCases.filter { $0.cycleBucket.map(buckets.contains) ?? true }
+    }
 
     var cycleBucket: String? {
         switch self {

@@ -9,6 +9,12 @@ struct CodexForecastQuotaSelection: Equatable {
     let primary: Window?
     let secondary: Window?
 
+    func currentCycleBucket(now: Date = Date()) -> String? {
+        if let primary, primary.resetsAt > now { return "primary" }
+        if let secondary, secondary.resetsAt > now { return "secondary" }
+        return nil
+    }
+
     func paceBurn(
         burn: [String: CodexBurnRate], cycles: [QuotaCycle], now: Date = Date()
     ) -> CodexBurnRate? {
@@ -59,7 +65,6 @@ struct CodexForecastQuotaSelection: Equatable {
 struct ForecastSection: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(LocalizationStore.self) private var localization
-    @State private var cycleBucket = "primary"
     let snapshot: DashboardSnapshot
     let blocks: BillingBlocks.Snapshot?
     let claudeUsage: ClaudeUsageSnapshot?
@@ -93,12 +98,6 @@ struct ForecastSection: View {
                 Text(L10n.forecastSectionTitle)
                     .font(.headline)
                 Spacer()
-                Picker(L10n.cycleRangeLabel, selection: $cycleBucket) {
-                    Text(L10n.cycleCurrent5h).tag("primary")
-                    Text(L10n.cycleCurrent7d).tag("secondary")
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 240)
             }
 
             // Two cards side-by-side on wide windows; stack when narrow.
@@ -250,8 +249,21 @@ struct ForecastSection: View {
     }
 
     private func selectedCycleUsage(provider: String) -> QuotaCycleUsage? {
-        env.quotaCycleUsages.first {
-            $0.cycle.observation.provider == provider && $0.cycle.observation.bucket == cycleBucket
+        let now = Date()
+        let bucket: String?
+        if provider == "codex" {
+            bucket = CodexForecastQuotaSelection.make(live: liveCodexRateLimits,
+                stored: snapshot.codexQuota).currentCycleBucket(now: now)
+        } else if let primary = claudeUsage?.fiveHour, primary.resetAt > now {
+            bucket = "primary"
+        } else if let secondary = claudeUsage?.sevenDay, secondary.resetAt > now {
+            bucket = "secondary"
+        } else {
+            bucket = nil
+        }
+        return env.quotaCycleUsages.first {
+            $0.cycle.observation.provider == provider && $0.cycle.observation.bucket == bucket
+                && $0.cycle.isCurrent(at: now)
         }
     }
 
