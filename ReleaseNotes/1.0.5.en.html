@@ -1,0 +1,21 @@
+<div class="release-summary">
+<ul>
+<li>See elapsed time, local token usage, cache hit rate, and cumulative trends for the current 5-hour and 7-day quota cycles.</li>
+<li>Dashboard keeps Trends ready in the background and moves to the new local day after midnight.</li>
+<li>Get updated cost estimates for GPT-6 Astra and Claude Fable 5.1, including cached requests.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Added</h3>
+<ul>
+<li><b>Current quota cycles.</b> Menu and Dashboard distinguish estimated starts, observed window changes, and unresolved resets; 5-hour and 7-day totals use local records with clearly stated coverage.</li>
+<li><b>GPT-6 Astra pricing.</b> The bundled catalog now recognizes <code>gpt-6-astra</code> with OpenAI's official $10 input, $1 cached-input, $12.50 cache-write, and $50 output rates per million tokens, while materializing the published 0.5× Flex, 2× Fast, and &gt;272K long-context prices for deterministic historical valuation.</li>
+<li><b>Claude Fable 5.1 pricing.</b> The bundled catalog now recognizes <code>claude-fable-5-1</code> at Anthropic's official $10 input, $0.25 cache-read, $12.50 five-minute cache-write, $20 one-hour cache-write, and $50 output rates per million tokens, while existing Fable 5 history keeps its original pricing.</li>
+</ul>
+<h3>Fixed</h3>
+<ul>
+<li><b>Prepare Trends before opening Dashboard.</b> Local history and the saved chart refresh every five hours while the app runs, with catch-up on wake; opening Dashboard shows the last available statistics immediately while fresher data and Activity load in the background.</li>
+<li><b>Slide open Trends past midnight.</b> If Dashboard stays open across local midnight, wake, or returning to the app, the rolling trend windows now rebuild even when that quiet history check imported nothing, so empty days and Today's total move forward instead of freezing on yesterday.</li>
+</ul>
+</div>

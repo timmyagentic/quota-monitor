@@ -1,0 +1,21 @@
+<div class="release-summary">
+<ul>
+<li>查看当前 5 小时和 7 天配额周期已过多久，以及本轮本机 Token、缓存命中率和累计趋势。</li>
+<li>Dashboard 在后台提前准备趋势统计，并在跨过本地午夜后切换到新的一天。</li>
+<li>GPT-6 Astra 和 Claude Fable 5.1 现在有对应的费用估算，也覆盖缓存请求。</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="查看完整变更" data-hide="收起详情">查看完整变更 <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>新增</h3>
+<ul>
+<li><b>本轮用量。</b> 菜单栏和仪表盘区分推算起点、已观测的窗口变化与待确认重置，支持 5 小时和 7 天本机统计，并明确显示记录覆盖范围。</li>
+<li><b>GPT-6 Astra 定价。</b> 内置价格目录现在会识别 <code>gpt-6-astra</code>，采用 OpenAI 官方公布的每百万 Token 输入 $10、缓存输入 $1、缓存写入 $12.50、输出 $50 费率，并预先物化官方 0.5× Flex、2× Fast 与输入超过 272K 时的长上下文价格，确保历史计价稳定可复现。</li>
+<li><b>Claude Fable 5.1 定价。</b> 内置价格目录现在会识别 <code>claude-fable-5-1</code>，并采用 Anthropic 官方公布的每百万 Token 输入 $10、缓存读取 $0.25、5 分钟缓存写入 $12.50、1 小时缓存写入 $20、输出 $50 费率，同时保留既有 Fable 5 历史数据的原价格。</li>
+</ul>
+<h3>修复</h3>
+<ul>
+<li><b>提前准备趋势统计。</b> 应用运行时每五小时更新本地历史和图表缓存，唤醒后补齐过期数据；打开 Dashboard 先立即显示上次可用统计，再在后台加载最新数据和使用画像。</li>
+<li><b>跨日后滑动仍打开的趋势。</b> 若 Dashboard 在本地午夜、唤醒或重新回到应用后仍然开着，即使这次安静的历史检查没有导入新用量，也会重算滚动趋势窗，因此空柱和「今日」会前进到新的一天，而不再停在昨天。</li>
+</ul>
+</div>
