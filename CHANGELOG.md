@@ -30,13 +30,13 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-09-07
+
 #### Summary
 
-- See how long the current quota cycle has been running, alongside its local token usage, cache hit rate, and cumulative trend.
-- Dashboard opens with prepared Trends even after days away, while local history stays up to date in the background.
-- GPT-6 Astra usage now receives the correct built-in estimate across Standard, Flex, Fast, and long-context requests, including prompt-cache writes.
-- Claude Fable 5.1 usage now receives the correct built-in cost estimate, including its reduced prompt-cache read price.
-- An already-open Dashboard now moves Trends to the new local day after midnight, even when no new usage arrived.
+- See elapsed time, local token usage, cache hit rate, and cumulative trends for the current 5-hour and 7-day quota cycles.
+- Dashboard keeps Trends ready in the background and moves to the new local day after midnight.
+- Get updated cost estimates for GPT-6 Astra and Claude Fable 5.1, including cached requests.
 
 ### Added
 
