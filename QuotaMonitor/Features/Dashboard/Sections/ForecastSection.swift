@@ -9,6 +9,23 @@ struct CodexForecastQuotaSelection: Equatable {
     let primary: Window?
     let secondary: Window?
 
+    func paceBurn(
+        burn: [String: CodexBurnRate], cycles: [QuotaCycle], now: Date = Date()
+    ) -> CodexBurnRate? {
+        for (bucket, window) in [("primary", primary), ("secondary", secondary)] {
+            guard let window, let rate = burn[bucket] else { continue }
+            let cycle = cycles.first {
+                $0.id == "codex/" + bucket
+                    && abs($0.observation.resetAt.timeIntervalSince(window.resetsAt)) < 0.01
+            }
+            guard abs(rate.percentPerMinute) > 0.0005,
+                  cycle?.allowsPaceEstimate != false,
+                  window.resetsAt > now else { return nil }
+            return rate
+        }
+        return nil
+    }
+
     static func make(
         live: RateLimitSnapshot?,
         stored: CodexQuotaSnapshot?
@@ -113,13 +130,8 @@ struct ForecastSection: View {
             stored: dbQuota)
         let hasPrimary = quota.primary != nil
         let hasSecondary = quota.secondary != nil
-        let paceBurn = quota.primary.flatMap { _ in dbQuota?.burn["primary"] }
-            ?? quota.secondary.flatMap { _ in dbQuota?.burn["secondary"] }
-        let paceCycle = quota.primary.flatMap {
-            env.quotaCycle(provider: "codex", bucket: "primary", resetAt: $0.resetsAt)
-        } ?? quota.secondary.flatMap {
-            env.quotaCycle(provider: "codex", bucket: "secondary", resetAt: $0.resetsAt)
-        }
+        let paceBurn = quota.paceBurn(
+            burn: dbQuota?.burn ?? [:], cycles: env.quotaCycleUsages.map(\.cycle))
         ProviderForecastCard(
             label: L10n.codex,
             accent: DashboardTheme.providerColor("codex"),
@@ -149,10 +161,7 @@ struct ForecastSection: View {
                 }
                 // Pace line: prefer the visible 5h burn rate (more responsive);
                 // fall back to 7d only when that window is also visible.
-                if let burn = paceBurn,
-                   abs(burn.percentPerMinute) > 0.0005,
-                   paceCycle?.allowsPaceEstimate != false,
-                   (quota.primary ?? quota.secondary)?.resetsAt ?? .distantPast > Date() {
+                if let burn = paceBurn {
                     Text(L10n.forecastPaceCodex(percentPerHr: burn.percentPerMinute * 60))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)

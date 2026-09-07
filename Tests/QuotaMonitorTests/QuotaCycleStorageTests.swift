@@ -92,6 +92,56 @@ struct QuotaCycleStorageTests {
         }
     }
 
+    @Test func localTotalsParseMixedTimestampFormatsBeforeApplyingExactBounds() throws {
+        let manager = try database()
+        let utc = ISO8601.fractional.string(from: origin)
+        let sqlite = String(utc.prefix(19)).replacingOccurrences(of: "T", with: " ")
+        let offsetFormatter = ISO8601DateFormatter()
+        offsetFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        offsetFormatter.timeZone = TimeZone(secondsFromGMT: -12 * 3600)
+        let previousDatePrefix = offsetFormatter.string(from: origin.addingTimeInterval(300))
+        offsetFormatter.timeZone = TimeZone(secondsFromGMT: 14 * 3600)
+        let positiveOffset = offsetFormatter.string(from: origin.addingTimeInterval(600))
+        let beforeStart = offsetFormatter.string(from: origin.addingTimeInterval(-1))
+        offsetFormatter.timeZone = TimeZone(secondsFromGMT: -12 * 3600)
+        let atEnd = offsetFormatter.string(from: origin.addingTimeInterval(1_000))
+        try manager.pool.write { db in
+            for timestamp in [sqlite, previousDatePrefix, positiveOffset, beforeStart, atEnd] {
+                try seed(db: db, provider: "codex", offset: 0, timestamp: timestamp)
+            }
+        }
+        let cycle = QuotaCycle.resolve(observation(), previous: nil)
+        let result = try #require(try manager.pool.read { db in
+            try Aggregator.quotaCycleUsage(db: db, cycles: [cycle],
+                now: origin.addingTimeInterval(1_000)).first
+        })
+        #expect(result.eventCount == 3)
+        #expect(result.tokens == 360)
+        #expect(result.cacheUsage == .init(readTokens: 150, eligibleInputTokens: 300))
+        #expect(abs(result.valueUSD - 0.3) < 0.000_001)
+        #expect(result.points.map(\.tokens) == [0, 120, 240, 360, 360])
+    }
+
+    @MainActor @Test func duplicateSnapshotsDoNotScheduleAnotherCycleQuery() throws {
+        let env = AppEnvironment(startBackgroundTasks: false, database: try database())
+        let snapshot = RateLimitSnapshot(observationScope: "one", capturedAt: origin,
+            planType: "pro", primary: nil, secondary: nil, additional: [], resetCreditsAvailable: nil)
+        env.latestRateLimits = snapshot
+        let firstGeneration = env.quotaCycleRefreshGeneration
+        env.latestRateLimits = snapshot
+        #expect(env.quotaCycleRefreshGeneration == firstGeneration)
+        var differentAccount = snapshot
+        differentAccount.observationScope = "two"
+        env.latestRateLimits = differentAccount
+        #expect(env.quotaCycleRefreshGeneration == firstGeneration + 1)
+        let claude = ClaudeUsageSnapshot(capturedAt: origin, tier: nil, fiveHour: nil,
+            sevenDay: nil, sevenDayOpus: nil, sevenDaySonnet: nil)
+        env.latestClaudeUsage = claude
+        let claudeGeneration = env.quotaCycleRefreshGeneration
+        env.latestClaudeUsage = claude
+        #expect(env.quotaCycleRefreshGeneration == claudeGeneration)
+    }
+
     @Test func earlyChangeTotalsExcludeUncertainPollInterval() throws {
         let manager = try database()
         try manager.pool.write { db in
@@ -123,9 +173,9 @@ struct QuotaCycleStorageTests {
         #expect(QuotaCycleSelection.make(codex: changed, claude: nil, stored: [cycle]).first?.basis == .estimated)
     }
 
-    private func seed(db: Database, provider: String, offset: Double) throws {
+    private func seed(db: Database, provider: String, offset: Double, timestamp: String? = nil) throws {
         let session = UUID().uuidString
-        let timestamp = ISO8601.fractional.string(from: origin.addingTimeInterval(offset))
+        let timestamp = timestamp ?? ISO8601.fractional.string(from: origin.addingTimeInterval(offset))
         try db.execute(sql: """
             INSERT INTO sessions (session_id, root_session_id, provider, created_at, imported_at)
             VALUES (?, ?, ?, ?, ?)

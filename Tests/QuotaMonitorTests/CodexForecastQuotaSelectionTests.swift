@@ -47,6 +47,46 @@ struct CodexForecastQuotaSelectionTests {
         #expect(selection.secondary?.usedPercent == 3)
     }
 
+    @Test("weekly pace uses weekly reset evidence even when five-hour quota is visible")
+    func weeklyPaceUsesItsOwnEvidence() {
+        let now = Date(timeIntervalSince1970: 1_784_050_000)
+        let selection = CodexForecastQuotaSelection(
+            primary: .init(usedPercent: 20, resetsAt: now.addingTimeInterval(100)),
+            secondary: .init(usedPercent: 30, resetsAt: now.addingTimeInterval(200)))
+        let burn = CodexBurnRate(percentPerMinute: 0.1, sampleCount: 3)
+        for uncertain: QuotaCycle.Basis in [.unresolved, .observedChange] {
+            #expect(selection.paceBurn(burn: ["secondary": burn], cycles: [
+                cycle("primary", reset: now.addingTimeInterval(100), basis: .estimated),
+                cycle("secondary", reset: now.addingTimeInterval(200), basis: uncertain)
+            ], now: now) == nil)
+            #expect(selection.paceBurn(burn: ["secondary": burn], cycles: [
+                cycle("primary", reset: now.addingTimeInterval(100), basis: uncertain),
+                cycle("secondary", reset: now.addingTimeInterval(200), basis: .estimated)
+            ], now: now) == burn)
+        }
+    }
+
+    @Test("weekly pace checks its own deadline and requires a visible weekly window")
+    func paceDeadlineFollowsBurnBucket() {
+        let now = Date(timeIntervalSince1970: 1_784_050_000)
+        let primary = CodexForecastQuotaSelection.Window(usedPercent: 20,
+                                                        resetsAt: now.addingTimeInterval(-1))
+        let secondary = CodexForecastQuotaSelection.Window(usedPercent: 30,
+                                                          resetsAt: now.addingTimeInterval(200))
+        let burn = CodexBurnRate(percentPerMinute: 0.1, sampleCount: 3)
+        #expect(CodexForecastQuotaSelection(primary: primary, secondary: secondary)
+            .paceBurn(burn: ["secondary": burn], cycles: [], now: now) == burn)
+        #expect(CodexForecastQuotaSelection(primary: primary, secondary: nil)
+            .paceBurn(burn: ["secondary": burn], cycles: [], now: now) == nil)
+    }
+
+    private func cycle(_ bucket: String, reset: Date, basis: QuotaCycle.Basis) -> QuotaCycle {
+        QuotaCycle(observation: .init(provider: "codex", bucket: bucket, scope: "fixture",
+            plan: "pro", capturedAt: reset.addingTimeInterval(-100), resetAt: reset,
+            duration: bucket == "primary" ? 18_000 : 604_800, usedPercent: 20),
+            start: nil, possibleStart: nil, basis: basis)
+    }
+
     private func storedWindow(
         _ bucket: String,
         usedPercent: Double,

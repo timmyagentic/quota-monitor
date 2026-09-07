@@ -28,8 +28,12 @@ extension Aggregator {
                 return QuotaCycleUsage(cycle: cycle, through: now, tokens: 0, valueUSD: 0,
                                        cacheUsage: .zero, eventCount: 0, points: [])
             }
-            // Exact half-open event range; provider index keeps this bounded.
-            // Local records have no trustworthy account attribution.
+            // Offsets and SQLite separators do not sort like fractional UTC.
+            // Keep the indexed query bounded, then compare parsed instants.
+            let lowerBound = String(ISO8601.fractional.string(
+                from: start.addingTimeInterval(-86_400)).prefix(10))
+            let upperBound = String(ISO8601.fractional.string(
+                from: now.addingTimeInterval(2 * 86_400)).prefix(10))
             let rows = try Row.fetchAll(db, sql: """
                 SELECT timestamp, MAX(total_tokens, 0) AS tokens,
                        MAX(value_usd, 0) AS value,
@@ -37,17 +41,18 @@ extension Aggregator {
                        \(cacheEligibleInputExpression(table: "usage_events")) AS cache_input
                 FROM usage_events WHERE provider = ? AND timestamp >= ? AND timestamp < ?
                 ORDER BY timestamp, id
-                """, arguments: [cycle.observation.provider,
-                                  ISO8601.fractional.string(from: start),
-                                  ISO8601.fractional.string(from: now)])
+                """, arguments: [cycle.observation.provider, lowerBound, upperBound])
             let step: TimeInterval = cycle.observation.bucket == "primary" ? 300 : 3600
             var buckets: [Int: (tokens: Int64, value: Double)] = [:]
             var tokens: Int64 = 0
             var value = 0.0
             var read: Int64 = 0
             var input: Int64 = 0
+            var eventCount = 0
             for row in rows {
-                guard let date = ISO8601.parse(row["timestamp"] as String) else { continue }
+                guard let date = parseTimestamp(row["timestamp"] as String),
+                      date >= start, date < now else { continue }
+                eventCount += 1
                 let count: Int64 = row["tokens"]
                 let cost: Double = row["value"]
                 let bucket = Int(date.timeIntervalSince(start) / step)
@@ -72,7 +77,7 @@ extension Aggregator {
             }
             return QuotaCycleUsage(cycle: cycle, through: now, tokens: tokens, valueUSD: value,
                                    cacheUsage: .init(readTokens: read, eligibleInputTokens: input),
-                                   eventCount: rows.count, points: points)
+                                   eventCount: eventCount, points: points)
         }
     }
 }

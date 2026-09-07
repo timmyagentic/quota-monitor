@@ -51,7 +51,9 @@ final class AppEnvironment {
     var codexAccountUsageRefreshGeneration = 0
 
     var latestRateLimits: RateLimitSnapshot? {
-        didSet { refreshQuotaCycles() }
+        didSet {
+            if latestRateLimits != oldValue { refreshQuotaCycles() }
+        }
     }
     var quotaCycleUsages: [QuotaCycleUsage] = []
     @ObservationIgnored var quotaCycleRefreshGeneration = 0
@@ -63,7 +65,9 @@ final class AppEnvironment {
     /// Mirrors `latestRateLimits` so the menu bar can render Codex +
     /// Claude blocks symmetrically.
     var latestClaudeUsage: ClaudeUsageSnapshot? {
-        didSet { refreshQuotaCycles() }
+        didSet {
+            if latestClaudeUsage != oldValue { refreshQuotaCycles() }
+        }
     }
     /// Last error from the Claude poller, surfaced in the menu bar so the
     /// user can see *why* their Claude block is empty (no creds, expired
