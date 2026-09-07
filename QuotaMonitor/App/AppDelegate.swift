@@ -111,8 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         env.restoreCachedDashboardSnapshot()
         env.refreshAll(throttle: false, trigger: "launch")
         // Keep one launch-time menu snapshot request even when the initial
-        // history scan is a no-op. DashboardView loads its heavier snapshot
-        // only if and when the Dashboard window is actually presented.
+        // history scan is a no-op. The scan also prepares the Dashboard cache
+        // in the background so its first opening does not have to load Trends.
         env.refreshMenuBar(trigger: "launch")
 
         // Close the inert placeholder `Window` SwiftUI auto-opens at launch.
@@ -219,6 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AppEnvironment.shared.stopDashboardBackgroundRefresh()
         codexQuotaOverlayController?.stop()
         codexQuotaOverlayController = nil
         NSWorkspace.shared.notificationCenter.removeObserver(
@@ -233,11 +234,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         updater?.checkInBackgroundIfNeeded()
         requestAutomaticHistoryScan(trigger: "foreground-day-change")
+        AppEnvironment.shared.refreshDashboardInBackgroundIfNeeded()
     }
 
     @objc private func workspaceDidWake(_ notification: Notification) {
         updater?.checkInBackgroundIfNeeded()
         requestAutomaticHistoryScan(trigger: "wake-day-change")
+        AppEnvironment.shared.refreshDashboardInBackgroundIfNeeded()
     }
 
     @objc private func calendarDayChanged(_ notification: Notification) {

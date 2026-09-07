@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Dashboard opens with prepared Trends even after days away, while local history stays up to date in the background.
 - GPT-6 Astra usage now receives the correct built-in estimate across Standard, Flex, Fast, and long-context requests, including prompt-cache writes.
 - Claude Fable 5.1 usage now receives the correct built-in cost estimate, including its reduced prompt-cache read price.
 - An already-open Dashboard now moves Trends to the new local day after midnight, even when no new usage arrived.
@@ -43,6 +44,7 @@ window copy.
 
 ### Fixed
 
+- **Prepare Trends before opening Dashboard.** Local history and the saved chart refresh every five hours while the app runs, with catch-up on wake; opening Dashboard shows the last available statistics immediately while fresher data and Activity load in the background.
 - **Slide open Trends past midnight.** If Dashboard stays open across local midnight, wake, or returning to the app, the rolling trend windows now rebuild even when that quiet history check imported nothing, so empty days and Today's total move forward instead of freezing on yesterday.
 
 ## [1.0.4] — 2026-08-31

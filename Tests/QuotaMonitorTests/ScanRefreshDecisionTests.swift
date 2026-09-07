@@ -34,7 +34,7 @@ struct ScanRefreshDecisionTests {
             refreshDashboard: false))
     }
 
-    @Test("No-op scan fills a missing first menu snapshot")
+    @Test("Launch fills both missing snapshots before Dashboard opens")
     func noOpScanFillsMissingMenuSnapshot() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: false,
@@ -43,11 +43,11 @@ struct ScanRefreshDecisionTests {
             isDashboardVisible: false)
 
         #expect(decision == ScanRefreshDecision(
-            refreshMenuBar: true,
-            refreshDashboard: false))
+            refreshMenuBar: false,
+            refreshDashboard: true))
     }
 
-    @Test("No-op scan requests a retry while the first snapshot is missing")
+    @Test("No-op launch prepares a hidden Dashboard even without imports")
     func noOpScanRequestsMissingFirstSnapshotRetry() {
         let decision = AppEnvironment.scanRefreshDecision(
             didChangeReadModel: false,
@@ -56,8 +56,8 @@ struct ScanRefreshDecisionTests {
             isDashboardVisible: false)
 
         #expect(decision == ScanRefreshDecision(
-            refreshMenuBar: true,
-            refreshDashboard: false))
+            refreshMenuBar: false,
+            refreshDashboard: true))
     }
 
     @Test("Visible Dashboard fills a missing first menu snapshot through one route")
@@ -105,7 +105,7 @@ struct ScanRefreshDecisionTests {
         }
     }
 
-    @Test("Day-boundary no-op scans refresh the menu bar while Dashboard is hidden")
+    @Test("Day-boundary no-op scans prepare both summaries while Dashboard is hidden")
     func dayBoundaryNoOpRefreshesHiddenDashboardMenuBar() {
         for trigger in [
             "calendar-day-change", "wake-day-change", "foreground-day-change"
@@ -117,8 +117,8 @@ struct ScanRefreshDecisionTests {
                 isDashboardVisible: false)
 
             #expect(decision == ScanRefreshDecision(
-                refreshMenuBar: true,
-                refreshDashboard: false))
+                refreshMenuBar: false,
+                refreshDashboard: true))
         }
     }
 
@@ -133,6 +133,22 @@ struct ScanRefreshDecisionTests {
         #expect(decision == ScanRefreshDecision(
             refreshMenuBar: true,
             refreshDashboard: false))
+    }
+
+    @Test("Full-history recovery prepares Trends even if Dashboard has never opened")
+    func fullRecoveryWarmsHiddenDashboard() {
+        for trigger in ["launch", "onboarding", "dashboard-cache", "calendar-day-change", "wake-day-change",
+                        "foreground-day-change"] {
+            for changed in [false, true] {
+                let decision = AppEnvironment.scanRefreshDecision(
+                    didChangeReadModel: changed,
+                    trigger: trigger,
+                    hasMenuBarSnapshot: true,
+                    isDashboardVisible: false)
+                #expect(decision == ScanRefreshDecision(
+                    refreshMenuBar: false, refreshDashboard: true))
+            }
+        }
     }
 
     @Test("Committed scan changes invalidate the last-good Dashboard generation")

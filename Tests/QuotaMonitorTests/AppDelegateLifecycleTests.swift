@@ -89,8 +89,8 @@ struct AppDelegateLifecycleTests {
         #expect(!source.contains("historyScanTimer"))
     }
 
-    @Test("Launch requests a menu snapshot without loading a hidden Dashboard")
-    func launchDefersDashboardRefreshUntilVisible() throws {
+    @Test("Launch restores the last-good cache before starting background recovery")
+    func launchRestoresCacheBeforeBackgroundRecovery() throws {
         let source = try Self.source(named: "QuotaMonitor/App/AppDelegate.swift")
         let launch = String(try Self.sourceSlice(
             source,

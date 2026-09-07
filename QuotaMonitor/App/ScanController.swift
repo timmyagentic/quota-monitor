@@ -100,6 +100,7 @@ extension AppEnvironment {
                 ])
             return
         }
+        let scanStartedAt = Date()
         isScanning = true
         scheduledScan = true
         lastError = nil
@@ -197,6 +198,10 @@ extension AppEnvironment {
                         self.markDashboardReadModelChanged()
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
+                    if providers == nil, merged.errors.isEmpty, !merged.scopeUnavailable {
+                        self.recordDashboardHistoryRefresh(
+                            scannedProviders: scanProviders, at: scanStartedAt)
+                    }
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.
                     if merged.scopeUnavailable {
@@ -359,10 +364,8 @@ extension AppEnvironment {
             scopeUnavailable: a.scopeUnavailable || b.scopeUnavailable)
     }
 
-    /// Pure post-scan refresh policy. Persisted changes, explicit refreshes,
-    /// and local-day-boundary recoveries update the menu snapshot plus a
-    /// visible Dashboard. Other background no-op scans do neither, except
-    /// that a missing first menu snapshot always starts or queues a load.
+    /// Full-history recoveries prepare the next Dashboard opening even while
+    /// its window is closed. Frequent watcher scans keep the light menu path.
     nonisolated static func scanRefreshDecision(
         didChangeReadModel: Bool,
         trigger: String,
@@ -373,11 +376,22 @@ extension AppEnvironment {
         let shouldRefreshSummaries = didChangeReadModel
             || refreshWithoutImportChanges
         let needsInitialMenuSnapshot = !hasMenuBarSnapshot
+        let refreshDashboard = scanTriggerWarmsDashboard(trigger)
+            || (isDashboardVisible && (shouldRefreshSummaries || needsInitialMenuSnapshot))
         return ScanRefreshDecision(
-            refreshMenuBar: !isDashboardVisible
+            refreshMenuBar: !refreshDashboard
                 && (shouldRefreshSummaries || needsInitialMenuSnapshot),
-            refreshDashboard: isDashboardVisible
-                && (shouldRefreshSummaries || needsInitialMenuSnapshot))
+            refreshDashboard: refreshDashboard)
+    }
+
+    nonisolated static func scanTriggerWarmsDashboard(_ trigger: String) -> Bool {
+        switch trigger {
+        case "launch", "onboarding", "dashboard-cache",
+             "calendar-day-change", "wake-day-change", "foreground-day-change":
+            return true
+        default:
+            return false
+        }
     }
 
     nonisolated static func scanTriggerRefreshesWithoutChanges(
@@ -396,6 +410,12 @@ extension AppEnvironment {
         trigger: String,
         parentOperation: DeveloperLogOperation?
     ) {
+        if Self.scanTriggerWarmsDashboard(trigger),
+           SettingsStore.snapshot().hasCompletedProviderOnboarding {
+            refreshDashboard(includeMenuBar: true, trigger: "scan-fallback",
+                             parentOperation: parentOperation)
+            return
+        }
         guard Self.scanTriggerRefreshesWithoutChanges(trigger) else { return }
         refreshVisibleSummaries(
             trigger: "scan-fallback",

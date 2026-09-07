@@ -62,6 +62,10 @@ struct DashboardSnapshotMemoryCache: Sendable {
         entries[key]?.snapshot
     }
 
+    func generatedAt(for key: DashboardSnapshotCacheKey) -> Date? {
+        entries[key]?.generatedAt
+    }
+
     func decision(
         for key: DashboardSnapshotCacheKey,
         currentGeneration: Int,

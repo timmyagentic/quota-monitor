@@ -124,9 +124,22 @@ final class AppEnvironment {
     private var dashboardSnapshotCache = DashboardSnapshotMemoryCache()
     private var dashboardSnapshotSaveGeneration = RefreshGeneration()
     private var displayedDashboardCacheKey: DashboardSnapshotCacheKey?
-    private let dashboardSnapshotStore = DashboardSnapshotStore()
-    private let dashboardSnapshotPersistence = DashboardSnapshotPersistence()
+    private let dashboardSnapshotStore: DashboardSnapshotStore
+    private let dashboardSnapshotPersistence: DashboardSnapshotPersistence
+    private let dashboardSettingsOverride: SettingsStore.Snapshot?
+    var dashboardSettings: SettingsStore.Snapshot {
+        dashboardSettingsOverride ?? SettingsStore.snapshot()
+    }
     private static let dashboardSnapshotMaxAge: TimeInterval = 5 * 60
+    @ObservationIgnored var dashboardBackgroundRefreshTask: Task<Void, Never>?
+    @ObservationIgnored var dashboardBackgroundRefreshDeadline: Date?
+    @ObservationIgnored var dashboardBackgroundRefreshEnabled = false
+    @ObservationIgnored var dashboardBackgroundRefreshPolicy = DashboardBackgroundRefreshPolicy()
+    @ObservationIgnored var dashboardHistoryRefreshedAt: Date?
+
+    var dashboardCachedSnapshotDate: Date? {
+        dashboardSnapshotCache.generatedAt(for: currentDashboardCacheKey())
+    }
     var lastError: String?
 
     /// True when the status item has been detected as clipped/hidden and
@@ -198,14 +211,20 @@ final class AppEnvironment {
         appServer: AppServerClient = AppServerClient(),
         codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
-        startBackgroundTasks: Bool = true
+        startBackgroundTasks: Bool = true,
+        database: DatabaseManager? = nil,
+        dashboardSnapshotStore: DashboardSnapshotStore? = nil,
+        dashboardSettings: SettingsStore.Snapshot? = nil
     ) {
         self.init(
             appServer: appServer,
             codexAccountUsageClient: appServer,
             codexResetCreditsClient: codexResetCreditsClient,
             launchAtLoginController: launchAtLoginController,
-            startBackgroundTasks: startBackgroundTasks)
+            startBackgroundTasks: startBackgroundTasks,
+            database: database,
+            dashboardSnapshotStore: dashboardSnapshotStore,
+            dashboardSettings: dashboardSettings)
     }
 
     init(
@@ -213,12 +232,20 @@ final class AppEnvironment {
         codexAccountUsageClient: any CodexAccountUsageFetching,
         codexResetCreditsClient: any CodexResetCreditsFetching = CodexResetCreditsClient(),
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
-        startBackgroundTasks: Bool = true
+        startBackgroundTasks: Bool = true,
+        database: DatabaseManager? = nil,
+        dashboardSnapshotStore: DashboardSnapshotStore? = nil,
+        dashboardSettings: SettingsStore.Snapshot? = nil
     ) {
         self.appServer = appServer
         self.codexAccountUsageClient = codexAccountUsageClient
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
+        self.database = database
+        self.dashboardSettingsOverride = dashboardSettings
+        let snapshotStore = dashboardSnapshotStore ?? DashboardSnapshotStore()
+        self.dashboardSnapshotStore = snapshotStore
+        self.dashboardSnapshotPersistence = DashboardSnapshotPersistence(store: snapshotStore)
         DeveloperLog.eventRecord("app.environment.init", category: "app", trigger: "launch")
         guard startBackgroundTasks else { return }
         // Boot background polling immediately so it doesn't depend on the user
@@ -236,9 +263,9 @@ final class AppEnvironment {
             "services.init",
             category: "app",
             trigger: "lazy",
-            fields: ["database_path": .string(DatabaseManager.defaultURL().path)])
+            fields: ["database_path": .string(database?.pool.path ?? DatabaseManager.defaultURL().path)])
         do {
-            let db = try DatabaseManager(url: DatabaseManager.defaultURL())
+            let db = try database ?? DatabaseManager(url: DatabaseManager.defaultURL())
             let eng = ImportEngine(database: db)
             self.database = db
             self.importEngine = eng
@@ -301,6 +328,7 @@ final class AppEnvironment {
                 fields: ["reason": "onboarding"])
             return
         }
+        startDashboardBackgroundRefresh()
         do {
             let (db, _) = try ensureServices()
             let enabled = snap.enabledProviders
@@ -653,6 +681,8 @@ final class AppEnvironment {
     /// off any disabled provider, and refresh menu bar + dashboard so
     /// the UI immediately matches the new set.
     func applyEnabledProviders() {
+        invalidateDashboardHistoryFreshness()
+        startDashboardBackgroundRefresh()
         let enabled = SettingsStore.snapshot().enabledProviders
         let resetsProviderFilter = providerFilter != .all
             && !enabled.contains(providerFilter.rawValue)
@@ -1226,7 +1256,7 @@ final class AppEnvironment {
     private func currentDashboardCacheKey() -> DashboardSnapshotCacheKey {
         DashboardSnapshotCacheKey(
             providerFilter: providerFilter,
-            enabledProviders: SettingsStore.snapshot().enabledProviders,
+            enabledProviders: dashboardSettings.enabledProviders,
             timeZoneIdentifier: TimeZone.current.identifier)
     }
 
@@ -1321,6 +1351,7 @@ final class AppEnvironment {
             dashboardSnapshot = snapshot
             displayedDashboardCacheKey = key
         }
+        scheduleDashboardBackgroundRefresh()
         let envelope = DashboardSnapshotCacheEnvelope(
             key: key,
             generatedAt: generatedAt,
@@ -1446,7 +1477,7 @@ final class AppEnvironment {
     ) {
         let inputs = DashboardRefreshInputs(
             providerFilter: providerFilter,
-            enabledProviders: SettingsStore.snapshot().enabledProviders,
+            enabledProviders: dashboardSettings.enabledProviders,
             includesMenuBar: includeMenuBar)
         let cacheKey = currentDashboardCacheKey()
         let readModelGeneration = dashboardReadModelGeneration
@@ -1500,11 +1531,13 @@ final class AppEnvironment {
             }
             do {
                 let (db, _) = try self.ensureServices()
+                let generatedAt = Date()
                 let payload = try await db.pool.read { conn in
                     let primary = try Aggregator.loadDashboardPrimary(
                         db: conn,
                         provider: inputs.providerFilter,
-                        enabledProviders: inputs.enabledProviders)
+                        enabledProviders: inputs.enabledProviders,
+                        now: generatedAt)
                     let includesClaude = inputs.providerFilter != .codex
                         && inputs.enabledProviders.contains("claude")
                     let needsBlocks = includesClaude || inputs.includesMenuBar
@@ -1522,11 +1555,11 @@ final class AppEnvironment {
                         dashboardBlocks: includesClaude ? allBlocks : nil,
                         menuBar: menuBarSnapshot)
                 }
-                let generatedAt = Date()
                 let publication = await MainActor.run {
-                    guard !self.dashboardRefreshCoalescer.hasPendingRefresh,
-                          self.dashboardRefreshGeneration.accepts(refreshGeneration),
-                          self.dashboardReadModelGeneration == readModelGeneration,
+                    // An atomic read remains useful last-good content even if
+                    // an import committed while it ran. Store its old generation
+                    // so the next open/trailing pass still revalidates it.
+                    guard self.dashboardRefreshGeneration.accepts(refreshGeneration),
                           self.currentDashboardCacheKey() == cacheKey else {
                         return (dashboard: false, menuBar: false)
                     }
