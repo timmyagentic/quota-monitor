@@ -9,9 +9,10 @@ struct CodexForecastQuotaSelection: Equatable {
     let primary: Window?
     let secondary: Window?
 
-    func selecting(bucket: String?, now: Date = Date()) -> Self {
-        Self(primary: bucket == "primary" && (primary?.resetsAt ?? .distantPast) > now ? primary : nil,
-             secondary: bucket == "secondary" && (secondary?.resetsAt ?? .distantPast) > now ? secondary : nil)
+    func currentCycleBucket(now: Date = Date()) -> String? {
+        if let primary, primary.resetsAt > now { return "primary" }
+        if let secondary, secondary.resetsAt > now { return "secondary" }
+        return nil
     }
 
     func paceBurn(
@@ -54,36 +55,7 @@ struct CodexForecastQuotaSelection: Equatable {
     }
 }
 
-enum ForecastCycleSelection {
-    static func availableBuckets(
-        codex: CodexForecastQuotaSelection, claude: ClaudeUsageSnapshot?,
-        blockResetAt: Date?, visibleProviders: Set<String>, now: Date = Date()
-    ) -> [String] {
-        var buckets: Set<String> = []
-        if visibleProviders.contains("codex") {
-            if let window = codex.primary, window.resetsAt > now { buckets.insert("primary") }
-            if let window = codex.secondary, window.resetsAt > now { buckets.insert("secondary") }
-        }
-        if visibleProviders.contains("claude") {
-            let fiveHourReset = claude == nil ? blockResetAt : claude?.fiveHourForDisplay?.resetAt
-            if (fiveHourReset ?? .distantPast) > now {
-                buckets.insert("primary")
-            }
-            if (claude?.sevenDay?.resetAt ?? .distantPast) > now
-                || (claude.map { ClaudeScopedQuotaRows.visibleRows(for: $0) }
-                    ?? []).contains(where: { $0.window.resetAt > now }) {
-                buckets.insert("secondary")
-            }
-        }
-        return ["primary", "secondary"].filter { buckets.contains($0) }
-    }
-
-    static func resolve(_ requested: String, available: [String]) -> String? {
-        available.contains(requested) ? requested : available.first
-    }
-}
-
-/// Forecast card: per-provider quota for the selected period with a
+/// Forecast card: per-provider quota block (Codex 5h+7d, Claude 5h) with a
 /// pace line. Answers "am I about to blow a quota?". Replaces the old
 /// `codexQuotaSection` + `billingBlockSection` pair on the Dashboard.
 /// Sample-source caption, "Active 5-hour block" header, four KPI tiles,
@@ -93,7 +65,6 @@ enum ForecastCycleSelection {
 struct ForecastSection: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(LocalizationStore.self) private var localization
-    @State private var cycleBucket = "primary"
     let snapshot: DashboardSnapshot
     let blocks: BillingBlocks.Snapshot?
     let claudeUsage: ClaudeUsageSnapshot?
@@ -121,39 +92,12 @@ struct ForecastSection: View {
         providerFilter != .codex && enabledProviders.contains("claude")
     }
 
-    private var codexQuota: CodexForecastQuotaSelection {
-        CodexForecastQuotaSelection.make(live: liveCodexRateLimits, stored: snapshot.codexQuota)
-    }
-
-    private var availableBuckets: [String] {
-        ForecastCycleSelection.availableBuckets(codex: codexQuota, claude: claudeUsage,
-            blockResetAt: blocks?.currentBlock?.endTime,
-            visibleProviders: Set([(showCodex ? "codex" : nil), (showClaude ? "claude" : nil)].compactMap { $0 }))
-    }
-
-    private var selectedBucket: String? {
-        ForecastCycleSelection.resolve(cycleBucket, available: availableBuckets)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(L10n.forecastSectionTitle)
                     .font(.headline)
                 Spacer()
-                if availableBuckets.count > 1 {
-                    Picker(L10n.cycleRangeLabel, selection: Binding(
-                        get: { selectedBucket ?? "primary" }, set: { cycleBucket = $0 })) {
-                        ForEach(availableBuckets, id: \.self) { bucket in
-                            Text(bucket == "primary" ? L10n.cycleCurrent5h : L10n.cycleCurrent7d).tag(bucket)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 240)
-                } else if let selectedBucket {
-                    Text(selectedBucket == "primary" ? L10n.cycleCurrent5h : L10n.cycleCurrent7d)
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
             }
 
             // Two cards side-by-side on wide windows; stack when narrow.
@@ -169,9 +113,6 @@ struct ForecastSection: View {
             }
         }
         .dashboardPanel(cornerRadius: 12, padding: 14)
-        .onChange(of: availableBuckets, initial: true) {
-            if let selectedBucket { cycleBucket = selectedBucket }
-        }
     }
 
     // MARK: - Codex card
@@ -183,7 +124,9 @@ struct ForecastSection: View {
         // hasn't landed a sample yet (cold launch before warm-start
         // hydrator, signed-out, etc.) and the source for burn.
         let dbQuota = snapshot.codexQuota
-        let quota = codexQuota.selecting(bucket: selectedBucket)
+        let quota = CodexForecastQuotaSelection.make(
+            live: liveCodexRateLimits,
+            stored: dbQuota)
         let hasPrimary = quota.primary != nil
         let hasSecondary = quota.secondary != nil
         let paceBurn = quota.paceBurn(
@@ -215,7 +158,8 @@ struct ForecastSection: View {
                         cycle: env.quotaCycle(provider: "codex", bucket: "secondary", resetAt: secondary.resetsAt),
                         windowDuration: 604_800)
                 }
-                // The pace uses the same selected window as the quota row.
+                // Pace line: prefer the visible 5h burn rate (more responsive);
+                // fall back to 7d only when that window is also visible.
                 if let burn = paceBurn {
                     Text(L10n.forecastPaceCodex(percentPerHr: burn.percentPerMinute * 60))
                         .font(.caption2.monospacedDigit())
@@ -230,26 +174,23 @@ struct ForecastSection: View {
 
     @ViewBuilder
     private var claudeCard: some View {
-        let now = Date()
-        let block = selectedBucket == "primary" && claudeUsage == nil
-            ? blocks?.currentBlock.flatMap { $0.endTime > now ? $0 : nil } : nil
+        let block = blocks?.currentBlock
         let modelTooltip = block?.models.joined(separator: " · ")
-        let burn = selectedBucket == "primary" ? blocks?.burnRate : nil
+        let burn = blocks?.burnRate
         // Plan badges are intentionally hidden across providers — the raw
         // upstream values ("prolite", "max5x") confuse users more than they
         // help, and the plan rarely changes for a single account.
         let tier: String? = nil
         // Prefer the current `/usage` 5h window, then its preserved stale
         // predecessor when a weekly-only response omits `five_hour`. Fall
-        // back to a local billing block only before any OAuth snapshot exists.
-        let displayedFiveHour = selectedBucket == "primary"
-            ? claudeUsage?.fiveHourForDisplay.flatMap { $0.resetAt > now ? $0 : nil } : nil
-        let liveSevenDay = selectedBucket == "secondary"
-            ? claudeUsage?.sevenDay.flatMap { $0.resetAt > now ? $0 : nil } : nil
-        let scopedRows = selectedBucket == "secondary" ? claudeUsage.map {
-            ClaudeScopedQuotaRows.visibleRows(for: $0).filter { $0.window.resetAt > now }
-        } ?? [] : []
-        let isFresh = displayedFiveHour != nil || liveSevenDay != nil || !scopedRows.isEmpty || block != nil
+        // back to the locally-derived billing block only when OAuth has no
+        // displayable 5h row.
+        let displayedFiveHour = claudeUsage?.fiveHourForDisplay
+        let liveSevenDay = claudeUsage?.sevenDay
+        let scopedRows = claudeUsage.map {
+            ClaudeScopedQuotaRows.visibleRows(for: $0)
+        } ?? []
+        let isFresh = claudeUsage?.hasRenderableQuotaWindow == true || block != nil
 
         ProviderForecastCard(
             label: L10n.claude,
@@ -308,8 +249,21 @@ struct ForecastSection: View {
     }
 
     private func selectedCycleUsage(provider: String) -> QuotaCycleUsage? {
-        env.quotaCycleUsages.first {
-            $0.cycle.observation.provider == provider && $0.cycle.observation.bucket == selectedBucket
+        let now = Date()
+        let bucket: String?
+        if provider == "codex" {
+            bucket = CodexForecastQuotaSelection.make(live: liveCodexRateLimits,
+                stored: snapshot.codexQuota).currentCycleBucket(now: now)
+        } else if let primary = claudeUsage?.fiveHour, primary.resetAt > now {
+            bucket = "primary"
+        } else if let secondary = claudeUsage?.sevenDay, secondary.resetAt > now {
+            bucket = "secondary"
+        } else {
+            bucket = nil
+        }
+        return env.quotaCycleUsages.first {
+            $0.cycle.observation.provider == provider && $0.cycle.observation.bucket == bucket
+                && $0.cycle.isCurrent(at: now)
         }
     }
 
