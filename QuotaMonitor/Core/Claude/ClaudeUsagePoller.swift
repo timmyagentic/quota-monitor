@@ -212,7 +212,15 @@ actor ClaudeUsagePoller {
                 cooldownUntil = nil
                 await onCooldownChange(nil)
             }
-            try await persist(snapshot: snapshot)
+            do {
+                try await persist(snapshot: snapshot)
+            } catch {
+                Log.storage.error("claude quota persistence failed: \(String(describing: error), privacy: .public)")
+                DeveloperLog.eventRecord(
+                    "claude_usage.persist.fail", level: .error, category: "storage",
+                    provider: "claude", result: "failure",
+                    message: String(describing: error))
+            }
             await onSnapshot(.success(snapshot))
             Log.poller.info("claude /usage ok 5h=\(snapshot.fiveHour?.usedPercent ?? -1, privacy: .public)% 7d=\(snapshot.sevenDay?.usedPercent ?? -1, privacy: .public)%")
             DeveloperLog.eventRecord(

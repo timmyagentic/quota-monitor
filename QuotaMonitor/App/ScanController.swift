@@ -240,8 +240,8 @@ extension AppEnvironment {
                     }
                     : nil
                 await MainActor.run {
-                    self.refreshQuotaCycles()
                     if decision.refreshMenuBar {
+                        self.refreshQuotaCycles()
                         self.refreshMenuBar(
                             precomputedBlocks: blocks,
                             trigger: "scan",

@@ -141,6 +141,42 @@ struct ClaudeUsagePollerTests {
         #expect(calls == 2, "force must bypass the 60s spam gap")
     }
 
+    @Test("sample write failure rolls back cycle state without hiding live Claude quota")
+    func persistenceFailureStillPublishesLiveQuota() async throws {
+        let db = try makeDatabase()
+        try await db.pool.write { conn in
+            try conn.execute(sql: """
+                CREATE TRIGGER reject_quota_sample BEFORE INSERT ON rate_limit_samples
+                BEGIN SELECT RAISE(ABORT, 'simulated storage failure'); END
+                """)
+        }
+        let snapshot = ClaudeUsageSnapshot(
+            capturedAt: Date(), tier: "max",
+            fiveHour: .init(usedPercent: 37, resetAt: Date(timeIntervalSinceNow: 3600),
+                            windowDuration: 5 * 3600),
+            sevenDay: nil, sevenDayOpus: nil, sevenDaySonnet: nil)
+        let mock = MockFetcher(script: [.success(snapshot)])
+        let results = ResultBox()
+        let poller = makePoller(fetcher: mock, db: db, results: results)
+
+        await poller.pollOnce()
+
+        #expect(results.all.count == 1)
+        guard case .success(let published) = results.all.first else {
+            Issue.record("a local storage failure must not become a quota-fetch failure")
+            return
+        }
+        #expect(published.fiveHour?.usedPercent == 37)
+        let persisted = try await db.pool.read { conn in
+            (try QuotaCycleStore.cycles(db: conn).count,
+             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM rate_limit_samples"))
+        }
+        #expect(persisted.0 == 0)
+        #expect(persisted.1 == 0)
+        #expect(await poller._consecutiveAuthFailuresForTest == 0)
+        #expect(await poller._cooldownUntilForTest == nil)
+    }
+
     @Test("structured Fable weekly limit persists with scoped provenance")
     func fable5ScopedLimitPersists() async throws {
         let resetAt = Date(timeIntervalSince1970: 1_777_600_000)
