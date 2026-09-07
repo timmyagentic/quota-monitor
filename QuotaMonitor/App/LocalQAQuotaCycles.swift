@@ -41,6 +41,20 @@ extension AppEnvironment {
                 observationScope: "fixture-claude")
             try QuotaCycleStore.record(db: db, snapshot: after)
             try QuotaCycleStore.record(db: db, snapshot: claude)
+            // The popover can rehydrate samples even in QA. Persist the same
+            // fixture windows so reopening it preserves the observed evidence.
+            for cycle in QuotaCycleSelection.make(codex: codex, claude: claude, stored: []) {
+                let observation = cycle.observation
+                try db.execute(sql: """
+                    INSERT INTO rate_limit_samples (source_kind, bucket, sample_timestamp,
+                        plan_type, window_start, resets_at, used_percent, remaining_percent)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, arguments: [observation.provider == "codex" ? "live" : "claude_oauth",
+                        observation.bucket, ISO8601.fractional.string(from: now), observation.plan,
+                        ISO8601.fractional.string(from: observation.resetAt.addingTimeInterval(-observation.duration)),
+                        ISO8601.fractional.string(from: observation.resetAt), observation.usedPercent,
+                        100 - observation.usedPercent])
+            }
             for provider in ["codex", "claude"] {
                 let session = "qa-quota-cycle-" + provider
                 let iso = ISO8601.fractional.string(from: now)

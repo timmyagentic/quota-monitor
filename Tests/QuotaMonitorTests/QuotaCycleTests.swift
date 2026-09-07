@@ -50,6 +50,7 @@ struct QuotaCycleTests {
         let previous = QuotaCycle.resolve(observation(used: 80), previous: nil)
         let cycle = QuotaCycle.resolve(observation(at: 400, used: 10), previous: previous)
         #expect(cycle.basis == .unresolved)
+        #expect(!cycle.allowsPaceEstimate)
         #expect(cycle.start == nil)
         let next = QuotaCycle.resolve(observation(at: 700, used: 11), previous: cycle)
         #expect(next.basis == .unresolved)

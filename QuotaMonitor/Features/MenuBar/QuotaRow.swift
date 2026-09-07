@@ -83,7 +83,7 @@ struct QuotaRow: View {
                     Text(L10n.quotaRowStaleLabel)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                } else if let pace = paceLabel {
+                } else if let pace = paceLabel, cycle?.allowsPaceEstimate != false {
                     Text(pace.text)
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(paceColor(pace.severity))

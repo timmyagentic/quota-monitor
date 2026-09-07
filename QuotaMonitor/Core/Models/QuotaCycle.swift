@@ -28,6 +28,10 @@ struct QuotaCycle: Codable, Equatable, Sendable, Identifiable {
 
     var id: String { observation.provider + "/" + observation.bucket }
 
+    var allowsPaceEstimate: Bool {
+        basis == .estimated || basis == .observedRollover
+    }
+
     func isCurrent(at now: Date) -> Bool {
         observation.capturedAt <= now && observation.resetAt > now
     }

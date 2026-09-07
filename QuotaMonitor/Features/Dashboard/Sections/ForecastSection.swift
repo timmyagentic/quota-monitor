@@ -115,6 +115,11 @@ struct ForecastSection: View {
         let hasSecondary = quota.secondary != nil
         let paceBurn = quota.primary.flatMap { _ in dbQuota?.burn["primary"] }
             ?? quota.secondary.flatMap { _ in dbQuota?.burn["secondary"] }
+        let paceCycle = quota.primary.flatMap {
+            env.quotaCycle(provider: "codex", bucket: "primary", resetAt: $0.resetsAt)
+        } ?? quota.secondary.flatMap {
+            env.quotaCycle(provider: "codex", bucket: "secondary", resetAt: $0.resetsAt)
+        }
         ProviderForecastCard(
             label: L10n.codex,
             accent: DashboardTheme.providerColor("codex"),
@@ -145,7 +150,9 @@ struct ForecastSection: View {
                 // Pace line: prefer the visible 5h burn rate (more responsive);
                 // fall back to 7d only when that window is also visible.
                 if let burn = paceBurn,
-                   abs(burn.percentPerMinute) > 0.0005 {
+                   abs(burn.percentPerMinute) > 0.0005,
+                   paceCycle?.allowsPaceEstimate != false,
+                   (quota.primary ?? quota.secondary)?.resetsAt ?? .distantPast > Date() {
                     Text(L10n.forecastPaceCodex(percentPerHr: burn.percentPerMinute * 60))
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -354,7 +361,9 @@ struct QuotaProgressRow: View {
 
     @ViewBuilder
     private func trailingLabel(now: Date, remaining: TimeInterval) -> some View {
-        if let burn,
+        if remaining <= 0 {
+            Text(L10n.quotaRowStaleLabel).foregroundStyle(.secondary)
+        } else if let burn, cycle?.allowsPaceEstimate != false,
            let etaMinutes = burn.minutesUntilExhaustion(currentPercent: usedPercent),
            etaMinutes < remaining / 60 {
             Text(exhaustionLabel(formatRemaining(seconds: etaMinutes * 60)))
