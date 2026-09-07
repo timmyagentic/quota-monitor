@@ -7,6 +7,37 @@ struct DashboardBackgroundRefreshTests {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
     private let interval = DashboardBackgroundRefreshPolicy.refreshInterval
 
+    @MainActor
+    @Test("A provider change replaces the old five-hour preparation deadline")
+    func providerChangeInvalidatesHistoryAndReschedules() {
+        let environment = AppEnvironment(startBackgroundTasks: false)
+        environment.dashboardBackgroundRefreshEnabled = true
+        environment.dashboardHistoryRefreshedAt = Date()
+        environment.dashboardBackgroundRefreshDeadline = Date().addingTimeInterval(interval)
+        defer { environment.stopDashboardBackgroundRefresh() }
+
+        environment.invalidateDashboardHistoryFreshness()
+
+        #expect(environment.dashboardHistoryRefreshedAt == nil)
+        let delay = environment.dashboardBackgroundRefreshDeadline?.timeIntervalSinceNow ?? .infinity
+        #expect(delay > 0 && delay <= DashboardBackgroundRefreshPolicy.retryInterval)
+    }
+
+    @MainActor
+    @Test("An old or partial provider scan cannot certify the newly enabled scope")
+    func obsoleteScanDoesNotCertifyNewScope() {
+        let environment = AppEnvironment(startBackgroundTasks: false)
+        let enabled = SettingsStore.snapshot().enabledProviders
+        var differentScope = enabled
+        if differentScope.contains("claude") { differentScope.remove("claude") }
+        else { differentScope.insert("claude") }
+
+        environment.recordDashboardHistoryRefresh(scannedProviders: differentScope, at: now)
+        #expect(environment.dashboardHistoryRefreshedAt == nil)
+        environment.recordDashboardHistoryRefresh(scannedProviders: enabled, at: now)
+        #expect(environment.dashboardHistoryRefreshedAt == now)
+    }
+
     @Test("A closed Dashboard is prepared every five hours across several days")
     func closedForSeveralDays() {
         var policy = DashboardBackgroundRefreshPolicy()

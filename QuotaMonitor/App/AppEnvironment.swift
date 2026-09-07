@@ -126,6 +126,10 @@ final class AppEnvironment {
     private var displayedDashboardCacheKey: DashboardSnapshotCacheKey?
     private let dashboardSnapshotStore: DashboardSnapshotStore
     private let dashboardSnapshotPersistence: DashboardSnapshotPersistence
+    private let dashboardSettingsOverride: SettingsStore.Snapshot?
+    var dashboardSettings: SettingsStore.Snapshot {
+        dashboardSettingsOverride ?? SettingsStore.snapshot()
+    }
     private static let dashboardSnapshotMaxAge: TimeInterval = 5 * 60
     @ObservationIgnored var dashboardBackgroundRefreshTask: Task<Void, Never>?
     @ObservationIgnored var dashboardBackgroundRefreshDeadline: Date?
@@ -209,7 +213,8 @@ final class AppEnvironment {
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true,
         database: DatabaseManager? = nil,
-        dashboardSnapshotStore: DashboardSnapshotStore? = nil
+        dashboardSnapshotStore: DashboardSnapshotStore? = nil,
+        dashboardSettings: SettingsStore.Snapshot? = nil
     ) {
         self.init(
             appServer: appServer,
@@ -218,7 +223,8 @@ final class AppEnvironment {
             launchAtLoginController: launchAtLoginController,
             startBackgroundTasks: startBackgroundTasks,
             database: database,
-            dashboardSnapshotStore: dashboardSnapshotStore)
+            dashboardSnapshotStore: dashboardSnapshotStore,
+            dashboardSettings: dashboardSettings)
     }
 
     init(
@@ -228,13 +234,15 @@ final class AppEnvironment {
         launchAtLoginController: any LaunchAtLoginControlling = LaunchAtLoginController(),
         startBackgroundTasks: Bool = true,
         database: DatabaseManager? = nil,
-        dashboardSnapshotStore: DashboardSnapshotStore? = nil
+        dashboardSnapshotStore: DashboardSnapshotStore? = nil,
+        dashboardSettings: SettingsStore.Snapshot? = nil
     ) {
         self.appServer = appServer
         self.codexAccountUsageClient = codexAccountUsageClient
         self.codexResetCreditsClient = codexResetCreditsClient
         self.launchAtLoginController = launchAtLoginController
         self.database = database
+        self.dashboardSettingsOverride = dashboardSettings
         let snapshotStore = dashboardSnapshotStore ?? DashboardSnapshotStore()
         self.dashboardSnapshotStore = snapshotStore
         self.dashboardSnapshotPersistence = DashboardSnapshotPersistence(store: snapshotStore)
@@ -673,6 +681,7 @@ final class AppEnvironment {
     /// off any disabled provider, and refresh menu bar + dashboard so
     /// the UI immediately matches the new set.
     func applyEnabledProviders() {
+        invalidateDashboardHistoryFreshness()
         startDashboardBackgroundRefresh()
         let enabled = SettingsStore.snapshot().enabledProviders
         let resetsProviderFilter = providerFilter != .all
@@ -1247,7 +1256,7 @@ final class AppEnvironment {
     private func currentDashboardCacheKey() -> DashboardSnapshotCacheKey {
         DashboardSnapshotCacheKey(
             providerFilter: providerFilter,
-            enabledProviders: SettingsStore.snapshot().enabledProviders,
+            enabledProviders: dashboardSettings.enabledProviders,
             timeZoneIdentifier: TimeZone.current.identifier)
     }
 
@@ -1468,7 +1477,7 @@ final class AppEnvironment {
     ) {
         let inputs = DashboardRefreshInputs(
             providerFilter: providerFilter,
-            enabledProviders: SettingsStore.snapshot().enabledProviders,
+            enabledProviders: dashboardSettings.enabledProviders,
             includesMenuBar: includeMenuBar)
         let cacheKey = currentDashboardCacheKey()
         let readModelGeneration = dashboardReadModelGeneration

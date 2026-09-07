@@ -48,9 +48,21 @@ struct DashboardBackgroundRefreshPolicy: Sendable {
 }
 
 extension AppEnvironment {
+    func invalidateDashboardHistoryFreshness() {
+        dashboardHistoryRefreshedAt = nil
+        scheduleDashboardBackgroundRefresh()
+    }
+
+    func recordDashboardHistoryRefresh(scannedProviders: Set<String>, at date: Date) {
+        // A provider can be enabled while the previous scope is still scanning.
+        // Partial App Store authorization also cannot certify the entire scope.
+        guard scannedProviders == dashboardSettings.enabledProviders else { return }
+        dashboardHistoryRefreshedAt = date
+        scheduleDashboardBackgroundRefresh()
+    }
+
     func startDashboardBackgroundRefresh() {
-        guard !dashboardBackgroundRefreshEnabled,
-              SettingsStore.snapshot().hasCompletedProviderOnboarding,
+        guard dashboardSettings.hasCompletedProviderOnboarding,
               LocalQAEnvironment.allowsExternalDataSources() else { return }
         dashboardBackgroundRefreshEnabled = true
         scheduleDashboardBackgroundRefresh()
@@ -91,7 +103,7 @@ extension AppEnvironment {
     /// while the machine was suspended. Busy/failed work retries in five minutes.
     func refreshDashboardInBackgroundIfNeeded(now: Date = Date()) {
         guard dashboardBackgroundRefreshEnabled,
-              SettingsStore.snapshot().hasCompletedProviderOnboarding else { return }
+              dashboardSettings.hasCompletedProviderOnboarding else { return }
         let shouldStart = dashboardBackgroundRefreshPolicy.begin(
             historyAt: dashboardHistoryRefreshedAt,
             snapshotAt: dashboardCachedSnapshotDate,

@@ -199,8 +199,8 @@ extension AppEnvironment {
                     }
                     self.lastScanAtByScope[throttleKey] = Date()
                     if providers == nil, merged.errors.isEmpty, !merged.scopeUnavailable {
-                        self.dashboardHistoryRefreshedAt = scanStartedAt
-                        self.scheduleDashboardBackgroundRefresh()
+                        self.recordDashboardHistoryRefresh(
+                            scannedProviders: scanProviders, at: scanStartedAt)
                     }
                     // A resolved-but-unopenable App Store bookmark imported
                     // nothing silently; tell the user to re-select the folder.

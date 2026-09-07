@@ -39,7 +39,8 @@ struct DashboardSnapshotPublicationTests {
         try store.save(old)
 
         let reopened = AppEnvironment(startBackgroundTasks: false, database: database,
-                                      dashboardSnapshotStore: store)
+                                      dashboardSnapshotStore: store,
+                                      dashboardSettings: first.dashboardSettings)
         reopened.restoreCachedDashboardSnapshot()
         let restoredAt = try #require(reopened.dashboardCachedSnapshotDate)
         #expect(abs(restoredAt.timeIntervalSince(old.generatedAt)) < 0.001)
@@ -57,7 +58,11 @@ struct DashboardSnapshotPublicationTests {
             .appendingPathComponent("dashboard-publication-\(UUID().uuidString)")
         let database = try DatabaseManager(url: root.appendingPathComponent("history.sqlite"))
         let store = DashboardSnapshotStore(fileURL: root.appendingPathComponent("snapshot.json"))
-        let providers = SettingsStore.snapshot().enabledProviders
+        let suiteName = "dashboard-publication-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let settings = SettingsStore.snapshot(defaults: defaults)
+        let providers = settings.enabledProviders
         let stamp = ISO8601.fractional.string(from: Date().addingTimeInterval(-3600))
         try database.pool.write { db in
             for provider in providers {
@@ -76,7 +81,8 @@ struct DashboardSnapshotPublicationTests {
             }
         }
         let environment = AppEnvironment(startBackgroundTasks: false, database: database,
-                                         dashboardSnapshotStore: store)
+                                         dashboardSnapshotStore: store,
+                                         dashboardSettings: settings)
         return (environment, database, store, Int64(providers.count) * 123)
     }
 
