@@ -27,8 +27,12 @@ def callback(source, name):
 @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('swiftc'), 'macOS Swift compiler is required')
 class LifecycleNotificationThreadTests(unittest.TestCase):
     def test_notifications_from_main_and_background_queues(self):
-        source = (ROOT / 'QuotaMonitor/App/AppDelegate.swift').read_text()
-        for name, expected in [('calendarDayChanged', 1), ('workspaceDidWake', 3)]:
+        cases = [('AppDelegate', 'calendarDayChanged', 1),
+                 ('AppDelegate', 'workspaceDidWake', 3),
+                 ('CodexQuotaOverlayController', 'workspaceStateDidChange', 1),
+                 ('CodexQuotaOverlayController', 'screenParametersDidChange', 1)]
+        for controller, name, expected in cases:
+            source = (ROOT / f'QuotaMonitor/App/{controller}.swift').read_text()
             for queue in ['main', 'global()']:
                 with self.subTest(callback=name, queue=queue), tempfile.TemporaryDirectory() as directory:
                     fixture = pathlib.Path(directory) / 'main.swift'
@@ -45,6 +49,7 @@ var calls = 0
 @MainActor final class Delegate: NSObject {
     var updater: Updater? = Updater()
     func requestAutomaticHistoryScan(trigger: String) { record() }
+    func refreshOverlay() { record() }
 ''' + callback(source, name) + '''
     func start() {
         NotificationCenter.default.addObserver(self, selector: #selector(''' + name + '''),

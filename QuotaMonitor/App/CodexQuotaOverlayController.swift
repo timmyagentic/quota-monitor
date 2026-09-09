@@ -106,12 +106,16 @@ final class CodexQuotaOverlayController: NSObject {
         refreshLocalQAOverlay()
     }
 
-    @objc private func workspaceStateDidChange(_ notification: Notification) {
-        refreshOverlay()
+    @objc private nonisolated func workspaceStateDidChange(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.refreshOverlay()
+        }
     }
 
-    @objc private func screenParametersDidChange(_ notification: Notification) {
-        refreshOverlay()
+    @objc private nonisolated func screenParametersDidChange(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.refreshOverlay()
+        }
     }
 
     @objc private func trackingTimerFired(_ timer: Timer) {

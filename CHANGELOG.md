@@ -38,7 +38,7 @@ window copy.
 
 ### Fixed
 
-- **Midnight stability.** Date-change and wake notifications safely resume refreshes on the main thread, preventing an unexpected exit when a notification arrives in the background.
+- **Midnight stability.** Date-change, wake, and overlay display notifications safely resume refreshes on the main thread, preventing an unexpected exit when a notification arrives in the background.
 
 ## [1.0.6] — 2026-09-08
 
