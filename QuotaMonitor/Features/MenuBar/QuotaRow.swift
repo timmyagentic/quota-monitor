@@ -11,7 +11,6 @@ struct QuotaRow: View {
     let title: String
     let usedPercent: Double
     let resetAt: Date
-    let windowDuration: TimeInterval?
     var cycle: QuotaCycle? = nil
     let paceLabel: QuotaPaceLabel.Result?
     /// Tint applied to the title chip and progress bar so the row reads as
@@ -24,7 +23,6 @@ struct QuotaRow: View {
         self.cycle = cycle
         self.title = title
         self.usedPercent = window.usedPercent
-        self.windowDuration = window.windowDuration
         self.resetAt = window.resetAt
         self.paceLabel = window.paceLabel()
         self.accent = accent
@@ -35,7 +33,6 @@ struct QuotaRow: View {
         self.cycle = cycle
         self.title = title
         self.usedPercent = window.usedPercent
-        self.windowDuration = window.windowDuration
         self.resetAt = window.resetAt
         self.paceLabel = window.paceLabel()
         self.accent = accent
@@ -46,7 +43,6 @@ struct QuotaRow: View {
         self.cycle = cycle
         self.title = title
         self.usedPercent = window.usedPercent
-        self.windowDuration = window.windowStart.map { window.resetsAt.timeIntervalSince($0) }
         self.resetAt = window.resetsAt
         self.paceLabel = nil
         self.accent = accent
@@ -66,7 +62,6 @@ struct QuotaRow: View {
                 value: progressValue,
                 usedPercent: usedPercent,
                 accessibilityText: "\(Int(displayPercent))%")
-            QuotaCycleTimingView(cycle: cycle, resetAt: resetAt, duration: windowDuration)
             HStack(spacing: 4) {
                 Text(L10n.resetsRelative(relativeReset))
                     .font(.caption2)
