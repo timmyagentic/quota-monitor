@@ -30,10 +30,19 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The menu bar quota panel is simpler, with each meter showing its reset countdown without extra reset-start estimates.
+
+### Removed
+
+- **Reset-start captions.** Removed estimated and observed reset-start timing lines from menu bar quota rows.
+
 ## [1.0.7] — 2026-09-09
 
 #### Summary
 
+- The menu bar quota panel is simpler, with each meter showing its reset countdown without extra reset-start estimates.
 - QuotaMonitor stays running when the local date changes at midnight.
 
 ### Fixed
