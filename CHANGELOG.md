@@ -30,6 +30,16 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-09-09
+
+#### Summary
+
+- QuotaMonitor stays running when the local date changes at midnight.
+
+### Fixed
+
+- **Midnight stability.** Date-change, wake, and overlay display notifications safely resume refreshes on the main thread, preventing an unexpected exit when a notification arrives in the background.
+
 ## [1.0.6] — 2026-09-08
 
 #### Summary
