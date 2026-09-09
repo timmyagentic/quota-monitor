@@ -237,14 +237,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppEnvironment.shared.refreshDashboardInBackgroundIfNeeded()
     }
 
-    @objc private func workspaceDidWake(_ notification: Notification) {
-        updater?.checkInBackgroundIfNeeded()
-        requestAutomaticHistoryScan(trigger: "wake-day-change")
-        AppEnvironment.shared.refreshDashboardInBackgroundIfNeeded()
+    // Notification selectors run on the posting thread, including background queues.
+    @objc private nonisolated func workspaceDidWake(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.updater?.checkInBackgroundIfNeeded()
+            self.requestAutomaticHistoryScan(trigger: "wake-day-change")
+            AppEnvironment.shared.refreshDashboardInBackgroundIfNeeded()
+        }
     }
 
-    @objc private func calendarDayChanged(_ notification: Notification) {
-        requestAutomaticHistoryScan(trigger: "calendar-day-change")
+    @objc private nonisolated func calendarDayChanged(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.requestAutomaticHistoryScan(trigger: "calendar-day-change")
+        }
     }
 
     private func requestAutomaticHistoryScan(

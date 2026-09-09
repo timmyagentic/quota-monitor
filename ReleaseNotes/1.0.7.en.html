@@ -1,0 +1,12 @@
+<div class="release-summary">
+<ul>
+<li>QuotaMonitor stays running when the local date changes at midnight.</li>
+</ul>
+</div>
+<button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
+<div class="release-details">
+<h3>Fixed</h3>
+<ul>
+<li><b>Midnight stability.</b> Date-change and wake notifications safely resume refreshes on the main thread, preventing an unexpected exit when a notification arrives in the background.</li>
+</ul>
+</div>

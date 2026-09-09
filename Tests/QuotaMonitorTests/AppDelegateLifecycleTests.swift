@@ -60,7 +60,7 @@ struct AppDelegateLifecycleTests {
         #expect(launch.contains("updater.checkInBackgroundIfNeeded()"))
         #expect(launch.contains("NSWorkspace.didWakeNotification"))
         #expect(source.contains("func applicationDidBecomeActive"))
-        #expect(source.contains("@objc private func workspaceDidWake"))
+        #expect(source.contains("@objc private nonisolated func workspaceDidWake"))
         #expect(source.components(separatedBy: "updater?.checkInBackgroundIfNeeded()").count == 3)
     }
 
