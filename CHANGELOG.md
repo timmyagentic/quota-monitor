@@ -30,14 +30,6 @@ window copy.
 
 ## [Unreleased]
 
-#### Summary
-
-- The menu bar quota panel is simpler, with each meter showing its reset countdown without extra reset-start estimates.
-
-### Removed
-
-- **Reset-start captions.** Removed estimated and observed reset-start timing lines from menu bar quota rows.
-
 ## [1.0.7] — 2026-09-09
 
 #### Summary
@@ -48,6 +40,10 @@ window copy.
 ### Fixed
 
 - **Midnight stability.** Date-change, wake, and overlay display notifications safely resume refreshes on the main thread, preventing an unexpected exit when a notification arrives in the background.
+
+### Removed
+
+- **Reset-start captions.** Removed estimated and observed reset-start timing lines from menu bar quota rows.
 
 ## [1.0.6] — 2026-09-08
 
