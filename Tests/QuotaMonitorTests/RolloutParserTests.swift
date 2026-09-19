@@ -131,6 +131,27 @@ struct RolloutParserTests {
         #expect(parsed.usageDeltas[1].totalTokens == 68)
     }
 
+    @Test("Luna Reserve records normalize and avoid token_count double counting")
+    func lunaReserveTokenUsageRecords() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-09-19T05:03:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","cwd":"/tmp/project"}}
+        {"timestamp":"2026-09-19T05:03:01.000Z","type":"turn_context","payload":{"model":"gpt-reserve","turn_id":"turn-record"}}
+        {"timestamp":"2026-09-19T05:03:02.000Z","type":"token_usage_record","payload":{"turn_id":"turn-record","usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":110},"thread_token_usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":110}}}
+        {"timestamp":"2026-09-19T05:03:02.010Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":110},"last_token_usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":110}}}}
+        {"timestamp":"2026-09-19T05:03:03.000Z","type":"token_usage_record","payload":{"turn_id":"turn-record","usage":{"input_tokens":60,"cached_input_tokens":25,"cache_write_input_tokens":5,"output_tokens":8,"reasoning_output_tokens":2,"total_tokens":68},"thread_token_usage":{"input_tokens":160,"cached_input_tokens":45,"cache_write_input_tokens":5,"output_tokens":18,"reasoning_output_tokens":5,"total_tokens":178}}}
+        {"timestamp":"2026-09-19T05:03:03.010Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":160,"cached_input_tokens":45,"cache_write_input_tokens":5,"output_tokens":18,"reasoning_output_tokens":5,"total_tokens":178},"last_token_usage":{"input_tokens":60,"cached_input_tokens":25,"cache_write_input_tokens":5,"output_tokens":8,"reasoning_output_tokens":2,"total_tokens":68}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(NormalizeModelId(" GPT-RESERVE ") == "gpt-5.6-luna")
+        #expect(parsed.usageDeltas.count == 2)
+        #expect(parsed.usageDeltas.map(\.modelId) == ["gpt-5.6-luna", "gpt-5.6-luna"])
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-record", "turn-record"])
+        #expect(parsed.usageDeltas.map(\.totalTokens) == [110, 68])
+        #expect(parsed.usageDeltas.map(\.cacheWriteInputTokens) == [0, 5])
+        #expect(parsed.modelIds == ["gpt-5.6-luna"])
+    }
+
     // MARK: - rate-limit sample extraction
 
     @Test("embedded rate_limits become primary + secondary sample drafts")

@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Codex usage from Luna Reserve now appears in usage and cost history.
+
+### Fixed
+
+- **Luna Reserve imports.** Normalize `gpt-reserve` to GPT-5.6 Luna and import current Codex usage records using the existing Luna pricing.
+
 ## [1.0.7] — 2026-09-09
 
 #### Summary

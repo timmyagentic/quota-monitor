@@ -24,6 +24,14 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+#### Summary
+
+- Luna Reserve 的 Codex 用量现在会出现在用量和费用历史中。
+
+### 修复
+
+- **Luna Reserve 导入。** 将 `gpt-reserve` 归一化为 GPT-5.6 Luna，并使用现有 Luna 价格导入当前 Codex 用量记录。
+
 ## [1.0.7] — 2026-09-09
 
 #### Summary

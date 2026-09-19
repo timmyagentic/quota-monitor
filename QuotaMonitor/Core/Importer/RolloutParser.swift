@@ -10,15 +10,19 @@ import Foundation
 //      turn. Current Codex rollouts may interleave multiple cumulative
 //      total_token_usage streams, so total_token_usage is not always monotonic
 //      in file order.
-//   2. Older rollouts may only have total_token_usage. For those, compute the
+//   2. token_usage_record.usage is already the per-response delta. Its
+//      thread_token_usage field suppresses the duplicate token_count record
+//      emitted by current Codex builds.
+//   3. Older rollouts may only have total_token_usage. For those, compute the
 //      delta from the previous cumulative value, and treat a backwards counter
 //      as the start of a fresh cumulative segment.
-//   3. token_count events do not carry a model_id in today's CLI — we use the
-//      most recent `turn_context.payload.model`. Defensive fallbacks on the
-//      payload itself match ccusage's `extractModel` heuristic. If everything
-//      fails (legacy session that ran before turn_context existed), attribute
-//      to LegacyFallbackModel and flag the event so UI can asterisk the cost.
-//   4. rate_limits embedded in token_count are valuable historical samples
+//   4. token_count and token_usage_record events do not carry a model_id in
+//      today's CLI — we use the most recent `turn_context.payload.model`.
+//      Defensive fallbacks on the token_count payload match ccusage's
+//      `extractModel` heuristic. If everything fails (legacy session that ran
+//      before turn_context existed), attribute to LegacyFallbackModel and flag
+//      the event so UI can asterisk the cost.
+//   5. rate_limits embedded in token_count are valuable historical samples
 //      (different shape from the app-server live API).
 
 /// Models are now stamped on `turn_context`, but legacy sessions and the
@@ -649,25 +653,12 @@ struct CodexRolloutReducer {
                     rateLimitSamples: samples)
             }
 
-            // Resolution order: explicit on payload → tracked turn_context →
-            // legacy fallback. Only the last counts as inferred.
-            let payloadModel = extractPayloadModel(from: tokenCount).map(NormalizeModelId)
-            if let payloadModel {
-                state.currentModel = payloadModel
-                state.currentModelIsFallback = false
-            }
-            let resolvedModel: String
-            let inferred: Bool
-            if let model = payloadModel ?? state.currentModel {
-                resolvedModel = model
-                inferred = state.currentModelIsFallback
-            } else {
-                resolvedModel = LegacyFallbackModel
-                inferred = true
-                state.currentModel = LegacyFallbackModel
-                state.currentModelIsFallback = true
-            }
-            seenModels.insert(resolvedModel)
+            // Current Codex emits token_usage_record followed by a duplicate
+            // token_count with the same cumulative thread usage. The record
+            // updates previousUsage so usageDelta returns nil for that legacy
+            // companion event.
+            let (resolvedModel, inferred) = resolveModel(
+                explicit: extractPayloadModel(from: tokenCount))
 
             let tokenDelta = Self.usageDelta(
                 from: info,
@@ -695,9 +686,61 @@ struct CodexRolloutReducer {
                 usageDelta: usage,
                 rateLimitSamples: samples)
 
+        case .tokenUsageRecord(let record, let envelopeTs):
+            let timestamp = envelopeTs ?? ISO8601.fractional.string(from: Date())
+            let (resolvedModel, inferred) = resolveModel(explicit: nil)
+            let tokenUsage = record.usage.flatMap(Self.meaningfulUsage)
+            let duplicatesLegacyTokenCount = tokenUsage != nil
+                && record.threadTokenUsage != nil
+                && record.threadTokenUsage == state.previousUsage
+            if tokenUsage != nil, let threadUsage = record.threadTokenUsage {
+                state.previousUsage = threadUsage
+            }
+
+            let usage: UsageDelta?
+            if !duplicatesLegacyTokenCount,
+               state.childReplayGate == nil,
+               let tokenUsage
+            {
+                usage = UsageDelta(
+                    timestamp: timestamp,
+                    modelId: resolvedModel,
+                    turnId: record.turnId ?? state.activeTurn?.id,
+                    serviceTierPreference: state.activeTurn?.serviceTierPreference,
+                    inputTokens: tokenUsage.inputTokens,
+                    cachedInputTokens: tokenUsage.cachedInputTokens,
+                    cacheWriteInputTokens: tokenUsage.cacheWriteInputTokens,
+                    outputTokens: tokenUsage.outputTokens,
+                    reasoningOutputTokens: tokenUsage.reasoningOutputTokens,
+                    totalTokens: tokenUsage.totalTokens,
+                    modelInferred: inferred)
+            } else {
+                usage = nil
+            }
+            state.updatedAt = timestamp
+            return CodexRolloutReduction(
+                usageDelta: usage,
+                rateLimitSamples: [])
+
         case .other:
             return .none
         }
+    }
+
+    private mutating func resolveModel(explicit: String?) -> (model: String, inferred: Bool) {
+        if let explicit {
+            let normalized = NormalizeModelId(explicit)
+            state.currentModel = normalized
+            state.currentModelIsFallback = false
+        }
+        if let model = state.currentModel {
+            seenModels.insert(model)
+            return (model, state.currentModelIsFallback)
+        }
+        state.currentModel = LegacyFallbackModel
+        state.currentModelIsFallback = true
+        seenModels.insert(LegacyFallbackModel)
+        return (LegacyFallbackModel, true)
     }
 
     mutating func resolveSessionId(_ fallback: String?) {
@@ -1176,7 +1219,13 @@ struct LineReader: Sequence, IteratorProtocol {
 /// Mirror of codex-pacer's `normalize_model_id`: lowercase, strip whitespace.
 /// Pricing-table lookups happen against the normalized id.
 func NormalizeModelId(_ raw: String) -> String {
-    raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    switch normalized {
+    case "gpt-reserve":
+        return "gpt-5.6-luna"
+    default:
+        return normalized
+    }
 }
 
 /// Defensive model extraction from a `token_count` payload. Today's Codex
