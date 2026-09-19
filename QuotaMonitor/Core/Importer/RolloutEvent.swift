@@ -13,6 +13,7 @@ enum RolloutEvent {
     case taskStarted(TaskLifecyclePayload, timestamp: String?)
     case taskComplete(TaskLifecyclePayload, timestamp: String?)
     case tokenCount(TokenCountPayload, timestamp: String?)
+    case tokenUsageRecord(TokenUsageRecordPayload, timestamp: String?)
     case other(type: String, timestamp: String?)
 }
 
@@ -157,6 +158,22 @@ struct TokenCountPayload: Decodable {
     }
 }
 
+// Current Codex builds emit this top-level record alongside (and in some
+// rollouts instead of) event_msg/token_count. `usage` is the per-response
+// delta; `thread_token_usage` is the cumulative value used to deduplicate the
+// legacy token_count record for the same response.
+struct TokenUsageRecordPayload: Decodable {
+    let turnId: String?
+    let usage: TokenUsageWire?
+    let threadTokenUsage: TokenUsageWire?
+
+    enum CodingKeys: String, CodingKey {
+        case turnId = "turn_id"
+        case usage
+        case threadTokenUsage = "thread_token_usage"
+    }
+}
+
 struct TokenCountInfo: Decodable {
     let totalTokenUsage: TokenUsageWire?
     let lastTokenUsage: TokenUsageWire?
@@ -287,6 +304,14 @@ extension RolloutEvent {
                   let tc = try? decoder.decode(TurnContextPayload.self, from: data)
             else { return .other(type: type, timestamp: timestamp) }
             return .turnContext(tc, timestamp: timestamp)
+
+        case "token_usage_record":
+            guard let data = RolloutLineScanner.objectValue(forKey: "payload", in: line),
+                  let payload = try? decoder.decode(
+                    TokenUsageRecordPayload.self,
+                    from: data)
+            else { return .other(type: type, timestamp: timestamp) }
+            return .tokenUsageRecord(payload, timestamp: timestamp)
 
         case "event_msg":
             guard let data = RolloutLineScanner.objectValue(forKey: "payload", in: line),
