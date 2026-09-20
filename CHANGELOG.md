@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-09-20
+
 #### Summary
 
 - Codex usage from Luna Reserve now appears in usage and cost history.
