@@ -24,6 +24,8 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-09-20
+
 #### Summary
 
 - Luna Reserve 的 Codex 用量现在会出现在用量和费用历史中。
