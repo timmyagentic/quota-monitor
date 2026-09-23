@@ -305,6 +305,25 @@ struct PricingValueBackfillTests {
         #expect(abs(value - 92.75) < 1e-9)
     }
 
+    @Test("Claude Opus 5.5 usage uses the official lower cache-read and write prices")
+    func claudeOpus55UsesOfficialPricing() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db, provider: "claude", modelId: "claude-opus-5-5",
+            input: 1_000_000, cached: 1_000_000, output: 1_000_000,
+            cacheCreation: 2_000_000, cacheCreation5m: 1_000_000,
+            cacheCreation1h: 1_000_000,
+            timestamp: "2026-09-22T00:00:00Z")
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // Input $4 + cache read $0.20 + 5m write $5 + 1h write $8 + output $20.
+        #expect(abs(value - 37.20) < 1e-9)
+    }
+
     @Test("database initialization seeds Claude Opus 4.5 so imported usage can be priced")
     func databaseInitializationSeedsClaudeOpus45() throws {
         let db = try makeDatabase()
@@ -338,6 +357,9 @@ struct PricingValueBackfillTests {
             let isOfficial: Bool
         }
         let expected: [ExpectedSeed] = [
+            .init(modelId: "claude-opus-5-5",
+                  input: 4.00, cached: 0.20, cacheCreation: 5.00,
+                  output: 20.00, isOfficial: true),
             .init(modelId: "claude-opus-5",
                   input: 5.00, cached: 0.50, cacheCreation: 6.25,
                   output: 25.00, isOfficial: true),
@@ -380,6 +402,7 @@ struct PricingValueBackfillTests {
                        is_official
                 FROM pricing_catalog
                 WHERE model_id IN (
+                  'claude-opus-5-5',
                   'claude-opus-5',
                   'claude-fable-5-1',
                   'claude-sonnet-5',
@@ -880,6 +903,8 @@ struct PricingValueBackfillTests {
         #expect(!entries.isEmpty)
         let cacheWritePremiumModelIds: Set<String> = [
             "gpt-6-astra",
+            "gpt-6-sol",
+            "gpt-6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
@@ -919,6 +944,70 @@ struct PricingValueBackfillTests {
             #expect(abs((entry?.cachedInputPricePerMillion ?? -1) - price.1) < 1e-9)
             #expect(abs((entry?.cacheCreationPricePerMillion ?? -1) - price.2) < 1e-9)
             #expect(abs((entry?.outputPricePerMillion ?? -1) - price.3) < 1e-9)
+        }
+    }
+
+    @Test("GPT-6 Sol and Luna catalog materializes the official tier and context prices")
+    func gpt6SolAndLunaCatalogMaterializesOfficialMatrix() {
+        let expected: [String: (Double, Double, Double, Double)] = [
+            "gpt-6-sol": (2.00, 0.20, 2.50, 10.00),
+            "gpt-6-sol-fast": (4.00, 0.40, 5.00, 20.00),
+            "gpt-6-sol-flex": (1.00, 0.10, 1.25, 5.00),
+            "gpt-6-sol-long": (4.00, 0.40, 5.00, 15.00),
+            "gpt-6-sol-fast-long": (8.00, 0.80, 10.00, 30.00),
+            "gpt-6-sol-flex-long": (2.00, 0.20, 2.50, 7.50),
+            "gpt-6-luna": (0.10, 0.01, 0.125, 0.50),
+            "gpt-6-luna-fast": (0.20, 0.02, 0.25, 1.00),
+            "gpt-6-luna-flex": (0.05, 0.005, 0.0625, 0.25),
+            "gpt-6-luna-long": (0.20, 0.02, 0.25, 0.75),
+            "gpt-6-luna-fast-long": (0.40, 0.04, 0.50, 1.50),
+            "gpt-6-luna-flex-long": (0.10, 0.01, 0.125, 0.375),
+        ]
+        let entries = Dictionary(uniqueKeysWithValues:
+            BundledPricingCatalog.entries.compactMap { entry in
+                expected[entry.modelId] == nil ? nil : (entry.modelId, entry)
+            })
+
+        #expect(entries.count == expected.count)
+        for (modelId, price) in expected {
+            let entry = entries[modelId]
+            #expect(abs((entry?.inputPricePerMillion ?? -1) - price.0) < 1e-9)
+            #expect(abs((entry?.cachedInputPricePerMillion ?? -1) - price.1) < 1e-9)
+            #expect(abs((entry?.cacheCreationPricePerMillion ?? -1) - price.2) < 1e-9)
+            #expect(abs((entry?.outputPricePerMillion ?? -1) - price.3) < 1e-9)
+        }
+    }
+
+    @Test("GPT-6 Sol and Luna usage selects Standard, Flex, Fast and long prices")
+    func gpt6SolAndLunaUsageSelectsOfficialPricingMatrix() throws {
+        let db = try makeDatabase()
+        for modelId in ["gpt-6-sol", "gpt-6-luna"] {
+            for tier in [nil, "priority", "flex"] as [String?] {
+                try insertUsageEvent(
+                    in: db, provider: "codex", modelId: modelId,
+                    input: 200_000, cached: 40_000, output: 20_000,
+                    codexCacheWrite: 60_000, serviceTierPreference: tier,
+                    timestamp: "2026-09-22T00:00:00Z")
+            }
+            for tier in [nil, "priority", "flex"] as [String?] {
+                try insertUsageEvent(
+                    in: db, provider: "codex", modelId: modelId,
+                    input: 300_000, cached: 100_000, output: 10_000,
+                    codexCacheWrite: 100_000, serviceTierPreference: tier,
+                    timestamp: "2026-09-22T00:00:00Z")
+            }
+        }
+
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let values = try valueUSD(in: db)
+        let expected = [0.558, 1.116, 0.279, 1.09, 2.18, 0.545,
+                        0.0279, 0.0558, 0.01395, 0.0545, 0.109, 0.02725]
+        #expect(values.count == expected.count)
+        for (value, price) in zip(values, expected) {
+            #expect(abs(value - price) < 1e-9)
         }
     }
 

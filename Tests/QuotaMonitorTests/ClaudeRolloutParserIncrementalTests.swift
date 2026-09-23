@@ -92,6 +92,29 @@ struct ClaudeRolloutParserIncrementalTests {
         }
     }
 
+    @Test("Claude Opus 5.5 rollout imports a priced usage event")
+    func opus55RolloutImportsPricedUsage() async throws {
+        let db = try makeDatabase()
+        let (root, project) = try makeProjectRoot()
+        let main = project.appendingPathComponent("opus55.jsonl")
+        try (assistantLine(
+            sid: "opus55", msgId: "m1", ts: "2026-09-22T00:00:00.000Z",
+            model: "claude-opus-5-5", input: 100, output: 50
+        ) + "\n").write(to: main, atomically: true, encoding: .utf8)
+
+        let engine = ClaudeImportEngine(database: db, claudeRoots: [root])
+        let report = try await engine.performScan()
+        #expect(report.importedEvents == 1)
+        let row = try await db.pool.read { conn in
+            try Row.fetchOne(conn, sql: """
+                SELECT model_id, value_usd FROM usage_events
+                WHERE provider = 'claude' AND provider_message_id = 'm1'
+                """)
+        }
+        #expect((row?["model_id"] as String?) == "claude-opus-5-5")
+        #expect(abs((row?["value_usd"] as Double? ?? -1) - 0.0014) < 1e-9)
+    }
+
     // MARK: - 1. mid-write tail leaves endOffset behind the partial line
 
     @Test("mid-write tail: endOffset stops at last complete newline")

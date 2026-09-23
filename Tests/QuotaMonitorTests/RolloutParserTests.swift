@@ -152,6 +152,22 @@ struct RolloutParserTests {
         #expect(parsed.modelIds == ["gpt-5.6-luna"])
     }
 
+    @Test("GPT-6 Sol and Luna token_usage_record events keep their model IDs")
+    func gpt6SolAndLunaTokenUsageRecords() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-09-22T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","cwd":"/tmp/project"}}
+        {"timestamp":"2026-09-22T00:00:01.000Z","type":"turn_context","payload":{"model":"gpt-6-sol","turn_id":"sol-turn"}}
+        {"timestamp":"2026-09-22T00:00:02.000Z","type":"token_usage_record","payload":{"turn_id":"sol-turn","usage":{"input_tokens":100,"cached_input_tokens":20,"cache_write_input_tokens":10,"output_tokens":10,"reasoning_output_tokens":3,"total_tokens":110}}}
+        {"timestamp":"2026-09-22T00:00:03.000Z","type":"turn_context","payload":{"model":"gpt-6-luna","turn_id":"luna-turn"}}
+        {"timestamp":"2026-09-22T00:00:04.000Z","type":"token_usage_record","payload":{"turn_id":"luna-turn","usage":{"input_tokens":200,"cached_input_tokens":40,"cache_write_input_tokens":20,"output_tokens":20,"reasoning_output_tokens":5,"total_tokens":220}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.modelId) == ["gpt-6-sol", "gpt-6-luna"])
+        #expect(parsed.usageDeltas.map(\.inputTokens) == [100, 200])
+        #expect(parsed.usageDeltas.map(\.cacheWriteInputTokens) == [10, 20])
+    }
+
     // MARK: - rate-limit sample extraction
 
     @Test("embedded rate_limits become primary + secondary sample drafts")

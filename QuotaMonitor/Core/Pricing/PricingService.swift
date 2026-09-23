@@ -72,6 +72,8 @@ enum CodexFastMode {
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
         "gpt-6-astra": 2.0,
+        "gpt-6-sol": 2.0,
+        "gpt-6-luna": 2.0,
         "gpt-5.6-sol": 2.0,
         "gpt-5.6-terra": 2.0,
         "gpt-5.6-luna": 2.0,
@@ -91,6 +93,8 @@ enum CodexFastMode {
 enum CodexFlexMode {
     static let multipliers: [String: Double] = [
         "gpt-6-astra": 0.5,
+        "gpt-6-sol": 0.5,
+        "gpt-6-luna": 0.5,
         "gpt-5.6-sol": 0.5,
         "gpt-5.6-terra": 0.5,
         "gpt-5.6-luna": 0.5,
@@ -102,7 +106,7 @@ enum CodexFlexMode {
     static let suffix = "-flex"
 }
 
-/// Defines which models receive materialized Long rows. GPT-6 Astra and
+/// Defines which models receive materialized Long rows. GPT-6 and
 /// GPT-5.6 have published Fast Long prices; older Fast models without such
 /// rows select Standard Long. Flex retains its tier.
 enum CodexLongContextPricing {
@@ -113,6 +117,8 @@ enum CodexLongContextPricing {
     static let suffix = "-long"
     static let modelIds: Set<String> = [
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -121,6 +127,8 @@ enum CodexLongContextPricing {
     ]
     static let fastModelIds: Set<String> = [
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -204,6 +212,8 @@ enum BundledPricingCatalog {
     private static let codexBaseModelIds: Set<String> = [
         "gpt-5",
         "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -237,6 +247,18 @@ enum BundledPricingCatalog {
               effectiveModelId: "gpt-6-astra", isOfficial: true,
               note: "Official Standard Short price; tier and >272K variants are materialized separately.",
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6-astra"),
+        .init(modelId: "gpt-6-sol", displayName: "GPT-6 Sol",
+              inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 2.50,
+              effectiveModelId: "gpt-6-sol", isOfficial: true,
+              note: "Official Standard Short price; tier and >272K variants are materialized separately.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6-sol"),
+        .init(modelId: "gpt-6-luna", displayName: "GPT-6 Luna",
+              inputPricePerMillion: 0.10, cachedInputPricePerMillion: 0.01, outputPricePerMillion: 0.50,
+              cacheCreationPricePerMillion: 0.125,
+              effectiveModelId: "gpt-6-luna", isOfficial: true,
+              note: "Official Standard Short price; tier and >272K variants are materialized separately.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6-luna"),
         .init(modelId: "gpt-5.6-sol", displayName: "GPT-5.6 Sol",
               inputPricePerMillion: 4.00, cachedInputPricePerMillion: 0.40, outputPricePerMillion: 20.00,
               cacheCreationPricePerMillion: 5.00,
@@ -327,6 +349,12 @@ enum BundledPricingCatalog {
         // Prices ship with the app. Update them in a release when vendor rates
         // change. cache_creation_price_per_million stores the 5-minute cache
         // write rate; 1-hour writes are computed separately as 2x base input.
+        .init(modelId: "claude-opus-5-5", displayName: "Claude Opus 5.5",
+              inputPricePerMillion: 4.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 20.00,
+              cacheCreationPricePerMillion: 5.00,
+              effectiveModelId: "claude-opus-5-5", isOfficial: true,
+              note: "Official 2026-09-22 Standard price; 1-hour cache writes cost 2× input.",
+              sourceUrl: "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5#pricing"),
         .init(modelId: "claude-opus-5", displayName: "Claude Opus 5",
               inputPricePerMillion: 5.00, cachedInputPricePerMillion: 0.50, outputPricePerMillion: 25.00,
               cacheCreationPricePerMillion: 6.25,
@@ -459,7 +487,7 @@ enum BundledPricingCatalog {
         }
     }()
 
-    /// GPT-6 Astra and GPT-5.6 publish Fast Long prices. Older Priority
+    /// GPT-6 and GPT-5.6 publish Fast Long prices. Older Priority
     /// requests deliberately select the Standard Long row instead, so no
     /// older Fast Long row exists.
     private static let fastLongVariants: [PricingEntry] = {
