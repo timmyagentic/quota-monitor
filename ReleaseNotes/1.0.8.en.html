@@ -301,8 +301,8 @@
 <h1 class="qm-release-title">A new chapter for QuotaMonitor.</h1>
 <p class="qm-release-subtitle">Start with the big picture, then explore every change in the release.</p>
 <div class="qm-release-metrics">
-<span><strong>1</strong>change</span>
-<span><strong>1</strong>chapter</span>
+<span><strong>2</strong>changes</span>
+<span><strong>2</strong>chapters</span>
 </div>
 </div>
 <div class="qm-release-version">
@@ -315,12 +315,14 @@
 <p class="qm-release-section-hint">The shortest path through a release with much more beneath it.</p>
 <ol class="qm-release-summary">
 <li class="release-animate"><p>Codex usage from Luna Reserve now appears in usage and cost history.</p></li>
+<li class="release-animate"><p>Cost estimates now recognize Claude Opus 5.5 and GPT-6 Sol and Luna, including their published cache prices.</p></li>
 </ol>
 </section>
 <div class="qm-release-atlas">
 <nav class="qm-release-nav" aria-label="Release chapters">
 <p class="qm-release-nav-label">Release chapters</p>
-<button type="button" data-target="qm-release-chapter-1" aria-controls="qm-release-chapter-1" aria-current="true"><span>Fixed</span><span class="qm-release-nav-count">1</span></button>
+<button type="button" data-target="qm-release-chapter-1" aria-controls="qm-release-chapter-1" aria-current="true"><span>Added</span><span class="qm-release-nav-count">1</span></button>
+<button type="button" data-target="qm-release-chapter-2" aria-controls="qm-release-chapter-2" aria-current="false"><span>Fixed</span><span class="qm-release-nav-count">1</span></button>
 </nav>
 <main class="qm-release-chapters">
 <header class="qm-release-chapters-header release-animate">
@@ -330,8 +332,18 @@
 <section class="qm-release-chapter release-animate" id="qm-release-chapter-1">
 <div class="qm-release-chapter-heading">
 <span class="qm-release-chapter-number">01</span>
+<h3>Added</h3>
+<span class="qm-release-chapter-count">1 change</span>
+</div>
+<ul class="qm-release-change-list">
+<li><b>New model prices.</b> Estimate Claude Opus 5.5 usage at Anthropic's official input, cache-read, cache-write, and output rates, and GPT-6 Sol/Luna usage at OpenAI's official Standard, Flex, Fast, and long-context rates.</li>
+</ul>
+</section>
+<section class="qm-release-chapter release-animate" id="qm-release-chapter-2">
+<div class="qm-release-chapter-heading">
+<span class="qm-release-chapter-number">02</span>
 <h3>Fixed</h3>
-<span class="qm-release-chapter-count">1 changes</span>
+<span class="qm-release-chapter-count">1 change</span>
 </div>
 <ul class="qm-release-change-list">
 <li><b>Luna Reserve imports.</b> Normalize <code>gpt-reserve</code> to GPT-5.6 Luna and import current Codex usage records using the existing Luna pricing.</li>

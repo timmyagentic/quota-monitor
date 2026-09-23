@@ -29,6 +29,11 @@ appcast 中按系统语言切换的双语更新说明。
 #### Summary
 
 - Luna Reserve 的 Codex 用量现在会出现在用量和费用历史中。
+- 费用估算现在支持 Claude Opus 5.5、GPT-6 Sol 和 Luna，并采用官方公布的缓存价格。
+
+### 新增
+
+- **新模型定价。** Claude Opus 5.5 的估算采用 Anthropic 官方的输入、缓存读取、缓存写入及输出价格；GPT-6 Sol/Luna 采用 OpenAI 官方的 Standard、Flex、Fast 与长上下文价格。
 
 ### 修复
 

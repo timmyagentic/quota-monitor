@@ -35,6 +35,11 @@ window copy.
 #### Summary
 
 - Codex usage from Luna Reserve now appears in usage and cost history.
+- Cost estimates now recognize Claude Opus 5.5 and GPT-6 Sol and Luna, including their published cache prices.
+
+### Added
+
+- **New model prices.** Estimate Claude Opus 5.5 usage at Anthropic's official input, cache-read, cache-write, and output rates, and GPT-6 Sol/Luna usage at OpenAI's official Standard, Flex, Fast, and long-context rates.
 
 ### Fixed
 
