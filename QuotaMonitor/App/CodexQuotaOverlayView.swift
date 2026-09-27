@@ -280,16 +280,12 @@ struct CodexQuotaOverlayDetailsView: View {
     @Environment(SettingsStore.self) private var settings
     @Environment(LocalizationStore.self) private var localization
 
-    let onRefresh: () -> Void
-    let onOpenDashboard: () -> Void
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             let presentation = CodexQuotaOverlayPresentation.make(
                 snapshot: environment.latestRateLimits,
                 displayMode: settings.quotaDisplayMode,
-                now: context.date,
-                refreshFailed: environment.rateLimitsRefreshFailed)
+                now: context.date)
             let resetCredits = CodexQuotaOverlayResetCreditsPresentation.make(
                 snapshot: environment.latestCodexResetCredits,
                 fallbackAvailableCount: environment.latestRateLimits?
@@ -312,15 +308,15 @@ struct CodexQuotaOverlayDetailsView: View {
                 .scrollIndicators(.hidden)
             }
             .background {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color(nsColor: .windowBackgroundColor))
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(.primary.opacity(0.13), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(.primary.opacity(0.10), lineWidth: 0.5)
             }
-            .shadow(color: .black.opacity(0.15), radius: 8, y: 3)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.10), radius: 12, y: 4)
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .accessibilityElement(children: .contain)
             .id(localization.currentLanguage)
         }
@@ -332,32 +328,15 @@ struct CodexQuotaOverlayDetailsView: View {
         now: Date
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(L10n.codexOverlayTitle)
-                    .font(.system(size: 13, weight: .semibold))
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Button(action: onRefresh) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
+            Text(Branding.appDisplayName)
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.secondary)
-                .disabled(environment.isRefreshingRateLimits)
-                .help(environment.isRefreshingRateLimits ? L10n.refreshing : L10n.refresh)
-                .accessibilityLabel(L10n.refresh)
-            }
-            .frame(height: 24)
-            .padding(.bottom, 12)
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
+                    alignment: .topLeading)
+                .accessibilityAddTraits(.isHeader)
 
-            if !presentation.hasQuota {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.codexOverlayUnavailableCompact).font(.system(size: 15, weight: .medium))
-                    Text(L10n.codexOverlayEmptyHelp).font(.system(size: 12)).foregroundStyle(.secondary)
-                }
-                .frame(height: 96, alignment: .topLeading)
-            }
             if let fiveHour = presentation.fiveHour {
                 quotaWindow(
                     title: L10n.quotaCardTitle5h,
@@ -376,36 +355,16 @@ struct CodexQuotaOverlayDetailsView: View {
                     now: now)
             }
 
-            if presentation.isCached {
-                Label(L10n.codexOverlayCachedExplanation, systemImage: "clock")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(height: 32, alignment: .leading)
-            }
             if let resetCredits {
-                Divider().padding(.vertical, 8)
-                resetCreditsSection(resetCredits, now: now)
+                Divider()
+                    .padding(.vertical, 8)
+                resetCreditsSection(
+                    resetCredits,
+                    now: now)
             }
-            HStack(spacing: 4) {
-                Text(updatedLabel(now: now))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                Button(L10n.codexOverlayViewDetails, action: onOpenDashboard)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(height: 26, alignment: .bottom)
         }
-        .padding(16)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private func updatedLabel(now: Date) -> String {
-        guard let capturedAt = environment.latestRateLimits?.capturedAt else { return L10n.codexOverlayNeverUpdated }
-        return L10n.codexOverlayUpdated(minutes: max(0, Int(now.timeIntervalSince(capturedAt) / 60)))
     }
 
     private func quotaWindow(
@@ -414,30 +373,38 @@ struct CodexQuotaOverlayDetailsView: View {
         now: Date
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 11)).foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                Spacer()
                 Text("\(metric.percent)%")
-                    .font(.system(size: 32, weight: .semibold).monospacedDigit())
-                Text(L10n.codexOverlayValueMeaning(used: metric.displayMode == .used))
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(metric.severity == .healthy ? Color.primary : CodexQuotaOverlayPalette.color(metric))
+                    .accessibilityLabel(metric.localizedPercentLabel)
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(metric.localizedPercentLabel)
+
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.primary.opacity(0.08))
+                    Capsule().fill(.primary.opacity(0.07))
                     Capsule().fill(CodexQuotaOverlayPalette.color(metric))
                         .frame(width: geometry.size.width * CGFloat(metric.percent) / 100)
                 }
             }
-            .frame(height: 4)
-            .accessibilityHidden(true)
-            Text(resetCountdown(for: metric, now: now))
-                .font(.system(size: 11).monospacedDigit())
-                .foregroundStyle(.secondary)
-                .help(CodexQuotaOverlayTimeFormatting.localDateTime(metric.resetAt))
+            .frame(height: 3)
+            .accessibilityElement()
+            .accessibilityLabel(metric.localizedPercentLabel)
+
+            HStack(spacing: 4) {
+                Text(resetCountdown(for: metric, now: now))
+                Spacer(minLength: 8)
+                Text(CodexQuotaOverlayTimeFormatting.localDateTime(
+                    metric.resetAt))
+            }
+            .font(.system(size: 10).monospacedDigit())
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
         }
-        .frame(height: 96, alignment: .topLeading)
+        .padding(.vertical, 2)
     }
 
     private func resetCreditsSection(

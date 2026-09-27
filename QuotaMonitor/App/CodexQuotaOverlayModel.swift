@@ -311,6 +311,7 @@ enum CodexQuotaOverlayLayout {
     static let dualWindowWidth: CGFloat = 248
     static let dualCompactWidth: CGFloat = 164
     static let detailsWidth: CGFloat = 272
+    static let detailsHeaderHeight: CGFloat = 24
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
     private static let bottomInset: CGFloat = 12
@@ -433,11 +434,14 @@ enum CodexQuotaOverlayLayout {
         let windowCount = [presentation.fiveHour, presentation.weekly]
             .compactMap { $0 }
             .count
-        // Header + footer + 96 pt for every real server window. Missing data
-        // still opens an actionable empty state. Stale data gets its own line.
-        var height: CGFloat = 94 + CGFloat(max(1, windowCount)) * 96
+        guard windowCount > 0 else { return 0 }
+
+        var height: CGFloat = 28 + detailsHeaderHeight
+        // The rendered quota row includes two caption lines, the progress
+        // track, and vertical padding. Keep the model height above its actual
+        // SwiftUI fitting height so ordinary cards select the static branch.
+        height += CGFloat(windowCount) * 52
         height += CGFloat(max(0, windowCount - 1)) * 17
-        if presentation.isCached { height += 32 }
 
         if let resetCredits {
             height += 17 + 16

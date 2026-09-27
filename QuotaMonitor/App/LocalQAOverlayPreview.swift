@@ -42,7 +42,7 @@ final class LocalQAOverlayPreview {
 
     func select(_ scenario: String) {
         self.scenario = scenario
-        state.isExpanded = true
+        state.isExpanded = scenario != "Unavailable"
         let now = Date()
         environment.latestRateLimits = scenario == "Unavailable" ? nil : RateLimitSnapshot(
             capturedAt: now.addingTimeInterval(scenario == "Stale" ? -1200 : 0), planType: "pro",
@@ -50,7 +50,12 @@ final class LocalQAOverlayPreview {
                 resetAt: now.addingTimeInterval(7200)) : nil,
             secondary: .init(usedPercent: 8, windowDuration: 604800, resetAt: now.addingTimeInterval(345600)),
             additional: [], resetCreditsAvailable: nil)
-        environment.latestCodexResetCredits = nil
+        environment.latestCodexResetCredits = scenario == "Reset cards"
+            ? CodexResetCreditsSnapshot(capturedAt: now, availableCount: 2,
+                credits: [86400.0, 172800.0].map {
+                    CodexResetCredit(grantedAt: nil, expiresAt: now.addingTimeInterval($0))
+                }, detailStatus: .complete)
+            : nil
         updateLayout()
     }
 
@@ -121,7 +126,7 @@ private struct LocalQAOverlayPreviewView: View {
                         Text(verbatim: "QA · 合成数据 / 实际 SwiftUI 组件")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                         HStack {
-                            ForEach(["Weekly", "Dual", "Stale", "Unavailable"], id: \.self) { scenario in
+                            ForEach(["Weekly", "Dual", "Stale", "Unavailable", "Reset cards"], id: \.self) { scenario in
                                 Button(scenario) { preview.select(scenario) }
                             }
                         }
@@ -143,16 +148,23 @@ private struct LocalQAOverlayPreviewView: View {
 
             if preview.state.width > 0 {
                 CodexQuotaOverlayView(state: preview.state,
-                    onResetPosition: {}, onActivate: { preview.state.isExpanded.toggle() },
+                    onResetPosition: {}, onActivate: {
+                        if preview.environment.latestRateLimits?.primary != nil
+                            || preview.environment.latestRateLimits?.secondary != nil {
+                            preview.state.isExpanded.toggle()
+                        }
+                    },
                     onPressBegan: {}, onDragBegan: {}, onDragChanged: {}, onDragEnded: {})
                     .offset(x: preview.header.leadingInset, y: 26)
                 if preview.state.isExpanded {
                     let presentation = CodexQuotaOverlayPresentation.make(snapshot: preview.environment.latestRateLimits,
                         displayMode: preview.settings.quotaDisplayMode)
-                    CodexQuotaOverlayDetailsView(onRefresh: { preview.select("Weekly") },
-                        onOpenDashboard: { WindowManager.shared.show("dashboard") })
+                    let resetCredits = CodexQuotaOverlayResetCreditsPresentation.make(
+                        snapshot: preview.environment.latestCodexResetCredits,
+                        fallbackAvailableCount: preview.environment.latestRateLimits?.resetCreditsAvailable)
+                    CodexQuotaOverlayDetailsView()
                         .frame(width: CodexQuotaOverlayLayout.detailsWidth,
-                            height: CodexQuotaOverlayLayout.detailsContentHeight(presentation: presentation, resetCredits: nil))
+                            height: CodexQuotaOverlayLayout.detailsContentHeight(presentation: presentation, resetCredits: resetCredits))
                         .offset(x: preview.header.leadingInset, y: 60)
                 }
             }

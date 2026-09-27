@@ -36,7 +36,7 @@ window copy.
 
 ### Changed
 
-- **Sidebar quota readout.** A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details.
+- **Sidebar quota readout.** A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.
 - **Honest quota status.** Cached or failed refreshes are labelled explicitly, while missing windows stay absent and saved manual positions remain available.
 - **Safe automatic placement.** The widget requires a recognized header with enough space; expand the sidebar and allow Accessibility access if no safe slot is found.
 

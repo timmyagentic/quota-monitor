@@ -14,6 +14,13 @@ struct CodexSidebarHeaderAnchor: Equatable, Sendable {
 struct CodexSidebarHeaderCandidate: Equatable {
     let frame: CGRect
     let descriptors: [String]
+    let role: String
+
+    init(frame: CGRect, descriptors: [String], role: String = kAXButtonRole as String) {
+        self.frame = frame
+        self.descriptors = descriptors
+        self.role = role
+    }
 }
 
 enum CodexSidebarHeaderDiscoveryPolicy {
@@ -48,7 +55,10 @@ enum CodexSidebarHeaderSelectionPolicy {
                 && f.maxX - windowFrame.minX <= min(560, windowFrame.width)
         }
         let titles = header.filter {
-            $0.frame.width <= 160 && $0.frame.minX - windowFrame.minX <= 180
+            // A text child excludes its parent's chevron/padding. Only a full
+            // interactive control can establish the occupied title boundary.
+            ($0.role == kAXButtonRole as String || $0.role == kAXPopUpButtonRole as String)
+                && $0.frame.width <= 160 && $0.frame.minX - windowFrame.minX <= 180
                 && $0.descriptors.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex" }
         }
         // A title AND a known sidebar action on the same row are required.
@@ -82,7 +92,7 @@ enum CodexSidebarHeaderAccessibility {
     private static let maximumTraversalDepth = 14
     private static let maximumVisitedElements = 600
 
-    /// Read only, bounded, and permission-free: an unrecognized header yields
+    /// Read only, bounded, and never prompts for permission: an unrecognized header yields
     /// no automatic placement instead of guessing over the host's content.
     static func anchor(
         for processIdentifier: pid_t,
@@ -130,7 +140,7 @@ enum CodexSidebarHeaderAccessibility {
             if let role = stringAttribute(
                 item.element,
                 kAXRoleAttribute as CFString),
-               [kAXButtonRole as String, kAXPopUpButtonRole as String, kAXStaticTextRole as String].contains(role),
+               [kAXButtonRole as String, kAXPopUpButtonRole as String, kAXStaticTextRole as String, kAXImageRole as String].contains(role),
                let frame = frame(of: item.element) {
                 let descriptors = [
                     kAXTitleAttribute,
@@ -143,7 +153,8 @@ enum CodexSidebarHeaderAccessibility {
                 }
                 candidates.append(CodexSidebarHeaderCandidate(
                     frame: frame,
-                    descriptors: descriptors))
+                    descriptors: descriptors,
+                    role: role))
             }
 
             guard item.depth < maximumTraversalDepth,

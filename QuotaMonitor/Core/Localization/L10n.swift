@@ -119,20 +119,8 @@ enum L10n {
         let meaning = used ? t(en: "used", zh: "已用") : t(en: "left", zh: "余")
         return t(en: "\(meaning) 5h \(fiveHour)% · 7d \(weekly)%", zh: "\(meaning) 5h \(fiveHour)% · 周 \(weekly)%")
     }
-    static var codexOverlayTitle: String { t(en: "Codex quota", zh: "Codex 额度") }
     static var codexOverlayStale: String { t(en: "Stale", zh: "待刷新") }
     static var codexOverlayUnavailableShort: String { t(en: "No quota", zh: "暂无额度") }
-    static var codexOverlayCachedExplanation: String { t(en: "Last saved quota · waiting for an update", zh: "当前为上次额度，等待刷新") }
-    static var codexOverlayEmptyHelp: String { t(en: "Refresh to load quota, or open the dashboard to check the connection.", zh: "刷新以获取额度，或打开详情检查连接状态。") }
-    static var codexOverlayViewDetails: String { t(en: "View details", zh: "查看详情") }
-    static var codexOverlayNeverUpdated: String { t(en: "No successful update yet", zh: "尚未成功更新") }
-    static func codexOverlayUpdated(minutes: Int) -> String {
-        minutes == 0 ? t(en: "Updated just now", zh: "刚刚更新")
-            : t(en: "Updated \(minutes)m ago", zh: "\(minutes) 分钟前更新")
-    }
-    static func codexOverlayValueMeaning(used: Bool) -> String {
-        used ? t(en: "used", zh: "已使用") : t(en: "remaining", zh: "剩余")
-    }
     static func codexOverlayReadoutLabel(weekly: Bool, used: Bool, abbreviated: Bool, omitPeriod: Bool) -> String {
         let period = omitPeriod ? "" : (weekly ? t(en: "7d ", zh: "周") : t(en: "5h ", zh: "5h "))
         let meaning = used ? t(en: "used", zh: abbreviated ? "用" : "已用")

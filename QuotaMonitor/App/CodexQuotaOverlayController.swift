@@ -449,7 +449,11 @@ final class CodexQuotaOverlayController: NSObject {
             break
         }
         if detailsPanel?.isVisible == true {
-            updateDetailsPanelFrame(in: codexWindowFrame, presentation: presentation)
+            if presentation.hasQuota {
+                updateDetailsPanelFrame(in: codexWindowFrame, presentation: presentation)
+            } else {
+                closeDetails()
+            }
         }
     }
 
@@ -551,6 +555,7 @@ final class CodexQuotaOverlayController: NSObject {
             now: now,
             refreshFailed: environment.rateLimitsRefreshFailed)
 
+        guard presentation.hasQuota else { return }
         viewState.isExpanded = true
         let panel = detailsPanel ?? makeDetailsPanel()
         updateDetailsPanelFrame(
@@ -701,14 +706,7 @@ final class CodexQuotaOverlayController: NSObject {
             ignoresMouseEvents: false)
 
         panel.hasShadow = true
-        let rootView = CodexQuotaOverlayDetailsView(
-            onRefresh: { [weak self] in
-                self?.environment.refreshRateLimits(trigger: "codex-overlay-details")
-            },
-            onOpenDashboard: { [weak self] in
-                self?.closeDetails()
-                WindowManager.shared.show("dashboard")
-            })
+        let rootView = CodexQuotaOverlayDetailsView()
             .environment(environment)
             .environment(settings)
             .environment(LocalizationStore.shared)
