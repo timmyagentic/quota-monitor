@@ -24,25 +24,24 @@ final class CodexQuotaOverlayController: NSObject {
     private var trackedCodexPID: pid_t?
     private var lastCodexWindowNumber: Int?
     private var lastCodexWindowFrame: CGRect?
-    private var helpControlAnchor: CodexHelpControlAnchor?
-    private var helpControlDiscoveryTask: Task<Void, Never>?
-    private var helpControlDiscoveryGeneration = 0
-    private var helpControlDiscoveryFailureCount = 0
-    private var helpControlNextDiscoveryAt: Date?
-    private var helpControlDiscoveryPID: pid_t?
-    private var helpControlDiscoveryWindowNumber: Int?
-    private var helpControlDiscoveryWindowBounds: CGRect?
+    private var headerAnchor: CodexSidebarHeaderAnchor?
+    private var headerDiscoveryTask: Task<Void, Never>?
+    private var headerDiscoveryGeneration = 0
+    private var headerDiscoveryFailureCount = 0
+    private var headerNextDiscoveryAt: Date?
+    private var headerDiscoveryPID: pid_t?
+    private var headerDiscoveryWindowNumber: Int?
+    private var headerDiscoveryWindowBounds: CGRect?
     private var isCodexFrontmost = false
-    private var isSummaryHovered = false
-    private var isDetailsHovered = false
-    private var detailsCloseTask: Task<Void, Never>?
+    private let viewState = CodexQuotaOverlayViewState()
+    private var qaPreview: LocalQAOverlayPreview?
     private var localMouseDownMonitor: Any?
     private var globalMouseDownMonitor: Any?
     private var summaryDragStartFrame: CGRect?
     private var summaryDragStartMouseLocation: CGPoint?
     private var summaryDragFrame: CGRect?
     private var summaryDragDidMove = false
-    private var shouldShowDetailsForLocalQA = false
+    private var showsLocalQAGallery = false
     private var isStarted = false
 
     init(
@@ -101,9 +100,10 @@ final class CodexQuotaOverlayController: NSObject {
 
     func showDetailsForLocalQA() {
         guard LocalQAEnvironment.isQARequested() else { return }
-        resetHelpControlDiscovery(clearAnchor: true)
-        shouldShowDetailsForLocalQA = true
-        refreshLocalQAOverlay()
+        hideOverlay()
+        showsLocalQAGallery = true
+        qaPreview = LocalQAOverlayPreview(environment: environment, settings: settings)
+        qaPreview?.show()
     }
 
     @objc private nonisolated func workspaceStateDidChange(_ notification: Notification) {
@@ -124,8 +124,7 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func refreshOverlay(now: Date = Date()) {
         guard isStarted else { return }
-        if shouldShowDetailsForLocalQA {
-            refreshLocalQAOverlay(now: now)
+        if showsLocalQAGallery {
             return
         }
         guard settings.shouldShowCodexSidebarQuota else {
@@ -221,31 +220,32 @@ final class CodexQuotaOverlayController: NSObject {
         let presentation = CodexQuotaOverlayPresentation.make(
             snapshot: environment.latestRateLimits,
             displayMode: settings.quotaDisplayMode,
-            now: now)
+            now: now,
+            refreshFailed: environment.rateLimitsRefreshFailed)
         let overlayIsAboveCodex = panel.map {
             CodexWindowSelectionPolicy.isWindow(
                 $0.windowNumber,
                 above: window.windowNumber,
                 candidates: onScreenWindows)
         } ?? false
-        refreshHelpControlAnchorIfNeeded(
+        refreshHeaderAnchorIfNeeded(
             for: window,
             processIdentifier: trackedCodexPID,
             becameFrontmost: becameFrontmost,
             now: now)
-        let helpControlLeadingX = helpControlAnchor?.leadingX(
-            in: appKitWindowFrame)
         showOverlay(
             in: appKitWindowFrame,
             presentation: presentation,
-            helpControlLeadingX: helpControlLeadingX,
+            header: headerAnchor,
             placement: placement,
             relativeTo: window.windowNumber,
             shouldRaise: becameFrontmost
                 || lastCodexWindowNumber != window.windowNumber
                 || !overlayIsAboveCodex)
         lastCodexWindowNumber = window.windowNumber
-        if !presentation.hasQuota {
+        if panel?.isVisible != true {
+            setStatus(.waitingForHeader)
+        } else if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
         } else if presentation.isCached {
             setStatus(.showingCached)
@@ -258,59 +258,60 @@ final class CodexQuotaOverlayController: NSObject {
                 : Self.backgroundTrackingInterval)
     }
 
-    private func refreshHelpControlAnchorIfNeeded(
+    private func refreshHeaderAnchorIfNeeded(
         for window: CodexWindowCandidate,
         processIdentifier: pid_t?,
         becameFrontmost: Bool,
         now: Date
     ) {
         guard let processIdentifier else {
-            resetHelpControlDiscovery(clearAnchor: true)
+            resetHeaderDiscovery(clearAnchor: true)
             return
         }
 
-        let targetChanged = helpControlDiscoveryPID != processIdentifier
-            || helpControlDiscoveryWindowNumber != window.windowNumber
+        let targetChanged = headerDiscoveryPID != processIdentifier
+            || headerDiscoveryWindowNumber != window.windowNumber
         let layoutChanged = !targetChanged
-            && helpControlDiscoveryWindowBounds != window.bounds
+            && headerDiscoveryWindowBounds != window.bounds
 
         if targetChanged {
-            resetHelpControlDiscovery(clearAnchor: true)
-            helpControlDiscoveryPID = processIdentifier
-            helpControlDiscoveryWindowNumber = window.windowNumber
-            helpControlDiscoveryWindowBounds = window.bounds
+            resetHeaderDiscovery(clearAnchor: true)
+            headerDiscoveryPID = processIdentifier
+            headerDiscoveryWindowNumber = window.windowNumber
+            headerDiscoveryWindowBounds = window.bounds
         } else if layoutChanged {
-            helpControlDiscoveryWindowBounds = window.bounds
-            helpControlNextDiscoveryAt = now
+            headerAnchor = nil
+            headerDiscoveryWindowBounds = window.bounds
+            headerNextDiscoveryAt = now
         }
 
         guard isCodexFrontmost,
-              CodexHelpControlDiscoveryPolicy.shouldStart(
+              CodexSidebarHeaderDiscoveryPolicy.shouldStart(
                 now: now,
-                nextAttemptAt: helpControlNextDiscoveryAt,
-                isRunning: helpControlDiscoveryTask != nil,
+                nextAttemptAt: headerNextDiscoveryAt,
+                isRunning: headerDiscoveryTask != nil,
                 force: becameFrontmost || targetChanged || layoutChanged) else {
             return
         }
-        startHelpControlDiscovery(
+        startHeaderDiscovery(
             processIdentifier: processIdentifier,
             windowNumber: window.windowNumber,
             windowBounds: window.bounds)
     }
 
-    private func startHelpControlDiscovery(
+    private func startHeaderDiscovery(
         processIdentifier: pid_t,
         windowNumber: Int,
         windowBounds: CGRect
     ) {
-        helpControlDiscoveryGeneration &+= 1
-        let generation = helpControlDiscoveryGeneration
-        helpControlDiscoveryTask = Task.detached(priority: .utility) { [weak self] in
-            let anchor = CodexHelpControlAccessibility.anchor(
+        headerDiscoveryGeneration &+= 1
+        let generation = headerDiscoveryGeneration
+        headerDiscoveryTask = Task.detached(priority: .utility) { [weak self] in
+            let anchor = CodexSidebarHeaderAccessibility.anchor(
                 for: processIdentifier,
                 in: windowBounds)
             guard !Task.isCancelled else { return }
-            await self?.completeHelpControlDiscovery(
+            await self?.completeHeaderDiscovery(
                 anchor: anchor,
                 processIdentifier: processIdentifier,
                 windowNumber: windowNumber,
@@ -320,88 +321,64 @@ final class CodexQuotaOverlayController: NSObject {
         }
     }
 
-    private func completeHelpControlDiscovery(
-        anchor: CodexHelpControlAnchor?,
+    private func completeHeaderDiscovery(
+        anchor: CodexSidebarHeaderAnchor?,
         processIdentifier: pid_t,
         windowNumber: Int,
         windowBounds: CGRect,
         generation: Int,
         completedAt: Date
     ) {
-        guard helpControlDiscoveryGeneration == generation else { return }
-        helpControlDiscoveryTask = nil
+        guard headerDiscoveryGeneration == generation else { return }
+        headerDiscoveryTask = nil
         guard isStarted,
               isCodexFrontmost,
               trackedCodexPID == processIdentifier,
-              helpControlDiscoveryPID == processIdentifier,
-              helpControlDiscoveryWindowNumber == windowNumber else {
+              headerDiscoveryPID == processIdentifier,
+              headerDiscoveryWindowNumber == windowNumber else {
             return
         }
-        guard helpControlDiscoveryWindowBounds == windowBounds else {
-            helpControlNextDiscoveryAt = completedAt
+        guard headerDiscoveryWindowBounds == windowBounds else {
+            headerNextDiscoveryAt = completedAt
             refreshOverlay(now: completedAt)
             return
         }
 
         if let anchor {
-            helpControlAnchor = anchor
-            helpControlDiscoveryFailureCount = 0
-            helpControlNextDiscoveryAt = completedAt.addingTimeInterval(
-                CodexHelpControlDiscoveryPolicy.anchoredRefreshInterval)
+            headerAnchor = anchor
+            headerDiscoveryFailureCount = 0
+            headerNextDiscoveryAt = completedAt.addingTimeInterval(
+                CodexSidebarHeaderDiscoveryPolicy.anchoredRefreshInterval)
         } else {
-            helpControlDiscoveryFailureCount += 1
-            if helpControlDiscoveryFailureCount
-                >= CodexHelpControlDiscoveryPolicy.preservedAnchorMissLimit {
-                helpControlAnchor = nil
-            }
-            helpControlNextDiscoveryAt = completedAt.addingTimeInterval(
-                CodexHelpControlDiscoveryPolicy.retryInterval(
-                    afterFailureCount: helpControlDiscoveryFailureCount))
+            headerDiscoveryFailureCount += 1
+            headerAnchor = nil
+            headerNextDiscoveryAt = completedAt.addingTimeInterval(
+                CodexSidebarHeaderDiscoveryPolicy.retryInterval(
+                    afterFailureCount: headerDiscoveryFailureCount))
         }
         refreshOverlay(now: completedAt)
     }
 
-    private func resetHelpControlDiscovery(clearAnchor: Bool) {
-        helpControlDiscoveryGeneration &+= 1
-        helpControlDiscoveryTask?.cancel()
-        helpControlDiscoveryTask = nil
-        helpControlDiscoveryFailureCount = 0
-        helpControlNextDiscoveryAt = nil
-        helpControlDiscoveryPID = nil
-        helpControlDiscoveryWindowNumber = nil
-        helpControlDiscoveryWindowBounds = nil
+    private func resetHeaderDiscovery(clearAnchor: Bool) {
+        headerDiscoveryGeneration &+= 1
+        headerDiscoveryTask?.cancel()
+        headerDiscoveryTask = nil
+        headerDiscoveryFailureCount = 0
+        headerNextDiscoveryAt = nil
+        headerDiscoveryPID = nil
+        headerDiscoveryWindowNumber = nil
+        headerDiscoveryWindowBounds = nil
         if clearAnchor {
-            helpControlAnchor = nil
+            headerAnchor = nil
         }
-    }
-
-    private func refreshLocalQAOverlay(now: Date = Date()) {
-        guard let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.frame else {
-            return
-        }
-        // Match a full-screen Codex window so fallback screenshots retain the
-        // shipping layout's original 12 pt bottom baseline.
-        let qaFrame = screenFrame
-        let presentation = CodexQuotaOverlayPresentation.make(
-            snapshot: environment.latestRateLimits,
-            displayMode: settings.quotaDisplayMode,
-            now: now)
-        showOverlay(
-            in: qaFrame,
-            presentation: presentation,
-            helpControlLeadingX: nil,
-            placement: .foreground,
-            relativeTo: nil,
-            shouldRaise: true)
-        showDetails(now: now, installClickAwayMonitors: false)
-        updateTrackingInterval(Self.foregroundTrackingInterval)
     }
 
     private func requestQuotaRefreshIfNeeded(becameFrontmost: Bool, now: Date) {
         let presentation = CodexQuotaOverlayPresentation.make(
             snapshot: environment.latestRateLimits,
             displayMode: settings.quotaDisplayMode,
-            now: now)
+            now: now,
+            refreshFailed: environment.rateLimitsRefreshFailed)
         guard becameFrontmost || !presentation.hasQuota || presentation.isCached else {
             return
         }
@@ -435,18 +412,23 @@ final class CodexQuotaOverlayController: NSObject {
     private func showOverlay(
         in codexWindowFrame: CGRect,
         presentation: CodexQuotaOverlayPresentation,
-        helpControlLeadingX: CGFloat?,
+        header: CodexSidebarHeaderAnchor?,
         placement: CodexQuotaOverlayPlacement,
         relativeTo codexWindowNumber: Int?,
         shouldRaise: Bool
     ) {
         guard placement != .hidden else { return }
         lastCodexWindowFrame = codexWindowFrame
-        let frame = summaryDragFrame ?? CodexQuotaOverlayLayout.frame(
-            in: codexWindowFrame,
-            presentation: presentation,
-            helpControlLeadingX: helpControlLeadingX,
-            manualPosition: settings.codexSidebarQuotaPosition)
+        guard let summary = CodexQuotaOverlayLayout.summaryPlacement(
+            in: codexWindowFrame, presentation: presentation, header: header,
+            manualPosition: settings.codexSidebarQuotaPosition) else {
+            panel?.orderOut(nil)
+            closeDetails()
+            return
+        }
+        let frame = summaryDragFrame ?? summary.frame
+        viewState.compact = summary.compact
+        viewState.width = frame.width
         let panel = panel ?? makePanel()
         if panel.frame != frame {
             panel.setFrame(frame, display: panel.isVisible)
@@ -468,9 +450,7 @@ final class CodexQuotaOverlayController: NSObject {
         }
         if detailsPanel?.isVisible == true {
             if presentation.hasQuota {
-                updateDetailsPanelFrame(
-                    in: codexWindowFrame,
-                    presentation: presentation)
+                updateDetailsPanelFrame(in: codexWindowFrame, presentation: presentation)
             } else {
                 closeDetails()
             }
@@ -478,42 +458,17 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func hideOverlay() {
-        detailsCloseTask?.cancel()
-        detailsCloseTask = nil
-        isSummaryHovered = false
-        isDetailsHovered = false
         resetSummaryDrag()
         lastCodexWindowNumber = nil
         lastCodexWindowFrame = nil
-        resetHelpControlDiscovery(clearAnchor: true)
+        resetHeaderDiscovery(clearAnchor: true)
         closeDetails()
         panel?.orderOut(nil)
     }
 
-    private func summaryHoverChanged(_ hovering: Bool) {
-        isSummaryHovered = hovering
-        if hovering, detailsAreAllowed {
-            showDetails()
-        } else if hovering {
-            closeDetails()
-        } else {
-            scheduleDetailsClose()
-        }
-    }
-
-    private func detailsHoverChanged(_ hovering: Bool) {
-        isDetailsHovered = hovering
-        if hovering {
-            detailsCloseTask?.cancel()
-            detailsCloseTask = nil
-        } else {
-            scheduleDetailsClose()
-        }
-    }
-
     private func activateDetails() {
         guard detailsAreAllowed else { return }
-        showDetails()
+        if detailsPanel?.isVisible == true { closeDetails() } else { showDetails() }
     }
 
     private func summaryPressBegan() {
@@ -526,7 +481,6 @@ final class CodexQuotaOverlayController: NSObject {
         summaryDragStartMouseLocation = NSEvent.mouseLocation
         summaryDragFrame = panel.frame
         summaryDragDidMove = false
-        closeDetails()
     }
 
     private func summaryDragBegan() {
@@ -579,12 +533,10 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private var detailsAreAllowed: Bool {
-        isCodexFrontmost || shouldShowDetailsForLocalQA
+        isCodexFrontmost
     }
 
     private func dismissDetailsForBackground() {
-        isSummaryHovered = false
-        isDetailsHovered = false
         closeDetails()
     }
 
@@ -592,8 +544,6 @@ final class CodexQuotaOverlayController: NSObject {
         now: Date = Date(),
         installClickAwayMonitors: Bool = true
     ) {
-        detailsCloseTask?.cancel()
-        detailsCloseTask = nil
         guard detailsAreAllowed,
               panel?.isVisible == true,
               let codexWindowFrame = lastCodexWindowFrame else {
@@ -602,9 +552,11 @@ final class CodexQuotaOverlayController: NSObject {
         let presentation = CodexQuotaOverlayPresentation.make(
             snapshot: environment.latestRateLimits,
             displayMode: settings.quotaDisplayMode,
-            now: now)
-        guard presentation.hasQuota else { return }
+            now: now,
+            refreshFailed: environment.rateLimitsRefreshFailed)
 
+        guard presentation.hasQuota else { return }
+        viewState.isExpanded = true
         let panel = detailsPanel ?? makeDetailsPanel()
         updateDetailsPanelFrame(
             in: codexWindowFrame,
@@ -617,23 +569,8 @@ final class CodexQuotaOverlayController: NSObject {
         }
     }
 
-    private func scheduleDetailsClose() {
-        detailsCloseTask?.cancel()
-        detailsCloseTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled,
-                  let self,
-                  !self.isSummaryHovered,
-                  !self.isDetailsHovered else {
-                return
-            }
-            self.closeDetails()
-        }
-    }
-
     private func closeDetails() {
-        detailsCloseTask?.cancel()
-        detailsCloseTask = nil
+        viewState.isExpanded = false
         removeClickAwayMonitors()
         detailsPanel?.orderOut(nil)
     }
@@ -641,9 +578,13 @@ final class CodexQuotaOverlayController: NSObject {
     private func installClickAwayMonitorsIfNeeded() {
         if localMouseDownMonitor == nil {
             localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(
-                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
             ) { [weak self] event in
                 guard let self else { return event }
+                if event.type == .keyDown {
+                    if event.keyCode == 53 { self.closeDetails(); return nil }
+                    return event
+                }
                 let identifier = event.window?.identifier?.rawValue
                 if CodexQuotaOverlayInteractionPolicy.shouldDismissDetails(
                     afterMouseDownIn: identifier) {
@@ -654,8 +595,9 @@ final class CodexQuotaOverlayController: NSObject {
         }
         if globalMouseDownMonitor == nil {
             globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(
-                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-            ) { [weak self] _ in
+                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+            ) { [weak self] event in
+                guard event.type != .keyDown || event.keyCode == 53 else { return }
                 Task { @MainActor [weak self] in
                     self?.closeDetails()
                 }
@@ -718,8 +660,10 @@ final class CodexQuotaOverlayController: NSObject {
             ignoresMouseEvents: true)
 
         let rootView = CodexQuotaOverlayView(
-            onHoverChanged: { [weak self] hovering in
-                self?.summaryHoverChanged(hovering)
+            state: viewState,
+            onResetPosition: { [weak self] in
+                self?.settings.codexSidebarQuotaPosition = nil
+                self?.refreshOverlay()
             },
             onActivate: { [weak self] in
                 self?.activateDetails()
@@ -761,10 +705,8 @@ final class CodexQuotaOverlayController: NSObject {
             identifier: CodexQuotaOverlayLayout.detailsWindowIdentifier,
             ignoresMouseEvents: false)
 
-        let rootView = CodexQuotaOverlayDetailsView(
-            onHoverChanged: { [weak self] hovering in
-                self?.detailsHoverChanged(hovering)
-            })
+        panel.hasShadow = true
+        let rootView = CodexQuotaOverlayDetailsView()
             .environment(environment)
             .environment(settings)
             .environment(LocalizationStore.shared)

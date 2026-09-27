@@ -1,9 +1,27 @@
 import AppKit
 import SwiftUI
+import Observation
 
 final class CodexQuotaOverlayPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+@MainActor @Observable
+final class CodexQuotaOverlayViewState {
+    var compact = false
+    var width = CodexQuotaOverlayLayout.size.width
+    var isExpanded = false
+}
+
+enum CodexQuotaOverlayPalette {
+    static func color(_ metric: CodexQuotaOverlayMetric) -> Color {
+        switch metric.severity {
+        case .healthy: Color(red: 0.36, green: 0.49, blue: 0.76)
+        case .warning: .orange
+        case .critical: .red
+        }
+    }
 }
 
 struct CodexQuotaOverlayView: View {
@@ -16,7 +34,8 @@ struct CodexQuotaOverlayView: View {
     @State private var holdTask: Task<Void, Never>?
     @State private var jiggleForward = false
 
-    let onHoverChanged: (Bool) -> Void
+    let state: CodexQuotaOverlayViewState
+    let onResetPosition: () -> Void
     let onActivate: () -> Void
     let onPressBegan: () -> Void
     let onDragBegan: () -> Void
@@ -28,31 +47,21 @@ struct CodexQuotaOverlayView: View {
             let presentation = CodexQuotaOverlayPresentation.make(
                 snapshot: environment.latestRateLimits,
                 displayMode: settings.quotaDisplayMode,
-                now: context.date)
+                now: context.date,
+                refreshFailed: environment.rateLimitsRefreshFailed)
 
             summaryContent(presentation)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 8)
             .frame(
-                width: summaryWidth(for: presentation),
+                width: state.width,
                 height: CodexQuotaOverlayLayout.size.height)
             .background {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.primary.opacity(isHovering ? 0.035 : 0.018))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(isHovering || state.isExpanded ? 0.055 : 0.015))
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(
-                        .primary.opacity(isHovering ? 0.12 : 0.055),
-                        lineWidth: isHovering ? 0.75 : 0.5)
-            }
-            .shadow(
-                color: .black.opacity(isHovering ? 0.13 : 0),
-                radius: isHovering ? 4 : 0,
-                y: isHovering ? 1 : 0)
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             .onHover { hovering in
                 isHovering = hovering
-                onHoverChanged(hovering)
             }
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
@@ -62,6 +71,9 @@ struct CodexQuotaOverlayView: View {
                     .onEnded { value in
                         dragEnded(value)
                     })
+            .contextMenu {
+                Button(L10n.codexOverlayResetPosition, action: onResetPosition)
+            }
             .onDisappear(perform: cancelInteraction)
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.14),
@@ -115,47 +127,81 @@ struct CodexQuotaOverlayView: View {
     }
 
     @ViewBuilder
-    private func quotaContent(
-        _ presentation: CodexQuotaOverlayPresentation
-    ) -> some View {
-        if presentation.hasQuota {
-            HStack(spacing: 0) {
-                if let fiveHour = presentation.fiveHour {
-                    metric(
-                        QuotaWindowCompactLabel.fiveHour,
-                        fiveHour)
-                        .frame(maxWidth: .infinity)
-                }
-                if presentation.fiveHour != nil,
-                   presentation.weekly != nil {
-                    Rectangle()
-                        .fill(.primary.opacity(0.12))
-                        .frame(width: 1, height: 13)
-                }
-                if let weekly = presentation.weekly {
-                    metric(
-                        QuotaWindowCompactLabel.sevenDay,
-                        weekly)
-                        .frame(maxWidth: .infinity)
-                }
+    private func quotaContent(_ presentation: CodexQuotaOverlayPresentation) -> some View {
+        HStack(spacing: 6) {
+            if state.compact && presentation.isCached {
+                Image(systemName: "clock")
+                    .foregroundStyle(.secondary)
+                Text(L10n.codexOverlayStale).foregroundStyle(.secondary)
+            } else if presentation.hasQuota {
+                let dual = presentation.fiveHour != nil && presentation.weekly != nil
                 if presentation.isCached {
-                    Image(systemName: "clock.fill")
-                        .font(.system(size: 7, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel(L10n.codexOverlayCachedStatus)
+                    if let metric = presentation.weekly ?? presentation.fiveHour { quotaRing(metric) }
+                    Text(staleReadout(presentation))
+                        .font(.system(size: 11).monospacedDigit())
+                        .layoutPriority(1)
+                } else if state.compact, let fiveHour = presentation.fiveHour, let weekly = presentation.weekly {
+                    Text(L10n.codexOverlayDualCompact(fiveHour: fiveHour.percent, weekly: weekly.percent,
+                        used: fiveHour.displayMode == .used))
+                        .font(.system(size: 12, weight: .medium).monospacedDigit())
+                        .layoutPriority(1)
+                } else {
+                    if let metric = presentation.fiveHour {
+                        readout(metric, weekly: false, abbreviated: dual || state.compact)
+                    }
+                    if dual { Text("·").foregroundStyle(.tertiary) }
+                    if let metric = presentation.weekly {
+                        readout(metric, weekly: true, abbreviated: dual || state.compact)
+                    }
                 }
+            } else {
+                Image(systemName: "minus.circle").foregroundStyle(.secondary)
+                Text(state.compact ? L10n.codexOverlayUnavailableShort : L10n.codexOverlayUnavailableCompact)
+                    .foregroundStyle(.secondary)
             }
-            .opacity(presentation.isCached ? 0.72 : 1)
-        } else {
-            HStack(spacing: 5) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                Text(L10n.codexOverlayUnavailableCompact)
-                    .lineLimit(1)
-            }
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Image(systemName: state.isExpanded ? "chevron.up" : "chevron.down")
+                .font(.system(size: 8, weight: .medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
+        .font(.system(size: 12))
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
+    }
+
+    private func readout(_ metric: CodexQuotaOverlayMetric, weekly: Bool, abbreviated: Bool) -> some View {
+        HStack(spacing: 6) {
+            if !state.compact {
+                quotaRing(metric)
+            }
+            let label = L10n.codexOverlayReadoutLabel(weekly: weekly, used: metric.displayMode == .used,
+                abbreviated: abbreviated, omitPeriod: state.compact && state.width == CodexQuotaOverlayLayout.compactWidth)
+            Text("\(Text(label)) \(Text("\(metric.percent)%").font(.system(size: 13, weight: .medium).monospacedDigit()))")
+                .layoutPriority(1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel((weekly ? L10n.quotaCardTitle7d : L10n.quotaCardTitle5h) + ", " + metric.localizedPercentLabel)
+    }
+
+    private func quotaRing(_ metric: CodexQuotaOverlayMetric) -> some View {
+        ZStack {
+            Circle().stroke(.primary.opacity(0.10), lineWidth: 1.5)
+            Circle().trim(from: 0, to: CGFloat(metric.percent) / 100)
+                .stroke(CodexQuotaOverlayPalette.color(metric), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 12, height: 12)
+        .accessibilityHidden(true)
+    }
+
+    private func staleReadout(_ presentation: CodexQuotaOverlayPresentation) -> String {
+        let values = [(false, presentation.fiveHour), (true, presentation.weekly)].compactMap { weekly, metric -> String? in
+            guard let metric else { return nil }
+            return L10n.codexOverlayReadoutLabel(weekly: weekly, used: metric.displayMode == .used,
+                abbreviated: true, omitPeriod: false) + " \(metric.percent)%"
+        }
+        return (values + [L10n.codexOverlayStale]).joined(separator: " · ")
     }
 
     private func dragChanged(_ value: DragGesture.Value) {
@@ -227,50 +273,12 @@ struct CodexQuotaOverlayView: View {
         }
     }
 
-    private func metric(
-        _ label: String,
-        _ value: CodexQuotaOverlayMetric
-    ) -> some View {
-        Text(QuotaWindowCompactLabel.segment(
-            label: label,
-            value: "\(value.percent)%",
-            style: settings.menuBarLabelStyle))
-            .monospacedDigit()
-            .foregroundStyle(metricColor(value))
-            .font(.system(size: 10, weight: .semibold))
-            .padding(.horizontal, 4)
-            .lineLimit(1)
-    }
-
-    private func summaryWidth(
-        for presentation: CodexQuotaOverlayPresentation
-    ) -> CGFloat {
-        let visibleWindowCount = [presentation.fiveHour, presentation.weekly]
-            .compactMap { $0 }
-            .count
-        return visibleWindowCount == 1
-            ? CodexQuotaOverlayLayout.singleWindowWidth
-            : CodexQuotaOverlayLayout.size.width
-    }
-
-    private func metricColor(_ metric: CodexQuotaOverlayMetric) -> Color {
-        switch metric.severity {
-        case .healthy:
-            .primary.opacity(0.82)
-        case .warning:
-            .orange
-        case .critical:
-            .red
-        }
-    }
 }
 
 struct CodexQuotaOverlayDetailsView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SettingsStore.self) private var settings
     @Environment(LocalizationStore.self) private var localization
-
-    let onHoverChanged: (Bool) -> Void
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -305,11 +313,10 @@ struct CodexQuotaOverlayDetailsView: View {
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(.primary.opacity(0.13), lineWidth: 0.75)
+                    .stroke(.primary.opacity(0.10), lineWidth: 0.5)
             }
-            .shadow(color: .black.opacity(0.15), radius: 8, y: 3)
+            .shadow(color: .black.opacity(0.10), radius: 12, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .onHover(perform: onHoverChanged)
             .accessibilityElement(children: .contain)
             .id(localization.currentLanguage)
         }
@@ -322,7 +329,8 @@ struct CodexQuotaOverlayDetailsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(Branding.appDisplayName)
-                .font(.headline)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
                 .frame(
                     maxWidth: .infinity,
                     minHeight: CodexQuotaOverlayLayout.detailsHeaderHeight,
@@ -338,7 +346,7 @@ struct CodexQuotaOverlayDetailsView: View {
             if presentation.fiveHour != nil,
                presentation.weekly != nil {
                 Divider()
-                    .padding(.vertical, 7)
+                    .padding(.vertical, 8)
             }
             if let weekly = presentation.weekly {
                 quotaWindow(
@@ -355,7 +363,7 @@ struct CodexQuotaOverlayDetailsView: View {
                     now: now)
             }
         }
-        .padding(12)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
@@ -364,24 +372,27 @@ struct CodexQuotaOverlayDetailsView: View {
         metric: CodexQuotaOverlayMetric,
         now: Date
     ) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Circle()
-                    .fill(quotaTintColor(metric))
-                    .frame(width: 5, height: 5)
                 Text(title)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: 12, weight: .medium))
                 Spacer()
                 Text("\(metric.percent)%")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(quotaTintColor(metric))
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(metric.severity == .healthy ? Color.primary : CodexQuotaOverlayPalette.color(metric))
                     .accessibilityLabel(metric.localizedPercentLabel)
             }
 
-            QuotaUsageProgressBar(
-                value: Double(metric.percent) / 100,
-                usedPercent: Double(metric.usedPercent),
-                accessibilityText: metric.localizedPercentLabel)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.primary.opacity(0.07))
+                    Capsule().fill(CodexQuotaOverlayPalette.color(metric))
+                        .frame(width: geometry.size.width * CGFloat(metric.percent) / 100)
+                }
+            }
+            .frame(height: 3)
+            .accessibilityElement()
+            .accessibilityLabel(metric.localizedPercentLabel)
 
             HStack(spacing: 4) {
                 Text(resetCountdown(for: metric, now: now))
@@ -389,7 +400,7 @@ struct CodexQuotaOverlayDetailsView: View {
                 Text(CodexQuotaOverlayTimeFormatting.localDateTime(
                     metric.resetAt))
             }
-            .font(.caption2.monospacedDigit())
+            .font(.system(size: 10).monospacedDigit())
             .foregroundStyle(.secondary)
             .lineLimit(1)
         }
@@ -434,11 +445,6 @@ struct CodexQuotaOverlayDetailsView: View {
             }
         }
         .padding(.vertical, 2)
-    }
-
-    private func quotaTintColor(_ metric: CodexQuotaOverlayMetric) -> Color {
-        QuotaUsageStyle.tintColor(
-            forUsedPercent: Double(metric.usedPercent))
     }
 
     private func resetCountdown(

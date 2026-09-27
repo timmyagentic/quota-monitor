@@ -34,6 +34,7 @@ actor RateLimitPoller {
     private var interval: Duration
     private let fetchTimeout: Duration
     private var task: Task<Void, Never>?
+    private let onFailure: @Sendable () async -> Void
     private let onSnapshot: @Sendable (RateLimitSnapshot) async -> Void
     private var cooldownUntil: Date?
     private var lastAttemptAt: Date?
@@ -44,12 +45,14 @@ actor RateLimitPoller {
         database: DatabaseManager,
         interval: Duration = .seconds(300),
         fetchTimeout: Duration = .seconds(30),
+        onFailure: @escaping @Sendable () async -> Void = {},
         onSnapshot: @escaping @Sendable (RateLimitSnapshot) async -> Void
     ) {
         self.fetcher = fetcher
         self.database = database
         self.interval = interval
         self.fetchTimeout = fetchTimeout
+        self.onFailure = onFailure
         self.onSnapshot = onSnapshot
     }
 
@@ -58,6 +61,7 @@ actor RateLimitPoller {
         database: DatabaseManager,
         interval: Duration = .seconds(300),
         fetchTimeout: Duration = .seconds(30),
+        onFailure: @escaping @Sendable () async -> Void = {},
         onSnapshot: @escaping @Sendable (RateLimitSnapshot) async -> Void
     ) {
         self.init(
@@ -65,6 +69,7 @@ actor RateLimitPoller {
             database: database,
             interval: interval,
             fetchTimeout: fetchTimeout,
+            onFailure: onFailure,
             onSnapshot: onSnapshot)
     }
 
@@ -201,6 +206,7 @@ actor RateLimitPoller {
                 ])
             return .success(snapshot)
         } catch {
+            if !(error is CancellationError) { await onFailure() }
             if Self.isRateLimitError(error) {
                 consecutiveRateLimits += 1
                 let fallback: TimeInterval = consecutiveRateLimits == 1 ? 300 : 1800

@@ -258,6 +258,8 @@ struct GeneralSettingsTab: View {
         switch settings.codexSidebarQuotaStatus {
         case .disabled:
             L10n.codexOverlayDisabledStatus
+        case .waitingForHeader:
+            L10n.codexOverlayWaitingForHeader
         case .waitingForCodex:
             L10n.codexOverlayWaitingStatus
         case .active:
@@ -271,7 +273,7 @@ struct GeneralSettingsTab: View {
 
     private var codexSidebarStatusIcon: String {
         switch settings.codexSidebarQuotaStatus {
-        case .waitingForCodex:
+        case .waitingForCodex, .waitingForHeader:
             "macwindow"
         case .active:
             "checkmark.circle.fill"
@@ -290,7 +292,7 @@ struct GeneralSettingsTab: View {
             .green
         case .showingCached:
             .orange
-        case .disabled, .waitingForCodex, .quotaUnavailable:
+        case .disabled, .waitingForCodex, .waitingForHeader, .quotaUnavailable:
             .secondary
         }
     }

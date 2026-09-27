@@ -104,15 +104,28 @@ enum L10n {
     }
     static var codexCapsuleSettingsHelp: String {
         t(
-            en: "Shows the latest 5-hour and weekly quota in the Codex account row. "
-                + "Hover or click the widget for usage and reset details. "
+            en: "Shows the latest 5-hour and weekly quota in the Codex sidebar header. "
+                + "Click the widget for usage and reset details. "
                 + "Press and hold it for one second, then drag it to choose where it sits in the Codex window. "
-                + "The widget follows the Codex window, hides when Codex is in the background, "
+                + "The widget follows the Codex window, hides when its window is unavailable, "
                 + "and never restarts or modifies Codex.",
-            zh: "在 Codex 账户行内显示最新的 5 小时和每周额度；悬停或点击可查看用量与重置详情。"
+            zh: "在 Codex 侧栏标题区显示最新的 5 小时和每周额度；点击可查看用量与重置详情。"
                 + "按住挂件 1 秒后拖动，可调整它在 Codex 窗口中的位置。"
                 + "挂件会跟随 Codex 窗口，"
-                + "Codex 位于后台时自动隐藏，并且不会重启或修改 Codex。")
+                + "Codex 窗口不可见时自动隐藏，并且不会重启或修改 Codex。")
+    }
+    static var codexOverlayWaitingForHeader: String { t(en: "No safe header space found. Expand the Codex sidebar and check Accessibility access, or restore a saved manual position.", zh: "未找到标题区空位。请展开 Codex 侧栏并检查辅助功能权限；已保存的手动位置仍可使用。") }
+    static func codexOverlayDualCompact(fiveHour: Int, weekly: Int, used: Bool) -> String {
+        let meaning = used ? t(en: "used", zh: "已用") : t(en: "left", zh: "余")
+        return t(en: "\(meaning) 5h \(fiveHour)% · 7d \(weekly)%", zh: "\(meaning) 5h \(fiveHour)% · 周 \(weekly)%")
+    }
+    static var codexOverlayStale: String { t(en: "Stale", zh: "待刷新") }
+    static var codexOverlayUnavailableShort: String { t(en: "No quota", zh: "暂无额度") }
+    static func codexOverlayReadoutLabel(weekly: Bool, used: Bool, abbreviated: Bool, omitPeriod: Bool) -> String {
+        let period = omitPeriod ? "" : (weekly ? t(en: "7d ", zh: "周") : t(en: "5h ", zh: "5h "))
+        let meaning = used ? t(en: "used", zh: abbreviated ? "用" : "已用")
+            : t(en: "left", zh: abbreviated ? "余" : "剩余")
+        return period + meaning
     }
     static var codexOverlayResetPosition: String {
         t(en: "Restore automatic widget position", zh: "恢复挂件自动位置")
@@ -140,8 +153,8 @@ enum L10n {
         t(en: "Quota unavailable", zh: "额度暂不可用")
     }
     static var codexOverlayAccessibilityHint: String {
-        t(en: "Hover or press to show quota details. Press and hold for one second, then drag to move the widget.",
-          zh: "悬停或按下可显示额度详情；按住 1 秒后拖动可移动挂件。")
+        t(en: "Press to toggle quota details. Press and hold for one second, then drag to move the widget.",
+          zh: "按下可展开或收起额度详情；按住 1 秒后拖动可移动挂件。")
     }
     static var codexOverlayHoldToMove: String {
         t(en: "Hold 1 sec, then drag", zh: "按住 1 秒后拖动")
