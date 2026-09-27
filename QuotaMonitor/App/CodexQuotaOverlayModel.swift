@@ -63,7 +63,8 @@ struct CodexQuotaOverlayPresentation: Equatable {
         return CodexQuotaOverlayPresentation(
             fiveHour: fiveHour,
             weekly: weekly,
-            isCached: refreshFailed || age > staleAfter || containsExpiredWindow)
+            isCached: (fiveHour != nil || weekly != nil)
+                && (refreshFailed || age > staleAfter || containsExpiredWindow))
     }
 
     private static func metric(

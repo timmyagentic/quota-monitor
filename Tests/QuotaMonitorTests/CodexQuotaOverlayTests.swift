@@ -119,6 +119,22 @@ struct CodexQuotaOverlayTests {
             now: now).hasQuota)
     }
 
+    @Test("Empty snapshots remain unavailable after aging or a failed refresh",
+          arguments: [false, true], [false, true])
+    func emptySnapshotsNeverBecomeCached(stale: Bool, refreshFailed: Bool) {
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: snapshot(
+                capturedOffset: stale ? -(16 * 60) : 0,
+                primary: nil,
+                secondary: nil),
+            displayMode: .used,
+            now: now,
+            refreshFailed: refreshFailed)
+
+        #expect(!presentation.hasQuota)
+        #expect(!presentation.isCached)
+    }
+
     @Test("Widget and menu bar share stable compact window labels")
     func compactWindowLabels() {
         let english = LocalizationTestSupport.withLanguage(.english) {
