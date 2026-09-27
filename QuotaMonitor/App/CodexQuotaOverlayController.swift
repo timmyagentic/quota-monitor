@@ -101,7 +101,10 @@ final class CodexQuotaOverlayController: NSObject {
         guard LocalQAEnvironment.isQARequested() else { return }
         hideOverlay()
         qaPreview = LocalQAOverlayPreview(environment: environment, settings: settings, outputDirectory: outputDirectory)
-        qaPreview?.onLayoutChanged = { [weak self] in self?.refreshOverlay() }
+        qaPreview?.onLayoutChanged = { [weak self] in
+            self?.refreshOverlay()
+            self?.recordLocalQAPanels(event: "fixture-layout")
+        }
         qaPreview?.onResetPosition = { [weak self] in self?.resetPosition() }
         qaPreview?.onInspectPanels = { [weak self] in
             guard let self, let preview = self.qaPreview else { return }
@@ -492,6 +495,7 @@ final class CodexQuotaOverlayController: NSObject {
         settings.codexSidebarQuotaPosition = nil
         resetSummaryDrag()
         refreshOverlay()
+        recordLocalQAPanels(event: "reset-position")
     }
 
     private func activateDetails() {

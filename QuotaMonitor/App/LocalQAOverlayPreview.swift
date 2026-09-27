@@ -79,6 +79,11 @@ final class LocalQAOverlayPreview {
     }
 
     func toggleWidth() { narrow.toggle(); updateLayout() }
+    func placeAtPreviousPosition() {
+        settings.codexSidebarQuotaPosition = CodexSidebarQuotaPosition(
+            horizontalFraction: 0.18, verticalFraction: 0.02)
+        updateLayout()
+    }
     func toggleMode() { settings.quotaDisplayMode = settings.quotaDisplayMode == .used ? .remaining : .used; updateLayout() }
     private func updateLayout() { onLayoutChanged?() }
 
@@ -149,7 +154,10 @@ private struct LocalQAOverlayPreviewView: View {
                                 Button(scenario) { preview.select(scenario) }
                             }
                         }
-                        Button("Inspect floating windows") { preview.onInspectPanels?() }
+                        HStack {
+                            Button("Inspect floating windows") { preview.onInspectPanels?() }
+                            Button("Previous position") { preview.placeAtPreviousPosition() }
+                        }
                         HStack {
                             Button("Reset position") { preview.onResetPosition?() }
                             Button("Compact") { preview.toggleWidth() }
