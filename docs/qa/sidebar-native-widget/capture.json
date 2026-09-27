@@ -1,16 +1,19 @@
 {
-  "build_commit": "125a543a7713d7513d33117ba1e8363370bd959a",
+  "build_commit": "b1d35ecd3c5d316f9e23442eceff8db836cb3760",
   "version": "1.0.8",
   "macOS": "27.0",
-  "captured_at_utc": "2026-09-27T14:18:09.216684+00:00",
-  "capture": "Computer Use screenshot of the running native QA gallery; unchanged shipping SwiftUI views, synthetic data",
-  "binary_sha256": "625e6f254a8d11ffbc916576ff45d512af45952d124991bcd30ba5735f190ad2",
+  "captured_at_utc": "2026-09-27T14:44:18.253311+00:00",
+  "capture": "Unedited Computer Use screenshots of shipping SwiftUI views in the running native QA gallery; synthetic quota and fixture sidebar",
+  "qa_bundle_id": "dev.tjzhou.QuotaMonitor.SidebarQA.W3TqtJ",
+  "source_app_binary_sha256": "64a03e4d0cb186ccac20c600d0702b09966306376b57500dd095b843f8643dbf",
+  "qa_resigned_binary_sha256": "4106e40dd2a68f65e624a93550359b6670e34886dc4cc81bfbc83bf69aca6617",
   "screenshots": {
-    "dark-compact.jpg": "10a5f1e0f7e04f50a8f618186e5380163e7e7a8597a3e6401d09c1aa89b1b817",
-    "english-dual.jpg": "eac1c64f818f3d4b160a41c47b23b72fcbd73e36ae4ea13260c9091aa707292e",
-    "light-weekly.jpg": "30067dce82118a836436055c76692dbe14a6cf0eb4ffcfee312230a2326995f9",
-    "stale.jpg": "9f1ef8455751b31306af62b313806809347539dfc176336381549f60e1dc9fef",
-    "unavailable.jpg": "d89a9059626ba9b581585bb580e52cbe67696d6ad5b3ed578f5630bfabb77138",
-    "used-mode.jpg": "3d6dfe45da52448eac7b3c9d3b32882911395620a20c8d42a377e8a8dd15e850"
+    "dark-compact.jpg": "ebb1b4e6a64b90d7f0e8f2f7680cd633cdb4191fb5eb96f049d14feb30248b9e",
+    "english-dual.jpg": "7fbff540fa57787b30fe8083b5be9610bccb2586973af3a289ffab3a4adb0ed6",
+    "light-weekly.jpg": "48cc416c05d921c97ed19e6878581a0d522dff842e8668db1940c7198e584759",
+    "reset-cards.jpg": "58962f1ee3e886b3f3ec324f328d4523918ef948456417d78e1abf98a19ee0d0",
+    "stale.jpg": "76ee7073d2cb7d9b6d1ac1801044f80a02e28e96dd5d3eb5bbb1f6e87c538264",
+    "unavailable.jpg": "3c89cf6a61fe395b8e18cb99c0a62a11f048826920bb68314ac429a7611e4870",
+    "used-mode.jpg": "20a9ad9dfb1f131adaea9354ee869040006dc26b2c55ec3d14c9663442cc9deb"
   }
 }

@@ -291,3 +291,29 @@ final result: passed
 - `.build/qa-artifacts/update-download-icon/reference-vs-implementation-final.png`
 
 final result: passed
+
+---
+
+# Native quota-widget design QA
+
+Scope: native components; host integration is listed separately below.
+
+Build: `b1d35ecd3c5d316f9e23442eceff8db836cb3760`, app version 1.0.8. Evidence: [native screenshot gallery](docs/qa/sidebar-native-widget/README.md) and [capture metadata](docs/qa/sidebar-native-widget/capture.json).
+
+## Visual and content reference
+
+The selected sidebar-header readout remains the reference for the collapsed widget. For the expanded panel, the latest requested direction is the previous compact panel with redesigned visual styling and unchanged content. Compared the baseline details implementation at `af9bf1a` with the running revised component and an intermediate native screenshot of the restored baseline content.
+
+## Observed result
+
+- The expanded panel retains the brand heading, actual quota-window titles and percentages, countdowns, complete reset datetimes, and reset-card availability/expirations. No extra copy or actions were added. Reset-card rendering and countdown helpers retain the original content implementation.
+- A 272 pt panel uses compact aligned rows, 3 pt muted-blue tracks, 14 pt padding, a quieter brand heading, and a thin border. The percentage remains legible at 13 pt rather than taking over the card.
+- Weekly/dual, English/Chinese, light/dark, normal/compact, stale/unavailable, used/remaining, and reset-card states were inspected in the running native build. No overlapping text or clipped timestamps were observed in those states.
+- The summary exposes real missing/stale states and continues to use the selected display mode. In the gallery, click toggles, Escape dismisses, and unavailable quota does not open new detail content.
+- No unresolved P0/P1/P2 findings within this component review scope.
+
+## Validation boundary
+
+The screenshots are unedited captures of the actual shipping SwiftUI views in an isolated native QA gallery. The surrounding sidebar and quota values are fixtures. Live Codex AX placement, focus/window switching/sidebar collapse, and NSPanel drag integration remain **UNVERIFIED** because Computer Use denied direct access to Codex. Component QA does not certify those host checks.
+
+final result: passed
