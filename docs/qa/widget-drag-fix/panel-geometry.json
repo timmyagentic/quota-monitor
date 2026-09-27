@@ -1,0 +1,44 @@
+{
+  "event": "inspect",
+  "header": [
+    147,
+    350,
+    72
+  ],
+  "hostFrame": [
+    440,
+    291,
+    1040,
+    692
+  ],
+  "manual": [],
+  "source": "f8080a8",
+  "windows": [
+    {
+      "frame": [
+        587,
+        897,
+        148,
+        28
+      ],
+      "identifier": "codex-quota-overlay",
+      "ignoresMouseEvents": false,
+      "key": false,
+      "number": 34836,
+      "visible": true
+    },
+    {
+      "frame": [
+        587,
+        787,
+        272,
+        104
+      ],
+      "identifier": "codex-quota-overlay-details",
+      "ignoresMouseEvents": false,
+      "key": false,
+      "number": 34844,
+      "visible": true
+    }
+  ]
+}
