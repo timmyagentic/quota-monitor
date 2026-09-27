@@ -1,0 +1,16 @@
+{
+  "build_commit": "125a543a7713d7513d33117ba1e8363370bd959a",
+  "version": "1.0.8",
+  "macOS": "27.0",
+  "captured_at_utc": "2026-09-27T14:18:09.216684+00:00",
+  "capture": "Computer Use screenshot of the running native QA gallery; unchanged shipping SwiftUI views, synthetic data",
+  "binary_sha256": "625e6f254a8d11ffbc916576ff45d512af45952d124991bcd30ba5735f190ad2",
+  "screenshots": {
+    "dark-compact.jpg": "10a5f1e0f7e04f50a8f618186e5380163e7e7a8597a3e6401d09c1aa89b1b817",
+    "english-dual.jpg": "eac1c64f818f3d4b160a41c47b23b72fcbd73e36ae4ea13260c9091aa707292e",
+    "light-weekly.jpg": "30067dce82118a836436055c76692dbe14a6cf0eb4ffcfee312230a2326995f9",
+    "stale.jpg": "9f1ef8455751b31306af62b313806809347539dfc176336381549f60e1dc9fef",
+    "unavailable.jpg": "d89a9059626ba9b581585bb580e52cbe67696d6ad5b3ed578f5630bfabb77138",
+    "used-mode.jpg": "3d6dfe45da52448eac7b3c9d3b32882911395620a20c8d42a377e8a8dd15e850"
+  }
+}
