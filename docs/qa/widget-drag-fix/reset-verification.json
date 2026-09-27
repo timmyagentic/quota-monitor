@@ -1,0 +1,68 @@
+{
+  "before": {
+    "event": "fixture-layout",
+    "header": [
+      147,
+      350,
+      72
+    ],
+    "hostFrame": [
+      440,
+      291,
+      1040,
+      692
+    ],
+    "manual": [
+      0.18,
+      0.02
+    ],
+    "source": "2786fa9",
+    "windows": [
+      {
+        "frame": [
+          608,
+          315,
+          148,
+          28
+        ],
+        "identifier": "codex-quota-overlay",
+        "ignoresMouseEvents": false,
+        "key": false,
+        "number": 34857,
+        "visible": true
+      }
+    ]
+  },
+  "after": {
+    "event": "reset-position",
+    "header": [
+      147,
+      350,
+      72
+    ],
+    "hostFrame": [
+      440,
+      291,
+      1040,
+      692
+    ],
+    "manual": [],
+    "source": "2786fa9",
+    "windows": [
+      {
+        "frame": [
+          587,
+          897,
+          148,
+          28
+        ],
+        "identifier": "codex-quota-overlay",
+        "ignoresMouseEvents": false,
+        "key": false,
+        "number": 34857,
+        "visible": true
+      }
+    ]
+  },
+  "externalHostDiscoveryVerified": false
+}

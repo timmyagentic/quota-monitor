@@ -12,7 +12,7 @@
     692
   ],
   "manual": [],
-  "source": "f8080a8",
+  "source": "2786fa9",
   "windows": [
     {
       "frame": [
@@ -24,7 +24,7 @@
       "identifier": "codex-quota-overlay",
       "ignoresMouseEvents": false,
       "key": false,
-      "number": 34836,
+      "number": 34857,
       "visible": true
     },
     {
@@ -37,7 +37,7 @@
       "identifier": "codex-quota-overlay-details",
       "ignoresMouseEvents": false,
       "key": false,
-      "number": 34844,
+      "number": 34869,
       "visible": true
     }
   ]
