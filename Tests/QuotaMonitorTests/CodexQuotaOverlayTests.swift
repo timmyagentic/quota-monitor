@@ -303,6 +303,31 @@ struct CodexQuotaOverlayTests {
         #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [chatTitle, search]) == nil)
     }
 
+    @Test("The new product-mode selector anchors the Codex header", arguments: [
+        "Switch mode, current mode: Codex", "切换模式，当前模式：Codex", "切換模式，目前模式：Codex"
+    ])
+    func productModeSelectorHeader(_ label: String) {
+        let host = CGRect(x: 100, y: 100, width: 1200, height: 800)
+        let title = CodexSidebarHeaderCandidate(frame: CGRect(x: 168, y: 146, width: 76, height: 28),
+            descriptors: [label])
+        let search = CodexSidebarHeaderCandidate(frame: CGRect(x: 506, y: 146, width: 28, height: 28),
+            descriptors: ["Search"])
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, search])
+            == CodexSidebarHeaderAnchor(leadingInset: 152, trailingXInset: 398, centerYInset: 60))
+    }
+
+    @Test("Work mode and Codex-related actions cannot impersonate the title")
+    func rejectsNonCodexModeSelector() {
+        let host = CGRect(x: 0, y: 0, width: 1200, height: 800)
+        let search = CodexSidebarHeaderCandidate(frame: CGRect(x: 406, y: 46, width: 28, height: 28),
+            descriptors: ["Search"])
+        for label in ["Switch mode, current mode: Work", "切换模式，当前模式：Work", "Switch to Codex", "Search Codex"] {
+            let title = CodexSidebarHeaderCandidate(frame: CGRect(x: 68, y: 46, width: 76, height: 28),
+                descriptors: [label])
+            #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, search]) == nil)
+        }
+    }
+
     @Test("Header discovery retries off transient misses with bounded backoff")
     func helpDiscoveryRetryPolicy() {
         #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(

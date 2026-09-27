@@ -59,7 +59,7 @@ enum CodexSidebarHeaderSelectionPolicy {
             // interactive control can establish the occupied title boundary.
             ($0.role == kAXButtonRole as String || $0.role == kAXPopUpButtonRole as String)
                 && $0.frame.width <= 160 && $0.frame.minX - windowFrame.minX <= 180
-                && $0.descriptors.contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex" }
+                && $0.descriptors.contains(where: isCodexTitle)
         }
         // A title AND a known sidebar action on the same row are required.
         // Chat text, the window title, and a collapsed navigation rail cannot anchor it.
@@ -85,6 +85,17 @@ enum CodexSidebarHeaderSelectionPolicy {
             if anchor.availableWidth >= CodexQuotaOverlayLayout.compactWidth { return anchor }
         }
         return nil
+    }
+
+    private static func isCodexTitle(_ descriptor: String) -> Bool {
+        let normalized = descriptor.lowercased()
+            .replacingOccurrences(of: "，", with: ",")
+            .replacingOccurrences(of: "：", with: ":")
+            .components(separatedBy: .whitespacesAndNewlines).joined()
+        // The new sidebar labels the full logo/dropdown button by its current
+        // product mode. Matching only the visual wordmark misses this control.
+        return ["codex", "switchmode,currentmode:codex",
+                "切换模式,当前模式:codex", "切換模式,目前模式:codex"].contains(normalized)
     }
 }
 

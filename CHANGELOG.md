@@ -30,26 +30,21 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-09-28
+
 #### Summary
 
 - The quota widget follows the pointer more smoothly and has a cleaner readout without the dropdown arrow.
+- The Codex quota widget now fits the sidebar header, with clearer remaining quota and click-to-open details.
 
 ### Fixed
 
 - **Widget dragging.** Long-press dragging uses screen coordinates, keeps its position during header refreshes, and saves the final pointer position without shifting compact readouts sideways on release.
+- **New Codex header.** Recognize the current product-mode selector so restoring automatic placement finds the sidebar title row instead of hiding the widget.
 
 ### Changed
 
 - **Simpler readout.** Removed the summary arrow while retaining click-to-open details and the existing expanded content. Reset position returns the widget to the measured sidebar-title row.
-
-## [1.0.9] — 2026-09-27
-
-#### Summary
-
-- The Codex quota widget now fits the sidebar header, with clearer remaining quota and click-to-open details.
-
-### Changed
-
 - **Sidebar quota readout.** A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.
 - **Honest quota status.** Cached or failed refreshes are labelled explicitly, while missing windows stay absent and saved manual positions remain available. Empty snapshots stay unavailable even after aging or a failed refresh.
 - **Safe automatic placement.** The widget requires a recognized header with enough space; expand the sidebar and allow Accessibility access if no safe slot is found.

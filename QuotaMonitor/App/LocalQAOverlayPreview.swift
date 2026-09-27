@@ -26,7 +26,7 @@ final class LocalQAOverlayPreview {
         let titleBarHeight = window.frame.height - window.contentLayoutRect.height
         let candidates = headerFrames.map { name, frame in
             CodexSidebarHeaderCandidate(frame: frame.offsetBy(dx: 0, dy: titleBarHeight),
-                descriptors: [name])
+                descriptors: [name == "Codex" ? "Switch mode, current mode: Codex" : name])
         }
         return CodexSidebarHeaderSelectionPolicy.anchor(
             in: CGRect(origin: .zero, size: window.frame.size), candidates: candidates)

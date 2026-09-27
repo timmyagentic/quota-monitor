@@ -1,10 +1,16 @@
 <div class="release-summary">
 <ul>
+<li>The widget recognizes the new Codex title row, follows dragging more reliably, and no longer shows a dropdown arrow.</li>
 <li>The Codex quota widget now fits the sidebar header, with clearer remaining quota and click-to-open details.</li>
 </ul>
 </div>
 <button class="details-toggle" data-show="Show full details" data-hide="Hide details">Show full details <span class="arrow">&#x25BE;</span></button>
 <div class="release-details">
+<h3>Fixed</h3>
+<ul>
+<li><b>New Codex header.</b> Restore automatic placement using the current mode-selector button, so resetting the widget no longer loses its title-row anchor.</li>
+<li><b>Steadier dragging.</b> Keep the one-second hold, follow screen coordinates, and save the final drop position. Expanded details retain their existing content.</li>
+</ul>
 <h3>Changed</h3>
 <ul>
 <li><b>Sidebar quota readout.</b> A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.</li>
