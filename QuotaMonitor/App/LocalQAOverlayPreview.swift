@@ -11,6 +11,9 @@ final class LocalQAOverlayPreview {
     fileprivate let settings: SettingsStore
     var onLayoutChanged: (() -> Void)?
     var onResetPosition: (() -> Void)?
+    var onInspectPanels: (() -> Void)?
+    var isInspectingPanels = false
+    let outputDirectory: URL
     private var headerFrames: [String: CGRect] = [:]
     var narrow = false
     var dark = false
@@ -35,7 +38,8 @@ final class LocalQAOverlayPreview {
         onLayoutChanged?()
     }
 
-    init(environment: AppEnvironment, settings: SettingsStore) {
+    init(environment: AppEnvironment, settings: SettingsStore, outputDirectory: URL) {
+        self.outputDirectory = outputDirectory
         self.environment = environment
         self.settings = settings
         window = NSWindow(contentRect: CGRect(x: 200, y: 160, width: 1040, height: 660),
@@ -145,6 +149,7 @@ private struct LocalQAOverlayPreviewView: View {
                                 Button(scenario) { preview.select(scenario) }
                             }
                         }
+                        Button("Inspect floating windows") { preview.onInspectPanels?() }
                         HStack {
                             Button("Reset position") { preview.onResetPosition?() }
                             Button("Compact") { preview.toggleWidth() }

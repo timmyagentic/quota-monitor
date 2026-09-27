@@ -62,7 +62,7 @@ final class LocalQAController {
                 statusItemController.showPopover()
                 await pause(seconds: 0.6)
             case .showCodexOverlayDetails:
-                codexQuotaOverlayController?.showDetailsForLocalQA()
+                codexQuotaOverlayController?.showDetailsForLocalQA(outputDirectory: configuration.outputDirectory)
                 await pause(seconds: 0.6)
             case .refreshAll:
                 environment.refreshAll(throttle: false, trigger: "qa")
