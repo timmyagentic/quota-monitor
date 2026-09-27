@@ -39,7 +39,8 @@ struct CodexQuotaOverlayPresentation: Equatable {
         snapshot: RateLimitSnapshot?,
         displayMode: SettingsStore.QuotaDisplayMode,
         now: Date = Date(),
-        staleAfter: TimeInterval = 15 * 60
+        staleAfter: TimeInterval = 15 * 60,
+        refreshFailed: Bool = false
     ) -> CodexQuotaOverlayPresentation {
         guard let snapshot else {
             return CodexQuotaOverlayPresentation(
@@ -62,7 +63,7 @@ struct CodexQuotaOverlayPresentation: Equatable {
         return CodexQuotaOverlayPresentation(
             fiveHour: fiveHour,
             weekly: weekly,
-            isCached: age > staleAfter || containsExpiredWindow)
+            isCached: refreshFailed || age > staleAfter || containsExpiredWindow)
     }
 
     private static func metric(
@@ -299,22 +300,17 @@ enum CodexWindowFrameConverter {
     }
 }
 
-enum CodexSidebarAutomaticPlacementMetrics {
-    // Current Codex keeps the account row in a 438 pt leading sidebar. Its
-    // 33 pt Help control begins 41 pt before the sidebar's trailing edge.
-    // These metrics let the no-Accessibility path estimate the same slot as
-    // the discovered Help-control path instead of drifting into page content.
-    static let referenceSidebarWidth: CGFloat = 438
-    static let helpLeadingTrailingInset: CGFloat = 41
-    static let helpCenterTrailingInset: CGFloat = 24
-    static let widgetTrailingGap: CGFloat = 34
+struct CodexQuotaOverlaySummaryPlacement: Equatable {
+    let frame: CGRect
+    let compact: Bool
 }
 
 enum CodexQuotaOverlayLayout {
-    static let size = CGSize(width: 132, height: 25)
-    static let singleWindowWidth: CGFloat = 84
-    static let detailsWidth: CGFloat = 288
-    static let detailsHeaderHeight: CGFloat = 27
+    static let size = CGSize(width: 148, height: 28)
+    static let compactWidth: CGFloat = 88
+    static let dualWindowWidth: CGFloat = 248
+    static let dualCompactWidth: CGFloat = 164
+    static let detailsWidth: CGFloat = 272
     static let windowIdentifier = "codex-quota-overlay"
     static let detailsWindowIdentifier = "codex-quota-overlay-details"
     private static let bottomInset: CGFloat = 12
@@ -322,86 +318,26 @@ enum CodexQuotaOverlayLayout {
     private static let detailsGap: CGFloat = 6
     private static let detailsTopInset: CGFloat = 12
 
-    /// Prefer the discovered account-row Help control. If Accessibility cannot
-    /// provide it, estimate that same Help-relative slot from the current
-    /// leading-sidebar geometry.
-    static func frame(
-        in codexWindowFrame: CGRect,
-        helpControlLeadingX: CGFloat? = nil,
-        manualPosition: CodexSidebarQuotaPosition? = nil
-    ) -> CGRect {
-        frame(
-            in: codexWindowFrame,
-            width: size.width,
-            helpControlLeadingX: helpControlLeadingX,
-            manualPosition: manualPosition)
-    }
-
-    static func frame(
-        in codexWindowFrame: CGRect,
+    static func summaryPlacement(
+        in window: CGRect,
         presentation: CodexQuotaOverlayPresentation,
-        helpControlLeadingX: CGFloat? = nil,
+        header: CodexSidebarHeaderAnchor?,
         manualPosition: CodexSidebarQuotaPosition? = nil
-    ) -> CGRect {
-        let visibleWindowCount = [presentation.fiveHour, presentation.weekly]
-            .compactMap { $0 }
-            .count
-        let width = visibleWindowCount == 1
-            ? singleWindowWidth
-            : size.width
-        return frame(
-            in: codexWindowFrame,
-            width: width,
-            helpControlLeadingX: helpControlLeadingX,
-            manualPosition: manualPosition)
-    }
-
-    private static func frame(
-        in codexWindowFrame: CGRect,
-        width: CGFloat,
-        helpControlLeadingX: CGFloat?,
-        manualPosition: CodexSidebarQuotaPosition?
-    ) -> CGRect {
+    ) -> CodexQuotaOverlaySummaryPlacement? {
+        let dual = presentation.fiveHour != nil && presentation.weekly != nil
+        let normalWidth = dual ? dualWindowWidth : size.width
+        let narrowWidth = dual ? dualCompactWidth : compactWidth
         if let manualPosition {
-            return frame(
-                in: codexWindowFrame,
-                width: width,
-                manualPosition: manualPosition)
+            return .init(frame: frame(in: window, width: normalWidth, manualPosition: manualPosition), compact: false)
         }
-        let discoveredTrailingX: CGFloat? = helpControlLeadingX.flatMap { leadingX in
-            guard leadingX.isFinite,
-                  leadingX >= codexWindowFrame.minX,
-                  leadingX <= codexWindowFrame.maxX else {
-                return nil
-            }
-            return leadingX
-                - CodexSidebarAutomaticPlacementMetrics.widgetTrailingGap
-        }
-        let fallbackSidebarWidth = min(
-            CodexSidebarAutomaticPlacementMetrics.referenceSidebarWidth,
-            max(0, codexWindowFrame.width))
-        let fallbackHelpLeadingX = codexWindowFrame.minX
-            + max(
-                0,
-                fallbackSidebarWidth
-                    - CodexSidebarAutomaticPlacementMetrics.helpLeadingTrailingInset)
-        let fallbackTrailingX = fallbackHelpLeadingX
-            - CodexSidebarAutomaticPlacementMetrics.widgetTrailingGap
-        let preferredTrailingX = discoveredTrailingX
-            ?? fallbackTrailingX
-        let preferredOriginX = preferredTrailingX - width
-        let minimumOriginX = codexWindowFrame.minX + bottomInset
-        let maximumOriginX = max(
-            minimumOriginX,
-            codexWindowFrame.maxX - bottomInset - width)
-        let originX = max(
-            minimumOriginX,
-            min(preferredOriginX, maximumOriginX))
-        return CGRect(
-            x: originX,
-            y: codexWindowFrame.minY + bottomInset,
-            width: width,
-            height: size.height)
+        guard let header, header.availableWidth.isFinite,
+              header.availableWidth >= narrowWidth else { return nil }
+        let compact = header.availableWidth < normalWidth
+        let frame = CGRect(x: window.minX + header.leadingInset,
+            y: window.maxY - header.centerYInset - size.height / 2,
+            width: compact ? narrowWidth : normalWidth, height: size.height)
+        guard window.insetBy(dx: 8, dy: 8).contains(frame) else { return nil }
+        return .init(frame: frame, compact: compact)
     }
 
     static func clampedFrame(
@@ -497,14 +433,11 @@ enum CodexQuotaOverlayLayout {
         let windowCount = [presentation.fiveHour, presentation.weekly]
             .compactMap { $0 }
             .count
-        guard windowCount > 0 else { return 0 }
-
-        var height: CGFloat = 24 + detailsHeaderHeight
-        // The rendered quota row includes two caption lines, the progress
-        // track, and vertical padding. Keep the model height above its actual
-        // SwiftUI fitting height so ordinary cards select the static branch.
-        height += CGFloat(windowCount) * 46
-        height += CGFloat(max(0, windowCount - 1)) * 15
+        // Header + footer + 96 pt for every real server window. Missing data
+        // still opens an actionable empty state. Stale data gets its own line.
+        var height: CGFloat = 94 + CGFloat(max(1, windowCount)) * 96
+        height += CGFloat(max(0, windowCount - 1)) * 17
+        if presentation.isCached { height += 32 }
 
         if let resetCredits {
             height += 17 + 16
@@ -521,27 +454,13 @@ enum CodexQuotaOverlayLayout {
 
     static func detailsFrame(
         in codexWindowFrame: CGRect,
-        contentHeight: CGFloat,
-        helpControlLeadingX: CGFloat? = nil
-    ) -> CGRect {
-        let summaryFrame = frame(
-            in: codexWindowFrame,
-            helpControlLeadingX: helpControlLeadingX)
-        return detailsFrame(
-            in: codexWindowFrame,
-            summaryFrame: summaryFrame,
-            contentHeight: contentHeight)
-    }
-
-    static func detailsFrame(
-        in codexWindowFrame: CGRect,
         summaryFrame: CGRect,
         contentHeight: CGFloat
     ) -> CGRect {
         let width = min(detailsWidth, max(
             1,
             codexWindowFrame.width - detailsLeftInset * 2))
-        let preferredOriginX = summaryFrame.maxX - width
+        let preferredOriginX = summaryFrame.minX
         let minimumOriginX = codexWindowFrame.minX + detailsLeftInset
         let maximumOriginX = codexWindowFrame.maxX - detailsLeftInset - width
         let aboveOriginY = summaryFrame.maxY + detailsGap

@@ -115,6 +115,23 @@ struct RateLimitPollerTests {
         return try JSONDecoder().decode(RateLimitsPayload.self, from: Data(json.utf8))
     }
 
+    @Test("Fetch failures notify cached consumers, including a scheduled 429")
+    func failureNotifiesCachedConsumers() async throws {
+        actor FailureCount {
+            var value = 0
+            func increment() { value += 1 }
+        }
+        let count = FailureCount()
+        let mock = MockCodexRateLimitsFetcher(script: [.failure(NSError(domain: "fixture", code: 429,
+            userInfo: [NSLocalizedDescriptionKey: "Too Many Requests"]))])
+        let poller = RateLimitPoller(fetcher: mock, database: try makeDatabase(),
+            onFailure: { await count.increment() }, onSnapshot: { _ in Issue.record("Unexpected success") })
+        _ = await poller.pollOnce()
+        #expect(await count.value == 1)
+        _ = await poller.pollOnce()
+        #expect(await count.value == 1) // A cooldown skip is not a new failure.
+    }
+
     private func makePoller(
         fetcher: any CodexRateLimitsFetching,
         db: DatabaseManager,

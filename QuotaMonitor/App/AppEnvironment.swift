@@ -50,6 +50,7 @@ final class AppEnvironment {
     var lastCodexAccountUsageRefreshAttemptAt: Date?
     var codexAccountUsageRefreshGeneration = 0
 
+    var rateLimitsRefreshFailed = false
     var latestRateLimits: RateLimitSnapshot? {
         didSet {
             if latestRateLimits != oldValue { refreshQuotaCycles() }
@@ -415,10 +416,14 @@ final class AppEnvironment {
         let p = RateLimitPoller(
             appServer: appServer,
             database: db,
-            interval: .seconds(interval)
+            interval: .seconds(interval),
+            onFailure: { [weak self] in
+                await MainActor.run { self?.rateLimitsRefreshFailed = true }
+            }
         ) { [weak self] snapshot in
             await MainActor.run {
                 guard let self else { return }
+                self.rateLimitsRefreshFailed = false
                 self.latestRateLimits = snapshot
                 self.lastRateLimitsRefreshAt = snapshot.capturedAt
                 self.applyCodexResetCreditsCountFallback(
@@ -1114,6 +1119,7 @@ final class AppEnvironment {
                     self.isRefreshingRateLimits = false
                     switch outcome {
                     case .success(let snapshot):
+                        self.rateLimitsRefreshFailed = false
                         self.latestRateLimits = snapshot
                         self.lastRateLimitsRefreshAt = snapshot.capturedAt
                         self.applyCodexResetCreditsCountFallback(
@@ -1142,6 +1148,7 @@ final class AppEnvironment {
                         fields["reason"] = .string(reasonLabel)
                         DeveloperLog.finishOperation(op, result: "skipped", fields: fields)
                     case .failure(let message):
+                        self.rateLimitsRefreshFailed = true
                         self.lastError = message
                         DeveloperLog.failOperation(
                             op,
@@ -1167,7 +1174,8 @@ final class AppEnvironment {
                 }
                 let snapshot = RateLimitSnapshot(from: payload)
                 await MainActor.run {
-                    self.latestRateLimits = snapshot
+                    self.rateLimitsRefreshFailed = false
+                self.latestRateLimits = snapshot
                     self.lastRateLimitsRefreshAt = Date()
                     self.applyCodexResetCreditsCountFallback(
                         snapshot.resetCreditsAvailable,
@@ -1181,7 +1189,10 @@ final class AppEnvironment {
                         "secondary_used_percent": .double(snapshot.secondary?.usedPercent ?? -1)
                     ])
             } catch {
-                await MainActor.run { self.lastError = String(describing: error) }
+                await MainActor.run {
+                    self.rateLimitsRefreshFailed = true
+                    self.lastError = String(describing: error)
+                }
                 DeveloperLog.failOperation(op, error: error)
             }
         }

@@ -23,6 +23,7 @@ extension Notification.Name {
 enum CodexSidebarQuotaStatus: Equatable {
     case disabled
     case waitingForCodex
+    case waitingForHeader
     case active
     case showingCached
     case quotaUnavailable

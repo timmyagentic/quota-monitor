@@ -30,6 +30,16 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The Codex quota widget now fits the sidebar header, with clearer remaining quota and click-to-open details.
+
+### Changed
+
+- **Sidebar quota readout.** A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details.
+- **Honest quota status.** Cached or failed refreshes are labelled explicitly, while missing windows stay absent and saved manual positions remain available.
+- **Safe automatic placement.** The widget requires a recognized header with enough space; expand the sidebar and allow Accessibility access if no safe slot is found.
+
 ## [1.0.8] — 2026-09-23
 
 #### Summary

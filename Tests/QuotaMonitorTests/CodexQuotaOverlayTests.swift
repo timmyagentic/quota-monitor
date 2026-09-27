@@ -264,321 +264,116 @@ struct CodexQuotaOverlayTests {
             displays: displays) == CGRect(x: -1_400, y: 280, width: 1_000, height: 700))
     }
 
-    @Test("Help-control selection follows sidebar popups and trailing buttons")
-    func selectsHelpControlAnchor() {
-        #expect(CodexHelpControlRolePolicy.supports(kAXButtonRole as String))
-        #expect(CodexHelpControlRolePolicy.supports(kAXPopUpButtonRole as String))
-        #expect(!CodexHelpControlRolePolicy.supports(kAXGroupRole as String))
-
-        let fullWidthWindow = CGRect(x: 0, y: 0, width: 1_920, height: 1_080)
-        let sidebarCandidates = [
-            CodexHelpControlCandidate(
-                frame: CGRect(x: 397, y: 1_041, width: 33, height: 32),
-                descriptors: ["Open help menu"]),
-            CodexHelpControlCandidate(
-                frame: CGRect(x: 1_871, y: 1_040, width: 33, height: 32),
-                descriptors: ["Open help"]),
-            CodexHelpControlCandidate(
-                frame: CGRect(x: 397, y: 80, width: 33, height: 32),
-                descriptors: ["Help"]),
-            CodexHelpControlCandidate(
-                frame: CGRect(x: 900, y: 1_041, width: 33, height: 32),
-                descriptors: ["Help"]),
-            CodexHelpControlCandidate(
-                frame: CGRect(x: 397, y: 1_041, width: 33, height: 32),
-                descriptors: ["Settings"])
-        ]
-
-        let sidebarAnchor = CodexHelpControlSelectionPolicy.anchor(
-            in: fullWidthWindow,
-            candidates: sidebarCandidates)
-        #expect(sidebarAnchor == CodexHelpControlAnchor(
-            horizontalReference: .windowLeadingInset(397)))
-        #expect(sidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
-        #expect(sidebarAnchor?.leadingX(
-            in: CGRect(x: 100, y: 50, width: 1_200, height: 700)) == 497)
-
-        let compactSidebarAnchor = CodexHelpControlSelectionPolicy.anchor(
-            in: CGRect(x: 0, y: 0, width: 490, height: 1_080),
-            candidates: [
-                sidebarCandidates[0],
-                CodexHelpControlCandidate(
-                    frame: CGRect(x: 450, y: 1_040, width: 32, height: 32),
-                    descriptors: ["Open help"])
-            ])
-        #expect(compactSidebarAnchor == CodexHelpControlAnchor(
-            horizontalReference: .windowLeadingInset(397)))
-        #expect(compactSidebarAnchor?.leadingX(in: fullWidthWindow) == 397)
-
-        #expect(CodexHelpControlSelectionPolicy.anchor(
-            in: fullWidthWindow,
-            candidates: Array(sidebarCandidates.dropFirst())) == CodexHelpControlAnchor(
-                horizontalReference: .windowTrailingInset(49)))
-        #expect(CodexHelpControlSelectionPolicy.anchor(
-            in: fullWidthWindow,
-            candidates: Array(sidebarCandidates.dropFirst(2))) == nil)
-
-        let compactWindow = CGRect(x: 100, y: 50, width: 490, height: 700)
-        let trailingAnchor = CodexHelpControlSelectionPolicy.anchor(
-            in: compactWindow,
-            candidates: [CodexHelpControlCandidate(
-                frame: CGRect(x: 550, y: 710, width: 32, height: 32),
-                descriptors: ["Open help"])])
-        #expect(trailingAnchor == CodexHelpControlAnchor(
-            horizontalReference: .windowTrailingInset(40)))
-        #expect(trailingAnchor?.leadingX(in: compactWindow) == 550)
-        #expect(trailingAnchor?.leadingX(
-            in: CGRect(x: 100, y: 50, width: 720, height: 700)) == 780)
+    @Test("Header discovery requires a title, an aligned action, and an empty gap")
+    func headerSelection() {
+        let host = CGRect(x: -1200, y: 100, width: 1200, height: 800)
+        let title = CodexSidebarHeaderCandidate(frame: CGRect(x: -1132, y: 146, width: 76, height: 28), descriptors: ["Codex"])
+        let search = CodexSidebarHeaderCandidate(frame: CGRect(x: -794, y: 146, width: 24, height: 28), descriptors: ["Search"])
+        let anchor = CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, search])
+        #expect(anchor == .init(leadingInset: 152, trailingXInset: 398, centerYInset: 60))
+        let narrowHost = CGRect(x: host.minX, y: host.minY, width: 480, height: 800)
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: narrowHost, candidates: [title, search]) == anchor)
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [search]) == nil)
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title]) == nil)
+        let obstacle = CodexSidebarHeaderCandidate(frame: CGRect(x: -1020, y: 146, width: 28, height: 28), descriptors: ["Another action"])
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, obstacle, search]) == nil)
+        let chatTitle = CodexSidebarHeaderCandidate(frame: CGRect(x: -500, y: 146, width: 76, height: 28), descriptors: ["Codex"])
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [chatTitle, search]) == nil)
     }
 
-    @Test("Help discovery retries off transient misses with bounded backoff")
+    @Test("Header discovery retries off transient misses with bounded backoff")
     func helpDiscoveryRetryPolicy() {
-        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(
             afterFailureCount: 1) == 0.5)
-        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(
             afterFailureCount: 2) == 1)
-        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(
             afterFailureCount: 3) == 2)
-        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(
             afterFailureCount: 4) == 4)
-        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(
             afterFailureCount: 5) == 8)
-        #expect(CodexHelpControlDiscoveryPolicy.retryInterval(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.retryInterval(
             afterFailureCount: 50) == 8)
 
         let now = Date(timeIntervalSince1970: 10_000)
         let later = now.addingTimeInterval(4)
-        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.shouldStart(
             now: now,
             nextAttemptAt: nil,
             isRunning: false,
             force: false))
-        #expect(!CodexHelpControlDiscoveryPolicy.shouldStart(
+        #expect(!CodexSidebarHeaderDiscoveryPolicy.shouldStart(
             now: now,
             nextAttemptAt: later,
             isRunning: true,
             force: true))
-        #expect(!CodexHelpControlDiscoveryPolicy.shouldStart(
+        #expect(!CodexSidebarHeaderDiscoveryPolicy.shouldStart(
             now: now,
             nextAttemptAt: later,
             isRunning: false,
             force: false))
-        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.shouldStart(
             now: later,
             nextAttemptAt: later,
             isRunning: false,
             force: false))
-        #expect(CodexHelpControlDiscoveryPolicy.shouldStart(
+        #expect(CodexSidebarHeaderDiscoveryPolicy.shouldStart(
             now: now,
             nextAttemptAt: later,
             isRunning: false,
             force: true))
     }
 
-    @Test("Overlay follows Help and uses the same Help-left slot without AX")
-    func accountRowLayout() {
-        let minimumWindow = CGRect(x: 0, y: 0, width: 480, height: 700)
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: minimumWindow,
-            helpControlLeadingX: 440)
-            == CGRect(x: 274, y: 12, width: 132, height: 25))
-
-        let referenceWindow = CGRect(x: 0, y: 0, width: 490, height: 700)
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: referenceWindow,
-            helpControlLeadingX: 450)
-            == CGRect(x: 284, y: 12, width: 132, height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: referenceWindow)
-            == CGRect(x: 231, y: 12, width: 132, height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: referenceWindow,
-            helpControlLeadingX: .infinity)
-            == CGRect(x: 231, y: 12, width: 132, height: 25))
-
-        let widerWindow = CGRect(x: 0, y: 0, width: 720, height: 700)
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: widerWindow,
-            helpControlLeadingX: 680)
-            == CGRect(x: 514, y: 12, width: 132, height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: widerWindow)
-            == CGRect(x: 231, y: 12, width: 132, height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700),
-            helpControlLeadingX: -240)
-            == CGRect(x: -406, y: 212, width: 132, height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: -1_200, y: 200, width: 1_000, height: 700))
-            == CGRect(x: -969, y: 212, width: 132, height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: CGRect(x: 20, y: 200, width: 120, height: 700))
-            == CGRect(x: 32, y: 212, width: 132, height: 25))
-
-        let manualTopTrailing = CodexSidebarQuotaPosition(
-            horizontalFraction: 1,
-            verticalFraction: 1)!
-        #expect(CodexSidebarQuotaPosition(
-            horizontalFraction: 2,
-            verticalFraction: -1) == CodexSidebarQuotaPosition(
-                horizontalFraction: 1,
-                verticalFraction: 0))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: widerWindow,
-            helpControlLeadingX: 680,
-            manualPosition: manualTopTrailing)
-            == CGRect(x: 576, y: 663, width: 132, height: 25))
-        let centeredManualFrame = CGRect(
-            x: 294,
-            y: 337.5,
-            width: 132,
-            height: 25)
-        #expect(CodexQuotaOverlayLayout.manualPosition(
-            for: centeredManualFrame,
-            in: widerWindow) == CodexSidebarQuotaPosition(
-                horizontalFraction: 0.5,
-                verticalFraction: 0.5))
-        #expect(CodexQuotaOverlayLayout.clampedFrame(
-            CGRect(x: -100, y: 900, width: 132, height: 25),
-            in: widerWindow) == CGRect(
-                x: 12,
-                y: 663,
-                width: 132,
-                height: 25))
-
-        let weeklyOnly = CodexQuotaOverlayPresentation.make(
-            snapshot: snapshot(
-                primary: nil,
-                secondary: window(usedPercent: 20)),
-            displayMode: .used,
-            now: now)
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: referenceWindow,
-            presentation: weeklyOnly,
-            helpControlLeadingX: 450) == CGRect(
-                x: 332,
-                y: 12,
-                width: 84,
-                height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: widerWindow,
-            presentation: weeklyOnly).maxX == 363)
-        let currentFullWidthWindow = CGRect(
-            x: 0,
-            y: 0,
-            width: 1_920,
-            height: 1_080)
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: currentFullWidthWindow,
-            presentation: weeklyOnly,
-            helpControlLeadingX: 397) == CGRect(
-                x: 279,
-                y: 12,
-                width: 84,
-                height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: currentFullWidthWindow,
-            presentation: weeklyOnly) == CGRect(
-                x: 279,
-                y: 12,
-                width: 84,
-                height: 25))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: currentFullWidthWindow) == CodexQuotaOverlayLayout.frame(
-                in: currentFullWidthWindow,
-                helpControlLeadingX: 397))
-        #expect(CodexQuotaOverlayLayout.frame(
-            in: widerWindow,
-            presentation: weeklyOnly,
-            helpControlLeadingX: 680).maxX == CodexQuotaOverlayLayout.frame(
-                in: widerWindow,
-                helpControlLeadingX: 680).maxX)
-        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
-            presentation: weeklyOnly,
-            resetCredits: nil) == 97)
+    @Test("Header layout adapts to measured space, never guesses, and preserves manual placement")
+    func headerLayout() throws {
+        let host = CGRect(x: -1200, y: 200, width: 1200, height: 800)
+        let weekly = CodexQuotaOverlayPresentation.make(snapshot: snapshot(primary: nil, secondary: window(usedPercent: 8)), displayMode: .remaining, now: now)
+        let wide = CodexSidebarHeaderAnchor(leadingInset: 152, trailingXInset: 400, centerYInset: 60)
+        let placement = try #require(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: weekly, header: wide))
+        #expect(placement.frame == CGRect(x: -1048, y: 926, width: 148, height: 28))
+        #expect(!placement.compact)
+        let narrow = CodexSidebarHeaderAnchor(leadingInset: 152, trailingXInset: 250, centerYInset: 60)
+        let compact = try #require(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: weekly, header: narrow))
+        #expect(compact.compact && compact.frame.width == 88)
+        #expect(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: weekly, header: nil) == nil)
+        let tooSmall = CodexSidebarHeaderAnchor(leadingInset: 152, trailingXInset: 239, centerYInset: 60)
+        #expect(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: weekly, header: tooSmall) == nil)
+        let dual = CodexQuotaOverlayPresentation.make(snapshot: snapshot(primary: window(usedPercent: 42), secondary: window(usedPercent: 8)), displayMode: .remaining, now: now)
+        #expect(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: dual, header: wide)?.frame.width == 248)
+        #expect(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: dual, header: narrow) == nil)
+        let position = try #require(CodexSidebarQuotaPosition(horizontalFraction: 1, verticalFraction: 1))
+        let manual = try #require(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: weekly, header: nil, manualPosition: position))
+        #expect(manual.frame.maxX == host.maxX - 12)
+        #expect(manual.frame.maxY == host.maxY - 12)
+        #expect(CodexQuotaOverlayLayout.manualPosition(for: manual.frame, in: host) == position)
     }
 
-    @Test("Hover details occupy the sidebar above the established account row")
-    func hoverDetailsLayout() {
-        let rateLimits = snapshot(
-            primary: window(usedPercent: 37),
-            secondary: window(usedPercent: 18))
-        let presentation = CodexQuotaOverlayPresentation.make(
-            snapshot: rateLimits,
-            displayMode: .used,
-            now: now)
-        let resetCredits = CodexQuotaOverlayResetCreditsPresentation(
-            availableCount: 3,
-            expirations: [
-                now.addingTimeInterval(86_400),
-                now.addingTimeInterval(172_800),
-                now.addingTimeInterval(259_200)
-            ])
+    @Test("Details open below the header, clamp on short screens, and retain all windows and credits")
+    func detailsLayout() {
+        let host = CGRect(x: -1200, y: 200, width: 1200, height: 800)
+        let summary = CGRect(x: -1048, y: 926, width: 148, height: 28)
+        let frame = CodexQuotaOverlayLayout.detailsFrame(in: host, summaryFrame: summary, contentHeight: 190)
+        #expect(frame == CGRect(x: -1048, y: 730, width: 272, height: 190))
+        let weekly = CodexQuotaOverlayPresentation.make(snapshot: snapshot(primary: nil, secondary: window(usedPercent: 8)), displayMode: .remaining, now: now)
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(presentation: weekly, resetCredits: nil) == 190)
+        let dual = CodexQuotaOverlayPresentation.make(snapshot: snapshot(primary: window(usedPercent: 42), secondary: window(usedPercent: 8)), displayMode: .remaining, now: now)
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(presentation: dual, resetCredits: nil) == 303)
+        let credits = CodexQuotaOverlayResetCreditsPresentation(availableCount: 1, expirations: [now.addingTimeInterval(3600)])
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(presentation: dual, resetCredits: credits) > 303)
+        let shortHost = CGRect(x: 0, y: 0, width: 480, height: 320)
+        let clamped = CodexQuotaOverlayLayout.detailsFrame(in: shortHost, summaryFrame: CGRect(x: 320, y: 250, width: 148, height: 28), contentHeight: 400)
+        #expect(shortHost.contains(clamped))
+        #expect(clamped.height < 400)
+        let missing = CodexQuotaOverlayPresentation.make(snapshot: nil, displayMode: .remaining, now: now)
+        #expect(CodexQuotaOverlayLayout.detailsContentHeight(presentation: missing, resetCredits: nil) == 190)
+    }
 
-        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
-            presentation: presentation,
-            resetCredits: nil) == 158)
-        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
-            presentation: presentation,
-            resetCredits: resetCredits) == 238)
-        #expect(CodexQuotaOverlayLayout.detailsFrame(
-            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            contentHeight: 222,
-            helpControlLeadingX: 1_880) == CGRect(
-                x: 1_558,
-                y: 43,
-                width: 288,
-                height: 222))
-        #expect(CodexQuotaOverlayLayout.detailsFrame(
-            in: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
-            contentHeight: 222) == CGRect(
-                x: 75,
-                y: 43,
-                width: 288,
-                height: 222))
-        #expect(CodexQuotaOverlayLayout.detailsFrame(
-            in: CGRect(x: 0, y: 0, width: 720, height: 700),
-            summaryFrame: CGRect(x: 294, y: 337.5, width: 132, height: 25),
-            contentHeight: 222) == CGRect(
-                x: 138,
-                y: 368.5,
-                width: 288,
-                height: 222))
-        #expect(CodexQuotaOverlayLayout.detailsFrame(
-            in: CGRect(x: 0, y: 0, width: 720, height: 700),
-            summaryFrame: CGRect(x: 576, y: 650, width: 132, height: 25),
-            contentHeight: 222) == CGRect(
-                x: 420,
-                y: 422,
-                width: 288,
-                height: 222))
-
-        let cached = CodexQuotaOverlayPresentation.make(
-            snapshot: snapshot(
-                capturedOffset: -(16 * 60),
-                primary: window(usedPercent: 37),
-                secondary: window(usedPercent: 18)),
-            displayMode: .used,
-            now: now)
-        #expect(cached.isCached)
-        #expect(CodexQuotaOverlayLayout.detailsContentHeight(
-            presentation: cached,
-            resetCredits: nil) == 158)
-        #expect(CodexQuotaOverlayLayout.detailsFrame(
-            in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
-            contentHeight: 300,
-            helpControlLeadingX: -640) == CGRect(
-                x: -962,
-                y: 243,
-                width: 288,
-                height: 265))
-        #expect(CodexQuotaOverlayLayout.detailsFrame(
-            in: CGRect(x: -1_200, y: 200, width: 600, height: 320),
-            contentHeight: 300) == CGRect(
-                x: -1_125,
-                y: 243,
-                width: 288,
-                height: 265))
+    @Test("A failed refresh marks even recent data stale without inventing missing windows")
+    func failedRefresh() {
+        let cached = CodexQuotaOverlayPresentation.make(snapshot: snapshot(primary: nil, secondary: window(usedPercent: 8)), displayMode: .remaining, now: now, refreshFailed: true)
+        #expect(cached.isCached && cached.weekly?.percent == 92)
+        #expect(cached.fiveHour == nil)
     }
 
     @Test("Mouse-down dismissal keeps only overlay-owned interactions open")
@@ -804,7 +599,7 @@ struct CodexQuotaOverlayTests {
             encoding: .utf8)
         let helpControlSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
-                "QuotaMonitor/App/CodexHelpControlAccessibility.swift"),
+                "QuotaMonitor/App/CodexSidebarHeaderAccessibility.swift"),
             encoding: .utf8)
         let viewSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
@@ -825,7 +620,7 @@ struct CodexQuotaOverlayTests {
         #expect(!helpControlSource.contains("kAXTrustedCheckOptionPrompt"))
         #expect(helpControlSource.contains("maximumVisitedElements = 600"))
         #expect(source.contains("Task.detached(priority: .utility)"))
-        #expect(source.contains("helpControlNextDiscoveryAt"))
+        #expect(source.contains("headerNextDiscoveryAt"))
         #expect(source.contains("workspace.runningApplications"))
         #expect(source.contains("updateTrackingInterval(nil)"))
         #expect(source.contains(
@@ -837,7 +632,6 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("panel.level = .floating"))
         #expect(source.contains(
             "panel.order(.above, relativeTo: codexWindowNumber)"))
-        #expect(source.contains("onHoverChanged"))
         #expect(source.contains("summaryDragBegan"))
         #expect(source.contains("summaryDragChanged"))
         let pressHandler = try #require(source.range(
@@ -861,29 +655,16 @@ struct CodexQuotaOverlayTests {
         #expect(source.contains("detailsPanel"))
         #expect(source.contains("addGlobalMonitorForEvents"))
         #expect(!source.contains("isDetailsPinned"))
-        #expect(viewSource.contains("Text(Branding.appDisplayName)"))
         #expect(viewSource.contains("ViewThatFits(in: .vertical)"))
         #expect(viewSource.contains(
             ".fixedSize(horizontal: false, vertical: true)"))
         #expect(viewSource.contains("ScrollView(.vertical)"))
         #expect(viewSource.contains(".scrollIndicators(.hidden)"))
-        #expect(viewSource.contains("QuotaWindowCompactLabel.fiveHour"))
-        #expect(viewSource.contains("QuotaWindowCompactLabel.sevenDay"))
-        #expect(viewSource.contains("Text(QuotaWindowCompactLabel.segment("))
-        #expect(viewSource.contains("style: settings.menuBarLabelStyle"))
         #expect(!viewSource.contains("private func metricAccent"))
         #expect(!viewSource.contains(".fill(Material.ultraThin)"))
         #expect(!viewSource.contains(".fill(.regularMaterial)"))
         #expect(viewSource.contains(
-            ".fill(Color.primary.opacity(isHovering ? 0.035 : 0.018))"))
-        #expect(viewSource.contains(
-            "color: .black.opacity(isHovering ? 0.13 : 0)"))
-        #expect(viewSource.contains(
             ".fill(Color(nsColor: .windowBackgroundColor))"))
-        #expect(viewSource.contains(
-            ".primary.opacity(isHovering ? 0.12 : 0.055)"))
-        #expect(viewSource.contains(
-            "lineWidth: isHovering ? 0.75 : 0.5"))
         let pollingStart = try #require(
             appDelegate.range(of: "env.startBackgroundPolling()"))
         let overlayStart = try #require(
