@@ -26,6 +26,11 @@ struct CodexSidebarHeaderCandidate: Equatable {
 enum CodexSidebarHeaderDiscoveryPolicy {
     static let anchoredRefreshInterval: TimeInterval = 10
 
+    static func invalidatesAnchor(previousBounds: CGRect?, currentBounds: CGRect) -> Bool {
+        // Anchors are window-relative. A translation does not change the slot.
+        previousBounds?.size != currentBounds.size
+    }
+
     static func retryInterval(afterFailureCount failureCount: Int) -> TimeInterval {
         let exponent = min(max(0, failureCount - 1), 4)
         return min(8, 0.5 * pow(2, Double(exponent)))
@@ -114,6 +119,17 @@ enum CodexSidebarHeaderSelectionPolicy {
 }
 
 enum CodexSidebarHeaderAccessibility {
+    static func mainWindow(for processIdentifier: pid_t) -> CodexMainWindowReadResult {
+        CodexMainWindowReader.read(application: Element(AXUIElementCreateApplication(processIdentifier)),
+            access: CodexMainWindowAccess(
+                isTrusted: AXIsProcessTrusted(),
+                role: { stringAttribute($0.value, kAXRoleAttribute as CFString) },
+                subrole: { stringAttribute($0.value, kAXSubroleAttribute as CFString) },
+                frame: { frame(of: $0.value) },
+                mainWindow: { element($0.value, kAXMainWindowAttribute as CFString) },
+                isCancelled: { currentTaskIsCancelled }))
+    }
+
     /// Read only, bounded, and never prompts for permission: an unrecognized header yields
     /// no automatic placement instead of guessing over the host's content.
     static func read(
@@ -135,7 +151,14 @@ enum CodexSidebarHeaderAccessibility {
                         stringAttribute(element.value, $0 as CFString)
                     }
                 },
+                mainWindow: { element($0.value, kAXMainWindowAttribute as CFString) },
                 isCancelled: { currentTaskIsCancelled }))
+    }
+
+    private static func element(_ element: AXUIElement, _ name: CFString) -> Element? {
+        guard let value = attribute(element, name),
+              CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return Element(unsafeDowncast(value, to: AXUIElement.self))
     }
 
     private struct Element: Hashable {

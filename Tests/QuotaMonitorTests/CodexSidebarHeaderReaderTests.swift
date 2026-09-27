@@ -136,6 +136,15 @@ struct CodexSidebarHeaderReaderTests {
         #expect(result.unavailableStatus == .headerSpaceUnavailable)
     }
 
+    @Test("An overlapping popup cannot borrow the document's accessibility tree")
+    func overlappingWindowMismatch() {
+        let tree = tree()
+        let popup = CGRect(x: 650, y: 350, width: 600, height: 400)
+        let result = CodexSidebarHeaderReader.read(application: 0, windowFrame: popup, access: tree.access)
+        #expect(result.failure == .windowUnavailable)
+        #expect(tree.descriptorReads.isEmpty)
+    }
+
     @Test("Failure hints distinguish permission, unreadable controls, and an unrecognized header")
     func failureHints() {
         #expect(CodexSidebarHeaderReadResult(failure: .permissionRequired).unavailableStatus == .accessibilityPermissionRequired)
@@ -143,6 +152,28 @@ struct CodexSidebarHeaderReaderTests {
             #expect(CodexSidebarHeaderReadResult(failure: failure).unavailableStatus == .waitingForInterface)
         }
         #expect(CodexSidebarHeaderReadResult(failure: .headerNotFound).unavailableStatus == .waitingForHeader)
+    }
+
+    @Test("Temporary AX unavailability preserves a measured slot but a changed header does not")
+    func transientReadPreservesAnchor() {
+        let anchor = CodexSidebarHeaderAnchor(leadingInset: 152, trailingXInset: 398, centerYInset: 60)
+        for failure: CodexSidebarHeaderReadFailure in [.windowUnavailable, .treeUnavailable, .traversalLimit, .cancelled] {
+            let result = CodexSidebarHeaderReadResult(failure: failure)
+            #expect(result.anchorForPlacement(previous: anchor) == anchor)
+            #expect(result.anchorForPlacement(previous: nil) == nil)
+        }
+        for failure: CodexSidebarHeaderReadFailure in [.permissionRequired, .headerNotFound, .insufficientSpace] {
+            #expect(CodexSidebarHeaderReadResult(failure: failure).anchorForPlacement(previous: anchor) == nil)
+        }
+    }
+
+    @Test("Moving the document preserves its relative slot; resizing invalidates it")
+    func documentTranslation() {
+        #expect(!CodexSidebarHeaderDiscoveryPolicy.invalidatesAnchor(
+            previousBounds: host, currentBounds: host.offsetBy(dx: -1400, dy: 200)))
+        #expect(CodexSidebarHeaderDiscoveryPolicy.invalidatesAnchor(previousBounds: host,
+            currentBounds: CGRect(x: 100, y: 100, width: 900, height: 800)))
+        #expect(CodexSidebarHeaderDiscoveryPolicy.invalidatesAnchor(previousBounds: nil, currentBounds: host))
     }
 }
 

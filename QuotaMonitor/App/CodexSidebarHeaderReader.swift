@@ -18,6 +18,14 @@ struct CodexSidebarHeaderReadResult: Equatable, Sendable {
     var candidateCount = 0
     var webAreaCount = 0
 
+    func anchorForPlacement(previous: CodexSidebarHeaderAnchor?) -> CodexSidebarHeaderAnchor? {
+        if let anchor { return anchor }
+        switch failure {
+        case .windowUnavailable, .treeUnavailable, .traversalLimit, .cancelled: return previous
+        default: return nil
+        }
+    }
+
     var unavailableStatus: CodexSidebarQuotaStatus {
         if anchor != nil { return .headerSpaceUnavailable }
         switch failure {
@@ -37,6 +45,7 @@ struct CodexSidebarHeaderAccess<Element: Hashable> {
     var windows: (Element) -> [Element]
     var children: (Element) -> [Element]
     var descriptors: (Element) -> [String]
+    var mainWindow: (Element) -> Element? = { _ in nil }
     var isCancelled: () -> Bool = { false }
     var uptime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
 }
@@ -57,14 +66,11 @@ enum CodexSidebarHeaderReader {
         // Chromium activates native accessibility on an application-role read.
         // Starting at AXWindows can leave a cold renderer tree uninitialized.
         guard access.role(application) != nil else { return .init(failure: .treeUnavailable) }
-        let windows = access.windows(application)
-        func intersectionArea(_ element: Element) -> CGFloat {
-            guard let frame = access.frame(element) else { return 0 }
-            let area = frame.intersection(windowFrame)
-            return area.isNull ? 0 : area.width * area.height
+        let matches = access.windows(application).filter { element in
+            access.frame(element).map { CodexWindowSelectionPolicy.framesMatch($0, windowFrame) } ?? false
         }
-        guard let window = windows.max(by: { intersectionArea($0) < intersectionArea($1) }),
-              intersectionArea(window) > 0 else {
+        let main = access.mainWindow(application)
+        guard let window = matches.count == 1 ? matches.first : matches.first(where: { $0 == main }) else {
             return .init(failure: .windowUnavailable)
         }
 

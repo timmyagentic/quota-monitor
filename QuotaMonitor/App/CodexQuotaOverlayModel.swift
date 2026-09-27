@@ -174,9 +174,8 @@ struct CodexWindowCandidate: Equatable {
 enum CodexWindowSelectionPolicy {
     static let minimumWindowSize = CGSize(width: 480, height: 320)
 
-    /// `CGWindowListCopyWindowInfo` returns windows front-to-back. Keeping
-    /// that order selects the active Codex document when more than one is
-    /// open, while the size and layer checks reject Electron helper surfaces.
+    /// Front order is only a discovery trigger: a large preview can also be
+    /// a layer-zero window, so it cannot establish document identity.
     static func frontWindow(
         for processIdentifier: pid_t,
         candidates: [CodexWindowCandidate]
@@ -190,18 +189,42 @@ enum CodexWindowSelectionPolicy {
         for processIdentifier: pid_t,
         lastWindowNumber: Int?,
         codexIsFrontmost: Bool,
+        mainWindowNumber: Int? = nil,
         candidates: [CodexWindowCandidate]
     ) -> CodexWindowCandidate? {
-        if codexIsFrontmost {
-            return frontWindow(
-                for: processIdentifier,
-                candidates: candidates)
-        }
-        guard let lastWindowNumber else { return nil }
+        let target = codexIsFrontmost ? (mainWindowNumber ?? lastWindowNumber) : lastWindowNumber
+        guard let target else { return nil }
         return candidates.first { candidate in
-            candidate.windowNumber == lastWindowNumber
+            candidate.windowNumber == target
                 && isEligibleWindow(candidate, for: processIdentifier)
         }
+    }
+
+    static func windowMatchingMainFrame(
+        _ frame: CGRect,
+        for processIdentifier: pid_t,
+        previousWindowNumber: Int?,
+        candidates: [CodexWindowCandidate]
+    ) -> CodexWindowCandidate? {
+        let matches = eligibleWindows(for: processIdentifier, candidates: candidates).filter {
+            framesMatch($0.bounds, frame)
+        }
+        if matches.count == 1 { return matches.first }
+        // Equal bounds do not establish a new window identity. Retain a
+        // previously confirmed document instead of choosing by z-order.
+        return matches.first { $0.windowNumber == previousWindowNumber }
+    }
+
+    static func eligibleWindows(
+        for processIdentifier: pid_t,
+        candidates: [CodexWindowCandidate]
+    ) -> [CodexWindowCandidate] {
+        candidates.filter { isEligibleWindow($0, for: processIdentifier) }
+    }
+
+    static func framesMatch(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+        abs(lhs.minX - rhs.minX) <= 2 && abs(lhs.minY - rhs.minY) <= 2
+            && abs(lhs.width - rhs.width) <= 2 && abs(lhs.height - rhs.height) <= 2
     }
 
     static func isWindow(
