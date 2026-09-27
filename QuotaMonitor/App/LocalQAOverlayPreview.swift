@@ -18,6 +18,8 @@ final class LocalQAOverlayPreview {
     var narrow = false
     var dark = false
     var scenario = "Weekly"
+    private(set) var transientWindow: NSPanel?
+    var transientVisible = false
 
     var sidebarWidth: CGFloat { narrow ? 320 : 438 }
     var header: CodexSidebarHeaderAnchor? {
@@ -79,6 +81,31 @@ final class LocalQAOverlayPreview {
     }
 
     func toggleWidth() { narrow.toggle(); updateLayout() }
+    func toggleTransientWindow() {
+        if transientVisible {
+            if let transientWindow { window.removeChildWindow(transientWindow); transientWindow.orderOut(nil) }
+            transientVisible = false
+        } else {
+            let popup = transientWindow ?? NSPanel(contentRect: CGRect(
+                x: window.frame.maxX - 640, y: window.frame.minY + 40, width: 600, height: 360),
+                styleMask: [.titled, .nonactivatingPanel], backing: .buffered, defer: false)
+            popup.title = "QA · Transient preview"
+            popup.identifier = NSUserInterfaceItemIdentifier("codex-overlay-qa-popup")
+            popup.isFloatingPanel = false
+            popup.level = .normal
+            popup.hidesOnDeactivate = false
+            popup.isReleasedWhenClosed = false
+            popup.contentView = NSHostingView(rootView: VStack(spacing: 20) {
+                Text(verbatim: "Transient preview · the quota must stay with the main window")
+                Button("Close preview") { [weak self] in self?.toggleTransientWindow() }
+            }.frame(width: 600, height: 360))
+            transientWindow = popup
+            window.addChildWindow(popup, ordered: .above)
+            popup.orderFront(nil)
+            transientVisible = true
+        }
+        updateLayout()
+    }
     func placeAtPreviousPosition() {
         settings.codexSidebarQuotaPosition = CodexSidebarQuotaPosition(
             horizontalFraction: 0.18, verticalFraction: 0.02)
@@ -157,6 +184,7 @@ private struct LocalQAOverlayPreviewView: View {
                         HStack {
                             Button("Inspect floating windows") { preview.onInspectPanels?() }
                             Button("Previous position") { preview.placeAtPreviousPosition() }
+                            Button("Transient preview") { preview.toggleTransientWindow() }
                         }
                         HStack {
                             Button("Reset position") { preview.onResetPosition?() }

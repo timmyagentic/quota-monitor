@@ -24,6 +24,9 @@ enum CodexSidebarQuotaStatus: Equatable {
     case disabled
     case waitingForCodex
     case waitingForHeader
+    case accessibilityPermissionRequired
+    case waitingForInterface
+    case headerSpaceUnavailable
     case active
     case showingCached
     case quotaUnavailable

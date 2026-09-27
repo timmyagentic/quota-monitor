@@ -22,9 +22,18 @@ final class CodexQuotaOverlayController: NSObject {
     private var lastRefreshRequestAt: Date?
     private var lastFrontmostPID: pid_t?
     private var trackedCodexPID: pid_t?
+    private var mainWindowNumber: Int?
+    private var mainWindowReadResult: CodexMainWindowReadResult?
+    private var mainWindowDiscoveryTask: Task<Void, Never>?
+    private var mainWindowDiscoveryGeneration = 0
+    private var mainWindowDiscoveryPID: pid_t?
+    private var mainWindowDiscoveryOrder: [Int] = []
+    private var mainWindowNextDiscoveryAt: Date?
+    private var mainWindowFailureCount = 0
     private var lastCodexWindowNumber: Int?
     private var lastCodexWindowFrame: CGRect?
     private var headerAnchor: CodexSidebarHeaderAnchor?
+    private var headerReadResult: CodexSidebarHeaderReadResult?
     private var headerDiscoveryTask: Task<Void, Never>?
     private var headerDiscoveryGeneration = 0
     private var headerDiscoveryFailureCount = 0
@@ -91,6 +100,7 @@ final class CodexQuotaOverlayController: NSObject {
         trackingInterval = nil
         workspace.notificationCenter.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
+        resetMainWindowDiscovery()
         hideOverlay()
         panel = nil
         detailsPanel = nil
@@ -99,6 +109,7 @@ final class CodexQuotaOverlayController: NSObject {
 
     func showDetailsForLocalQA(outputDirectory: URL) {
         guard LocalQAEnvironment.isQARequested() else { return }
+        resetMainWindowDiscovery()
         hideOverlay()
         qaPreview = LocalQAOverlayPreview(environment: environment, settings: settings, outputDirectory: outputDirectory)
         qaPreview?.onLayoutChanged = { [weak self] in
@@ -142,12 +153,23 @@ final class CodexQuotaOverlayController: NSObject {
             isCodexFrontmost = NSApp.isActive
             guard qaPreview.window.isVisible else { hideOverlay(); return }
             if !isCodexFrontmost { resetSummaryDrag(); closeDetails() }
+            // The owned fixture supplies AppKit's real main-window identity;
+            // the same CG selection/rendering path then sees its real popup.
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            let windows = Self.onScreenWindows()
+            let selected = CodexWindowSelectionPolicy.trackedWindow(for: ownPID,
+                lastWindowNumber: lastCodexWindowNumber, codexIsFrontmost: isCodexFrontmost,
+                mainWindowNumber: NSApp.mainWindow?.windowNumber, candidates: windows)
+            guard let selected,
+                  let frame = CodexWindowFrameConverter.appKitFrame(
+                    for: selected.bounds, displays: Self.displayGeometries()) else { hideOverlay(); return }
+            lastCodexWindowNumber = selected.windowNumber
             let presentation = CodexQuotaOverlayPresentation.make(
                 snapshot: environment.latestRateLimits, displayMode: settings.quotaDisplayMode)
-            showOverlay(in: qaPreview.window.frame, presentation: presentation,
+            showOverlay(in: frame, presentation: presentation,
                 header: qaPreview.header,
                 placement: isCodexFrontmost ? .foreground : .background,
-                relativeTo: qaPreview.window.windowNumber, shouldRaise: true)
+                relativeTo: selected.windowNumber, shouldRaise: true)
             updateTrackingInterval(Self.foregroundTrackingInterval)
             return
         }
@@ -155,6 +177,7 @@ final class CodexQuotaOverlayController: NSObject {
             lastFrontmostPID = nil
             trackedCodexPID = nil
             isCodexFrontmost = false
+            resetMainWindowDiscovery()
             hideOverlay()
             setStatus(.disabled)
             updateTrackingInterval(Self.backgroundTrackingInterval)
@@ -174,6 +197,7 @@ final class CodexQuotaOverlayController: NSObject {
             lastFrontmostPID = nil
             trackedCodexPID = nil
             isCodexFrontmost = false
+            resetMainWindowDiscovery()
             hideOverlay()
             setStatus(.waitingForCodex)
             // Application launch notifications wake the scanner when Codex
@@ -213,11 +237,16 @@ final class CodexQuotaOverlayController: NSObject {
         }
 
         let onScreenWindows = Self.onScreenWindows()
+        if let trackedCodexPID {
+            refreshMainWindowIfNeeded(for: trackedCodexPID, candidates: onScreenWindows,
+                becameFrontmost: becameFrontmost, now: now)
+        }
         let window = trackedCodexPID.flatMap {
             CodexWindowSelectionPolicy.trackedWindow(
                 for: $0,
                 lastWindowNumber: lastCodexWindowNumber,
                 codexIsFrontmost: isCodexFrontmost,
+                mainWindowNumber: mainWindowNumber,
                 candidates: onScreenWindows)
         }
         let placement = CodexQuotaOverlayVisibilityPolicy.placement(
@@ -233,12 +262,25 @@ final class CodexQuotaOverlayController: NSObject {
                 trackedCodexPID = nil
             }
             hideOverlay()
-            setStatus(.waitingForCodex)
+            let hasCodexWindow = trackedCodexPID.map {
+                !CodexWindowSelectionPolicy.eligibleWindows(for: $0, candidates: onScreenWindows).isEmpty
+            } ?? false
+            if isCodexFrontmost && hasCodexWindow {
+                setStatus(mainWindowReadResult?.failure == .permissionRequired
+                    ? .accessibilityPermissionRequired : .waitingForInterface)
+            } else {
+                setStatus(.waitingForCodex)
+            }
             updateTrackingInterval(
                 isCodexFrontmost
                     ? Self.foregroundTrackingInterval
                     : Self.backgroundTrackingInterval)
             return
+        }
+
+        if let lastCodexWindowNumber, lastCodexWindowNumber != window.windowNumber {
+            resetSummaryDrag()
+            closeDetails()
         }
 
         let presentation = CodexQuotaOverlayPresentation.make(
@@ -268,7 +310,7 @@ final class CodexQuotaOverlayController: NSObject {
                 || !overlayIsAboveCodex)
         lastCodexWindowNumber = window.windowNumber
         if panel?.isVisible != true {
-            setStatus(.waitingForHeader)
+            setStatus(headerReadResult?.unavailableStatus ?? .waitingForInterface)
         } else if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
         } else if presentation.isCached {
@@ -280,6 +322,80 @@ final class CodexQuotaOverlayController: NSObject {
             isCodexFrontmost
                 ? Self.foregroundTrackingInterval
                 : Self.backgroundTrackingInterval)
+    }
+
+    private func refreshMainWindowIfNeeded(
+        for processIdentifier: pid_t,
+        candidates: [CodexWindowCandidate],
+        becameFrontmost: Bool,
+        now: Date
+    ) {
+        if mainWindowDiscoveryPID != processIdentifier {
+            resetMainWindowDiscovery()
+            mainWindowDiscoveryPID = processIdentifier
+        }
+        let order = CodexWindowSelectionPolicy.eligibleWindows(
+            for: processIdentifier, candidates: candidates).map(\.windowNumber)
+        let orderChanged = order != mainWindowDiscoveryOrder
+        guard isCodexFrontmost,
+              CodexSidebarHeaderDiscoveryPolicy.shouldStart(now: now,
+                nextAttemptAt: mainWindowNextDiscoveryAt,
+                isRunning: mainWindowDiscoveryTask != nil,
+                force: becameFrontmost || orderChanged) else { return }
+        mainWindowDiscoveryOrder = order
+        mainWindowDiscoveryGeneration &+= 1
+        let generation = mainWindowDiscoveryGeneration
+        mainWindowDiscoveryTask = Task.detached(priority: .utility) { [weak self] in
+            let result = CodexSidebarHeaderAccessibility.mainWindow(for: processIdentifier)
+            guard !Task.isCancelled else { return }
+            await self?.completeMainWindowDiscovery(result, for: processIdentifier, generation: generation)
+        }
+    }
+
+    private func completeMainWindowDiscovery(
+        _ result: CodexMainWindowReadResult,
+        for processIdentifier: pid_t,
+        generation: Int
+    ) {
+        guard mainWindowDiscoveryGeneration == generation else { return }
+        mainWindowDiscoveryTask = nil
+        guard isStarted, qaPreview == nil, isCodexFrontmost,
+              trackedCodexPID == processIdentifier else { return }
+        let matched = result.frame.flatMap {
+            CodexWindowSelectionPolicy.windowMatchingMainFrame($0, for: processIdentifier,
+                previousWindowNumber: mainWindowNumber, candidates: Self.onScreenWindows())
+        }
+        if mainWindowReadResult != result || matched?.windowNumber != mainWindowNumber {
+            DeveloperLog.eventRecord("codex_overlay.main_window", category: "codex_overlay",
+                result: matched != nil ? "matched" : result.failure?.rawValue ?? "geometryUnmatched")
+        }
+        mainWindowReadResult = result
+        let now = Date()
+        if let matched {
+            mainWindowNumber = matched.windowNumber
+            mainWindowFailureCount = 0
+            mainWindowNextDiscoveryAt = now.addingTimeInterval(
+                CodexSidebarHeaderDiscoveryPolicy.anchoredRefreshInterval)
+        } else {
+            // A transient focused surface must not discard a confirmed document.
+            // CG visibility still hides it if that document is closed/minimized.
+            mainWindowFailureCount += 1
+            mainWindowNextDiscoveryAt = now.addingTimeInterval(
+                CodexSidebarHeaderDiscoveryPolicy.retryInterval(afterFailureCount: mainWindowFailureCount))
+        }
+        refreshOverlay(now: now)
+    }
+
+    private func resetMainWindowDiscovery() {
+        mainWindowDiscoveryGeneration &+= 1
+        mainWindowDiscoveryTask?.cancel()
+        mainWindowDiscoveryTask = nil
+        mainWindowNumber = nil
+        mainWindowReadResult = nil
+        mainWindowDiscoveryPID = nil
+        mainWindowDiscoveryOrder = []
+        mainWindowNextDiscoveryAt = nil
+        mainWindowFailureCount = 0
     }
 
     private func refreshHeaderAnchorIfNeeded(
@@ -296,7 +412,8 @@ final class CodexQuotaOverlayController: NSObject {
         let targetChanged = headerDiscoveryPID != processIdentifier
             || headerDiscoveryWindowNumber != window.windowNumber
         let layoutChanged = !targetChanged
-            && headerDiscoveryWindowBounds != window.bounds
+            && CodexSidebarHeaderDiscoveryPolicy.invalidatesAnchor(
+                previousBounds: headerDiscoveryWindowBounds, currentBounds: window.bounds)
 
         if targetChanged {
             resetHeaderDiscovery(clearAnchor: true)
@@ -305,8 +422,11 @@ final class CodexQuotaOverlayController: NSObject {
             headerDiscoveryWindowBounds = window.bounds
         } else if layoutChanged {
             headerAnchor = nil
+            headerReadResult = nil
             headerDiscoveryWindowBounds = window.bounds
             headerNextDiscoveryAt = now
+        } else {
+            headerDiscoveryWindowBounds = window.bounds
         }
 
         guard isCodexFrontmost,
@@ -331,12 +451,12 @@ final class CodexQuotaOverlayController: NSObject {
         headerDiscoveryGeneration &+= 1
         let generation = headerDiscoveryGeneration
         headerDiscoveryTask = Task.detached(priority: .utility) { [weak self] in
-            let anchor = CodexSidebarHeaderAccessibility.anchor(
+            let result = CodexSidebarHeaderAccessibility.read(
                 for: processIdentifier,
                 in: windowBounds)
             guard !Task.isCancelled else { return }
             await self?.completeHeaderDiscovery(
-                anchor: anchor,
+                result: result,
                 processIdentifier: processIdentifier,
                 windowNumber: windowNumber,
                 windowBounds: windowBounds,
@@ -346,7 +466,7 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func completeHeaderDiscovery(
-        anchor: CodexSidebarHeaderAnchor?,
+        result: CodexSidebarHeaderReadResult,
         processIdentifier: pid_t,
         windowNumber: Int,
         windowBounds: CGRect,
@@ -368,14 +488,22 @@ final class CodexQuotaOverlayController: NSObject {
             return
         }
 
-        if let anchor {
+        if headerReadResult != result {
+            DeveloperLog.eventRecord("codex_overlay.header_discovery", category: "codex_overlay",
+                result: result.failure?.rawValue ?? "found",
+                fields: ["visited": .int(result.visitedCount),
+                         "candidates": .int(result.candidateCount),
+                         "web_areas": .int(result.webAreaCount)])
+        }
+        headerReadResult = result
+        if let anchor = result.anchor {
             headerAnchor = anchor
             headerDiscoveryFailureCount = 0
             headerNextDiscoveryAt = completedAt.addingTimeInterval(
                 CodexSidebarHeaderDiscoveryPolicy.anchoredRefreshInterval)
         } else {
             headerDiscoveryFailureCount += 1
-            headerAnchor = nil
+            headerAnchor = result.anchorForPlacement(previous: headerAnchor)
             headerNextDiscoveryAt = completedAt.addingTimeInterval(
                 CodexSidebarHeaderDiscoveryPolicy.retryInterval(
                     afterFailureCount: headerDiscoveryFailureCount))
@@ -394,6 +522,7 @@ final class CodexQuotaOverlayController: NSObject {
         headerDiscoveryWindowBounds = nil
         if clearAnchor {
             headerAnchor = nil
+            headerReadResult = nil
         }
     }
 
@@ -698,6 +827,12 @@ final class CodexQuotaOverlayController: NSObject {
             "manual": settings.codexSidebarQuotaPosition.map {
                 [$0.horizontalFraction, $0.verticalFraction]
             } ?? []]
+        report["mainWindow"] = NSApp.mainWindow?.windowNumber
+        report["trackedWindow"] = lastCodexWindowNumber
+        report["previewVisible"] = preview.transientVisible
+        report["previewWindow"] = preview.transientWindow?.windowNumber
+        report["frontEligibleWindow"] = CodexWindowSelectionPolicy.frontWindow(
+            for: ProcessInfo.processInfo.processIdentifier, candidates: Self.onScreenWindows())?.windowNumber
         if let header = preview.header {
             report["header"] = [header.leadingInset, header.trailingXInset, header.centerYInset]
         }

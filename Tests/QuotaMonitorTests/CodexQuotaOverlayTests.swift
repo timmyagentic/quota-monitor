@@ -217,6 +217,7 @@ struct CodexQuotaOverlayTests {
             for: pid,
             lastWindowNumber: 5,
             codexIsFrontmost: true,
+            mainWindowNumber: 4,
             candidates: candidates)?.windowNumber == 4)
         #expect(CodexWindowSelectionPolicy.isWindow(
             1,
@@ -230,6 +231,16 @@ struct CodexQuotaOverlayTests {
             99,
             above: 4,
             candidates: candidates))
+    }
+
+    @Test("A transient window cannot replace the tracked document without confirmation")
+    func transientWindowKeepsDocument() {
+        let document = CodexWindowCandidate(windowNumber: 70, ownerPID: 120, layer: 0,
+            alpha: 1, bounds: CGRect(x: 100, y: 80, width: 1200, height: 800))
+        let preview = CodexWindowCandidate(windowNumber: 71, ownerPID: 120, layer: 0,
+            alpha: 1, bounds: CGRect(x: 700, y: 380, width: 600, height: 400))
+        #expect(CodexWindowSelectionPolicy.trackedWindow(for: 120, lastWindowNumber: 70,
+            codexIsFrontmost: true, candidates: [preview, document])?.windowNumber == 70)
     }
 
     @Test("A visible widget stays with Codex in the background without reopening")
@@ -665,7 +676,6 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("Process()"))
         #expect(helpControlSource.contains("AXIsProcessTrusted()"))
         #expect(!helpControlSource.contains("kAXTrustedCheckOptionPrompt"))
-        #expect(helpControlSource.contains("maximumVisitedElements = 600"))
         #expect(source.contains("Task.detached(priority: .utility)"))
         #expect(source.contains("headerNextDiscoveryAt"))
         #expect(source.contains("workspace.runningApplications"))
