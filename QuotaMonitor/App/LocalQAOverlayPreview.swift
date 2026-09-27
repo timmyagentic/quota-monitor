@@ -2,24 +2,44 @@ import AppKit
 import SwiftUI
 import Observation
 
-/// An opt-in native gallery of the unmodified shipping SwiftUI views. Synthetic data and
-/// controls stay in the existing isolated QA environment; no Codex interaction.
+/// An isolated host for the shipping NSPanel/controller, with measured header controls.
+/// Only fixture quota and this app's windows are used; no Codex interaction.
 @MainActor @Observable
 final class LocalQAOverlayPreview {
     let window: NSWindow
     fileprivate let environment: AppEnvironment
     fileprivate let settings: SettingsStore
-    let state = CodexQuotaOverlayViewState()
+    var onLayoutChanged: (() -> Void)?
+    var onResetPosition: (() -> Void)?
+    var onInspectPanels: (() -> Void)?
+    var isInspectingPanels = false
+    let outputDirectory: URL
+    private var headerFrames: [String: CGRect] = [:]
     var narrow = false
     var dark = false
     var scenario = "Weekly"
 
     var sidebarWidth: CGFloat { narrow ? 320 : 438 }
-    var header: CodexSidebarHeaderAnchor {
-        .init(leadingInset: 152, trailingXInset: sidebarWidth - 70, centerYInset: 62)
+    var header: CodexSidebarHeaderAnchor? {
+        // SwiftUI geometry is relative to the content's top left; discovery uses
+        // the whole window's top left, including the native title bar.
+        let titleBarHeight = window.frame.height - window.contentLayoutRect.height
+        let candidates = headerFrames.map { name, frame in
+            CodexSidebarHeaderCandidate(frame: frame.offsetBy(dx: 0, dy: titleBarHeight),
+                descriptors: [name == "Codex" ? "Switch mode, current mode: Codex" : name])
+        }
+        return CodexSidebarHeaderSelectionPolicy.anchor(
+            in: CGRect(origin: .zero, size: window.frame.size), candidates: candidates)
     }
 
-    init(environment: AppEnvironment, settings: SettingsStore) {
+    func updateHeaderFrames(_ frames: [String: CGRect]) {
+        guard headerFrames != frames else { return }
+        headerFrames = frames
+        onLayoutChanged?()
+    }
+
+    init(environment: AppEnvironment, settings: SettingsStore, outputDirectory: URL) {
+        self.outputDirectory = outputDirectory
         self.environment = environment
         self.settings = settings
         window = NSWindow(contentRect: CGRect(x: 200, y: 160, width: 1040, height: 660),
@@ -42,7 +62,6 @@ final class LocalQAOverlayPreview {
 
     func select(_ scenario: String) {
         self.scenario = scenario
-        state.isExpanded = scenario != "Unavailable"
         let now = Date()
         environment.latestRateLimits = scenario == "Unavailable" ? nil : RateLimitSnapshot(
             capturedAt: now.addingTimeInterval(scenario == "Stale" ? -1200 : 0), planType: "pro",
@@ -60,15 +79,13 @@ final class LocalQAOverlayPreview {
     }
 
     func toggleWidth() { narrow.toggle(); updateLayout() }
-    func toggleMode() { settings.quotaDisplayMode = settings.quotaDisplayMode == .used ? .remaining : .used; updateLayout() }
-    private func updateLayout() {
-        let presentation = CodexQuotaOverlayPresentation.make(snapshot: environment.latestRateLimits,
-            displayMode: settings.quotaDisplayMode)
-        let placement = CodexQuotaOverlayLayout.summaryPlacement(in: window.frame,
-            presentation: presentation, header: header)
-        state.width = placement?.frame.width ?? 0
-        state.compact = placement?.compact ?? false
+    func placeAtPreviousPosition() {
+        settings.codexSidebarQuotaPosition = CodexSidebarQuotaPosition(
+            horizontalFraction: 0.18, verticalFraction: 0.02)
+        updateLayout()
     }
+    func toggleMode() { settings.quotaDisplayMode = settings.quotaDisplayMode == .used ? .remaining : .used; updateLayout() }
+    private func updateLayout() { onLayoutChanged?() }
 
     func toggleAppearance() {
         dark.toggle()
@@ -95,11 +112,18 @@ private struct LocalQAOverlayPreviewView: View {
                 .background(.primary.opacity(0.03))
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 5) {
-                        Text(verbatim: "Codex").font(.system(size: 18, weight: .semibold))
-                        Image(systemName: "chevron.down").font(.system(size: 9)).foregroundStyle(.secondary)
+                        HStack(spacing: 5) {
+                            Text(verbatim: "Codex").font(.system(size: 18, weight: .semibold))
+                            Image(systemName: "chevron.down").font(.system(size: 9)).foregroundStyle(.secondary)
+                        }
+                        .frame(height: 28)
+                        .background(headerMeasurement("Codex"))
                         Spacer()
-                        Image(systemName: "bell").padding(.trailing, 14)
-                        Image(systemName: "magnifyingglass")
+                        Image(systemName: "bell").frame(width: 22, height: 28)
+                            .background(headerMeasurement("Notifications"))
+                            .padding(.trailing, 9)
+                        Image(systemName: "magnifyingglass").frame(width: 22, height: 28)
+                            .background(headerMeasurement("Search"))
                     }
                     .frame(height: 80).padding(.horizontal, 22)
                     Label("New chat", systemImage: "square.and.pencil").padding(22)
@@ -119,11 +143,11 @@ private struct LocalQAOverlayPreviewView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Spacer()
                     Text(verbatim: "原生额度挂件").font(.system(size: 28, weight: .semibold))
-                    Text(verbatim: "点击挂件查看详情\n用下方按钮检查不同状态")
+                    Text(verbatim: "点击挂件查看详情\n长按 1 秒后拖动，松手保存位置")
                         .font(.system(size: 15)).foregroundStyle(.secondary).lineSpacing(8)
                     Spacer()
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(verbatim: "QA · 合成数据 / 实际 SwiftUI 组件")
+                        Text(verbatim: "QA · 合成数据 / 实际独立浮层窗口")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                         HStack {
                             ForEach(["Weekly", "Dual", "Stale", "Unavailable", "Reset cards"], id: \.self) { scenario in
@@ -131,6 +155,11 @@ private struct LocalQAOverlayPreviewView: View {
                             }
                         }
                         HStack {
+                            Button("Inspect floating windows") { preview.onInspectPanels?() }
+                            Button("Previous position") { preview.placeAtPreviousPosition() }
+                        }
+                        HStack {
+                            Button("Reset position") { preview.onResetPosition?() }
                             Button("Compact") { preview.toggleWidth() }
                             Button("Used / Remaining") { preview.toggleMode() }
                             Button("Light / Dark") { preview.toggleAppearance() }
@@ -144,34 +173,26 @@ private struct LocalQAOverlayPreviewView: View {
                 .padding(44).frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Color(nsColor: .windowBackgroundColor))
-            .onTapGesture { preview.state.isExpanded = false }
-
-            if preview.state.width > 0 {
-                CodexQuotaOverlayView(state: preview.state,
-                    onResetPosition: {}, onActivate: {
-                        if preview.environment.latestRateLimits?.primary != nil
-                            || preview.environment.latestRateLimits?.secondary != nil {
-                            preview.state.isExpanded.toggle()
-                        }
-                    },
-                    onPressBegan: {}, onDragBegan: {}, onDragChanged: {}, onDragEnded: {})
-                    .offset(x: preview.header.leadingInset, y: 26)
-                if preview.state.isExpanded {
-                    let presentation = CodexQuotaOverlayPresentation.make(snapshot: preview.environment.latestRateLimits,
-                        displayMode: preview.settings.quotaDisplayMode)
-                    let resetCredits = CodexQuotaOverlayResetCreditsPresentation.make(
-                        snapshot: preview.environment.latestCodexResetCredits,
-                        fallbackAvailableCount: preview.environment.latestRateLimits?.resetCreditsAvailable)
-                    CodexQuotaOverlayDetailsView()
-                        .frame(width: CodexQuotaOverlayLayout.detailsWidth,
-                            height: CodexQuotaOverlayLayout.detailsContentHeight(presentation: presentation, resetCredits: resetCredits))
-                        .offset(x: preview.header.leadingInset, y: 60)
-                }
-            }
+        }
+        .coordinateSpace(name: "fixture-header")
+        .onPreferenceChange(LocalQAHeaderFramesKey.self) { frames in
+            preview.updateHeaderFrames(frames)
         }
         .environment(preview.environment)
         .environment(preview.settings)
         .environment(LocalizationStore.shared)
-        .onExitCommand { preview.state.isExpanded = false }
+    }
+    private func headerMeasurement(_ name: String) -> some View {
+        GeometryReader { geometry in
+            Color.clear.preference(key: LocalQAHeaderFramesKey.self,
+                value: [name: geometry.frame(in: .named("fixture-header"))])
+        }
+    }
+}
+
+private struct LocalQAHeaderFramesKey: PreferenceKey {
+    static var defaultValue: [String: CGRect] { [:] }
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }

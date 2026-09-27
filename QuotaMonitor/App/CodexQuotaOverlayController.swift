@@ -41,7 +41,6 @@ final class CodexQuotaOverlayController: NSObject {
     private var summaryDragStartMouseLocation: CGPoint?
     private var summaryDragFrame: CGRect?
     private var summaryDragDidMove = false
-    private var showsLocalQAGallery = false
     private var isStarted = false
 
     init(
@@ -98,12 +97,26 @@ final class CodexQuotaOverlayController: NSObject {
         setStatus(.disabled)
     }
 
-    func showDetailsForLocalQA() {
+    func showDetailsForLocalQA(outputDirectory: URL) {
         guard LocalQAEnvironment.isQARequested() else { return }
         hideOverlay()
-        showsLocalQAGallery = true
-        qaPreview = LocalQAOverlayPreview(environment: environment, settings: settings)
+        qaPreview = LocalQAOverlayPreview(environment: environment, settings: settings, outputDirectory: outputDirectory)
+        qaPreview?.onLayoutChanged = { [weak self] in
+            self?.refreshOverlay()
+            self?.recordLocalQAPanels(event: "fixture-layout")
+        }
+        qaPreview?.onResetPosition = { [weak self] in self?.resetPosition() }
+        qaPreview?.onInspectPanels = { [weak self] in
+            guard let self, let preview = self.qaPreview else { return }
+            self.showDetails()
+            self.panel?.title = "Quota widget"
+            self.detailsPanel?.title = "Quota details"
+            preview.isInspectingPanels = true
+            preview.window.orderOut(nil)
+            self.recordLocalQAPanels(event: "inspect")
+        }
         qaPreview?.show()
+        refreshOverlay()
     }
 
     @objc private nonisolated func workspaceStateDidChange(_ notification: Notification) {
@@ -124,7 +137,18 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func refreshOverlay(now: Date = Date()) {
         guard isStarted else { return }
-        if showsLocalQAGallery {
+        if let qaPreview {
+            if qaPreview.isInspectingPanels { return }
+            isCodexFrontmost = NSApp.isActive
+            guard qaPreview.window.isVisible else { hideOverlay(); return }
+            if !isCodexFrontmost { resetSummaryDrag(); closeDetails() }
+            let presentation = CodexQuotaOverlayPresentation.make(
+                snapshot: environment.latestRateLimits, displayMode: settings.quotaDisplayMode)
+            showOverlay(in: qaPreview.window.frame, presentation: presentation,
+                header: qaPreview.header,
+                placement: isCodexFrontmost ? .foreground : .background,
+                relativeTo: qaPreview.window.windowNumber, shouldRaise: true)
+            updateTrackingInterval(Self.foregroundTrackingInterval)
             return
         }
         guard settings.shouldShowCodexSidebarQuota else {
@@ -421,12 +445,13 @@ final class CodexQuotaOverlayController: NSObject {
         lastCodexWindowFrame = codexWindowFrame
         guard let summary = CodexQuotaOverlayLayout.summaryPlacement(
             in: codexWindowFrame, presentation: presentation, header: header,
-            manualPosition: settings.codexSidebarQuotaPosition) else {
+            manualPosition: settings.codexSidebarQuotaPosition,
+            activeDrag: summaryDragFrame.map { .init(frame: $0, compact: viewState.compact) }) else {
             panel?.orderOut(nil)
             closeDetails()
             return
         }
-        let frame = summaryDragFrame ?? summary.frame
+        let frame = summary.frame
         viewState.compact = summary.compact
         viewState.width = frame.width
         let panel = panel ?? makePanel()
@@ -466,29 +491,38 @@ final class CodexQuotaOverlayController: NSObject {
         panel?.orderOut(nil)
     }
 
+    private func resetPosition() {
+        settings.codexSidebarQuotaPosition = nil
+        resetSummaryDrag()
+        refreshOverlay()
+        recordLocalQAPanels(event: "reset-position")
+    }
+
     private func activateDetails() {
         guard detailsAreAllowed else { return }
         if detailsPanel?.isVisible == true { closeDetails() } else { showDetails() }
     }
 
-    private func summaryPressBegan() {
+    private func summaryPressBegan(_ location: CGPoint) {
         guard detailsAreAllowed,
               let panel else {
             resetSummaryDrag()
             return
         }
         summaryDragStartFrame = panel.frame
-        summaryDragStartMouseLocation = NSEvent.mouseLocation
+        summaryDragStartMouseLocation = location
         summaryDragFrame = panel.frame
         summaryDragDidMove = false
+        recordLocalQAPanels(event: "press")
     }
 
-    private func summaryDragBegan() {
+    private func summaryDragBegan(_ location: CGPoint) {
         closeDetails()
-        summaryDragChanged()
+        summaryDragChanged(location)
+        recordLocalQAPanels(event: "unlock")
     }
 
-    private func summaryDragChanged() {
+    private func summaryDragChanged(_ location: CGPoint) {
         guard detailsAreAllowed,
               let panel,
               let codexWindowFrame = lastCodexWindowFrame else {
@@ -501,13 +535,14 @@ final class CodexQuotaOverlayController: NSObject {
         let frame = CodexQuotaOverlayDragFramePolicy.frame(
             from: summaryDragStartFrame,
             pressLocation: summaryDragStartMouseLocation,
-            currentLocation: NSEvent.mouseLocation,
+            currentLocation: location,
             in: codexWindowFrame)
         summaryDragFrame = frame
         summaryDragDidMove = summaryDragDidMove || frame != summaryDragStartFrame
         if panel.frame != frame {
             panel.setFrame(frame, display: panel.isVisible)
         }
+        recordLocalQAPanels(event: "move")
     }
 
     private func summaryDragEnded() {
@@ -517,15 +552,19 @@ final class CodexQuotaOverlayController: NSObject {
             resetSummaryDrag()
             return
         }
-        settings.codexSidebarQuotaPosition =
-            CodexQuotaOverlayLayout.manualPosition(
-                for: summaryDragFrame,
-                in: codexWindowFrame)
+        let presentation = CodexQuotaOverlayPresentation.make(
+            snapshot: environment.latestRateLimits, displayMode: settings.quotaDisplayMode)
+        let restoredWidth = presentation.fiveHour != nil && presentation.weekly != nil
+            ? CodexQuotaOverlayLayout.dualWindowWidth : CodexQuotaOverlayLayout.size.width
+        settings.codexSidebarQuotaPosition = CodexQuotaOverlayLayout.manualPosition(
+            for: summaryDragFrame, in: codexWindowFrame, restoredWidth: restoredWidth)
         resetSummaryDrag()
         refreshOverlay()
+        recordLocalQAPanels(event: "drop")
     }
 
     private func resetSummaryDrag() {
+        viewState.dragPhase = .idle
         summaryDragStartFrame = nil
         summaryDragStartMouseLocation = nil
         summaryDragFrame = nil
@@ -537,6 +576,7 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func dismissDetailsForBackground() {
+        resetSummaryDrag()
         closeDetails()
     }
 
@@ -643,6 +683,37 @@ final class CodexQuotaOverlayController: NSObject {
                 .resetCreditsAvailable)
     }
 
+    private func recordLocalQAPanels(event: String) {
+        guard let preview = qaPreview else { return }
+        func frame(_ frame: CGRect) -> [CGFloat] {
+            [frame.minX, frame.minY, frame.width, frame.height]
+        }
+        let windows = [panel, detailsPanel].compactMap { $0 }.map { window -> [String: Any] in
+            ["identifier": window.identifier?.rawValue ?? "", "number": window.windowNumber,
+             "frame": frame(window.frame), "visible": window.isVisible,
+             "key": window.isKeyWindow, "ignoresMouseEvents": window.ignoresMouseEvents]
+        }
+        var report: [String: Any] = ["event": event, "hostFrame": frame(preview.window.frame),
+            "windows": windows, "source": Bundle.main.infoDictionary?["BuildCommit"] as? String ?? "",
+            "manual": settings.codexSidebarQuotaPosition.map {
+                [$0.horizontalFraction, $0.verticalFraction]
+            } ?? []]
+        if let header = preview.header {
+            report["header"] = [header.leadingInset, header.trailingXInset, header.centerYInset]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
+              let line = String(data: data, encoding: .utf8) else { return }
+        let url = preview.outputDirectory.appendingPathComponent("overlay-events.jsonl")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data((line + "\n").utf8))
+        }
+    }
+
     private func setStatus(_ status: CodexSidebarQuotaStatus) {
         guard settings.codexSidebarQuotaStatus != status else { return }
         settings.codexSidebarQuotaStatus = status
@@ -662,23 +733,26 @@ final class CodexQuotaOverlayController: NSObject {
         let rootView = CodexQuotaOverlayView(
             state: viewState,
             onResetPosition: { [weak self] in
-                self?.settings.codexSidebarQuotaPosition = nil
-                self?.refreshOverlay()
+                self?.resetPosition()
             },
             onActivate: { [weak self] in
                 self?.activateDetails()
             },
-            onPressBegan: { [weak self] in
-                self?.summaryPressBegan()
+            onPressBegan: { [weak self] location in
+                self?.summaryPressBegan(location)
             },
-            onDragBegan: { [weak self] in
-                self?.summaryDragBegan()
+            onDragBegan: { [weak self] location in
+                self?.summaryDragBegan(location)
             },
-            onDragChanged: { [weak self] in
-                self?.summaryDragChanged()
+            onDragChanged: { [weak self] location in
+                self?.summaryDragChanged(location)
             },
             onDragEnded: { [weak self] in
                 self?.summaryDragEnded()
+            },
+            onDragCancelled: { [weak self] in
+                self?.resetSummaryDrag()
+                self?.refreshOverlay()
             })
             .environment(environment)
             .environment(settings)

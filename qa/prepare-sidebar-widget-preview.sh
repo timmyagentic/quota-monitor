@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Launch the shipping SwiftUI components with synthetic quota in an isolated app.
-# Does not validate the external Codex AX tree or NSPanel focus/drag integration.
+# Launch the shipping NSPanel/controller with synthetic quota and an isolated host.
+# Does not validate the external Codex accessibility tree.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

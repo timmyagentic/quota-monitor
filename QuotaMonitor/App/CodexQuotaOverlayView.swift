@@ -12,6 +12,7 @@ final class CodexQuotaOverlayViewState {
     var compact = false
     var width = CodexQuotaOverlayLayout.size.width
     var isExpanded = false
+    var dragPhase = CodexQuotaOverlayDragPhase.idle
 }
 
 enum CodexQuotaOverlayPalette {
@@ -30,17 +31,17 @@ struct CodexQuotaOverlayView: View {
     @Environment(LocalizationStore.self) private var localization
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isHovering = false
-    @State private var dragPhase = CodexQuotaOverlayDragPhase.idle
     @State private var holdTask: Task<Void, Never>?
     @State private var jiggleForward = false
 
     let state: CodexQuotaOverlayViewState
     let onResetPosition: () -> Void
     let onActivate: () -> Void
-    let onPressBegan: () -> Void
-    let onDragBegan: () -> Void
-    let onDragChanged: () -> Void
+    let onPressBegan: (CGPoint) -> Void
+    let onDragBegan: (CGPoint) -> Void
+    let onDragChanged: (CGPoint) -> Void
     let onDragEnded: () -> Void
+    let onDragCancelled: () -> Void
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -63,16 +64,11 @@ struct CodexQuotaOverlayView: View {
             .onHover { hovering in
                 isHovering = hovering
             }
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .global)
-                    .onChanged { value in
-                        dragChanged(value)
-                    }
-                    .onEnded { value in
-                        dragEnded(value)
-                    })
-            .contextMenu {
-                Button(L10n.codexOverlayResetPosition, action: onResetPosition)
+            .overlay {
+                CodexQuotaOverlayMouseInput(onPress: beginPress, onMove: dragChanged,
+                    onRelease: dragEnded, onCancel: cancelInteraction,
+                    onResetPosition: onResetPosition)
+                    .accessibilityHidden(true)
             }
             .onDisappear(perform: cancelInteraction)
             .animation(
@@ -92,7 +88,7 @@ struct CodexQuotaOverlayView: View {
     private func summaryContent(
         _ presentation: CodexQuotaOverlayPresentation
     ) -> some View {
-        switch dragPhase {
+        switch state.dragPhase {
         case .pressing:
             Text(L10n.codexOverlayHoldToMove)
                 .font(.system(size: 9, weight: .semibold))
@@ -160,10 +156,6 @@ struct CodexQuotaOverlayView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
-            Image(systemName: state.isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 8, weight: .medium))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
         }
         .font(.system(size: 12))
         .lineLimit(1)
@@ -204,52 +196,35 @@ struct CodexQuotaOverlayView: View {
         return (values + [L10n.codexOverlayStale]).joined(separator: " · ")
     }
 
-    private func dragChanged(_ value: DragGesture.Value) {
-        switch dragPhase {
-        case .idle:
-            beginPress()
-        case .pressing:
-            break
-        case .ready:
-            dragPhase = .dragging
-            onDragChanged()
-        case .dragging:
-            onDragChanged()
-        }
+    private func dragChanged(_ location: CGPoint) {
+        guard state.dragPhase.isUnlocked else { return }
+        state.dragPhase = .dragging
+        onDragChanged(location)
     }
 
-    private func dragEnded(_ value: DragGesture.Value) {
+    private func dragEnded(_ location: CGPoint, translation: CGSize) {
         holdTask?.cancel()
         holdTask = nil
         let action = CodexQuotaOverlayDragInteractionPolicy.releaseAction(
-            phase: dragPhase,
-            translation: value.translation)
+            phase: state.dragPhase, translation: translation)
+        // Mouse-up can contain movement that was coalesced out of drag events.
+        if action == .finishDrag { onDragChanged(location) }
         resetVisualState()
-        onDragEnded()
-
-        switch action {
-        case .activateDetails:
-            onActivate()
-        case .finishDrag, .cancel:
-            break
-        }
+        if action == .finishDrag { onDragEnded() } else { onDragCancelled() }
+        if action == .activateDetails { onActivate() }
     }
 
-    private func beginPress() {
-        dragPhase = .pressing
-        onPressBegan()
+    private func beginPress(_ location: CGPoint) {
+        state.dragPhase = .pressing
+        onPressBegan(location)
         holdTask?.cancel()
         holdTask = Task { @MainActor in
-            try? await Task.sleep(
-                for: CodexQuotaOverlayDragInteractionPolicy.holdDuration)
-            guard !Task.isCancelled, dragPhase == .pressing else { return }
-            dragPhase = .ready
-            onDragBegan()
+            try? await Task.sleep(for: CodexQuotaOverlayDragInteractionPolicy.holdDuration)
+            guard !Task.isCancelled, state.dragPhase == .pressing else { return }
+            state.dragPhase = .ready
+            onDragBegan(NSEvent.mouseLocation)
             guard !reduceMotion else { return }
-            withAnimation(
-                .easeInOut(duration: 0.11)
-                    .repeatForever(autoreverses: true)
-            ) {
+            withAnimation(.easeInOut(duration: 0.11).repeatForever(autoreverses: true)) {
                 jiggleForward = true
             }
         }
@@ -258,9 +233,7 @@ struct CodexQuotaOverlayView: View {
     private func cancelInteraction() {
         holdTask?.cancel()
         holdTask = nil
-        if dragPhase != .idle {
-            onDragEnded()
-        }
+        if state.dragPhase != .idle { onDragCancelled() }
         resetVisualState()
     }
 
@@ -268,7 +241,7 @@ struct CodexQuotaOverlayView: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            dragPhase = .idle
+            state.dragPhase = .idle
             jiggleForward = false
         }
     }
