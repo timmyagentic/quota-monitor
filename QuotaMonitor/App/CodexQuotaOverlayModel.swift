@@ -324,8 +324,10 @@ enum CodexQuotaOverlayLayout {
         in window: CGRect,
         presentation: CodexQuotaOverlayPresentation,
         header: CodexSidebarHeaderAnchor?,
-        manualPosition: CodexSidebarQuotaPosition? = nil
+        manualPosition: CodexSidebarQuotaPosition? = nil,
+        activeDrag: CodexQuotaOverlaySummaryPlacement? = nil
     ) -> CodexQuotaOverlaySummaryPlacement? {
+        if let activeDrag { return activeDrag }
         let dual = presentation.fiveHour != nil && presentation.weekly != nil
         let normalWidth = dual ? dualWindowWidth : size.width
         let narrowWidth = dual ? dualCompactWidth : compactWidth
@@ -363,8 +365,12 @@ enum CodexQuotaOverlayLayout {
 
     static func manualPosition(
         for frame: CGRect,
-        in codexWindowFrame: CGRect
+        in codexWindowFrame: CGRect,
+        restoredWidth: CGFloat? = nil
     ) -> CodexSidebarQuotaPosition? {
+        // Manual placement restores the full readout, even after dragging a compact one.
+        let frame = CGRect(origin: frame.origin,
+            size: CGSize(width: restoredWidth ?? frame.width, height: frame.height))
         let clamped = clampedFrame(frame, in: codexWindowFrame)
         let horizontalRange = originRange(
             containerMinimum: codexWindowFrame.minX,

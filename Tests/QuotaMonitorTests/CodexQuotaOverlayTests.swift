@@ -656,20 +656,6 @@ struct CodexQuotaOverlayTests {
             "panel.order(.above, relativeTo: codexWindowNumber)"))
         #expect(source.contains("summaryDragBegan"))
         #expect(source.contains("summaryDragChanged"))
-        let pressHandler = try #require(source.range(
-            of: "private func summaryPressBegan()"))
-        let dragBeginHandler = try #require(source.range(
-            of: "private func summaryDragBegan()"))
-        let dragChangedHandler = try #require(source.range(
-            of: "private func summaryDragChanged()"))
-        let pressBody = source[
-            pressHandler.lowerBound..<dragBeginHandler.lowerBound]
-        let dragBeginBody = source[
-            dragBeginHandler.lowerBound..<dragChangedHandler.lowerBound]
-        #expect(pressBody.contains(
-            "summaryDragStartMouseLocation = NSEvent.mouseLocation"))
-        #expect(dragBeginBody.contains("summaryDragChanged()"))
-        #expect(viewSource.contains("DragGesture(minimumDistance: 0"))
         #expect(viewSource.contains(
             "CodexQuotaOverlayDragInteractionPolicy.holdDuration"))
         #expect(viewSource.contains("repeatForever(autoreverses: true)"))

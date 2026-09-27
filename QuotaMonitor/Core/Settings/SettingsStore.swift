@@ -106,8 +106,8 @@ final class SettingsStore {
         didSet { defaults.set(showDockIconForWindows,
                               forKey: Keys.showDockIconForWindows) }
     }
-    /// Shows an interactive QuotaMonitor-owned panel over the Codex account
-    /// row. The preference key is retained from the original sidebar feature
+    /// Shows an interactive QuotaMonitor-owned panel beside the Codex sidebar
+    /// title. The preference key is retained from the original sidebar feature
     /// so existing opt-ins migrate without user action.
     var codexSidebarQuotaEnabled: Bool {
         didSet { defaults.set(codexSidebarQuotaEnabled,
@@ -115,7 +115,7 @@ final class SettingsStore {
     }
     /// User-selected location within the Codex window's available overlay
     /// area. Fractions keep the widget on-screen when the window or display
-    /// changes; `nil` restores automatic help-control placement.
+    /// changes; `nil` restores automatic sidebar-header placement.
     var codexSidebarQuotaPosition: CodexSidebarQuotaPosition? {
         didSet {
             if let codexSidebarQuotaPosition {

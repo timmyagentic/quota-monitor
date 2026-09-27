@@ -30,6 +30,18 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The quota widget follows the pointer more smoothly and has a cleaner readout without the dropdown arrow.
+
+### Fixed
+
+- **Widget dragging.** Long-press dragging uses screen coordinates, keeps its position during header refreshes, and saves the final pointer position without shifting compact readouts sideways on release.
+
+### Changed
+
+- **Simpler readout.** Removed the summary arrow while retaining click-to-open details and the existing expanded content. Reset position returns the widget to the measured sidebar-title row.
+
 ## [1.0.9] — 2026-09-27
 
 #### Summary
