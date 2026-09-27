@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-09-27
+
 #### Summary
 
 - The Codex quota widget now fits the sidebar header, with clearer remaining quota and click-to-open details.
