@@ -44,15 +44,27 @@ enum CodexSidebarHeaderDiscoveryPolicy {
 }
 
 enum CodexSidebarHeaderSelectionPolicy {
+    static func isHeaderControl(_ frame: CGRect, in windowFrame: CGRect) -> Bool {
+        windowFrame.contains(frame) && frame.width >= 10 && frame.height >= 10
+            && frame.height <= 48 && frame.minY - windowFrame.minY <= 100
+            && frame.maxX - windowFrame.minX <= min(560, windowFrame.width)
+    }
+
     static func anchor(
         in windowFrame: CGRect,
         candidates: [CodexSidebarHeaderCandidate]
     ) -> CodexSidebarHeaderAnchor? {
+        guard let measured = measuredAnchor(in: windowFrame, candidates: candidates),
+              measured.availableWidth >= CodexQuotaOverlayLayout.compactWidth else { return nil }
+        return measured
+    }
+
+    static func measuredAnchor(
+        in windowFrame: CGRect,
+        candidates: [CodexSidebarHeaderCandidate]
+    ) -> CodexSidebarHeaderAnchor? {
         let header = candidates.filter {
-            let f = $0.frame
-            return windowFrame.contains(f) && f.width >= 10 && f.height >= 10
-                && f.height <= 48 && f.minY - windowFrame.minY <= 100
-                && f.maxX - windowFrame.minX <= min(560, windowFrame.width)
+            isHeaderControl($0.frame, in: windowFrame)
         }
         let titles = header.filter {
             // A text child excludes its parent's chevron/padding. Only a full
@@ -68,6 +80,7 @@ enum CodexSidebarHeaderSelectionPolicy {
                 ? $0.frame.width > $1.frame.width
                 : $0.frame.minX < $1.frame.minX
         }
+        var narrowAnchor: CodexSidebarHeaderAnchor?
         for title in orderedTitles {
             let actions = header.filter {
                 $0.frame.minX >= title.frame.maxX && abs($0.frame.midY - title.frame.midY) <= 8
@@ -83,8 +96,9 @@ enum CodexSidebarHeaderSelectionPolicy {
                 trailingXInset: next.frame.minX - windowFrame.minX - 8,
                 centerYInset: title.frame.midY - windowFrame.minY)
             if anchor.availableWidth >= CodexQuotaOverlayLayout.compactWidth { return anchor }
+            narrowAnchor = narrowAnchor ?? anchor
         }
-        return nil
+        return narrowAnchor
     }
 
     private static func isCodexTitle(_ descriptor: String) -> Bool {
@@ -100,86 +114,42 @@ enum CodexSidebarHeaderSelectionPolicy {
 }
 
 enum CodexSidebarHeaderAccessibility {
-    private static let maximumTraversalDepth = 14
-    private static let maximumVisitedElements = 600
-
     /// Read only, bounded, and never prompts for permission: an unrecognized header yields
     /// no automatic placement instead of guessing over the host's content.
-    static func anchor(
+    static func read(
         for processIdentifier: pid_t,
         in quartzWindowFrame: CGRect
-    ) -> CodexSidebarHeaderAnchor? {
-        guard !currentTaskIsCancelled,
-              AXIsProcessTrusted() else {
-            return nil
-        }
-
-        let application = AXUIElementCreateApplication(processIdentifier)
-        guard let windows = attribute(
-            application,
-            kAXWindowsAttribute as CFString) as? [AXUIElement],
-            let window = windows.max(by: {
-                intersectionArea(frame(of: $0), quartzWindowFrame)
-                    < intersectionArea(frame(of: $1), quartzWindowFrame)
-            }),
-            intersectionArea(frame(of: window), quartzWindowFrame) > 0 else {
-            return nil
-        }
-
-        return CodexSidebarHeaderSelectionPolicy.anchor(
-            in: quartzWindowFrame,
-            candidates: headerCandidates(in: window))
+    ) -> CodexSidebarHeaderReadResult {
+        let application = Element(AXUIElementCreateApplication(processIdentifier))
+        return CodexSidebarHeaderReader.read(application: application,
+            windowFrame: quartzWindowFrame,
+            access: CodexSidebarHeaderAccess(
+                isTrusted: AXIsProcessTrusted(),
+                role: { stringAttribute($0.value, kAXRoleAttribute as CFString) },
+                frame: { frame(of: $0.value) },
+                windows: { elements($0.value, kAXWindowsAttribute as CFString) },
+                children: { elements($0.value, kAXChildrenAttribute as CFString) },
+                descriptors: { element in
+                    [kAXTitleAttribute, kAXDescriptionAttribute, kAXHelpAttribute,
+                     kAXIdentifierAttribute, kAXValueAttribute].compactMap {
+                        stringAttribute(element.value, $0 as CFString)
+                    }
+                },
+                isCancelled: { currentTaskIsCancelled }))
     }
 
-    private static func headerCandidates(
-        in window: AXUIElement
-    ) -> [CodexSidebarHeaderCandidate] {
-        var queue: [(element: AXUIElement, depth: Int)] = [(window, 0)]
-        var cursor = 0
-        var visited: Set<CFHashCode> = []
-        var candidates: [CodexSidebarHeaderCandidate] = []
-
-        while cursor < queue.count,
-              visited.count < maximumVisitedElements,
-              !currentTaskIsCancelled {
-            let item = queue[cursor]
-            cursor += 1
-
-            let hash = CFHash(item.element)
-            guard visited.insert(hash).inserted else { continue }
-
-            if let role = stringAttribute(
-                item.element,
-                kAXRoleAttribute as CFString),
-               [kAXButtonRole as String, kAXPopUpButtonRole as String, kAXStaticTextRole as String, kAXImageRole as String].contains(role),
-               let frame = frame(of: item.element) {
-                let descriptors = [
-                    kAXTitleAttribute,
-                    kAXDescriptionAttribute,
-                    kAXHelpAttribute,
-                    kAXIdentifierAttribute,
-                    kAXValueAttribute
-                ].compactMap {
-                    stringAttribute(item.element, $0 as CFString)
-                }
-                candidates.append(CodexSidebarHeaderCandidate(
-                    frame: frame,
-                    descriptors: descriptors,
-                    role: role))
-            }
-
-            guard item.depth < maximumTraversalDepth,
-                  let children = attribute(
-                    item.element,
-                    kAXChildrenAttribute as CFString) as? [AXUIElement] else {
-                continue
-            }
-            queue.append(contentsOf: children.map {
-                (element: $0, depth: item.depth + 1)
-            })
+    private struct Element: Hashable {
+        let value: AXUIElement
+        init(_ value: AXUIElement) {
+            self.value = value
+            AXUIElementSetMessagingTimeout(value, 0.2)
         }
+        static func == (lhs: Self, rhs: Self) -> Bool { CFEqual(lhs.value, rhs.value) }
+        func hash(into hasher: inout Hasher) { hasher.combine(CFHash(value)) }
+    }
 
-        return candidates
+    private static func elements(_ element: AXUIElement, _ name: CFString) -> [Element] {
+        (attribute(element, name) as? [AXUIElement] ?? []).map(Element.init)
     }
 
     private static var currentTaskIsCancelled: Bool {
@@ -253,15 +223,5 @@ enum CodexSidebarHeaderAccessibility {
             return nil
         }
         return value
-    }
-
-    private static func intersectionArea(
-        _ lhs: CGRect?,
-        _ rhs: CGRect
-    ) -> CGFloat {
-        guard let lhs else { return 0 }
-        let intersection = lhs.intersection(rhs)
-        guard !intersection.isNull else { return 0 }
-        return intersection.width * intersection.height
     }
 }

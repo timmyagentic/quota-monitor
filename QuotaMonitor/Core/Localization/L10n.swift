@@ -114,7 +114,10 @@ enum L10n {
                 + "挂件会跟随 Codex 窗口，"
                 + "Codex 窗口不可见时自动隐藏，并且不会重启或修改 Codex。")
     }
-    static var codexOverlayWaitingForHeader: String { t(en: "No safe header space found. Expand the Codex sidebar and check Accessibility access, or restore a saved manual position.", zh: "未找到标题区空位。请展开 Codex 侧栏并检查辅助功能权限；已保存的手动位置仍可使用。") }
+    static var codexOverlayWaitingForHeader: String { t(en: "Codex sidebar header not recognized. Expand the sidebar, or use a saved manual position.", zh: "尚未识别到 Codex 侧栏标题。请展开侧栏；已保存的手动位置仍可使用。") }
+    static var codexOverlayAccessibilityRequired: String { t(en: "Allow QuotaMonitor in System Settings → Privacy & Security → Accessibility to locate the Codex sidebar.", zh: "请在系统设置 → 隐私与安全性 → 辅助功能中允许 QuotaMonitor，以定位 Codex 侧栏。") }
+    static var codexOverlayWaitingForInterface: String { t(en: "Waiting for Codex to provide its sidebar controls. Keep its window visible; the widget will retry automatically.", zh: "暂时未能读取 Codex 侧栏控件。请保持窗口可见，挂件会自动重试。") }
+    static var codexOverlayHeaderSpaceUnavailable: String { t(en: "Not enough room beside the Codex title. Widen the sidebar, or use a saved manual position.", zh: "Codex 标题旁的空间不足。请拉宽侧栏；已保存的手动位置仍可使用。") }
     static func codexOverlayDualCompact(fiveHour: Int, weekly: Int, used: Bool) -> String {
         let meaning = used ? t(en: "used", zh: "已用") : t(en: "left", zh: "余")
         return t(en: "\(meaning) 5h \(fiveHour)% · 7d \(weekly)%", zh: "\(meaning) 5h \(fiveHour)% · 周 \(weekly)%")

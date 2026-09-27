@@ -1,6 +1,7 @@
 <div class="release-summary">
 <ul>
-<li>The widget recognizes the new Codex title row, follows dragging more reliably, and no longer shows a dropdown arrow.</li>
+<li>Sidebar detection handles delayed controls more reliably, and Settings explains why the widget is unavailable.</li>
+<li>The widget follows dragging more reliably and no longer shows a dropdown arrow.</li>
 <li>The Codex quota widget now fits the sidebar header, with clearer remaining quota and click-to-open details.</li>
 </ul>
 </div>
@@ -8,13 +9,13 @@
 <div class="release-details">
 <h3>Fixed</h3>
 <ul>
-<li><b>New Codex header.</b> Restore automatic placement using the current mode-selector button, so resetting the widget no longer loses its title-row anchor.</li>
+<li><b>Sidebar discovery.</b> Read delayed controls, search deeper header wrappers, and skip content outside the title area. The current mode-selector button is supported.</li>
 <li><b>Steadier dragging.</b> Keep the one-second hold, follow screen coordinates, and save the final drop position. Expanded details retain their existing content.</li>
 </ul>
 <h3>Changed</h3>
 <ul>
 <li><b>Sidebar quota readout.</b> A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.</li>
 <li><b>Honest quota status.</b> Cached or failed refreshes are labelled explicitly, while missing windows stay absent and saved manual positions remain available. Empty snapshots stay unavailable even after aging or a failed refresh.</li>
-<li><b>Safe automatic placement.</b> The widget requires a recognized header with enough space; expand the sidebar and allow Accessibility access if no safe slot is found.</li>
+<li><b>Placement status.</b> Distinguish missing permission, unreadable controls, an unrecognized header, and insufficient space. Automatic placement requires a measured safe slot.</li>
 </ul>
 </div>

@@ -260,6 +260,12 @@ struct GeneralSettingsTab: View {
             L10n.codexOverlayDisabledStatus
         case .waitingForHeader:
             L10n.codexOverlayWaitingForHeader
+        case .accessibilityPermissionRequired:
+            L10n.codexOverlayAccessibilityRequired
+        case .waitingForInterface:
+            L10n.codexOverlayWaitingForInterface
+        case .headerSpaceUnavailable:
+            L10n.codexOverlayHeaderSpaceUnavailable
         case .waitingForCodex:
             L10n.codexOverlayWaitingStatus
         case .active:
@@ -273,8 +279,10 @@ struct GeneralSettingsTab: View {
 
     private var codexSidebarStatusIcon: String {
         switch settings.codexSidebarQuotaStatus {
-        case .waitingForCodex, .waitingForHeader:
+        case .waitingForCodex, .waitingForHeader, .waitingForInterface, .headerSpaceUnavailable:
             "macwindow"
+        case .accessibilityPermissionRequired:
+            "lock.shield"
         case .active:
             "checkmark.circle.fill"
         case .showingCached:
@@ -292,7 +300,8 @@ struct GeneralSettingsTab: View {
             .green
         case .showingCached:
             .orange
-        case .disabled, .waitingForCodex, .waitingForHeader, .quotaUnavailable:
+        case .disabled, .waitingForCodex, .waitingForHeader, .waitingForInterface,
+             .headerSpaceUnavailable, .accessibilityPermissionRequired, .quotaUnavailable:
             .secondary
         }
     }

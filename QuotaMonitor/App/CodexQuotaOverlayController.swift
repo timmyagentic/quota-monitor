@@ -25,6 +25,7 @@ final class CodexQuotaOverlayController: NSObject {
     private var lastCodexWindowNumber: Int?
     private var lastCodexWindowFrame: CGRect?
     private var headerAnchor: CodexSidebarHeaderAnchor?
+    private var headerReadResult: CodexSidebarHeaderReadResult?
     private var headerDiscoveryTask: Task<Void, Never>?
     private var headerDiscoveryGeneration = 0
     private var headerDiscoveryFailureCount = 0
@@ -268,7 +269,7 @@ final class CodexQuotaOverlayController: NSObject {
                 || !overlayIsAboveCodex)
         lastCodexWindowNumber = window.windowNumber
         if panel?.isVisible != true {
-            setStatus(.waitingForHeader)
+            setStatus(headerReadResult?.unavailableStatus ?? .waitingForInterface)
         } else if !presentation.hasQuota {
             setStatus(.quotaUnavailable)
         } else if presentation.isCached {
@@ -305,6 +306,7 @@ final class CodexQuotaOverlayController: NSObject {
             headerDiscoveryWindowBounds = window.bounds
         } else if layoutChanged {
             headerAnchor = nil
+            headerReadResult = nil
             headerDiscoveryWindowBounds = window.bounds
             headerNextDiscoveryAt = now
         }
@@ -331,12 +333,12 @@ final class CodexQuotaOverlayController: NSObject {
         headerDiscoveryGeneration &+= 1
         let generation = headerDiscoveryGeneration
         headerDiscoveryTask = Task.detached(priority: .utility) { [weak self] in
-            let anchor = CodexSidebarHeaderAccessibility.anchor(
+            let result = CodexSidebarHeaderAccessibility.read(
                 for: processIdentifier,
                 in: windowBounds)
             guard !Task.isCancelled else { return }
             await self?.completeHeaderDiscovery(
-                anchor: anchor,
+                result: result,
                 processIdentifier: processIdentifier,
                 windowNumber: windowNumber,
                 windowBounds: windowBounds,
@@ -346,7 +348,7 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func completeHeaderDiscovery(
-        anchor: CodexSidebarHeaderAnchor?,
+        result: CodexSidebarHeaderReadResult,
         processIdentifier: pid_t,
         windowNumber: Int,
         windowBounds: CGRect,
@@ -368,7 +370,15 @@ final class CodexQuotaOverlayController: NSObject {
             return
         }
 
-        if let anchor {
+        if headerReadResult != result {
+            DeveloperLog.eventRecord("codex_overlay.header_discovery", category: "codex_overlay",
+                result: result.failure?.rawValue ?? "found",
+                fields: ["visited": .int(result.visitedCount),
+                         "candidates": .int(result.candidateCount),
+                         "web_areas": .int(result.webAreaCount)])
+        }
+        headerReadResult = result
+        if let anchor = result.anchor {
             headerAnchor = anchor
             headerDiscoveryFailureCount = 0
             headerNextDiscoveryAt = completedAt.addingTimeInterval(
@@ -394,6 +404,7 @@ final class CodexQuotaOverlayController: NSObject {
         headerDiscoveryWindowBounds = nil
         if clearAnchor {
             headerAnchor = nil
+            headerReadResult = nil
         }
     }
 

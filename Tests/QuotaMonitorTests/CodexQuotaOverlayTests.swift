@@ -665,7 +665,6 @@ struct CodexQuotaOverlayTests {
         #expect(!source.contains("Process()"))
         #expect(helpControlSource.contains("AXIsProcessTrusted()"))
         #expect(!helpControlSource.contains("kAXTrustedCheckOptionPrompt"))
-        #expect(helpControlSource.contains("maximumVisitedElements = 600"))
         #expect(source.contains("Task.detached(priority: .utility)"))
         #expect(source.contains("headerNextDiscoveryAt"))
         #expect(source.contains("workspace.runningApplications"))
