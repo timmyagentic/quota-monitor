@@ -1,0 +1,25 @@
+{
+  "sourceSHA": "5e53e2a",
+  "popupAtFrontVerified": true,
+  "mainWindowRetained": true,
+  "placements": [
+    "automatic",
+    "manual"
+  ],
+  "automaticFrame": [
+    587,
+    897,
+    148,
+    28
+  ],
+  "manualFrame": [
+    608,
+    315,
+    148,
+    28
+  ],
+  "settingsPreservedAcrossPopup": true,
+  "quotaData": "synthetic",
+  "externalCodexAX": "UNVERIFIED",
+  "windowDragViaCUA": "UNVERIFIED; drag action did not move the fixture window"
+}
