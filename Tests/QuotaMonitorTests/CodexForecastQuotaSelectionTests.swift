@@ -4,8 +4,8 @@ import Testing
 
 @Suite("Codex forecast quota selection")
 struct CodexForecastQuotaSelectionTests {
-    @Test("local cycle metrics follow the available quota without a period selector")
-    func localMetricsChooseAnAvailableCurrentWindow() {
+    @Test("local cycle metrics always follow the current weekly quota")
+    func localMetricsChooseOnlyTheCurrentWeeklyWindow() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let primary = CodexForecastQuotaSelection.Window(usedPercent: 20,
             resetsAt: now.addingTimeInterval(100))
@@ -14,9 +14,14 @@ struct CodexForecastQuotaSelectionTests {
         #expect(CodexForecastQuotaSelection(primary: nil, secondary: secondary)
             .currentCycleBucket(now: now) == "secondary")
         #expect(CodexForecastQuotaSelection(primary: primary, secondary: secondary)
-            .currentCycleBucket(now: now) == "primary")
+            .currentCycleBucket(now: now) == "secondary")
         #expect(CodexForecastQuotaSelection(primary: primary, secondary: secondary)
             .currentCycleBucket(now: now.addingTimeInterval(101)) == "secondary")
+        #expect(CodexForecastQuotaSelection(primary: primary, secondary: nil)
+            .currentCycleBucket(now: now) == nil)
+        let expiredWeekly = CodexForecastQuotaSelection.Window(usedPercent: 69, resetsAt: now)
+        #expect(CodexForecastQuotaSelection(primary: primary, secondary: expiredWeekly)
+            .currentCycleBucket(now: now) == nil)
         #expect(CodexForecastQuotaSelection(primary: nil, secondary: nil)
             .currentCycleBucket(now: now) == nil)
     }
