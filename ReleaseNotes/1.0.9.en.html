@@ -1,5 +1,6 @@
 <div class="release-summary">
 <ul>
+<li>Dashboard local usage now covers the current seven-day quota cycle.</li>
 <li>Preview windows keep the widget attached to its confirmed main window.</li>
 <li>Sidebar detection handles delayed controls more reliably, and Settings explains why the widget is unavailable.</li>
 <li>The widget follows dragging more reliably and no longer shows a dropdown arrow.</li>
@@ -10,6 +11,7 @@
 <div class="release-details">
 <h3>Fixed</h3>
 <ul>
+<li><b>Weekly local usage.</b> Codex and Claude local token, cache, and cost totals follow the current seven-day quota cycle, and remain unavailable when that weekly window is missing or expired.</li>
 <li><b>Window tracking.</b> Confirm the main document before binding the widget, ignore transient preview windows, and keep its relative position when the document moves.</li>
 <li><b>Sidebar discovery.</b> Read delayed controls, search deeper header wrappers, and skip content outside the title area. The current mode-selector button is supported.</li>
 <li><b>Steadier dragging.</b> Keep the one-second hold, follow screen coordinates, and save the final drop position. Expanded details retain their existing content.</li>

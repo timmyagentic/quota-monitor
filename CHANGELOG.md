@@ -34,6 +34,7 @@ window copy.
 
 #### Summary
 
+- Dashboard local usage now covers the current seven-day quota cycle.
 - Preview windows keep the widget attached to its confirmed main window.
 - Sidebar detection handles delayed controls more reliably, and Settings explains why the widget is unavailable.
 - The quota widget follows the pointer more smoothly and has a cleaner readout without the dropdown arrow.
@@ -41,6 +42,7 @@ window copy.
 
 ### Fixed
 
+- **Weekly local usage.** Codex and Claude local token, cache, and cost totals follow the current seven-day quota cycle, and remain unavailable when that weekly window is missing or expired.
 - **Widget dragging.** Long-press dragging uses screen coordinates, keeps its position during header refreshes, and saves the final pointer position without shifting compact readouts sideways on release.
 - **Window tracking.** Confirm the main document before binding the widget, keep transient previews from taking its place, match accessibility windows by bounds instead of overlap, and retain relative placement while the document moves.
 - **Sidebar discovery.** Request the application role before reading controls, search deeper header wrappers, and skip off-header content so busy windows do not consume the search budget.

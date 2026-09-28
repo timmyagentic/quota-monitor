@@ -78,6 +78,40 @@ struct QuotaCycleStorageTests {
         #expect(claude.cacheUsage == .init(readTokens: 150, eligibleInputTokens: 510))
     }
 
+    @Test func weeklyTotalsIncludeEarlierFiveHourWindowsAndExcludeThePreviousWeek() throws {
+        let manager = try database()
+        let now = origin.addingTimeInterval(3 * 86_400)
+        let cycles = ["codex", "claude"].flatMap { provider in
+            ["primary", "secondary"].map { bucket in
+                let duration: TimeInterval = bucket == "primary" ? 18_000 : 604_800
+                let start = bucket == "primary" ? now.addingTimeInterval(-3_600) : origin
+                return QuotaCycle.resolve(.init(provider: provider, bucket: bucket,
+                    scope: "fixture-account", plan: "pro", capturedAt: now,
+                    resetAt: start.addingTimeInterval(duration), duration: duration,
+                    usedPercent: 20), previous: nil)
+            }
+        }
+        try manager.pool.write { db in
+            let offsets: [Double] = [-0.001, 0, 86_400, 3 * 86_400 - 1, 3 * 86_400]
+            for provider in ["codex", "claude"] {
+                for offset in offsets {
+                    try seed(db: db, provider: provider, offset: offset)
+                }
+            }
+        }
+        let results = try manager.pool.read { db in
+            try Aggregator.quotaCycleUsage(db: db, cycles: cycles, now: now)
+        }
+        #expect(results.count == 4)
+        for usage in results {
+            let weekly = usage.cycle.observation.bucket == "secondary"
+            #expect(usage.eventCount == (weekly ? 3 : 1))
+            #expect(usage.tokens == (weekly ? 360 : 120))
+            #expect(abs(usage.valueUSD - (weekly ? 0.3 : 0.1)) < 0.000_001)
+            #expect(usage.points.last?.tokens == usage.tokens)
+        }
+    }
+
     @Test func unpricedRecordsKeepTokensButMarkTheCostIncomplete() throws {
         let manager = try database()
         try manager.pool.write { db in

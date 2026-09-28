@@ -10,7 +10,7 @@ struct CodexForecastQuotaSelection: Equatable {
     let secondary: Window?
 
     func currentCycleBucket(now: Date = Date()) -> String? {
-        if let primary, primary.resetsAt > now { return "primary" }
+        // Local cycle totals always describe the weekly allowance.
         if let secondary, secondary.resetsAt > now { return "secondary" }
         return nil
     }
@@ -254,8 +254,6 @@ struct ForecastSection: View {
         if provider == "codex" {
             bucket = CodexForecastQuotaSelection.make(live: liveCodexRateLimits,
                 stored: snapshot.codexQuota).currentCycleBucket(now: now)
-        } else if let primary = claudeUsage?.fiveHour, primary.resetAt > now {
-            bucket = "primary"
         } else if let secondary = claudeUsage?.sevenDay, secondary.resetAt > now {
             bucket = "secondary"
         } else {
