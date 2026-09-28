@@ -42,6 +42,9 @@ final class CodexQuotaOverlayController: NSObject {
     private var headerDiscoveryWindowNumber: Int?
     private var headerDiscoveryWindowBounds: CGRect?
     private var isCodexFrontmost = false
+    private var isSummaryHovered = false
+    private var isDetailsHovered = false
+    private var detailsCloseTask: Task<Void, Never>?
     private let viewState = CodexQuotaOverlayViewState()
     private var qaPreview: LocalQAOverlayPreview?
     private var localMouseDownMonitor: Any?
@@ -612,6 +615,8 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func hideOverlay() {
+        isSummaryHovered = false
+        isDetailsHovered = false
         resetSummaryDrag()
         lastCodexWindowNumber = nil
         lastCodexWindowFrame = nil
@@ -629,7 +634,28 @@ final class CodexQuotaOverlayController: NSObject {
 
     private func activateDetails() {
         guard detailsAreAllowed else { return }
-        if detailsPanel?.isVisible == true { closeDetails() } else { showDetails() }
+        showDetails()
+    }
+
+    private func summaryHoverChanged(_ hovering: Bool) {
+        isSummaryHovered = hovering
+        if hovering, detailsAreAllowed, viewState.dragPhase == .idle {
+            showDetails()
+        } else if !hovering {
+            scheduleDetailsClose()
+        }
+        recordLocalQAPanels(event: hovering ? "summary-enter" : "summary-exit")
+    }
+
+    private func detailsHoverChanged(_ hovering: Bool) {
+        isDetailsHovered = hovering
+        if hovering {
+            detailsCloseTask?.cancel()
+            detailsCloseTask = nil
+        } else {
+            scheduleDetailsClose()
+        }
+        recordLocalQAPanels(event: hovering ? "details-enter" : "details-exit")
     }
 
     private func summaryPressBegan(_ location: CGPoint) {
@@ -642,6 +668,7 @@ final class CodexQuotaOverlayController: NSObject {
         summaryDragStartMouseLocation = location
         summaryDragFrame = panel.frame
         summaryDragDidMove = false
+        closeDetails()
         recordLocalQAPanels(event: "press")
     }
 
@@ -705,6 +732,8 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func dismissDetailsForBackground() {
+        isSummaryHovered = false
+        isDetailsHovered = false
         resetSummaryDrag()
         closeDetails()
     }
@@ -713,6 +742,8 @@ final class CodexQuotaOverlayController: NSObject {
         now: Date = Date(),
         installClickAwayMonitors: Bool = true
     ) {
+        detailsCloseTask?.cancel()
+        detailsCloseTask = nil
         guard detailsAreAllowed,
               panel?.isVisible == true,
               let codexWindowFrame = lastCodexWindowFrame else {
@@ -739,9 +770,21 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func closeDetails() {
+        detailsCloseTask?.cancel()
+        detailsCloseTask = nil
         viewState.isExpanded = false
         removeClickAwayMonitors()
         detailsPanel?.orderOut(nil)
+    }
+
+    private func scheduleDetailsClose() {
+        detailsCloseTask?.cancel()
+        detailsCloseTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self,
+                  !self.isSummaryHovered, !self.isDetailsHovered else { return }
+            self.closeDetails()
+        }
     }
 
     private func installClickAwayMonitorsIfNeeded() {
@@ -867,6 +910,9 @@ final class CodexQuotaOverlayController: NSObject {
 
         let rootView = CodexQuotaOverlayView(
             state: viewState,
+            onHoverChanged: { [weak self] hovering in
+                self?.summaryHoverChanged(hovering)
+            },
             onResetPosition: { [weak self] in
                 self?.resetPosition()
             },
@@ -915,7 +961,9 @@ final class CodexQuotaOverlayController: NSObject {
             ignoresMouseEvents: false)
 
         panel.hasShadow = true
-        let rootView = CodexQuotaOverlayDetailsView()
+        let rootView = CodexQuotaOverlayDetailsView(onHoverChanged: { [weak self] hovering in
+                self?.detailsHoverChanged(hovering)
+            })
             .environment(environment)
             .environment(settings)
             .environment(LocalizationStore.shared)

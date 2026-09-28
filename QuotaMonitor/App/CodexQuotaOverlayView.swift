@@ -35,6 +35,7 @@ struct CodexQuotaOverlayView: View {
     @State private var jiggleForward = false
 
     let state: CodexQuotaOverlayViewState
+    let onHoverChanged: (Bool) -> Void
     let onResetPosition: () -> Void
     let onActivate: () -> Void
     let onPressBegan: (CGPoint) -> Void
@@ -51,7 +52,10 @@ struct CodexQuotaOverlayView: View {
                 now: context.date,
                 refreshFailed: environment.rateLimitsRefreshFailed)
 
-            summaryContent(presentation)
+            // Keep the input surface alive when the readout changes to hold/drag text.
+            ZStack {
+                summaryContent(presentation)
+            }
             .padding(.horizontal, 8)
             .frame(
                 width: state.width,
@@ -61,13 +65,14 @@ struct CodexQuotaOverlayView: View {
                     .fill(Color.primary.opacity(isHovering || state.isExpanded ? 0.055 : 0.015))
             }
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-            .onHover { hovering in
-                isHovering = hovering
-            }
             .overlay {
                 CodexQuotaOverlayMouseInput(onPress: beginPress, onMove: dragChanged,
                     onRelease: dragEnded, onCancel: cancelInteraction,
-                    onResetPosition: onResetPosition)
+                    onResetPosition: onResetPosition,
+                    onHoverChanged: { hovering in
+                        isHovering = hovering
+                        onHoverChanged(hovering)
+                    })
                     .accessibilityHidden(true)
             }
             .onDisappear(perform: cancelInteraction)
@@ -252,6 +257,7 @@ struct CodexQuotaOverlayDetailsView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(SettingsStore.self) private var settings
     @Environment(LocalizationStore.self) private var localization
+    var onHoverChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -290,6 +296,7 @@ struct CodexQuotaOverlayDetailsView: View {
             }
             .shadow(color: .black.opacity(0.10), radius: 12, y: 4)
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .onHover(perform: onHoverChanged)
             .accessibilityElement(children: .contain)
             .id(localization.currentLanguage)
         }

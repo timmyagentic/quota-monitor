@@ -1,5 +1,6 @@
 <div class="release-summary">
 <ul>
+<li>Hovering or clicking the quota widget opens details again, and long-press dragging stays responsive.</li>
 <li>Dashboard local usage now covers the current seven-day quota cycle.</li>
 <li>Preview windows keep the widget attached to its confirmed main window.</li>
 <li>Sidebar detection handles delayed controls more reliably, and Settings explains why the widget is unavailable.</li>
@@ -11,6 +12,7 @@
 <div class="release-details">
 <h3>Fixed</h3>
 <ul>
+<li><b>Widget input.</b> Keep the same mouse target while hold and drag labels change; restore hover details and retain them while the pointer crosses into the panel.</li>
 <li><b>Weekly local usage.</b> Codex and Claude local token, cache, and cost totals follow the current seven-day quota cycle, and remain unavailable when that weekly window is missing or expired.</li>
 <li><b>Window tracking.</b> Confirm the main document before binding the widget, ignore transient preview windows, and keep its relative position when the document moves.</li>
 <li><b>Sidebar discovery.</b> Read delayed controls, search deeper header wrappers, and skip content outside the title area. The current mode-selector button is supported.</li>
@@ -18,7 +20,7 @@
 </ul>
 <h3>Changed</h3>
 <ul>
-<li><b>Sidebar quota readout.</b> A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.</li>
+<li><b>Sidebar quota readout.</b> A compact ring and percentage adapt to available header space; hover or click to open details, then move away, press Escape, or click outside to close them. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.</li>
 <li><b>Honest quota status.</b> Cached or failed refreshes are labelled explicitly, while missing windows stay absent and saved manual positions remain available. Empty snapshots stay unavailable even after aging or a failed refresh.</li>
 <li><b>Placement status.</b> Distinguish missing permission, unreadable controls, an unrecognized header, and insufficient space. Automatic placement requires a measured safe slot.</li>
 </ul>

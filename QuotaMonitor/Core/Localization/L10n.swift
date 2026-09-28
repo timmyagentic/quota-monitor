@@ -156,8 +156,8 @@ enum L10n {
         t(en: "Quota unavailable", zh: "额度暂不可用")
     }
     static var codexOverlayAccessibilityHint: String {
-        t(en: "Press to toggle quota details. Press and hold for one second, then drag to move the widget.",
-          zh: "按下可展开或收起额度详情；按住 1 秒后拖动可移动挂件。")
+        t(en: "Hover or press to show quota details. Press and hold for one second, then drag to move the widget.",
+          zh: "悬停或按下可展开额度详情；按住 1 秒后拖动可移动挂件。")
     }
     static var codexOverlayHoldToMove: String {
         t(en: "Hold 1 sec, then drag", zh: "按住 1 秒后拖动")

@@ -34,6 +34,7 @@ window copy.
 
 #### Summary
 
+- Hovering or clicking the quota widget opens details again, and long-press dragging stays responsive.
 - Dashboard local usage now covers the current seven-day quota cycle.
 - Preview windows keep the widget attached to its confirmed main window.
 - Sidebar detection handles delayed controls more reliably, and Settings explains why the widget is unavailable.
@@ -42,6 +43,7 @@ window copy.
 
 ### Fixed
 
+- **Widget input.** Keep the same mouse target while hold and drag labels change; restore hover details and retain them while the pointer crosses into the panel.
 - **Weekly local usage.** Codex and Claude local token, cache, and cost totals follow the current seven-day quota cycle, and remain unavailable when that weekly window is missing or expired.
 - **Widget dragging.** Long-press dragging uses screen coordinates, keeps its position during header refreshes, and saves the final pointer position without shifting compact readouts sideways on release.
 - **Window tracking.** Confirm the main document before binding the widget, keep transient previews from taking its place, match accessibility windows by bounds instead of overlap, and retain relative placement while the document moves.
@@ -51,7 +53,7 @@ window copy.
 ### Changed
 
 - **Simpler readout.** Removed the summary arrow while retaining click-to-open details and the existing expanded content. Reset position returns the widget to the measured sidebar-title row.
-- **Sidebar quota readout.** A compact ring and percentage adapt to available header space; click again, press Escape, or click outside to close details. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.
+- **Sidebar quota readout.** A compact ring and percentage adapt to available header space; hover or click to open details, then move away, press Escape, or click outside to close them. Expanded details retain the existing headings, percentages, reset countdowns, exact reset times, and reset-card information.
 - **Honest quota status.** Cached or failed refreshes are labelled explicitly, while missing windows stay absent and saved manual positions remain available. Empty snapshots stay unavailable even after aging or a failed refresh.
 - **Placement status.** Distinguish missing permission, unreadable controls, an unrecognized header, and insufficient space instead of reporting every failure as no available room. Automatic placement still requires a measured safe slot.
 
