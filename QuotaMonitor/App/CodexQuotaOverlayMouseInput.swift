@@ -9,6 +9,7 @@ struct CodexQuotaOverlayMouseInput: NSViewRepresentable {
     var onRelease: (CGPoint, CGSize) -> Void
     var onCancel: () -> Void
     var onResetPosition: () -> Void
+    var onHoverChanged: (Bool) -> Void = { _ in }
 
     func makeNSView(context: Context) -> CodexQuotaOverlayMouseView {
         CodexQuotaOverlayMouseView()
@@ -20,6 +21,7 @@ struct CodexQuotaOverlayMouseInput: NSViewRepresentable {
         view.onRelease = onRelease
         view.onCancel = onCancel
         view.onResetPosition = onResetPosition
+        view.onHoverChanged = onHoverChanged
     }
 }
 
@@ -29,11 +31,27 @@ final class CodexQuotaOverlayMouseView: NSView {
     var onRelease: (CGPoint, CGSize) -> Void = { _, _ in }
     var onCancel: () -> Void = {}
     var onResetPosition: () -> Void = {}
+    var onHoverChanged: (Bool) -> Void = { _ in }
     var mouseLocation: () -> CGPoint = { NSEvent.mouseLocation }
     private var pressLocation: CGPoint?
+    private var hoverTrackingArea: NSTrackingArea?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
+
+    override func updateTrackingAreas() {
+        if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+        // Codex stays active while this nonactivating panel receives input.
+        let area = NSTrackingArea(rect: .zero,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self, userInfo: nil)
+        addTrackingArea(area)
+        hoverTrackingArea = area
+        super.updateTrackingAreas()
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHoverChanged(true) }
+    override func mouseExited(with event: NSEvent) { onHoverChanged(false) }
 
     override func mouseDown(with event: NSEvent) {
         let location = mouseLocation()
@@ -54,9 +72,12 @@ final class CodexQuotaOverlayMouseView: NSView {
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
-        if newWindow == nil, pressLocation != nil {
-            pressLocation = nil
-            onCancel()
+        if newWindow == nil {
+            onHoverChanged(false)
+            if pressLocation != nil {
+                pressLocation = nil
+                onCancel()
+            }
         }
         super.viewWillMove(toWindow: newWindow)
     }
