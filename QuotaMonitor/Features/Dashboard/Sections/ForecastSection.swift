@@ -181,11 +181,7 @@ struct ForecastSection: View {
         // upstream values ("prolite", "max5x") confuse users more than they
         // help, and the plan rarely changes for a single account.
         let tier: String? = nil
-        // Prefer the current `/usage` 5h window, then its preserved stale
-        // predecessor when a weekly-only response omits `five_hour`. Fall
-        // back to the locally-derived billing block only when OAuth has no
-        // displayable 5h row.
-        let displayedFiveHour = claudeUsage?.fiveHourForDisplay
+        let fiveHour = ClaudeFiveHourPresentation.make(usage: claudeUsage, block: block)
         let liveSevenDay = claudeUsage?.sevenDay
         let scopedRows = claudeUsage.map {
             ClaudeScopedQuotaRows.visibleRows(for: $0)
@@ -201,7 +197,8 @@ struct ForecastSection: View {
             emptyText: L10n.forecastNoClaudeQuota
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                if let displayed = displayedFiveHour {
+                switch fiveHour {
+                case .quota(let displayed):
                     QuotaProgressRow(
                         title: L10n.quotaCardTitle5h,
                         usedPercent: displayed.usedPercent,
@@ -209,15 +206,19 @@ struct ForecastSection: View {
                         burn: nil,
                         cycle: env.quotaCycle(provider: "claude", bucket: "primary", resetAt: displayed.resetAt),
                         windowDuration: displayed.windowDuration)
-                } else if let block {
+                case .localBlock(let block):
                     let pct = blockProgress(block)
                     let resetsAt = block.endTime
                     QuotaProgressRow(
-                        title: L10n.quotaCardTitle5h,
+                        title: L10n.fiveHBlockState(active: block.isActive),
                         usedPercent: pct * 100,
                         resetsAt: resetsAt,
                         burn: nil,
-                        displayModeOverride: .used)
+                        displayModeOverride: .used,
+                        percentLabelOverride: L10n.cycleTimeProgress(
+                            String(format: "%.0f%%", pct * 100), estimated: true))
+                case .idle, .unavailable:
+                    EmptyView()
                 }
                 if let week = liveSevenDay {
                     QuotaProgressRow(
@@ -346,6 +347,7 @@ struct QuotaProgressRow: View {
     /// true quota usage. Keep those in the traditional increasing
     /// direction even when quota rows are set to "remaining".
     var displayModeOverride: SettingsStore.QuotaDisplayMode?
+    var percentLabelOverride: String? = nil
     var cycle: QuotaCycle? = nil
     var windowDuration: TimeInterval? = nil
 
@@ -363,7 +365,7 @@ struct QuotaProgressRow: View {
                     Text(title)
                         .font(.caption.weight(.medium))
                     Spacer()
-                    Text(String(format: "%.0f%%", displayPercent))
+                    Text(percentLabelOverride ?? String(format: "%.0f%%", displayPercent))
                         .font(.caption.monospacedDigit().weight(.semibold))
                         .foregroundStyle(warn ? .red : .primary)
                 }

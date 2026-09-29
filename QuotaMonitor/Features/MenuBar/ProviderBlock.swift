@@ -98,6 +98,7 @@ extension MenuBarContentView {
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             claudeRateLimitNotice()
+            claudeFiveHourRow(blocks: blocks)
             if let usage = env.latestClaudeUsage,
                usage.hasRenderableQuotaWindow {
                 claudeOAuthInner(usage: usage)
@@ -173,26 +174,27 @@ extension MenuBarContentView {
         return formatter.string(from: date)
     }
 
-    /// Preferred path: render OAuth `/usage` like the Codex block — plan
-    /// tier badge + 5h / 7d / per-model quota rows. Mirroring the Codex
-    /// layout is the whole point of Day-23/24: one column, two providers,
-    /// same shape.
+    @ViewBuilder
+    func claudeFiveHourRow(blocks: BillingBlocks.Snapshot) -> some View {
+        switch ClaudeFiveHourPresentation.make(
+            usage: env.latestClaudeUsage, block: blocks.currentBlock) {
+        case .quota(let window):
+            QuotaRow(title: L10n.quotaCardTitle5h, window: window, accent: .orange,
+                     cycle: env.quotaCycle(provider: "claude", bucket: "primary", resetAt: window.resetAt))
+        case .localBlock(let block):
+            Claude5hRow(block: block, burn: blocks.burnRate, projection: blocks.projection)
+        case .idle:
+            claude5hIdleRow()
+        case .unavailable:
+            EmptyView()
+        }
+    }
+
+    /// Weekly OAuth rows remain visible alongside either source of 5h data.
     @ViewBuilder
     func claudeOAuthInner(usage: ClaudeUsageSnapshot) -> some View {
         let scopedRows = ClaudeScopedQuotaRows.visibleRows(for: usage)
         VStack(alignment: .leading, spacing: 6) {
-            if let w = usage.fiveHourForDisplay {
-                QuotaRow(title: L10n.quotaCardTitle5h, window: w, accent: .orange,
-                         cycle: env.quotaCycle(provider: "claude", bucket: "primary", resetAt: w.resetAt))
-            } else if usage.hasRenderableWeeklyQuotaWindow {
-                // Anthropic's /api/oauth/usage drops `five_hour` entirely
-                // after the window resets if the user hasn't prompted
-                // Claude yet — not a zero value, the key is absent. If we
-                // also lack a previous 5h sample, show a quiet placeholder
-                // so the missing row doesn't read as a bug next to a healthy
-                // aggregate or model-scoped weekly row.
-                claude5hIdleRow()
-            }
             if let w = usage.sevenDay {
                 QuotaRow(title: L10n.quotaCardTitle7dFull, window: w, accent: .orange,
                          cycle: env.quotaCycle(provider: "claude", bucket: "secondary", resetAt: w.resetAt))
@@ -213,8 +215,8 @@ extension MenuBarContentView {
     /// Inactive-5h placeholder row. Title styled like a real QuotaRow title
     /// (so vertical rhythm stays consistent with the 7d row below) but
     /// rendered tertiary to signal "slot exists, no data". No progress bar,
-    /// no percent, no pace label — there's nothing to show until the API
-    /// starts including `five_hour` again.
+    /// no percent, no pace label — neither a quota sample nor a local
+    /// billing block is available.
     @ViewBuilder
     func claude5hIdleRow() -> some View {
         HStack(spacing: 6) {
@@ -237,11 +239,7 @@ extension MenuBarContentView {
         stats: ProviderStats, blocks: BillingBlocks.Snapshot
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let block = blocks.currentBlock {
-                Claude5hRow(block: block,
-                            burn: blocks.burnRate,
-                            projection: blocks.projection)
-            } else if stats.hasData {
+            if blocks.currentBlock == nil && stats.hasData {
                 Text(L10n.no5hBlockActive)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
