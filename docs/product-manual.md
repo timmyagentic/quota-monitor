@@ -278,7 +278,7 @@ Advanced 设置不再显示数据库位置、CSV 导出和价格目录管理入�
 维护记录：
 
 - 运行 `./qa/run-static.sh`，静态检查、release note 校验、Swift 构建和 269 个 Swift 测试通过。
-- 运行当时的 `./qa/prepare-computer-use-fixture.sh` 启动隔离 QA App；该入口现在仅作为兼容 wrapper，新固定夹具入口是 `./qa/prepare-computer-use-fixture-smoke.sh`。
+- 运行当时的 `./qa/prepare-computer-use-fixture.sh` 启动隔离 QA App；该历史入口已退役，当前流程见 [本地验证](local-qa.md)。
 - QA App target：`/Volumes/SamsungDisk/Code/quota-monitor/.build/QuotaMonitor.app`。
 - QA artifact：`.build/qa-artifacts/20260609T105643Z-computer-use-fixture`。
 - `./qa/check-artifacts.sh .build/qa-artifacts/20260609T105643Z-computer-use-fixture` 通过。

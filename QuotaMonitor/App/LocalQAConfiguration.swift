@@ -34,16 +34,7 @@ struct LocalQAConfiguration: Equatable {
             }
             self.steps = parsed
         } else {
-            self.steps = [
-                .openDashboard,
-                .openSettings,
-                .openMenuBarHelp,
-                .showPopover,
-                .refreshAll,
-                .exerciseSettings,
-                .wait,
-                .snapshot
-            ]
+            self.steps = [.snapshot]
         }
 
         let output = resolved.outputDirectory
@@ -65,7 +56,6 @@ enum LocalQAStep: String, Equatable {
     case showCodexOverlayDetails = "show-codex-overlay-details"
     case showCodexAccessibilityGuide = "show-codex-accessibility-guide"
     case refreshAll = "refresh-all"
-    case exerciseSettings = "exercise-settings"
     case wait
     case snapshot
     case quit

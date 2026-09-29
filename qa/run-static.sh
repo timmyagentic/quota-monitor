@@ -34,7 +34,7 @@ if [[ -f "${HOME}/.swiftly/env.sh" ]]; then
     . "${HOME}/.swiftly/env.sh"
 fi
 
-"${ROOT_DIR}/qa/tests/common_tests.sh"
+"${ROOT_DIR}/qa/tests/static_gate_tests.sh"
 (cd "$ROOT_DIR" && python3 -m unittest discover tools/tests)
 
 VERSION="$(tr -d '[:space:]' <"${ROOT_DIR}/Resources/VERSION")"

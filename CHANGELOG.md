@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Trying local changes now leaves your installed app running with its own saved data.
+
+### Changed
+
+- **Local UI checks.** Development QA now opens only the requested view in a temporary isolated app and cleans up automatically when the check ends.
+
 ## [1.0.10] — 2026-09-29
 
 #### Summary

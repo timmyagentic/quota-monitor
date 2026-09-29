@@ -1,117 +1,24 @@
 ---
 name: quota-monitor-computer-qa
-description: Use when testing QuotaMonitor macOS app changes, validating local QA artifacts, or performing Computer Use walkthroughs in this repo.
+description: Verify the affected QuotaMonitor macOS UI in an isolated local build.
 ---
 
-# QuotaMonitor Computer QA
+# QuotaMonitor UI verification
 
-Use this project skill for QuotaMonitor local QA and visible-behavior checks in
-`/Volumes/SamsungDisk/Code/quota-monitor`.
+Use the current worktree and [local verification guide](../../../docs/local-qa.md).
 
-## Workflow
+1. While editing, run affected tests. Before delivery, run `./qa/run-static.sh`
+   once; accept its matching Swift-result cache. Do not duplicate the full gate.
+2. If the change affects UI, start `./qa/run.py --view <target>`. Choose fixture
+   data by default; use `--data snapshot` only when local history is relevant.
+3. Select the exact printed QA app path in Computer Use. Verify the changed
+   behavior and its immediate effects; do not require unrelated screens.
+4. Capture a screenshot when needed for the visible change. A ready app or
+   `app-state.json` does not prove UI acceptance; report any untested behavior.
+5. Quit the QA app or interrupt the launcher. It removes its own app/profile and
+   preferences and leaves the installed application running.
 
-1. Confirm branch and dirty state:
-
-   ```sh
-   git status --short --branch
-   ```
-
-2. While implementation is changing, run only the affected Swift suite or
-   suites with `swift test --disable-keychain --filter ...`.
-
-3. Once code, tests, and QA scripts are stable, run the final static gate once.
-   This does not launch `QuotaMonitor.app`:
-
-   ```sh
-   ./qa/run-static.sh
-   ```
-
-   `./qa/run-all.sh` is an alias for the same static suite; do not run both.
-   Do not precede the gate with an unfiltered `swift test` or a separate
-   `git diff --check`. If the gate reports a reused passing Swift result, the
-   code/test/QA fingerprint is unchanged and no second full run is needed. If
-   the gate fails, inspect the failing command before launching any QA app
-   instance.
-
-4. For visible UI work, launch an isolated setup app for Computer Use. The
-   setup script prepares artifacts; it is not a separate visible-app test
-   layer. For local test-version checks that should resemble the installed app,
-   launch real-data shadow QA:
-
-   ```sh
-   ./qa/prepare-computer-use-real-data.sh
-   ```
-
-   For deterministic fixture smoke walkthroughs, launch:
-
-   ```sh
-   ./qa/prepare-computer-use-fixture-smoke.sh
-   ```
-
-   `./qa/prepare-computer-use-fixture.sh` is a compatibility wrapper for the
-   fixture-smoke command; prefer the explicit name in new docs and reports.
-
-   The real-data path copies the current QuotaMonitor UserDefaults into the isolated QA
-   suite without applying product-visible setting overrides. If those
-   preferences cannot be copied, use the fixture-smoke setup only when a
-   deterministic clean-room check is acceptable.
-
-5. Open the run's `computer-use-qa.md` and use its `Computer Use app target`
-   exactly. Do not target by bare name `QuotaMonitor` or only by bundle id:
-   this machine can also have `/Applications/QuotaMonitor.app` running.
-
-6. Use Computer Use on the exact `.app` path from the brief:
-   - Dashboard: Forecast, Trends, Composition.
-   - Sessions: search, sort, detail, token/cost/event rows.
-   - History: day selection, rollups, per-session details.
-   - Settings: General and Advanced controls, excluding destructive actions.
-   - Menu bar: popover, provider display, navigation buttons.
-   - Menu-bar help: readability and close behavior.
-   - Visual pass: clipping, overlaps, blank charts, missing icons.
-
-7. Re-check the artifact contract:
-
-   ```sh
-   ./qa/check-artifacts.sh <artifact-dir>
-   ```
-
-8. After Computer Use, run the printed `cleanup-computer-use.sh` unless the user
-   explicitly wants the QA app left open. The cleanup closes only QA-launched
-   QuotaMonitor processes and restores `/Applications/QuotaMonitor.app` if it
-   was running before the QA launch.
-
-## Boundaries
-
-- Treat `qa-boundary.json` as the source of truth for allowed Computer Use
-  actions, QA write roots, disabled live sources, and approval-required actions.
-- For real-data shadow runs, verify `real-data-protection.txt` contains
-  `source_unchanged=true`.
-- For real-data shadow runs, inspect `user-defaults-shadow.txt`; the normal
-  realistic path should show `copied_user_defaults=true` and
-  `safety_overrides=none` while still keeping credentials not copied.
-- Do not use real Codex or Claude credentials.
-- Ask before uninstall, export CSV, reveal files, check updates,
-  changing system settings, accepting permission prompts, uploading files, or
-  transmitting credentials.
-- `screen.png` is a full-screen artifact and may show another foreground app.
-  Use Computer Use state plus `app-state.json` and `ax-tree.txt` as primary UI
-  evidence.
-
-## Troubleshooting
-
-- If Computer Use returns `noWindowsAvailable`, re-check `app-state.json`, use
-  the exact app target from the brief, and activate or raise the QA window before
-  treating it as a product failure.
-- If artifacts show `appserver.*`, `ratelimits.poll*`, `claude_usage.poll*`,
-  `claude_credentials*`, or `claude_cli*`, treat the run as a QA boundary
-  failure.
-- If an installed QuotaMonitor process is also running, do not kill it while
-  cleaning up QA. The QA cleanup targets only processes launched with the QA
-  config argument, then restores the installed app if the run had displaced it.
-
-## Report
-
-Report commands run, artifact directory, exact Computer Use app target,
-Computer Use observations by area, failures with screenshot or AX evidence,
-untested areas, cleanup state, and whether a real installed QuotaMonitor
-process was present/restored.
+Keep real credentials out of QA. Data isolation and disabling external requests
+remain mandatory. Widget fixture checks do not establish external-host tracking
+or physical-drag behavior. Do not change system settings or accept permission
+prompts without user authorization.

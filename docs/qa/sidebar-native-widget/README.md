@@ -7,10 +7,10 @@ These are Computer Use screenshots of the shipping SwiftUI summary and details c
 ## Reproduce
 
 ```sh
-QM_QA_LANGUAGE=zh-Hans ./qa/prepare-sidebar-widget-preview.sh
+./qa/run.py --view widget --language zh-Hans
 ```
 
-This builds the app, copies it into a uniquely identified QA bundle, and launches with an isolated home, defaults suite, and database. It leaves existing app processes and the installed application untouched. Use the gallery controls for weekly, dual-window, stale, unavailable, reset cards, compact, used/remaining, locale, and appearance states. Normal launches do not enable the gallery.
+This builds the app, copies it into a uniquely identified QA bundle, and launches with an isolated home, defaults suite, and database. It leaves existing app processes and the installed application untouched. Use the gallery controls for weekly, dual-window, stale, unavailable, reset cards, compact, used/remaining, locale, and appearance states. Normal launches do not enable the gallery. Quit the QA app or interrupt the launcher to remove its temporary app and profile.
 
 ## Verification
 
