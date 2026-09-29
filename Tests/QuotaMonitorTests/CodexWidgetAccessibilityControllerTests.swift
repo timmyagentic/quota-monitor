@@ -17,7 +17,7 @@ struct CodexWidgetAccessibilityControllerTests {
         lazy var controller = CodexWidgetAccessibilityController(
             disableWidget: { self.disabled += 1 },
             isTrusted: { self.trusted },
-            presentGuide: { self.prompts += 1; return self.choice },
+            presentGuide: { completion in self.prompts += 1; completion(self.choice) },
             requestPermission: { self.requests += 1 },
             openURL: { self.openedURLs.append($0) },
             schedule: { self.pending.append($0) })
@@ -154,5 +154,25 @@ struct CodexWidgetAccessibilityControllerTests {
         #expect(h.prompts == 0)
         #expect(h.requests == 1)
         #expect(h.openedURLs == [CodexWidgetAccessibilityController.settingsURL])
+    }
+
+    @Test("A stale guide response cannot disable a widget after access has been granted")
+    func grantedPermissionInvalidatesPendingResponse() {
+        var trusted = false
+        var disabled = false
+        var response: (@MainActor (CodexWidgetAccessibilityController.Choice) -> Void)?
+        let controller = CodexWidgetAccessibilityController(
+            disableWidget: { disabled = true },
+            isTrusted: { trusted },
+            presentGuide: { response = $0 },
+            requestPermission: {},
+            openURL: { _ in },
+            schedule: { $0() })
+        controller.refresh(isEnabled: true, canPrompt: true)
+        #expect(response != nil)
+        trusted = true
+        #expect(controller.refresh(isEnabled: true, canPrompt: true))
+        response?(.disableWidget)
+        #expect(!disabled)
     }
 }

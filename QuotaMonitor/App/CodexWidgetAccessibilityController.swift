@@ -10,7 +10,7 @@ final class CodexWidgetAccessibilityController {
         "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
 
     private let isTrusted: @MainActor () -> Bool
-    private let presentGuide: @MainActor () -> Choice
+    private let presentGuide: (@MainActor (@escaping @MainActor (Choice) -> Void) -> Void)?
     private let requestPermission: @MainActor () -> Void
     private let openURL: @MainActor (URL) -> Void
     private let disableWidget: @MainActor () -> Void
@@ -21,13 +21,14 @@ final class CodexWidgetAccessibilityController {
     private var isAwaitingAuthorization = false
     private var hasVisitedSystemSettings = false
     private var generation = 0
+    private var guide: CodexWidgetAccessibilityGuide?
 
     init(
         disableWidget: @escaping @MainActor () -> Void,
         isTrusted: @escaping @MainActor () -> Bool = {
             LocalQAEnvironment.isQARequested() || AXIsProcessTrusted()
         },
-        presentGuide: @escaping @MainActor () -> Choice = CodexWidgetAccessibilityController.showGuide,
+        presentGuide: (@MainActor (@escaping @MainActor (Choice) -> Void) -> Void)? = nil,
         requestPermission: @escaping @MainActor () -> Void = CodexWidgetAccessibilityController.requestSystemPermission,
         openURL: @escaping @MainActor (URL) -> Void = CodexWidgetAccessibilityController.openSystemSettings,
         schedule: @escaping (@escaping @MainActor () -> Void) -> Void = { action in
@@ -49,6 +50,8 @@ final class CodexWidgetAccessibilityController {
         self.canPrompt = canPrompt
         let trusted = isTrusted()
         guard isEnabled, !trusted else {
+            guide?.dismiss()
+            guide = nil
             hasOfferedGuide = false
             isAwaitingAuthorization = false
             hasVisitedSystemSettings = false
@@ -68,21 +71,38 @@ final class CodexWidgetAccessibilityController {
                 self.hasOfferedGuide = false
                 return
             }
-            switch self.presentGuide() {
-            case .openSettings:
-                self.openSettings()
-            case .disableWidget:
-                self.isEnabled = false
-                self.isAwaitingAuthorization = false
-                self.generation &+= 1
-                self.disableWidget()
+            let completion: @MainActor (Choice) -> Void = { [weak self] choice in
+                guard let self, self.generation == scheduledGeneration, self.isEnabled else { return }
+                self.guide = nil
+                self.handle(choice)
+            }
+            if let presentGuide = self.presentGuide {
+                presentGuide(completion)
+            } else {
+                let guide = CodexWidgetAccessibilityGuide(onChoice: completion)
+                self.guide = guide
+                guide.show()
             }
         }
         return false
     }
 
+    private func handle(_ choice: Choice) {
+        switch choice {
+        case .openSettings:
+            openSettings()
+        case .disableWidget:
+            isEnabled = false
+            isAwaitingAuthorization = false
+            generation &+= 1
+            disableWidget()
+        }
+    }
+
     func openSettings() {
         guard isEnabled else { return }
+        guide?.dismiss()
+        guide = nil
         // A manual retry also suppresses any queued automatic guide.
         hasOfferedGuide = true
         isAwaitingAuthorization = true
@@ -103,19 +123,6 @@ final class CodexWidgetAccessibilityController {
         if isAwaitingAuthorization { hasVisitedSystemSettings = true }
     }
 
-    private static func showGuide() -> Choice {
-        let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = L10n.codexOverlayAccessibilityTitle
-        alert.window.title = L10n.codexOverlayAccessibilityTitle
-        alert.informativeText = L10n.codexOverlayAccessibilityGuide
-        alert.addButton(withTitle: L10n.codexOverlayAccessibilityOpenSettings)
-        alert.addButton(withTitle: L10n.codexOverlayAccessibilityDisable)
-        AppEnvironment.shared.activateForWindow()
-        defer { AppEnvironment.shared.demoteToAccessory() }
-        return alert.runModal() == .alertFirstButtonReturn ? .openSettings : .disableWidget
-    }
-
     private static func requestSystemPermission() {
         guard !LocalQAEnvironment.isQARequested() else { return }
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
@@ -130,6 +137,52 @@ final class CodexWidgetAccessibilityController {
             return
         }
         NSWorkspace.shared.open(url)
+    }
+}
+
+/// Displays the native alert without blocking the menu-bar app's main dispatch queue.
+@MainActor
+private final class CodexWidgetAccessibilityGuide: NSObject {
+    private let alert = NSAlert()
+    private let onChoice: @MainActor (CodexWidgetAccessibilityController.Choice) -> Void
+
+    init(onChoice: @escaping @MainActor (CodexWidgetAccessibilityController.Choice) -> Void) {
+        self.onChoice = onChoice
+        super.init()
+        alert.alertStyle = .informational
+        alert.messageText = L10n.codexOverlayAccessibilityTitle
+        alert.window.title = L10n.codexOverlayAccessibilityTitle
+        alert.informativeText = L10n.codexOverlayAccessibilityGuide
+        let openButton = alert.addButton(withTitle: L10n.codexOverlayAccessibilityOpenSettings)
+        openButton.target = self
+        openButton.action = #selector(openSettings)
+        openButton.keyEquivalent = "\r"
+        let disableButton = alert.addButton(withTitle: L10n.codexOverlayAccessibilityDisable)
+        disableButton.target = self
+        disableButton.action = #selector(disableWidget)
+        disableButton.keyEquivalent = "\u{1b}"
+    }
+
+    func show() {
+        alert.layout()
+        alert.window.center()
+        AppEnvironment.shared.activateForWindow()
+        alert.window.makeKeyAndOrderFront(nil)
+    }
+
+    func dismiss() {
+        alert.window.orderOut(nil)
+        AppEnvironment.shared.demoteToAccessory()
+    }
+
+    @objc private func openSettings() {
+        dismiss()
+        onChoice(.openSettings)
+    }
+
+    @objc private func disableWidget() {
+        dismiss()
+        onChoice(.disableWidget)
     }
 }
 
