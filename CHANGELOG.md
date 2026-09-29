@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.10] — 2026-09-29
+
 #### Summary
 
 - Claude's local five-hour window stays visible in the menu when only weekly quota is available.
