@@ -15,6 +15,8 @@ final class CodexQuotaOverlayController: NSObject {
     private let environment: AppEnvironment
     private let settings: SettingsStore
     private let workspace: NSWorkspace
+    private lazy var accessibilityController = CodexWidgetAccessibilityController(
+        disableWidget: { [weak self] in self?.disableWidget() })
     private var panel: CodexQuotaOverlayPanel?
     private var detailsPanel: CodexQuotaOverlayPanel?
     private var trackingTimer: Timer?
@@ -72,7 +74,6 @@ final class CodexQuotaOverlayController: NSObject {
 
         let workspaceCenter = workspace.notificationCenter
         for name in [
-            NSWorkspace.didActivateApplicationNotification,
             NSWorkspace.didLaunchApplicationNotification,
             NSWorkspace.didTerminateApplicationNotification,
             NSWorkspace.didHideApplicationNotification,
@@ -86,10 +87,20 @@ final class CodexQuotaOverlayController: NSObject {
                 name: name,
                 object: nil)
         }
+        workspaceCenter.addObserver(
+            self,
+            selector: #selector(applicationDidActivate),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil)
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenParametersDidChange),
             name: NSApplication.didChangeScreenParametersNotification,
+            object: nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(openAccessibilitySettings),
+            name: .quotaMonitorOpenWidgetAccessibilitySettings,
             object: nil)
 
         refreshOverlay()
@@ -103,6 +114,7 @@ final class CodexQuotaOverlayController: NSObject {
         trackingInterval = nil
         workspace.notificationCenter.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
+        accessibilityController.refresh(isEnabled: false, canPrompt: false)
         resetMainWindowDiscovery()
         hideOverlay()
         panel = nil
@@ -133,10 +145,44 @@ final class CodexQuotaOverlayController: NSObject {
         refreshOverlay()
     }
 
+    func showAccessibilityGuideForLocalQA() {
+        guard LocalQAEnvironment.isQARequested() else { return }
+        accessibilityController = CodexWidgetAccessibilityController(
+            disableWidget: { [weak self] in self?.disableWidget() },
+            isTrusted: { false })
+        settings.codexSidebarQuotaEnabled = true
+        _ = settings.setProviderEnabled("codex", enabled: true)
+        refreshOverlay()
+    }
+
+    @objc private func openAccessibilitySettings() {
+        guard settings.shouldShowCodexSidebarQuota else { return }
+        accessibilityController.openSettings()
+    }
+
+    private func disableWidget() {
+        settings.codexSidebarQuotaEnabled = false
+        refreshOverlay()
+    }
+
     @objc private nonisolated func workspaceStateDidChange(_ notification: Notification) {
         Task { @MainActor [weak self] in
             self?.refreshOverlay()
         }
+    }
+
+    @objc private nonisolated func applicationDidActivate(_ notification: Notification) {
+        Task { @MainActor [weak self] in
+            self?.refreshAfterApplicationActivation()
+        }
+    }
+
+    private func refreshAfterApplicationActivation() {
+        if let bundleID = workspace.frontmostApplication?.bundleIdentifier,
+           Self.supportedBundleIdentifiers.contains(bundleID) || bundleID == Bundle.main.bundleIdentifier {
+            accessibilityController.returnedFromSystemSettings()
+        }
+        refreshOverlay()
     }
 
     @objc private nonisolated func screenParametersDidChange(_ notification: Notification) {
@@ -176,6 +222,9 @@ final class CodexQuotaOverlayController: NSObject {
             updateTrackingInterval(Self.foregroundTrackingInterval)
             return
         }
+        let hasAccessibility = accessibilityController.refresh(
+            isEnabled: settings.shouldShowCodexSidebarQuota,
+            canPrompt: !LocalizationStore.shared.needsOnboarding && !settings.needsProviderOnboarding)
         guard settings.shouldShowCodexSidebarQuota else {
             lastFrontmostPID = nil
             trackedCodexPID = nil
@@ -183,6 +232,14 @@ final class CodexQuotaOverlayController: NSObject {
             resetMainWindowDiscovery()
             hideOverlay()
             setStatus(.disabled)
+            updateTrackingInterval(Self.backgroundTrackingInterval)
+            return
+        }
+
+        guard hasAccessibility else {
+            resetMainWindowDiscovery()
+            hideOverlay()
+            setStatus(.accessibilityPermissionRequired)
             updateTrackingInterval(Self.backgroundTrackingInterval)
             return
         }

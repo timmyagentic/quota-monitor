@@ -116,6 +116,19 @@ enum L10n {
     }
     static var codexOverlayWaitingForHeader: String { t(en: "Codex sidebar header not recognized. Expand the sidebar, or use a saved manual position.", zh: "尚未识别到 Codex 侧栏标题。请展开侧栏；已保存的手动位置仍可使用。") }
     static var codexOverlayAccessibilityRequired: String { t(en: "Allow QuotaMonitor in System Settings → Privacy & Security → Accessibility to locate the Codex sidebar.", zh: "请在系统设置 → 隐私与安全性 → 辅助功能中允许 QuotaMonitor，以定位 Codex 侧栏。") }
+    static var codexOverlayAccessibilityTitle: String {
+        t(en: "Enable the Codex quota widget", zh: "开启 Codex 额度挂件")
+    }
+    static var codexOverlayAccessibilityGuide: String {
+        t(en: "The quota widget requires Accessibility access to locate and follow the Codex window. Turn on \(Branding.appDisplayName) in the next screen, then return to Codex. If you do not allow access, turn off the widget. Quota tracking will continue to work.",
+          zh: "额度挂件必须获得辅助功能权限，才能定位并跟随 Codex 窗口。请在接下来的系统设置中打开 \(Branding.appDisplayName) 的开关，然后返回 Codex。如果不授权，请关闭额度挂件；额度统计仍可正常使用。")
+    }
+    static var codexOverlayAccessibilityOpenSettings: String {
+        t(en: "Open Accessibility Settings", zh: "打开辅助功能设置")
+    }
+    static var codexOverlayAccessibilityDisable: String {
+        t(en: "Turn Off Quota Widget", zh: "关闭额度挂件")
+    }
     static var codexOverlayWaitingForInterface: String { t(en: "Waiting for Codex to provide its sidebar controls. Keep its window visible; the widget will retry automatically.", zh: "暂时未能读取 Codex 侧栏控件。请保持窗口可见，挂件会自动重试。") }
     static var codexOverlayHeaderSpaceUnavailable: String { t(en: "Not enough room beside the Codex title. Widen the sidebar, or use a saved manual position.", zh: "Codex 标题旁的空间不足。请拉宽侧栏；已保存的手动位置仍可使用。") }
     static func codexOverlayDualCompact(fiveHour: Int, weekly: Int, used: Bool) -> String {
