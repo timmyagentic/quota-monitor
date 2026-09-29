@@ -30,16 +30,22 @@ window copy.
 
 ## [Unreleased]
 
-## [1.0.10] — 2026-09-29
-
 #### Summary
 
 - The Codex quota widget guides you straight to its required Accessibility permission; declining turns the widget off.
-- Claude's local five-hour window stays visible in the menu when only weekly quota is available.
 
 ### Fixed
 
 - **Widget permission.** Enabling the widget now opens a direct permission guide, offers a Settings shortcut, and resumes automatically after access is granted; disabling it leaves quota tracking available.
+
+## [1.0.10] — 2026-09-29
+
+#### Summary
+
+- Claude's local five-hour window stays visible in the menu when only weekly quota is available.
+
+### Fixed
+
 - **Five-hour display.** The menu and Dashboard share the same fallback to local billing records, with elapsed time labelled explicitly instead of appearing as account quota usage.
 
 ## [1.0.9] — 2026-09-28
