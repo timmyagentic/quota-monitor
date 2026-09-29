@@ -99,10 +99,12 @@ final class CodexWidgetAccessibilityController {
         let alert = NSAlert()
         alert.alertStyle = .informational
         alert.messageText = L10n.codexOverlayAccessibilityTitle
+        alert.window.title = L10n.codexOverlayAccessibilityTitle
         alert.informativeText = L10n.codexOverlayAccessibilityGuide
         alert.addButton(withTitle: L10n.codexOverlayAccessibilityOpenSettings)
         alert.addButton(withTitle: L10n.codexOverlayAccessibilityDisable)
-        NSApp.activate(ignoringOtherApps: true)
+        AppEnvironment.shared.activateForWindow()
+        defer { AppEnvironment.shared.demoteToAccessory() }
         return alert.runModal() == .alertFirstButtonReturn ? .openSettings : .disableWidget
     }
 
