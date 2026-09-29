@@ -178,9 +178,12 @@ final class CodexQuotaOverlayController: NSObject {
     }
 
     private func refreshAfterApplicationActivation() {
-        if let bundleID = workspace.frontmostApplication?.bundleIdentifier,
-           Self.supportedBundleIdentifiers.contains(bundleID) || bundleID == Bundle.main.bundleIdentifier {
-            accessibilityController.returnedFromSystemSettings()
+        if let bundleID = workspace.frontmostApplication?.bundleIdentifier {
+            if bundleID == "com.apple.systempreferences" {
+                accessibilityController.systemSettingsDidActivate()
+            } else if Self.supportedBundleIdentifiers.contains(bundleID) || bundleID == Bundle.main.bundleIdentifier {
+                accessibilityController.returnedFromSystemSettings()
+            }
         }
         refreshOverlay()
     }

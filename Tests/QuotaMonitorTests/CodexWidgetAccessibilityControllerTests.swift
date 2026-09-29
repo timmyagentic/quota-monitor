@@ -74,12 +74,25 @@ struct CodexWidgetAccessibilityControllerTests {
         let h = Harness()
         h.refresh()
         h.presentPendingGuide()
+        h.controller.systemSettingsDidActivate()
         h.controller.returnedFromSystemSettings()
         #expect(!h.refresh())
         h.choice = .disableWidget
         h.presentPendingGuide()
         #expect(h.prompts == 2)
         #expect(h.disabled == 1)
+    }
+
+    @Test("Activating the guide itself cannot trigger a second prompt before Settings opens")
+    func guideActivationDoesNotCountAsReturningFromSettings() {
+        let h = Harness()
+        h.refresh()
+        h.presentPendingGuide()
+        h.controller.returnedFromSystemSettings()
+        h.refresh()
+        h.presentPendingGuide()
+        #expect(h.prompts == 1)
+        #expect(h.openedURLs.count == 1)
     }
 
     @Test("Granting access resumes tracking; revoking it offers the required guide again")

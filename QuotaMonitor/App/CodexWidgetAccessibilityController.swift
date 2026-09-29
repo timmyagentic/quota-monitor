@@ -19,6 +19,7 @@ final class CodexWidgetAccessibilityController {
     private var canPrompt = false
     private var hasOfferedGuide = false
     private var isAwaitingAuthorization = false
+    private var hasVisitedSystemSettings = false
     private var generation = 0
 
     init(
@@ -50,6 +51,7 @@ final class CodexWidgetAccessibilityController {
         guard isEnabled, !trusted else {
             hasOfferedGuide = false
             isAwaitingAuthorization = false
+            hasVisitedSystemSettings = false
             generation &+= 1
             return trusted
         }
@@ -84,15 +86,21 @@ final class CodexWidgetAccessibilityController {
         // A manual retry also suppresses any queued automatic guide.
         hasOfferedGuide = true
         isAwaitingAuthorization = true
+        hasVisitedSystemSettings = false
         generation &+= 1
         if !isTrusted() { requestPermission() }
         openURL(Self.settingsURL)
     }
 
     func returnedFromSystemSettings() {
-        guard isAwaitingAuthorization else { return }
+        guard isAwaitingAuthorization, hasVisitedSystemSettings else { return }
         isAwaitingAuthorization = false
+        hasVisitedSystemSettings = false
         hasOfferedGuide = false
+    }
+
+    func systemSettingsDidActivate() {
+        if isAwaitingAuthorization { hasVisitedSystemSettings = true }
     }
 
     private static func showGuide() -> Choice {
