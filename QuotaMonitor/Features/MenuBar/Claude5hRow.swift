@@ -5,6 +5,7 @@ import SwiftUI
 /// Replaces the standalone `AnthropicBlockMini` rounded card (pre-Day-23).
 struct Claude5hRow: View {
     @Environment(SettingsStore.self) private var settings
+    @Environment(LocalizationStore.self) private var localization
     let block: BillingBlocks.Block
     let burn: BillingBlocks.BurnRate?
     let projection: BillingBlocks.Projection?
@@ -23,7 +24,7 @@ struct Claude5hRow: View {
                 Text(L10n.fiveHBlockState(active: block.isActive))
                     .font(.caption.weight(.medium))
                 Spacer()
-                Text("\(Int(pct * 100))%")
+                Text(L10n.cycleTimeProgress(String(format: "%.0f%%", pct * 100), estimated: true))
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(progressTint(pct))
             }

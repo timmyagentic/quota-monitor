@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Claude's local five-hour window stays visible in the menu when only weekly quota is available.
+
+### Fixed
+
+- **Five-hour display.** The menu and Dashboard share the same fallback to local billing records, with elapsed time labelled explicitly instead of appearing as account quota usage.
+
 ## [1.0.9] — 2026-09-28
 
 #### Summary
