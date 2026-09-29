@@ -63,6 +63,7 @@ enum LocalQAStep: String, Equatable {
     case openWhatsNew = "open-whats-new"
     case showPopover = "show-popover"
     case showCodexOverlayDetails = "show-codex-overlay-details"
+    case showCodexAccessibilityGuide = "show-codex-accessibility-guide"
     case refreshAll = "refresh-all"
     case exerciseSettings = "exercise-settings"
     case wait

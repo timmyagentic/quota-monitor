@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The Codex quota widget guides you straight to its required Accessibility permission; declining turns the widget off.
+
+### Fixed
+
+- **Widget permission.** Enabling the widget now opens a direct permission guide, offers a Settings shortcut, and resumes automatically after access is granted; disabling it leaves quota tracking available.
+
 ## [1.0.10] — 2026-09-29
 
 #### Summary

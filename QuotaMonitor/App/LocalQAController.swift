@@ -64,6 +64,9 @@ final class LocalQAController {
             case .showCodexOverlayDetails:
                 codexQuotaOverlayController?.showDetailsForLocalQA(outputDirectory: configuration.outputDirectory)
                 await pause(seconds: 0.6)
+            case .showCodexAccessibilityGuide:
+                codexQuotaOverlayController?.showAccessibilityGuideForLocalQA()
+                await pause(seconds: 0.6)
             case .refreshAll:
                 environment.refreshAll(throttle: false, trigger: "qa")
                 await pause(seconds: 2.0)

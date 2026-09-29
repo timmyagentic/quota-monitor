@@ -30,6 +30,7 @@ class LifecycleNotificationThreadTests(unittest.TestCase):
         cases = [('AppDelegate', 'calendarDayChanged', 1),
                  ('AppDelegate', 'workspaceDidWake', 3),
                  ('CodexQuotaOverlayController', 'workspaceStateDidChange', 1),
+                 ('CodexQuotaOverlayController', 'applicationDidActivate', 1),
                  ('CodexQuotaOverlayController', 'screenParametersDidChange', 1)]
         for controller, name, expected in cases:
             source = (ROOT / f'QuotaMonitor/App/{controller}.swift').read_text()
@@ -50,6 +51,7 @@ var calls = 0
     var updater: Updater? = Updater()
     func requestAutomaticHistoryScan(trigger: String) { record() }
     func refreshOverlay() { record() }
+    func refreshAfterApplicationActivation() { record() }
 ''' + callback(source, name) + '''
     func start() {
         NotificationCenter.default.addObserver(self, selector: #selector(''' + name + '''),

@@ -88,6 +88,12 @@ struct GeneralSettingsTab: View {
                                     env.applyEnabledProviders()
                                 }
                             }))
+                    if settings.codexSidebarQuotaStatus == .accessibilityPermissionRequired {
+                        Button(L10n.codexOverlayAccessibilityOpenSettings) {
+                            NotificationCenter.default.post(
+                                name: .quotaMonitorOpenWidgetAccessibilitySettings, object: nil)
+                        }
+                    }
                     Text(L10n.codexCapsuleSettingsHelp)
                         .font(.caption)
                         .foregroundStyle(.secondary)
