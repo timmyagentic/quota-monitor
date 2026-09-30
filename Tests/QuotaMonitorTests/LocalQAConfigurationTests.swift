@@ -23,7 +23,7 @@ struct LocalQAConfigurationTests {
         let config = try #require(LocalQAConfiguration(environment: [
             "QUOTAMONITOR_QA_MODE": "1",
             "QUOTAMONITOR_QA_OUTPUT_DIR": "/tmp/qm-qa",
-            "QUOTAMONITOR_QA_STEPS": "open-dashboard,open-whats-new,show-codex-overlay-details,show-codex-accessibility-guide,exercise-settings,snapshot,quit"
+            "QUOTAMONITOR_QA_STEPS": "open-dashboard,open-whats-new,show-codex-overlay-details,show-codex-accessibility-guide,open-settings,snapshot,quit"
         ]))
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa")
@@ -32,28 +32,19 @@ struct LocalQAConfigurationTests {
             .openWhatsNew,
             .showCodexOverlayDetails,
             .showCodexAccessibilityGuide,
-            .exerciseSettings,
+            .openSettings,
             .snapshot,
             .quit
         ])
     }
 
-    @Test("Uses deterministic defaults when only QA mode is enabled")
+    @Test("QA without an explicit target does not open windows or mutate settings")
     func defaultsForModeOnly() throws {
         let config = try #require(LocalQAConfiguration(environment: [
             "QUOTAMONITOR_QA_MODE": "1"
         ]))
 
-        #expect(config.steps == [
-            .openDashboard,
-            .openSettings,
-            .openMenuBarHelp,
-            .showPopover,
-            .refreshAll,
-            .exerciseSettings,
-            .wait,
-            .snapshot
-        ])
+        #expect(config.steps == [.snapshot])
         #expect(config.outputDirectory.path.hasSuffix("/QuotaMonitorQA"))
     }
 
@@ -67,7 +58,7 @@ struct LocalQAConfigurationTests {
           "codexHome": "/tmp/qm-qa-home/.codex",
           "outputDirectory": "/tmp/qm-qa-artifacts",
           "mockCodexResetCredits": true,
-          "steps": ["open-dashboard", "exercise-settings", "snapshot", "quit"]
+          "steps": ["open-dashboard", "open-settings", "snapshot", "quit"]
         }
         """)
 
@@ -76,7 +67,7 @@ struct LocalQAConfigurationTests {
             arguments: ["QuotaMonitor", "--quotamonitor-qa-config", configFile.path]))
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa-artifacts")
-        #expect(config.steps == [.openDashboard, .exerciseSettings, .snapshot, .quit])
+        #expect(config.steps == [.openDashboard, .openSettings, .snapshot, .quit])
         #expect(config.mockCodexResetCredits)
     }
 
@@ -89,7 +80,7 @@ struct LocalQAConfigurationTests {
           "defaultsSuite": "dev.tjzhou.QuotaMonitor.QAInline",
           "codexHome": "/tmp/qm-qa-inline-home/.codex",
           "outputDirectory": "/tmp/qm-qa-inline-artifacts",
-          "steps": ["exercise-settings", "snapshot"]
+          "steps": ["open-settings", "snapshot"]
         }
         """
         let encoded = Data(payload.utf8).base64EncodedString()
@@ -99,7 +90,7 @@ struct LocalQAConfigurationTests {
             arguments: ["QuotaMonitor", "--quotamonitor-qa-config-base64", encoded]))
 
         #expect(config.outputDirectory.path == "/tmp/qm-qa-inline-artifacts")
-        #expect(config.steps == [.exerciseSettings, .snapshot])
+        #expect(config.steps == [.openSettings, .snapshot])
         #expect(config.mockCodexResetCredits == false)
     }
 

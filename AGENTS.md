@@ -2,13 +2,14 @@
 
 ## Project Structure & Module Organization
 
-QuotaMonitor is a SwiftPM macOS app. App source lives in `QuotaMonitor/`, grouped by `App/`, `Core/`, and `Features/`. Tests live in `Tests/QuotaMonitorTests/` and use Swift Testing with `@Suite` and `@Test`. Static QA fixtures and shell helpers are under `qa/`; release, changelog, and packaging utilities are under `tools/`, `scripts/`, and `docs/`. User-facing release notes are maintained in both `CHANGELOG.md` and `CHANGELOG.zh-Hans.md`.
+QuotaMonitor is a SwiftPM macOS app. App source lives in `QuotaMonitor/`, grouped by `App/`, `Core/`, and `Features/`. Tests live in `Tests/QuotaMonitorTests/` and use Swift Testing with `@Suite` and `@Test`. Local QA fixtures and launch helpers are under `qa/`; release, changelog, and packaging utilities are under `tools/`, `scripts/`, and `docs/`. User-facing release notes are maintained in both `CHANGELOG.md` and `CHANGELOG.zh-Hans.md`.
 
 ## Build, Test, and Development Commands
 
 - `swift test --disable-keychain --filter SuiteName`: runs only an affected suite while iterating.
 - `./qa/run-static.sh`: final non-GUI PR gate; runs shell/Python checks, release-note validation, `git diff --check`, and the Swift suite. Passing Swift output is summarized and its full log is saved under `.build/qa-logs/`.
 - `./qa/run-static.sh --force`: bypasses Swift-result reuse. CI uses this; local iteration normally should not.
+- `./qa/run.py --view <target>`: launches one isolated UI target; exits cleanly with the QA app or Ctrl-C. Use `--data snapshot` only when copied local history is relevant.
 - `./build.sh`: builds and assembles `.build/QuotaMonitor.app` for local use.
 - `CONFIG=release ./build.sh`: release-style app build.
 - `./tools/make-dmg.sh`: creates the distributable DMG after a release build.
@@ -24,6 +25,8 @@ Add focused tests beside related suites in `Tests/QuotaMonitorTests/`. Test name
 `qa/run-static.sh` always reruns the inexpensive shell, Python, release-note, and whitespace checks. It reuses a passing Swift-suite result when the current code/test/QA/tool inputs and Swift toolchain have the same content fingerprint, independent of staging or committing. Changes under source, tests, `qa/`, build/tool scripts, package metadata, or bundled resources invalidate that result; documentation and changelog-only edits do not invalidate Swift tests but still receive their lightweight checks. Use `--force` only when a genuinely fresh full suite is required. Historical plans and execution records are evidence, not permission to restore redundant full-test sequences.
 
 ## Commit & Pull Request Guidelines
+
+For UI verification, follow `docs/local-qa.md` and the checked-in `.codex/skills/quota-monitor-computer-qa/SKILL.md`. Inspect only affected behavior; do not restore the retired full-window tour, artifact checker, or compatibility launchers from older global skills or historical plans.
 
 History uses concise imperative subjects, often with PR numbers after merge, for example `Split session titles from project metadata (#60)`. For every task, fetch latest `origin/main`, create an independent worktree, and create a `codex/` branch there. Do not edit the primary checkout or `main` directly. Commit, push, and open a PR from that worktree before handoff. Non-appcast PRs must update both changelog files. Include a clear PR summary, verification commands, screenshots for visible UI changes, and linked issues when available.
 

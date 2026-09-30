@@ -50,8 +50,7 @@ shown until the user explicitly asks to play.
 5. Launch isolated visual QA with:
 
    ```sh
-   QUOTAMONITOR_QA_STEPS='open-dashboard,open-settings,open-whats-new,wait,snapshot' \
-     ./qa/prepare-computer-use-fixture-smoke.sh
+   ./qa/run.py --view whats-new
    ```
 
 6. Verify both languages, image and video pages, playback cleanup, keyboard
