@@ -32,7 +32,12 @@ window copy.
 
 #### Summary
 
+- See costs for GPT-6.1 Sol and Claude Sonnet 5.5, including cached usage.
 - Trying local changes now leaves your installed app running with its own saved data.
+
+### Added
+
+- **New models.** GPT-6.1 Sol includes Standard, Fast and Flex estimates for short and long requests, and Claude Sonnet 5.5 includes cache reads and writes; already imported usage is priced after upgrading.
 
 ### Changed
 

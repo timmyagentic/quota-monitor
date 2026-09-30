@@ -366,6 +366,9 @@ struct PricingValueBackfillTests {
             .init(modelId: "claude-fable-5-1",
                   input: 10.00, cached: 0.25, cacheCreation: 12.50,
                   output: 50.00, isOfficial: true),
+            .init(modelId: "claude-sonnet-5-5",
+                  input: 2.00, cached: 0.20, cacheCreation: 2.50,
+                  output: 10.00, isOfficial: true),
             .init(modelId: "claude-sonnet-5",
                   input: 2.00, cached: 0.20, cacheCreation: 2.50,
                   output: 10.00, isOfficial: true),
@@ -405,6 +408,7 @@ struct PricingValueBackfillTests {
                   'claude-opus-5-5',
                   'claude-opus-5',
                   'claude-fable-5-1',
+                  'claude-sonnet-5-5',
                   'claude-sonnet-5',
                   'claude-fable-5',
                   'claude-opus-4-8',
@@ -903,6 +907,7 @@ struct PricingValueBackfillTests {
         #expect(!entries.isEmpty)
         let cacheWritePremiumModelIds: Set<String> = [
             "gpt-6-astra",
+            "gpt-6.1-sol",
             "gpt-6-sol",
             "gpt-6-luna",
             "gpt-5.6-sol",
@@ -944,6 +949,125 @@ struct PricingValueBackfillTests {
             #expect(abs((entry?.cachedInputPricePerMillion ?? -1) - price.1) < 1e-9)
             #expect(abs((entry?.cacheCreationPricePerMillion ?? -1) - price.2) < 1e-9)
             #expect(abs((entry?.outputPricePerMillion ?? -1) - price.3) < 1e-9)
+        }
+    }
+
+    @Test("GPT-6.1 Sol catalog materializes its distinct cache rates across all tiers")
+    func gpt61SolCatalogMaterializesOfficialMatrix() throws {
+        let expected: [String: (Double, Double, Double, Double)] = [
+            "gpt-6.1-sol": (2.00, 0.10, 2.50, 10.00),
+            "gpt-6.1-sol-fast": (4.00, 0.20, 5.00, 20.00),
+            "gpt-6.1-sol-flex": (1.00, 0.05, 1.25, 5.00),
+            "gpt-6.1-sol-long": (4.00, 0.20, 5.00, 15.00),
+            "gpt-6.1-sol-fast-long": (8.00, 0.40, 10.00, 30.00),
+            "gpt-6.1-sol-flex-long": (2.00, 0.10, 2.50, 7.50),
+        ]
+        let entries = Dictionary(uniqueKeysWithValues:
+            BundledPricingCatalog.entries.filter {
+                $0.effectiveModelId == "gpt-6.1-sol"
+            }.map { ($0.modelId, $0) })
+
+        #expect(Set(entries.keys) == Set(expected.keys))
+        for (modelId, price) in expected {
+            let entry = try #require(entries[modelId])
+            #expect(abs(entry.inputPricePerMillion - price.0) < 1e-9)
+            #expect(abs(entry.cachedInputPricePerMillion - price.1) < 1e-9)
+            #expect(abs(entry.cacheCreationPricePerMillion - price.2) < 1e-9)
+            #expect(abs(entry.outputPricePerMillion - price.3) < 1e-9)
+            #expect(BundledPricingCatalog.codexModelIds.contains(modelId))
+        }
+        let standard = try #require(entries["gpt-6.1-sol"])
+        #expect(standard.displayName == "GPT-6.1 Sol")
+        #expect(standard.isOfficial)
+    }
+
+    @Test("GPT-6.1 Sol prices cache reads, cache writes and the strict 272K boundary")
+    func gpt61SolUsageSelectsOfficialPricingMatrix() throws {
+        let db = try makeDatabase()
+        for input in [200_000, 272_000, 272_001] as [Int64] {
+            for tier in [nil, "priority", "flex"] as [String?] {
+                try insertUsageEvent(
+                    in: db, provider: "codex", modelId: "gpt-6.1-sol",
+                    input: input, cached: 40_000, output: 20_000,
+                    codexCacheWrite: 60_000, serviceTierPreference: tier,
+                    timestamp: "2026-09-30T00:00:00Z")
+            }
+        }
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        // The request at exactly 272K keeps Short prices; only 272001 is Long.
+        let expected = [0.554, 1.108, 0.277,
+                        0.698, 1.396, 0.349,
+                        1.296004, 2.592008, 0.648002]
+        let values = try valueUSD(in: db)
+        #expect(values.count == expected.count)
+        for (value, price) in zip(values, expected) {
+            #expect(abs(value - price) < 1e-9)
+        }
+    }
+
+    @Test("Claude Sonnet 5.5 prices ordinary input and both cache-write durations")
+    func claudeSonnet55UsesOfficialPricing() throws {
+        let db = try makeDatabase()
+        try insertUsageEvent(
+            in: db, provider: "claude", modelId: "claude-sonnet-5-5",
+            input: 1_000_000, cached: 1_000_000, output: 1_000_000,
+            cacheCreation: 2_000_000, cacheCreation5m: 1_000_000,
+            cacheCreation1h: 1_000_000,
+            timestamp: "2026-09-30T00:00:00Z")
+        try db.pool.write { conn in
+            try PricingService.backfillAllValues(in: conn)
+        }
+
+        let value = try #require(valueUSD(in: db).first)
+        // Input $2 + read $0.20 + 5m write $2.50 + 1h write $4 + output $10.
+        #expect(abs(value - 18.70) < 1e-9)
+    }
+
+    @Test("startup adds new model prices and repairs previously unpriced history")
+    func databaseStartupPricesNewModelsWithoutReimporting() throws {
+        let initial = try makeDatabase()
+        let url = URL(fileURLWithPath: initial.pool.path)
+        let solSession = try insertUsageEvent(
+            in: initial, provider: "codex", modelId: "gpt-6.1-sol",
+            input: 200_000, cached: 40_000, output: 20_000,
+            codexCacheWrite: 60_000, seedValueUSD: 0,
+            timestamp: "2026-09-30T00:00:00Z")
+        let sonnetSession = try insertUsageEvent(
+            in: initial, provider: "claude", modelId: "claude-sonnet-5-5",
+            input: 1_000_000, cached: 1_000_000, output: 1_000_000,
+            cacheCreation: 2_000_000, cacheCreation5m: 1_000_000,
+            cacheCreation1h: 1_000_000, seedValueUSD: 0,
+            timestamp: "2026-09-30T00:00:00Z")
+        try insertUsageEvent(
+            in: initial, provider: "codex", modelId: "gpt-6-sol",
+            input: 200_000, cached: 40_000, output: 20_000,
+            codexCacheWrite: 60_000, seedValueUSD: 0.558,
+            timestamp: "2026-09-22T00:00:00Z")
+        try initial.pool.write { conn in
+            // Simulate a catalog shipped before these models were supported.
+            try conn.execute(sql: """
+                DELETE FROM pricing_catalog
+                WHERE effective_model_id IN ('gpt-6.1-sol', 'claude-sonnet-5-5')
+                """)
+        }
+
+        let reopened = try DatabaseManager(url: url)
+        let values = try valueUSD(in: reopened)
+        let expected = [0.554, 18.70, 0.558]
+        #expect(values.count == expected.count)
+        for (value, price) in zip(values, expected) {
+            #expect(abs(value - price) < 1e-9)
+        }
+        try reopened.pool.read { conn in
+            for (session, expectedValue) in [(solSession, 0.554), (sonnetSession, 18.70)] {
+                let summaryValue = try #require(try Double.fetchOne(conn, sql:
+                    "SELECT total_value_usd FROM session_summaries WHERE session_id = ?",
+                    arguments: [session]))
+                #expect(abs(summaryValue - expectedValue) < 1e-9)
+            }
         }
     }
 
