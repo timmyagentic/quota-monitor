@@ -72,6 +72,7 @@ enum CodexFastMode {
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
         "gpt-6-astra": 2.0,
+        "gpt-6.1-sol": 2.0,
         "gpt-6-sol": 2.0,
         "gpt-6-luna": 2.0,
         "gpt-5.6-sol": 2.0,
@@ -93,6 +94,7 @@ enum CodexFastMode {
 enum CodexFlexMode {
     static let multipliers: [String: Double] = [
         "gpt-6-astra": 0.5,
+        "gpt-6.1-sol": 0.5,
         "gpt-6-sol": 0.5,
         "gpt-6-luna": 0.5,
         "gpt-5.6-sol": 0.5,
@@ -117,6 +119,7 @@ enum CodexLongContextPricing {
     static let suffix = "-long"
     static let modelIds: Set<String> = [
         "gpt-6-astra",
+        "gpt-6.1-sol",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -127,6 +130,7 @@ enum CodexLongContextPricing {
     ]
     static let fastModelIds: Set<String> = [
         "gpt-6-astra",
+        "gpt-6.1-sol",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -212,6 +216,7 @@ enum BundledPricingCatalog {
     private static let codexBaseModelIds: Set<String> = [
         "gpt-5",
         "gpt-6-astra",
+        "gpt-6.1-sol",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -247,6 +252,12 @@ enum BundledPricingCatalog {
               effectiveModelId: "gpt-6-astra", isOfficial: true,
               note: "Official Standard Short price; tier and >272K variants are materialized separately.",
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6-astra"),
+        .init(modelId: "gpt-6.1-sol", displayName: "GPT-6.1 Sol",
+              inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.10, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 2.50,
+              effectiveModelId: "gpt-6.1-sol", isOfficial: true,
+              note: "Official Standard Short price; cache reads cost 5% of input. Tier and >272K variants are materialized separately.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6.1-sol"),
         .init(modelId: "gpt-6-sol", displayName: "GPT-6 Sol",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 10.00,
               cacheCreationPricePerMillion: 2.50,
@@ -372,6 +383,12 @@ enum BundledPricingCatalog {
               effectiveModelId: "claude-fable-5", isOfficial: false,
               note: "Bundled from public list pricing; updated with app releases.",
               sourceUrl: "https://www.anthropic.com/pricing"),
+        .init(modelId: "claude-sonnet-5-5", displayName: "Claude Sonnet 5.5",
+              inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 2.50,
+              effectiveModelId: "claude-sonnet-5-5", isOfficial: true,
+              note: "Official 2026-09-28 Standard price; 1-hour cache writes cost 2× input.",
+              sourceUrl: "https://platform.claude.com/docs/en/models/sonnet-5-5/overview"),
         .init(modelId: "claude-sonnet-5", displayName: "Claude Sonnet 5",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 10.00,
               cacheCreationPricePerMillion: 2.50,
