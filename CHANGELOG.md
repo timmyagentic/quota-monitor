@@ -30,30 +30,26 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.10] — 2026-09-30
+
 #### Summary
 
-- See costs for GPT-6.1 Sol and Claude Sonnet 5.5, including cached usage.
-- Trying local changes now leaves your installed app running with its own saved data.
+- See estimated costs for GPT-6.1 Sol and Claude Sonnet 5.5, including cached usage.
+- The Codex quota widget guides you straight to its required Accessibility permission; declining turns the widget off.
+- Claude's local five-hour window stays visible in the menu when only weekly quota is available.
 
 ### Added
 
 - **New models.** GPT-6.1 Sol includes Standard, Fast and Flex estimates for short and long requests, and Claude Sonnet 5.5 includes cache reads and writes; already imported usage is priced after upgrading.
 
-### Changed
-
-- **Local UI checks.** Development QA now opens only the requested view in a temporary isolated app, keeps unrelated checks off your real Codex windows, and cleans up automatically when the check ends.
-
-## [1.0.10] — 2026-09-29
-
-#### Summary
-
-- The Codex quota widget guides you straight to its required Accessibility permission; declining turns the widget off.
-- Claude's local five-hour window stays visible in the menu when only weekly quota is available.
-
 ### Fixed
 
 - **Widget permission.** Enabling the widget now opens a direct permission guide, offers a Settings shortcut, and resumes automatically after access is granted; disabling it leaves quota tracking available.
 - **Five-hour display.** The menu and Dashboard share the same fallback to local billing records, with elapsed time labelled explicitly instead of appearing as account quota usage.
+
+### Changed
+
+- **Local UI checks.** Development QA now opens only the requested view in a temporary isolated app, keeps unrelated checks off your real Codex windows, and cleans up automatically when the check ends.
 
 ## [1.0.9] — 2026-09-28
 
