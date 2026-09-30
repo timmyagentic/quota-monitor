@@ -36,7 +36,7 @@ window copy.
 
 ### Changed
 
-- **Local UI checks.** Development QA now opens only the requested view in a temporary isolated app and cleans up automatically when the check ends.
+- **Local UI checks.** Development QA now opens only the requested view in a temporary isolated app, keeps unrelated checks off your real Codex windows, and cleans up automatically when the check ends.
 
 ## [1.0.10] — 2026-09-29
 

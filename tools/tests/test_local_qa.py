@@ -58,6 +58,33 @@ class LocalQATests(unittest.TestCase):
         self.assertTrue(list((self.root / "home/.claude/projects").rglob("*.jsonl")))
         self.assertNotIn("settings.pollIntervalSeconds", preferences)
 
+    def test_every_fixture_starts_with_external_widget_tracking_disabled(self):
+        for view in qa.VIEWS:
+            with self.subTest(view=view):
+                run = self.root / view
+                run.mkdir()
+                _, preferences = qa.prepare_profile(run, "fixture", view, None, self.root)
+                self.assertFalse(preferences.get("settings.codexSidebarQuotaEnabled", True))
+
+    def test_snapshot_widget_preference_cannot_enable_external_tracking_at_startup(self):
+        source = self.root / "source"
+        db = source / qa.DATABASE
+        db.parent.mkdir(parents=True)
+        with closing(sqlite3.connect(db)) as connection:
+            connection.execute("CREATE TABLE samples(value INTEGER)")
+        prefs = source / "Library/Preferences" / f"{qa.INSTALLED_DOMAIN}.plist"
+        prefs.parent.mkdir(parents=True)
+        for enabled in (True, False):
+            saved = plistlib.dumps({"settings.codexSidebarQuotaEnabled": enabled})
+            prefs.write_bytes(saved)
+            for view in qa.VIEWS:
+                with self.subTest(enabled=enabled, view=view):
+                    run = self.root / f"{view}-{enabled}"
+                    run.mkdir()
+                    _, preferences = qa.prepare_profile(run, "snapshot", view, None, source)
+                    self.assertFalse(preferences.get("settings.codexSidebarQuotaEnabled", True))
+                    self.assertEqual(prefs.read_bytes(), saved)
+
     def test_snapshot_preserves_settings_without_copying_credentials_or_provider_files(self):
         source = self.root / "source"
         db = source / qa.DATABASE

@@ -80,6 +80,9 @@ def prepare_profile(root: Path, data: str, view: str, language: str | None,
                             if k.startswith("settings.") or k == "app.language"})
     else:
         seed_fixtures(home)
+    # Widget QA steps opt in after startup; never attach to a real Codex window
+    # while an unrelated view or a copied profile is being initialized.
+    preferences["settings.codexSidebarQuotaEnabled"] = False
     if language:
         preferences["app.language"] = language
     steps = []
