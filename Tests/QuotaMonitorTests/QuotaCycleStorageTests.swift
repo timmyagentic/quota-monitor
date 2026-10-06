@@ -130,17 +130,39 @@ struct QuotaCycleStorageTests {
         #expect(result.valueUSD == 0.1)
     }
 
-    @Test func expiredAndUnresolvedCyclesDoNotInventZeroUsage() throws {
+    @Test func unconfirmedStartKeepsPaceUnavailableButShowsEstimatedLocalRecordsAfterRelaunch() throws {
         let manager = try database()
         let original = QuotaCycle.resolve(observation(), previous: nil)
         let unresolved = QuotaCycle.resolve(observation(at: 200, used: 1), previous: original)
+        let restored = try JSONDecoder().decode(QuotaCycle.self, from: JSONEncoder().encode(unresolved))
+        let snapshot = RateLimitSnapshot(capturedAt: restored.observation.capturedAt,
+            planType: restored.observation.plan,
+            primary: .init(usedPercent: 1, windowDuration: 18_000, resetAt: restored.observation.resetAt),
+            secondary: nil, additional: [], resetCreditsAvailable: nil)
+        let selected = QuotaCycleSelection.make(codex: snapshot, claude: nil, stored: [restored])
+        try manager.pool.write { db in
+            for offset in [-1.0, 0, 300, 1_000] {
+                try seed(db: db, provider: "codex", offset: offset)
+            }
+            try seed(db: db, provider: "claude", offset: 300)
+        }
         try manager.pool.read { db in
-            let result = try Aggregator.quotaCycleUsage(db: db, cycles: [unresolved],
+            let result = try Aggregator.quotaCycleUsage(db: db, cycles: selected,
                                                         now: origin.addingTimeInterval(1_000))
             #expect(result.first?.cycle.start == nil)
-            #expect(result.first?.points.isEmpty == true)
+            #expect(result.first?.cycle.allowsPaceEstimate == false)
+            #expect(result.first?.cycle.localUsageIsEstimated == true)
+            #expect(result.first?.eventCount == 2)
+            #expect(result.first?.tokens == 240)
+            #expect(result.first?.cacheUsage.hitRate == 0.5)
+            #expect(result.first?.valueUSD == 0.2)
+            #expect(result.first?.points.first?.date == origin)
+            #expect(result.first?.points.last?.tokens == 240)
             #expect(try Aggregator.quotaCycleUsage(db: db, cycles: [original],
                                                    now: original.observation.resetAt).isEmpty)
+            let invalid = QuotaCycle.resolve(observation(reset: 40_000), previous: nil)
+            #expect(try Aggregator.quotaCycleUsage(db: db, cycles: [invalid],
+                now: origin.addingTimeInterval(1_000)).first?.points.isEmpty == true)
         }
     }
 

@@ -74,16 +74,16 @@ struct QuotaCycleMetricsView: View {
                     Text(L10n.cycleLocalUsage).font(.caption.weight(.medium))
                     Spacer()
                     if let usage, usage.cycle.isCurrent(at: context.date),
-                       let start = usage.cycle.start,
+                       let start = usage.cycle.localUsageStart,
                        usage.cycle.basis != .observedChange {
                         let fraction = min(1, max(0, context.date.timeIntervalSince(start)
                             / usage.cycle.observation.resetAt.timeIntervalSince(start)))
                         Text(L10n.cycleTimeProgress(fraction.formatted(.percent.precision(.fractionLength(0))),
-                                                   estimated: usage.cycle.basis == .estimated))
+                                                   estimated: usage.cycle.localUsageIsEstimated))
                             .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
-                if let usage, usage.cycle.isCurrent(at: context.date), usage.cycle.start != nil {
+                if let usage, usage.cycle.isCurrent(at: context.date), usage.cycle.localUsageStart != nil {
                     HStack(alignment: .firstTextBaseline, spacing: 18) {
                         metric(L10n.kpiTokens, value: usage.tokens.formatted(
                             .number.notation(.compactName).precision(.fractionLength(0...1))
@@ -95,6 +95,9 @@ struct QuotaCycleMetricsView: View {
                     }
                     if usage.unpricedEventCount > 0 {
                         Text(L10n.cyclePriceIncomplete).font(.caption2).foregroundStyle(.secondary)
+                    }
+                    if usage.cycle.start == nil {
+                        Text(L10n.cycleEstimatedWindowScope).font(.caption2).foregroundStyle(.secondary)
                     }
                     Text(usage.cycle.basis == .observedChange
                          ? L10n.cyclePartialScope : L10n.cycleLocalScope)
@@ -132,7 +135,7 @@ struct QuotaCycleChart: View {
             let active = usages.filter {
                 $0.cycle.observation.bucket == bucket
                     && visibleProviders.contains($0.cycle.observation.provider)
-                    && $0.cycle.isCurrent(at: context.date) && $0.cycle.start != nil
+                    && $0.cycle.isCurrent(at: context.date) && $0.cycle.localUsageStart != nil
             }
             VStack(alignment: .leading, spacing: 10) {
                 Text(L10n.cycleCumulativeExplanation)
@@ -147,7 +150,7 @@ struct QuotaCycleChart: View {
                             ForEach(usage.points) { point in
                                 LineMark(
                                     x: .value(L10n.cycleHoursAxis,
-                                              point.date.timeIntervalSince(usage.cycle.start!) / 3600),
+                                              point.date.timeIntervalSince(usage.cycle.localUsageStart!) / 3600),
                                     y: .value(L10n.kpiTokens, Double(point.tokens)),
                                     series: .value("Provider", usage.cycle.observation.provider))
                                     .foregroundStyle(DashboardTheme.providerColor(usage.cycle.observation.provider))
@@ -192,6 +195,9 @@ struct QuotaCycleChart: View {
                                 .monospacedDigit().foregroundStyle(.secondary)
                         }.font(.caption)
                     }
+                    if active.contains(where: { $0.cycle.start == nil }) {
+                        Text(L10n.cycleEstimatedWindowScope).font(.caption2).foregroundStyle(.secondary)
+                    }
                     Text(L10n.cycleLocalScope).font(.caption2).foregroundStyle(.secondary)
                     if active.contains(where: { $0.unpricedEventCount > 0 }) {
                         Text(L10n.cyclePriceIncomplete).font(.caption2).foregroundStyle(.secondary)
@@ -202,7 +208,7 @@ struct QuotaCycleChart: View {
     }
 
     private func selectedPoint(_ usage: QuotaCycleUsage) -> QuotaCycleUsage.Point? {
-        guard let selectedHour, let start = usage.cycle.start else { return nil }
+        guard let selectedHour, let start = usage.cycle.localUsageStart else { return nil }
         let date = start.addingTimeInterval(selectedHour * 3600)
         return usage.points.last { $0.date <= date }
     }
