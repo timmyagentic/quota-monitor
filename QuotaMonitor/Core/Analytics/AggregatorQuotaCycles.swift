@@ -25,7 +25,7 @@ extension Aggregator {
         db: Database, cycles: [QuotaCycle], now: Date = Date()
     ) throws -> [QuotaCycleUsage] {
         try cycles.filter { $0.isCurrent(at: now) }.map { cycle in
-            guard let start = cycle.start, start <= now else {
+            guard let start = cycle.localUsageStart, start <= now else {
                 return QuotaCycleUsage(cycle: cycle, through: now, tokens: 0, valueUSD: 0,
                                        cacheUsage: .zero, eventCount: 0, unpricedEventCount: 0, points: [])
             }

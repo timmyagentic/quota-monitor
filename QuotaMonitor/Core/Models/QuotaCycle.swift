@@ -17,6 +17,13 @@ struct QuotaCycle: Codable, Equatable, Sendable, Identifiable {
         let resetAt: Date
         let duration: TimeInterval
         let usedPercent: Double
+
+        var inferredStart: Date? {
+            let inferred = resetAt.addingTimeInterval(-duration)
+            guard duration.isFinite, duration > 0, usedPercent.isFinite, usedPercent >= 0,
+                  resetAt > capturedAt, inferred <= capturedAt else { return nil }
+            return inferred
+        }
     }
 
     let observation: Observation
@@ -31,6 +38,14 @@ struct QuotaCycle: Codable, Equatable, Sendable, Identifiable {
     var allowsPaceEstimate: Bool {
         basis == .estimated || basis == .observedRollover
     }
+
+    /// An uncertain reset still has a server-reported window for local totals.
+    /// This fallback does not establish a reset or enable a pace estimate.
+    var localUsageStart: Date? {
+        start ?? (basis == .unresolved ? observation.inferredStart : nil)
+    }
+
+    var localUsageIsEstimated: Bool { basis == .estimated || start == nil }
 
     func isCurrent(at now: Date) -> Bool {
         observation.capturedAt <= now && observation.resetAt > now
@@ -47,14 +62,10 @@ struct QuotaCycle: Codable, Equatable, Sendable, Identifiable {
             || current == previous.observation {
             return previous
         }
-        let inferred = current.resetAt.addingTimeInterval(-current.duration)
-        let valid = current.duration.isFinite && current.duration > 0
-            && current.usedPercent.isFinite && current.usedPercent >= 0
-            && current.resetAt > current.capturedAt && inferred <= current.capturedAt
         func make(_ basis: Basis, start: Date?, possible: Date? = nil) -> Self {
             Self(observation: current, start: start, possibleStart: possible, basis: basis)
         }
-        guard valid else { return make(.unresolved, start: nil) }
+        guard let inferred = current.inferredStart else { return make(.unresolved, start: nil) }
         guard let previous, let scope = current.scope,
               scope == previous.observation.scope,
               current.provider == previous.observation.provider,
@@ -66,18 +77,27 @@ struct QuotaCycle: Codable, Equatable, Sendable, Identifiable {
         let prior = previous.observation
         let deadlineDelta = current.resetAt.timeIntervalSince(prior.resetAt)
         let usageDropped = current.usedPercent < prior.usedPercent - 0.0001
-        if abs(deadlineDelta) <= 2 {
+        let deadlineTolerance: TimeInterval = 5
+        if abs(deadlineDelta) <= deadlineTolerance {
             // A manual reset can preserve the deadline. A correction or plan
             // adjustment looks the same; neither proves a usable new start.
             if usageDropped { return make(.unresolved, start: nil) }
             return make(previous.basis, start: previous.start, possible: previous.possibleStart)
         }
-        if deadlineDelta > 2, current.capturedAt >= prior.resetAt,
-           abs(inferred.timeIntervalSince(prior.resetAt)) <= 2 {
+        if deadlineDelta > deadlineTolerance, current.capturedAt >= prior.resetAt,
+           abs(inferred.timeIntervalSince(prior.resetAt)) <= deadlineTolerance {
             return make(.observedRollover, start: prior.resetAt)
         }
         if current.capturedAt < prior.resetAt {
-            if deadlineDelta > 2 && usageDropped {
+            // An unused window may slide with each poll until activity anchors
+            // it. Follow the inferred window without claiming an observed reset.
+            if deadlineDelta > deadlineTolerance, current.usedPercent == 0, prior.usedPercent == 0,
+               let priorInferred = prior.inferredStart,
+               abs(priorInferred.timeIntervalSince(prior.capturedAt)) <= deadlineTolerance,
+               inferred >= prior.capturedAt.addingTimeInterval(-deadlineTolerance) {
+                return make(.estimated, start: inferred)
+            }
+            if deadlineDelta > deadlineTolerance && usageDropped {
                 return make(.observedChange, start: current.capturedAt, possible: prior.capturedAt)
             }
             return make(.unresolved, start: nil)
