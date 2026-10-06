@@ -25,6 +25,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let env: AppEnvironment
     private let localization: LocalizationStore
     private let settings: SettingsStore
+    private let appNotificationCenter: NotificationCenter
+    private let workspaceNotificationCenter: NotificationCenter
+    private var localPopoverEventMonitor: Any?
+    private var globalPopoverMouseMonitor: Any?
+    private var isMonitoringPopoverDismissal = false
     private var isStopped = false
     private var lastRenderedRows: [MenuBarLabelModel.Row]?
     private var lastRenderedStyle: SettingsStore.MenuBarLabelStyle?
@@ -41,13 +46,18 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     init(env: AppEnvironment,
          localization: LocalizationStore,
          settings: SettingsStore,
-         updater: UpdaterController) {
+         updater: UpdaterController,
+         popover: NSPopover = NSPopover(),
+         appNotificationCenter: NotificationCenter = .default,
+         workspaceNotificationCenter: NotificationCenter = NSWorkspace.shared.notificationCenter) {
         self.env = env
         self.localization = localization
         self.settings = settings
         self.statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength)
-        self.popover = NSPopover()
+        self.popover = popover
+        self.appNotificationCenter = appNotificationCenter
+        self.workspaceNotificationCenter = workspaceNotificationCenter
         super.init()
 
         statusItem.autosaveName = "QuotaMonitor"   // nudge placement only
@@ -68,7 +78,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 .environment(updater)
                 .environment(\.locale, localization.locale))
 
-        NotificationCenter.default.addObserver(
+        appNotificationCenter.addObserver(
             self,
             selector: #selector(screenParamsChanged),
             name: NSApplication.didChangeScreenParametersNotification,
@@ -84,9 +94,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     func stop() {
         guard !isStopped else { return }
         isStopped = true
+        removePopoverDismissalMonitors()
+        popover.performClose(nil)
         onScreenChange = nil
         onUserRequestedPopover = nil
-        NotificationCenter.default.removeObserver(self)
+        appNotificationCenter.removeObserver(self)
+        workspaceNotificationCenter.removeObserver(self)
         statusItem.button?.target = nil
         statusItem.button?.action = nil
         NSStatusBar.system.removeStatusItem(statusItem)
@@ -170,11 +183,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Open the popover anchored to the status button. Used both by the
     /// button click and by the first-run auto-open.
     func showPopover() {
-        guard let button = statusItem.button else { return }
+        guard !isStopped, let button = statusItem.button else { return }
         popover.show(relativeTo: button.bounds,
                      of: button,
                      preferredEdge: .minY)
         preparePopoverWindowForMenuBarPresentation()
+        installPopoverDismissalMonitors()
     }
 
     /// `NSPopoverDelegate` — the authoritative "popover opened" hook now
@@ -186,7 +200,113 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     func popoverDidShow(_ notification: Notification) {
+        guard !isStopped, popover.isShown else { return }
         preparePopoverWindowForMenuBarPresentation()
+        installPopoverDismissalMonitors()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        removePopoverDismissalMonitors()
+    }
+
+    private func installPopoverDismissalMonitors() {
+        guard !isStopped, popover.isShown, !isMonitoringPopoverDismissal else { return }
+        isMonitoringPopoverDismissal = true
+        localPopoverEventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown]
+        ) { [weak self] event in
+            guard let self else { return event }
+            return self.handleLocalPopoverEvent(event)
+        }
+        // A status-item popover can open while this accessory app is inactive,
+        // so app deactivation alone does not cover clicks in the current app.
+        globalPopoverMouseMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.dismissPopover() }
+        }
+        appNotificationCenter.addObserver(
+            self, selector: #selector(popoverAppDidResignActive),
+            name: NSApplication.didResignActiveNotification, object: nil)
+        appNotificationCenter.addObserver(
+            self, selector: #selector(popoverAnotherWindowDidBecomeKey(_:)),
+            name: NSWindow.didBecomeKeyNotification, object: nil)
+        workspaceNotificationCenter.addObserver(
+            self, selector: #selector(popoverApplicationDidActivate(_:)),
+            name: NSWorkspace.didActivateApplicationNotification, object: nil)
+    }
+
+    private func removePopoverDismissalMonitors() {
+        if let localPopoverEventMonitor {
+            NSEvent.removeMonitor(localPopoverEventMonitor)
+            self.localPopoverEventMonitor = nil
+        }
+        if let globalPopoverMouseMonitor {
+            NSEvent.removeMonitor(globalPopoverMouseMonitor)
+            self.globalPopoverMouseMonitor = nil
+        }
+        appNotificationCenter.removeObserver(
+            self, name: NSApplication.didResignActiveNotification, object: nil)
+        appNotificationCenter.removeObserver(
+            self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        workspaceNotificationCenter.removeObserver(
+            self, name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        isMonitoringPopoverDismissal = false
+    }
+
+    func handleLocalPopoverEvent(_ event: NSEvent) -> NSEvent? {
+        guard popover.isShown else { return event }
+        if event.type == .keyDown {
+            guard event.keyCode == 53 else { return event }
+            dismissPopover()
+            return nil
+        }
+        if !isPopoverInteractionWindow(event.window) {
+            dismissPopover()
+        }
+        return event
+    }
+
+    private func isPopoverInteractionWindow(_ window: NSWindow?) -> Bool {
+        Self.isPopoverInteractionWindow(
+            window, popoverWindow: popover.contentViewController?.view.window,
+            statusItemWindow: statusItem.button?.window)
+    }
+
+    static func isPopoverInteractionWindow(_ window: NSWindow?,
+                                           popoverWindow: NSWindow?,
+                                           statusItemWindow: NSWindow?) -> Bool {
+        guard let window else { return false }
+        if window === statusItemWindow { return true }
+        guard let popoverWindow else { return false }
+        var candidate: NSWindow? = window
+        while let current = candidate {
+            if current === popoverWindow { return true }
+            candidate = current.parent
+        }
+        return false
+    }
+
+    private func dismissPopover() {
+        guard popover.isShown else { return }
+        popover.performClose(nil)
+    }
+
+    @objc private func popoverAppDidResignActive() {
+        dismissPopover()
+    }
+
+    @objc private func popoverAnotherWindowDidBecomeKey(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              !isPopoverInteractionWindow(window) else { return }
+        dismissPopover()
+    }
+
+    @objc private func popoverApplicationDidActivate(_ notification: Notification) {
+        guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        dismissPopover()
     }
 
     private func preparePopoverWindowForMenuBarPresentation() {

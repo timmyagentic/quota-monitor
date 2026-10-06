@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The menu-bar popover closes when you click elsewhere or switch apps.
+
+### Fixed
+
+- **Popover dismissal.** Clicking outside, opening another app window, switching apps or pressing Escape now dismisses the menu-bar popover reliably, including after reopening it.
+
 ## [1.0.11] — 2026-10-06
 
 #### Summary
