@@ -7,7 +7,28 @@ and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## Release-note standard
 
-Every merged PR should update `## [Unreleased]
+Every merged PR should update `## [Unreleased]` before or with the merge.
+These entries become both the GitHub Release notes and the Sparkle update
+window copy.
+
+- Start each release section with `#### Summary`: plain, user-readable
+  bullets. Generated Sparkle update notes render these as rich visual cards.
+  Write these bullets for a non-technical user who only needs to know what
+  feels better after updating. Avoid implementation, test, CI, PR, and release
+  plumbing terms in Summary.
+- Put details under `### Added`, `### Changed`, `### Fixed`, `### Removed`,
+  or `### Known limitation(s)`. These remain in the GitHub Release notes.
+- Start each detail bullet with a short bold title, then one concise sentence:
+  `- **Short title.** What changed and why it matters.`
+- Keep implementation details, commit archaeology, and internal test evidence
+  in PR bodies or docs unless they directly explain user impact.
+- Pull-request CI enforces this for non-appcast PRs; the generated appcast PR
+  is exempt because it publishes the release notes already authored in the
+  release PR.
+- Validate before a release with
+  `python3 tools/validate-release-notes.py X.Y.Z`.
+
+## [Unreleased]
 
 ## [1.0.11] — 2026-10-06
 
