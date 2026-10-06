@@ -30,23 +30,17 @@ window copy.
 
 ## [Unreleased]
 
-#### Summary
-
-- The menu-bar popover closes when you click elsewhere or switch apps.
-
-### Fixed
-
-- **Popover dismissal.** Clicking outside, opening another app window, switching apps or pressing Escape now dismisses the menu-bar popover reliably, including after reopening it.
-
 ## [1.0.11] — 2026-10-06
 
 #### Summary
 
+- The menu-bar popover closes when you click elsewhere or switch apps.
 - Current-cycle tokens, cache hits and estimated costs stay visible when quota reset timing shifts.
 - If the cycle start is unconfirmed, local usage appears with a clear estimated-window explanation.
 
 ### Fixed
 
+- **Popover dismissal.** Clicking outside, opening another app window, switching apps or pressing Escape now dismisses the menu-bar popover reliably, including after reopening it.
 - **Current-cycle usage.** Empty rolling windows and small reset-time changes no longer hide local totals; upgrading also restores estimated local usage for windows whose start was previously lost.
 - **Uncertain resets.** Estimated local totals remain separate from reset confirmation, and consumption forecasts stay unavailable until the cycle can be identified.
 
