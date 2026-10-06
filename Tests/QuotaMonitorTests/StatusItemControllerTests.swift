@@ -151,6 +151,216 @@ struct StatusItemControllerTests {
         #expect(origin.y == 568)
     }
 
+    @Test("Popover closes when the application loses activation, including after reopening")
+    func appDeactivationDismissesReopenedPopover() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+
+        for _ in 0..<2 {
+            fixture.present()
+            fixture.appCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
+            #expect(!fixture.popover.isShown)
+        }
+        #expect(fixture.popover.closeCount == 2)
+    }
+
+    @Test("Activating another app closes a popover opened by an inactive menu-bar agent")
+    func anotherAppActivationDismissesPopover() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+        fixture.present()
+
+        fixture.workspaceCenter.post(
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            userInfo: [NSWorkspace.applicationUserInfoKey: NSRunningApplication.current])
+        #expect(fixture.popover.isShown)
+
+        let otherApp = try #require(NSWorkspace.shared.runningApplications.first {
+            $0.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        })
+        fixture.workspaceCenter.post(
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            userInfo: [NSWorkspace.applicationUserInfoKey: otherApp])
+        #expect(!fixture.popover.isShown)
+    }
+
+    @Test("Opening another app-owned window dismisses the popover")
+    func anotherKeyWindowDismissesPopover() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+        fixture.present()
+        let window = Self.makeWindow()
+
+        fixture.appCenter.post(name: NSWindow.didBecomeKeyNotification, object: window)
+        #expect(!fixture.popover.isShown)
+    }
+
+    @Test("Internal clicks keep the popover open and outside mouse buttons dismiss without consuming the click")
+    func localClicksDismissOnlyOutsidePopover() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+        fixture.present()
+        let popoverWindow = Self.makeWindow()
+        popoverWindow.contentView = fixture.popover.contentViewController?.view
+        let outsideWindow = Self.makeWindow()
+
+        let inside = try Self.mouseDown(in: popoverWindow)
+        #expect(fixture.controller.handleLocalPopoverEvent(inside) === inside)
+        #expect(fixture.popover.isShown)
+
+        for type in [NSEvent.EventType.leftMouseDown, .rightMouseDown, .otherMouseDown] {
+            fixture.popover.shownForTest = true
+            let outside = try Self.mouseDown(in: outsideWindow, type: type)
+            #expect(fixture.controller.handleLocalPopoverEvent(outside) === outside)
+            #expect(!fixture.popover.isShown)
+        }
+        #expect(fixture.popover.closeCount == 3)
+    }
+
+    @Test("The status button and popover child windows remain interactive")
+    func statusButtonAndChildWindowsAreInsidePopover() {
+        _ = NSApplication.shared
+        let popoverWindow = Self.makeWindow()
+        let statusWindow = Self.makeWindow()
+        let child = Self.makeWindow()
+        let outside = Self.makeWindow()
+        popoverWindow.addChildWindow(child, ordered: .above)
+        defer { popoverWindow.removeChildWindow(child) }
+
+        for inside in [popoverWindow, statusWindow, child] {
+            #expect(StatusItemController.isPopoverInteractionWindow(
+                inside, popoverWindow: popoverWindow, statusItemWindow: statusWindow))
+        }
+        for outside in [outside, nil] {
+            #expect(!StatusItemController.isPopoverInteractionWindow(
+                outside, popoverWindow: popoverWindow, statusItemWindow: statusWindow))
+        }
+    }
+
+    @Test("Popover and child-window activation keep the popover open")
+    func internalKeyWindowsDoNotDismissPopover() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+        fixture.present()
+        let popoverWindow = Self.makeWindow()
+        popoverWindow.contentView = fixture.popover.contentViewController?.view
+        let child = Self.makeWindow()
+        popoverWindow.addChildWindow(child, ordered: .above)
+        defer { popoverWindow.removeChildWindow(child) }
+
+        for window in [popoverWindow, child] {
+            fixture.appCenter.post(name: NSWindow.didBecomeKeyNotification, object: window)
+            #expect(fixture.popover.isShown)
+        }
+    }
+
+    @Test("Escape closes and is consumed; ordinary keys and closed-popover events pass through")
+    func escapeDismissalPreservesOtherKeyEvents() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+        fixture.present()
+        let ordinary = try Self.keyDown(code: 0, characters: "a")
+        #expect(fixture.controller.handleLocalPopoverEvent(ordinary) === ordinary)
+        #expect(fixture.popover.isShown)
+
+        let escape = try Self.keyDown(code: 53, characters: "\u{1b}")
+        #expect(fixture.controller.handleLocalPopoverEvent(escape) == nil)
+        #expect(!fixture.popover.isShown)
+        #expect(fixture.controller.handleLocalPopoverEvent(escape) === escape)
+    }
+
+    @Test("Closing and stopping remove dismissal observers and stale presentation cannot reinstall them")
+    func dismissalObserversHavePopoverLifetime() throws {
+        let fixture = try DismissalFixture()
+        defer { fixture.stop() }
+        fixture.present()
+        fixture.popover.performClose(nil)
+        fixture.popover.shownForTest = true
+        fixture.appCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
+        fixture.appCenter.post(name: NSWindow.didBecomeKeyNotification, object: Self.makeWindow())
+        #expect(fixture.popover.closeCount == 1)
+
+        fixture.present()
+        fixture.controller.stop()
+        #expect(fixture.popover.closeCount == 2)
+        fixture.present()
+        fixture.appCenter.post(name: NSApplication.didResignActiveNotification, object: nil)
+        #expect(fixture.popover.closeCount == 2)
+    }
+
+    private static func mouseDown(in window: NSWindow,
+                                  type: NSEvent.EventType = .leftMouseDown) throws -> NSEvent {
+        try #require(NSEvent.mouseEvent(
+            with: type, location: NSPoint(x: 10, y: 10), modifierFlags: [],
+            timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            eventNumber: 1, clickCount: 1, pressure: 1))
+    }
+
+    private static func keyDown(code: UInt16, characters: String) throws -> NSEvent {
+        try #require(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+            windowNumber: 0, context: nil, characters: characters,
+            charactersIgnoringModifiers: characters, isARepeat: false, keyCode: code))
+    }
+
+    private static func makeWindow() -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 160),
+            styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        return window
+    }
+
+    @MainActor
+    private struct DismissalFixture {
+        let appCenter = NotificationCenter()
+        let workspaceCenter = NotificationCenter()
+        let popover = DismissalTestPopover()
+        let controller: StatusItemController
+        let defaults: UserDefaults
+        let defaultsName = "StatusItemControllerTests.dismissal.\(UUID().uuidString)"
+
+        init() throws {
+            _ = NSApplication.shared
+            defaults = try #require(UserDefaults(suiteName: defaultsName))
+            let updater = UpdaterController(runtimeConfiguration: .init(
+                updateAvailability: PersistentUpdateAvailability(), sparkleEnabled: false))
+            controller = StatusItemController(
+                env: AppEnvironment(startBackgroundTasks: false),
+                localization: .shared,
+                settings: SettingsStore(defaults: defaults, hasExistingAppData: { false }),
+                updater: updater, popover: popover,
+                appNotificationCenter: appCenter,
+                workspaceNotificationCenter: workspaceCenter)
+        }
+
+        func present() {
+            popover.shownForTest = true
+            controller.popoverDidShow(Notification(name: NSPopover.didShowNotification, object: popover))
+        }
+
+        func stop() {
+            controller.stop()
+            defaults.removePersistentDomain(forName: defaultsName)
+        }
+    }
+
+    @MainActor
+    private final class DismissalTestPopover: NSPopover {
+        var shownForTest = false
+        var closeCount = 0
+        override var isShown: Bool { shownForTest }
+
+        override func performClose(_ sender: Any?) {
+            guard shownForTest else { return }
+            closeCount += 1
+            shownForTest = false
+            delegate?.popoverDidClose?(Notification(name: NSPopover.didCloseNotification, object: self))
+        }
+    }
+
     @Test("Popover origin stays inside the screen horizontally")
     func popoverOriginStaysInsideScreen() {
         let origin = StatusItemController.menuBarPopoverOrigin(
