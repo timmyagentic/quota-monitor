@@ -10,6 +10,7 @@ enum LocalizedDateFormatting {
         case mediumDateMediumTime
         case monthDayShortTime
         case timeWithSeconds
+        case eventTimestamp
         case abbreviatedWeekdayMonthDay
         case fullWeekdayMonthDayYear
         case shortTime
@@ -121,6 +122,9 @@ final class LocalizedDateFormatterCache {
                 formatter.setLocalizedDateFormatFromTemplate("MMMdhm")
             case .timeWithSeconds:
                 formatter.setLocalizedDateFormatFromTemplate("hms")
+            case .eventTimestamp:
+                formatter.calendar = Calendar(identifier: .gregorian)
+                formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
             case .abbreviatedWeekdayMonthDay:
                 formatter.setLocalizedDateFormatFromTemplate("EEEMMMd")
             case .fullWeekdayMonthDayYear:
