@@ -32,16 +32,19 @@ window copy.
 
 #### Summary
 
+- The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
 - Session events now show the newest activity first, with full dates and times.
 
 ### Fixed
 
+- **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
 - **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
 
 ## [1.0.11] — 2026-10-06
 
 #### Summary
 
+- The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
 - Session events now show the newest activity first, with full dates and times.
 - The menu-bar popover closes when you click elsewhere or switch apps.
 - Current-cycle tokens, cache hits and estimated costs stay visible when quota reset timing shifts.
@@ -49,6 +52,7 @@ window copy.
 
 ### Fixed
 
+- **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
 - **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
 - **Popover dismissal.** Clicking outside, opening another app window, switching apps or pressing Escape now dismisses the menu-bar popover reliably, including after reopening it.
 - **Current-cycle usage.** Empty rolling windows and small reset-time changes no longer hide local totals; upgrading also restores estimated local usage for windows whose start was previously lost.
