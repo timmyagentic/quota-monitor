@@ -42,6 +42,19 @@ struct LocalizedDateFormattingTests {
         #expect(englishAfter.mediumDate == englishBefore.mediumDate)
     }
 
+    @Test("event timestamps retain full dates and seconds across local midnight")
+    func eventTimestampsIncludeFullDate() throws {
+        let date = try #require(ISO8601.parse("2025-12-31T16:00:05Z"))
+        let shanghai = try #require(TimeZone(identifier: "Asia/Shanghai"))
+        for language in [LocalizationStore.Language.english, .simplifiedChinese] {
+            let value = LocalizationTestSupport.withLanguage(language) {
+                LocalizedDateFormatting.string(
+                    from: date, style: .eventTimestamp, timeZone: shanghai)
+            }
+            #expect(value == "2026-01-01 00:00:05")
+        }
+    }
+
     @Test("repeated renders construct one formatter per language and style")
     func repeatedRendersReuseFormatters() {
         let cache = LocalizedDateFormatterCache()

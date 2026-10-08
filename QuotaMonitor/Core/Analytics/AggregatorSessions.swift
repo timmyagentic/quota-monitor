@@ -289,7 +289,7 @@ extension Aggregator {
                    total_tokens, value_usd, model_inferred
             FROM usage_events
             WHERE session_id = ?
-            ORDER BY timestamp ASC, id ASC
+            ORDER BY timestamp DESC, id DESC
             """, arguments: [sessionId]).map { row in
             SessionDetail.Event(
                 id: row["id"] ?? 0,

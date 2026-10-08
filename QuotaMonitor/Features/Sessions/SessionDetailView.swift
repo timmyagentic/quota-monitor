@@ -196,7 +196,7 @@ struct EventRowHeader: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(L10n.eventColTime)
-                .frame(width: 76, alignment: .leading)
+                .frame(width: 154, alignment: .leading)
             Text(L10n.eventColModel)
                 .frame(width: 150, alignment: .leading)
             Spacer(minLength: 4)
@@ -239,6 +239,7 @@ struct EventRowHeader: View {
 ///     dismissal. Without this, the popover closes the instant the
 ///     source row's hover flips false.
 struct EventRow: View {
+    @Environment(LocalizationStore.self) private var localization
     @Environment(SettingsStore.self) private var settings
     let event: SessionDetail.Event
 
@@ -249,10 +250,10 @@ struct EventRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(timestampShort)
+            Text(timestampLabel)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
-                .frame(width: 76, alignment: .leading)
+                .frame(width: 154, alignment: .leading)
 
             HStack(spacing: 4) {
                 Text(event.modelId)
@@ -456,10 +457,10 @@ struct EventRow: View {
         }
     }
 
-    private var timestampShort: String {
+    private var timestampLabel: String {
         guard let d = ISO8601.parse(event.timestamp) else { return event.timestamp }
         return LocalizedDateFormatting.string(
             from: d,
-            style: .timeWithSeconds)
+            style: .eventTimestamp)
     }
 }

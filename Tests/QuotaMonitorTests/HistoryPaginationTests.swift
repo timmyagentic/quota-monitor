@@ -358,6 +358,26 @@ struct HistoryPaginationTests {
         #expect(claude.cacheUsage.hitRate == 0.8)
     }
 
+    @Test("session detail lists newest events first across dates with stable ties")
+    func sessionDetailNewestFirst() throws {
+        let db = try makeDatabase()
+        for (timestamp, tokens) in [
+            ("2025-12-31T23:59:59Z", Int64(1)),
+            ("2026-01-02T08:00:00Z", Int64(2)),
+            ("2026-01-01T23:59:59Z", Int64(3)),
+            ("2026-01-02T08:00:00Z", Int64(4)),
+        ] {
+            try seed(in: db, sessionId: "multi-day", timestamp: timestamp, tokens: tokens)
+        }
+        let detail = try db.pool.read {
+            try Aggregator.fetchSessionDetail(db: $0, sessionId: "multi-day")
+        }
+        let events = try #require(detail).events
+        #expect(events.map(\.totalTokens) == [4, 2, 3, 1])
+        #expect(detail?.header.totalTokens == 10)
+        #expect(detail?.header.eventCount == 4)
+    }
+
     @Test("session-day events expose provider cache-write input")
     func sessionDayEventsExposeCacheWrites() throws {
         let calendar = utcCalendar()
