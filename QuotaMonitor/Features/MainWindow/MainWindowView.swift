@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MainWindowView: View {
+    @Environment(LocalizationStore.self) private var localization
     @Environment(AppEnvironment.self) private var env
     @Environment(SettingsStore.self) private var settings
     @Environment(UpdaterController.self) private var updater
@@ -24,9 +25,7 @@ struct MainWindowView: View {
         .id("\(env.providerFilter.rawValue)-\(reloadToken)")
         .frame(minWidth: 820, minHeight: 560)
         .toolbar {
-            // Provider filter — titlebar leading side. Keep an explicit
-            // label so AppKit gets a stable intrinsic width before the
-            // titlebar lays out around the window title and traffic lights.
+            // Keep the selected provider visible in the native toolbar.
             if visibleFilters.count > 1 {
                 ToolbarItem(placement: .navigation) {
                     providerToolbarFilter(selection: $env.providerFilter)
@@ -108,10 +107,15 @@ struct MainWindowView: View {
                 }
             }
         } label: {
-            Text(selection.wrappedValue.label)
+            Label(selection.wrappedValue.label, systemImage: "line.3.horizontal.decrease")
+                .labelStyle(.titleOnly)
         }
+        // The automatic toolbar menu style can collapse a text-only label
+        // to its chevron. A borderless menu keeps the selected title visible.
+        .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityLabel(L10n.providerFilterLabel)
+        .accessibilityValue(selection.wrappedValue.label)
         .help(L10n.providerFilterHelp)
     }
 

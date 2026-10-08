@@ -574,7 +574,7 @@ enum L10n {
         t(en: "Choose which tools to include in this view.",
           zh: "选择这个页面要显示哪些工具。")
     }
-    static var providerAll: String { t(en: "All providers", zh: "全部 Provider") }
+    static var providerAll: String { t(en: "All tools", zh: "全部工具") }
     static var providerCodex: String { "Codex" }
     static var providerClaude: String { "Claude" }
 
