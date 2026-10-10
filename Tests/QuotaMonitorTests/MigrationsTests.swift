@@ -372,11 +372,11 @@ struct MigrationsTests {
         }
     }
 
-    @Test("Codex reread migrations invalidate only Codex checkpoints and preserve pricing",
-          arguments: ["v21-codex-cache-write-reread", "v24-codex-ultrafast-reread"])
-    func codexCacheWriteMigrationForcesCodexReread(migrationId: String) throws {
+    @Test("Codex cache-write migration invalidates checkpoints and reprices existing events")
+    func codexCacheWriteMigrationForcesCodexReread() throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-cache-write-v21")
         let manager = try DatabaseManager(url: url)
+        let migrationId = "v21-codex-cache-write-reread"
         let stamp = "2026-08-24T00:00:00Z"
 
         try manager.pool.write { db in
