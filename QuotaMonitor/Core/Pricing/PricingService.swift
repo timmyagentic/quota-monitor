@@ -187,12 +187,20 @@ enum CodexPriceHistory {
     ]
 }
 
+/// API-equivalent Ultrafast prices, not the 8× included-subscription usage rate.
+enum CodexUltrafastMode {
+    static let modelIds: Set<String> = ["gpt-6-astra", "gpt-6.1-sol"]
+    static let suffix = "-ultrafast"
+}
+
 enum BundledPricingCatalog {
     /// Concrete catalog entries shipped with the binary. Codex variants cover
     /// final Short/Long × tier and historical prices so event valuation only
     /// chooses a row and never recalculates its prices.
     static let entries: [PricingEntry] = base
         + fastVariants
+        + ultrafastVariants
+        + ultrafastLongVariants
         + flexVariants
         + longVariants
         + fastLongVariants
@@ -205,6 +213,8 @@ enum BundledPricingCatalog {
     static let codexModelIds: Set<String> = {
         var ids = codexBaseModelIds
         ids.formUnion(fastVariants.map(\.modelId))
+        ids.formUnion(ultrafastVariants.map(\.modelId))
+        ids.formUnion(ultrafastLongVariants.map(\.modelId))
         ids.formUnion(flexVariants.map(\.modelId))
         ids.formUnion(longVariants.map(\.modelId))
         ids.formUnion(fastLongVariants.map(\.modelId))
@@ -493,6 +503,22 @@ enum BundledPricingCatalog {
                 sourceUrl: "https://developers.openai.com/api/docs/pricing?latest-pricing=flex")
         }
     }()
+
+    private static let ultrafastVariants: [PricingEntry] = base
+        .filter { CodexUltrafastMode.modelIds.contains($0.modelId) }
+        .map { b in
+            scaledVariant(
+                from: b,
+                modelId: b.modelId + CodexUltrafastMode.suffix,
+                displayName: "\(b.displayName) (Ultrafast Short)",
+                inputMultiplier: 6,
+                outputMultiplier: 6,
+                note: "Materialized Ultrafast Short API price (= 6× Standard Short).",
+                sourceUrl: "https://developers.openai.com/api/docs/guides/ultrafast-mode")
+        }
+
+    private static let ultrafastLongVariants: [PricingEntry] = ultrafastVariants
+        .map { longVariant(from: $0) }
 
     /// Materialized Standard Long rows for every model with published
     /// long-context pricing.
@@ -909,14 +935,17 @@ enum PricingService {
     /// user input. Single-quote escaping is unnecessary here, but the
     /// model id assertion below makes the assumption explicit.
     private static func effectiveModelIdSQL() -> String {
+        let ultrafastIds = CodexUltrafastMode.modelIds.sorted()
         let fastIds = CodexFastMode.multipliers.keys.sorted()
         let flexIds = CodexFlexMode.multipliers.keys.sorted()
         let longContextIds = CodexLongContextPricing.modelIds.sorted()
         let fastLongContextIds = CodexLongContextPricing.fastModelIds.sorted()
-        for id in Set(fastIds + flexIds + longContextIds + fastLongContextIds) {
+        for id in Set(ultrafastIds + fastIds + flexIds + longContextIds + fastLongContextIds) {
             assert(!id.contains("'"),
                    "Codex tier multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
         }
+        let quotedUltrafast = ultrafastIds.map { "'\($0)'" }.joined(separator: ",")
+        let ultrafastSuffix = CodexUltrafastMode.suffix
         let quotedFast = fastIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedFlex = flexIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedLongContext = longContextIds.map { "'\($0)'" }.joined(separator: ",")
@@ -931,6 +960,11 @@ enum PricingService {
         CASE
           WHEN usage_events.provider = 'codex'
           THEN CASE
+            WHEN usage_events.codex_service_tier_preference = 'ultrafast'
+                 AND usage_events.model_id IN (\(quotedUltrafast))
+              THEN (\(basePriceRow)) || '\(ultrafastSuffix)' ||
+                CASE WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
+                     THEN '\(longSuffix)' ELSE '' END
             WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
                  AND usage_events.model_id IN (\(quotedFastLongContext))
                  AND usage_events.codex_service_tier_preference = 'priority'

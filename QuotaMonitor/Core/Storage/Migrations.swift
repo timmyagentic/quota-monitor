@@ -722,5 +722,21 @@ enum Migrations {
                 """)
             try PricingService.backfillValues(in: db, eventIds: eventIds)
         }
+        // Re-introduce the same rollout-preference estimate used by Fast. v24
+        // may already have run, and v25 may have withdrawn its derived prices.
+        // Keep rows until each available, complete source replaces its fragment.
+        migrator.registerMigration("v26-codex-ultrafast-restore") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1, file_mtime_ms = -1,
+                    byte_offset = 0, parser_checkpoint = NULL
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
+                """)
+            _ = try PricingService.installBundledCatalog(in: db)
+            try PricingService.backfillAllValues(in: db)
+        }
+
     }
 }

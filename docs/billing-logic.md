@@ -23,7 +23,7 @@
 | `provider` | `codex` 或 `claude`，回填公式按它分支。 |
 | `model_id` | 用来匹配 `pricing_catalog.model_id`。 |
 | `codex_turn_id` | Codex turn 标识；rollout 没有稳定 ID 时为 `NULL`。 |
-| `codex_service_tier_preference` | Codex rollout 为该 turn 记录的服务档位偏好：`priority`、`default`、`flex`，或用 `NULL` 表示未知。它不是实际 served tier。 |
+| `codex_service_tier_preference` | Codex rollout 为该 turn 记录的服务档位偏好：`priority`、`ultrafast`、`default`、`flex`，或用 `NULL` 表示未知。它不是实际 served tier。 |
 | `input_tokens` | 输入 token。Codex 里是包含 cached input 和 cache write input 的 gross input；Claude 里是未缓存输入。 |
 | `cached_input_tokens` | Codex cached input 或 Claude cache read input。 |
 | `output_tokens` | 输出 token。Codex 中已经包含 reasoning output，不再额外加 reasoning。 |
@@ -50,13 +50,15 @@
 
 ## 价格来源
 
-`BundledPricingCatalog.entries` 是唯一价格来源。它随应用版本发布，覆盖当前支持的 OpenAI / Codex、Claude、GLM 模型；Codex 还会物化 `*-fast`、`*-flex`、`*-long`、`*-fast-long`、`*-flex-long` 以及相同形状的历史价格行。应用不会联网下载价格，不提供单行本地覆盖，也不会保留旧版外部目录对随包价格的优先级。
+`BundledPricingCatalog.entries` 是唯一价格来源。它随应用版本发布，覆盖当前支持的 OpenAI / Codex、Claude、GLM 模型；Codex 还会物化 `*-fast`、`*-ultrafast`、`*-ultrafast-long`、`*-flex`、`*-long`、`*-fast-long`、`*-flex-long` 以及相同形状的历史价格行。应用不会联网下载价格，不提供单行本地覆盖，也不会保留旧版外部目录对随包价格的优先级。
 
-`PricingService.installBundledCatalog` 每次打开数据库都会 upsert 全部内置行。若计算相关字段发生变化，或受支持行需要从旧版外部 / 本地来源归一为 `bundled`，启动流程会重算既有 `usage_events.value_usd`；即使旧行数值碰巧等于当前内置价，也会执行这次升级回填，修复旧版本地覆盖曾绕过生效日期而留下的历史金额。金额回填只接受 `price_source = 'bundled'` 的行，且 Codex 事件只能使用 `BundledPricingCatalog.codexModelIds` 中明确登记的 GPT/Codex 行及其 Fast/Flex 行；Claude/GLM 行不会因为 rollout 中出现同名 model id 而进入 Codex 公式。不在内置目录中的旧 LiteLLM/local 行可以继续留在兼容 schema 中，但不再参与估价。原始 token、事件时间和会话数据不受影响。
+`PricingService.installBundledCatalog` 每次打开数据库都会 upsert 全部内置行。若计算相关字段发生变化，或受支持行需要从旧版外部 / 本地来源归一为 `bundled`，启动流程会重算既有 `usage_events.value_usd`；即使旧行数值碰巧等于当前内置价，也会执行这次升级回填，修复旧版本地覆盖曾绕过生效日期而留下的历史金额。金额回填只接受 `price_source = 'bundled'` 的行，且 Codex 事件只能使用 `BundledPricingCatalog.codexModelIds` 中明确登记的 GPT/Codex 行及其 Fast/Ultrafast/Flex 行；Claude/GLM 行不会因为 rollout 中出现同名 model id 而进入 Codex 公式。不在内置目录中的旧 LiteLLM/local 行可以继续留在兼容 schema 中，但不再参与估价。原始 token、事件时间和会话数据不受影响。
 
 `CodexFastMode.multipliers` 在 catalog 构造阶段维护支持 Fast 估算的模型及倍率，例如 `gpt-5.5 = 2.5x`、`gpt-5.4 = 2.0x`。它只用于生成最终 Fast Short 行；GPT-5.6 还会生成官方 Fast Long 行。事件计费不会再次乘 Fast 倍率。未列入该映射的 Codex 模型，以及所有 Claude 事件，都不会选择这些行。
 
 `CodexFlexMode.multipliers` 在 catalog 构造阶段维护 OpenAI 已公布 Flex 价格的模型。它生成最终 Flex Short 行；同时支持长上下文的模型再生成 Flex Long 行。所有数值都会写入 SQLite catalog，事件计费只选择行，不再次乘 Flex 或 Long 倍率。
+
+`CodexUltrafastMode.modelIds` 仅包含 `gpt-6-astra` 和 `gpt-6.1-sol`，目录生成 Standard 的 6 倍 API 等值价格及对应 Long 行；不使用订阅内含额度的 8 倍倍率。四类 token 单价和严格 `>272000` 边界见 [Ultrafast 价表](ultrafast-history.md)。未支持的模型不生成 Ultrafast 行，保持已有 Standard fallback。
 
 ## 生效日期与历史价格
 
@@ -64,23 +66,25 @@
 
 GPT-5.6 Terra 与 Luna 以 `2026-07-30` 为切换点：此前事件使用上市价格，当日及之后使用降价后的当前价格。GPT-5.6 Sol 以 OpenAI 官方账号发布降价公告的 `2026-08-21T19:34:10Z` 为可审计切点：此前使用 `$5/$0.50/$6.25/$30`，当时及之后使用 `$4/$0.40/$5/$20`。该秒点是可验证的公开公告时间，不声称等同于未公开的内部账单切换秒点。以后供应商调价时，必须同时保留旧区间并更新当前内置行，不能只修改当前数字。
 
-## Codex 服务档位偏好与 Fast 估算
+## Codex 服务档位偏好与 Fast / Ultrafast 估算
 
 ### Rollout 证据与 turn 冻结
 
 Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来 turn** 的线程偏好。`RolloutParser` 按 JSONL 文件行顺序处理事件，不用 timestamp 重新排序：`thread_settings_applied` 只更新待生效偏好，下一条 `task_started` 才把当时的偏好冻结到新 turn。活跃 turn 中途出现新的设置事件不会改写该 turn；它从下一个 `task_started` 起生效。
 
-解析器把 `priority` / `fast` 归一为 `priority`，把明确的 `default` 保存为 `default`，并把明确的 `flex` 保存为 `flex`；缺失、空值或不支持的值保存为未知。`thread_settings_applied` 只能证明 Codex 记录了这个未来-turn 偏好：客户端仍可能按模型或功能支持情况过滤它，rollout 也没有持久化服务端最终响应的 tier。因此这些字段用于估价，不是偏好已传输或 OpenAI 最终按该 tier 提供服务的证明。
+解析器把 `priority` / `fast` 归一为 `priority`，把明确的 `default` 保存为 `default`，并把明确的 `flex` 和 `ultrafast` 分别保存为对应值；缺失、空值或不支持的值保存为未知。`thread_settings_applied` 只能证明 Codex 记录了这个未来-turn 偏好：客户端仍可能按模型或功能支持情况过滤它，rollout 也没有持久化服务端最终响应的 tier。因此这些字段用于估价，不是偏好已传输或 OpenAI 最终按该 tier 提供服务的证明。
 
 子代理或 fork rollout 会先重放父会话历史，并可能重写外层事件时间。解析器在首个 child `session_meta` 上建立门禁：重放期间的 `token_count` 只更新累计量基线、不生成 `usage_events`；通常只有遇到 `task_started.started_at >= 子会话创建时间` 的首个真实任务后才开始计费。旧格式缺少 `started_at` 时，优先从 UUIDv7 `turn_id` 的毫秒时间判断；没有父 `session_meta` 重放的直接子任务则可在首个 task 开门，最后才使用严格晚于创建时间的外层时间兼容无法解析 UUIDv7 的旧数据，避免把等于创建时间的重放事件误当真实任务。累计 `total_token_usage` 与上一条完全相同时，即使 `last_token_usage` 内容变化也视为陈旧重发，不产生新增消费。
 
 ### 存储与兼容迁移
 
-每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`default`、`flex`、`NULL` 四种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast 或 Flex。
+每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`ultrafast`、`default`、`flex`、`NULL` 五种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast、Ultrafast 或 Flex。
 
 迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额；`v21-codex-cache-write-reread` 会安装包含 Codex Short/Long、tier、历史和 cache-write 单价的完整 catalog、立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次。原始 rollout 已不可读的事件仍能选择正确价格行，仍可读的历史前缀则会补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`。
 
-撤回实验性 Ultrafast 支持后，新日志中的该值按未知处理，不再生成或选择 Ultrafast 价格行。为兼容已运行 1.0.11-beta.5 的数据库，保留 v24 迁移标记（对尚未执行的数据库为空操作）及 checkpoint v2 的旧值解码能力；v25 仅移除已撤回的内置派生价格行，并将已有 `ultrafast` 事件按原有 Standard fallback 重算。已有 token、原始档位字段和导入游标均保留，不要求原始日志仍存在，不把 `NULL` 猜成其他档位。该兼容路径不重新启用 Ultrafast 识别或定价。
+当前恢复 Ultrafast 的日志识别及估价，与 Fast 共用待生效偏好、turn 冻结、冲突处理和持久化路径。保留已发布 v24/v25 迁移标记及 checkpoint v1/v2 解码兼容；新增 `v26-codex-ultrafast-restore` 安装完整价格、重算仍保留原始档位的事件，并一次性清除 Codex checkpoint、标记日志从头重读。缺失或不完整日志保留已提交历史，之后可重试；`NULL` 不会被猜成 Ultrafast。完整恢复说明见 [Ultrafast 历史恢复](ultrafast-history.md)。
+
+Fast 与 Ultrafast 都是日志偏好估价：未写入线程设置的单轮覆盖、活跃 turn 内真实请求切档、隐藏的子代理继承不会被额外还原。这是共有边界，不是 Ultrafast 独有偏差，也不声称服务端账单绝对准确。本路径不读取 `logs_2.sqlite`，不引入时间邻近或请求顺序匹配。
 
 ### 价格行优先级
 
@@ -88,10 +92,11 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 | 每事件偏好 | 价格行 |
 | --- | --- |
+| `ultrafast` | 仅 GPT-6 Astra、GPT-6.1 Sol：Short 使用 `<model_id>-ultrafast`；Long 使用 `<model_id>-ultrafast-long`。 |
 | `priority` | Short 使用 `<model_id>-fast`；GPT-5.6 Long 使用 `<model_id>-fast-long`，缺少 Fast Long 行的旧模型使用 `<model_id>-long`。 |
 | `flex` | Short 使用 `<model_id>-flex`；Long 使用 `<model_id>-flex-long`。 |
 | 明确的 `default` | Short 使用基础 `model_id`；Long 使用 `<model_id>-long`。 |
-| `NULL` | 与 Standard 相同；没有 Fast/Flex 证据就不选择相应 tier 行。 |
+| `NULL` | 与 Standard 相同；没有 Fast/Ultrafast/Flex 证据就不选择相应 tier 行。 |
 
 超过 272K 输入 Token 时，支持模型的整个请求选择预先物化的 Long 行。Long 行在 catalog 构造时已经写入官方最终单价；事件 SQL 不乘 `2.0` 或 `1.5`。GPT-5.6 明确的 `priority` 选择 Fast Long，明确的 `flex` 选择 Flex Long；未发布 Fast Long 价的旧模型选择 Standard Long。边界严格使用 `input_tokens > 272_000`，恰好 272K 仍选择 Short 行。
 

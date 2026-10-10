@@ -11,7 +11,9 @@ Every merged PR should update `## [Unreleased]` before or with the merge.
 These entries become both the GitHub Release notes and the Sparkle update
 window copy.
 
-- Start each release section with `#### Summary`: plain, user-readable
+- Start each release section with `#### Summary
+
+- Ultrafast usage estimates follow the same recorded-preference rules as Fast, and available history is recovered safely.`: plain, user-readable
   bullets. Generated Sparkle update notes render these as rich visual cards.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
@@ -19,7 +21,7 @@ window copy.
 - Put details under `### Added`, `### Changed`, `### Fixed`, `### Removed`,
   or `### Known limitation(s)`. These remain in the GitHub Release notes.
 - Start each detail bullet with a short bold title, then one concise sentence:
-  `- **Short title.** What changed and why it matters.`
+  `- **Ultrafast estimates.** Ultrafast now uses the same recorded-preference estimate as Fast, with supported-model API pricing and a safe reread of available history.
 - Keep implementation details, commit archaeology, and internal test evidence
   in PR bodies or docs unless they directly explain user impact.
 - Pull-request CI enforces this for non-appcast PRs; the generated appcast PR
