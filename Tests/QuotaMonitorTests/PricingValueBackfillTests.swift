@@ -24,6 +24,56 @@ import GRDB
 @Suite("PricingService.backfillAllValues")
 struct PricingValueBackfillTests {
 
+    @Test("Ultrafast catalog and all backfill scopes agree at the long-context boundary",
+          arguments: ["gpt-6-astra", "gpt-6.1-sol"])
+    func ultrafastPrices(model: String) throws {
+        let db = try makeDatabase()
+        for input: Int64 in [271_999, 272_000, 272_001] {
+            let long = input > 272_000
+            let rates: [Double] = model == "gpt-6-astra"
+                ? (long ? [120, 12, 150, 450] : [60, 6, 75, 300])
+                : (long ? [24, 1.2, 30, 90] : [12, 0.6, 15, 60])
+            let sid = try insertUsageEvent(
+                in: db, provider: "codex", modelId: model,
+                input: input, cached: 20_000, output: 1_000,
+                codexCacheWrite: 10_000, serviceTierPreference: "ultrafast",
+                timestamp: "2026-10-10T00:00:00Z")
+            let expected = (Double(input - 30_000) * rates[0]
+                + 20_000 * rates[1] + 10_000 * rates[2] + 1_000 * rates[3]) / 1_000_000
+            try db.pool.write { conn in
+                let ids = try Int64.fetchAll(conn, sql:
+                    "SELECT id FROM usage_events WHERE session_id = ?", arguments: [sid])
+                for scope in 0..<4 {
+                    try conn.execute(sql: "UPDATE usage_events SET value_usd = 0 WHERE session_id = ?", arguments: [sid])
+                    switch scope {
+                    case 0: try PricingService.backfillAllValues(in: conn)
+                    case 1: try PricingService.backfillValues(in: conn, sessionId: sid, provider: "codex")
+                    case 2: try PricingService.backfillValues(in: conn, eventIds: ids)
+                    default: try PricingService.backfillUnpricedValues(in: conn)
+                    }
+                    let actual = try #require(try Double.fetchOne(conn, sql:
+                        "SELECT value_usd FROM usage_events WHERE session_id = ?", arguments: [sid]))
+                    #expect(abs(actual - expected) < 1e-9)
+                }
+            }
+        }
+    }
+
+    @Test("Unsupported Ultrafast models retain Standard fallback without a synthetic tier")
+    func unsupportedUltrafastDoesNotMultiply() throws {
+        let db = try makeDatabase()
+        for tier in ["default", "ultrafast", "unknown"] {
+            try insertUsageEvent(in: db, provider: "codex", modelId: "gpt-6-luna",
+                                 input: 100, cached: 20, output: 10,
+                                 serviceTierPreference: tier)
+        }
+        try db.pool.write { try PricingService.backfillAllValues(in: $0) }
+        let values = try valueUSD(in: db)
+        #expect(values[0] == values[1])
+        #expect(values[0] == values[2])
+        #expect(!BundledPricingCatalog.codexModelIds.contains("gpt-6-luna-ultrafast"))
+    }
+
     private func makeDatabase() throws -> DatabaseManager {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("codexmonitor-tests", isDirectory: true)
@@ -930,6 +980,8 @@ struct PricingValueBackfillTests {
     @Test("GPT-6 Astra catalog materializes the official tier and context matrix")
     func gpt6AstraCatalogMaterializesOfficialMatrix() {
         let expected: [String: (Double, Double, Double, Double)] = [
+            "gpt-6-astra-ultrafast": (60, 6, 75, 300),
+            "gpt-6-astra-ultrafast-long": (120, 12, 150, 450),
             "gpt-6-astra": (10.00, 1.00, 12.50, 50.00),
             "gpt-6-astra-fast": (20.00, 2.00, 25.00, 100.00),
             "gpt-6-astra-flex": (5.00, 0.50, 6.25, 25.00),
@@ -955,6 +1007,8 @@ struct PricingValueBackfillTests {
     @Test("GPT-6.1 Sol catalog materializes its distinct cache rates across all tiers")
     func gpt61SolCatalogMaterializesOfficialMatrix() throws {
         let expected: [String: (Double, Double, Double, Double)] = [
+            "gpt-6.1-sol-ultrafast": (12, 0.6, 15, 60),
+            "gpt-6.1-sol-ultrafast-long": (24, 1.2, 30, 90),
             "gpt-6.1-sol": (2.00, 0.10, 2.50, 10.00),
             "gpt-6.1-sol-fast": (4.00, 0.20, 5.00, 20.00),
             "gpt-6.1-sol-flex": (1.00, 0.05, 1.25, 5.00),

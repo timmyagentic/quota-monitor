@@ -8,6 +8,60 @@ import Testing
 struct CodexIncrementalImportEngineTests {
     private let sessionId = "11111111-2222-4333-8444-555555555555"
 
+    @Test("Upgrade rereads unchanged Ultrafast history once and preserves missing/incomplete sources",
+          arguments: ["complete", "missing", "incomplete", "no-checkpoint"])
+    func ultrafastUpgradeRecovery(source: String) async throws {
+        var lines = prefixLines()
+        lines.insert(#"{"timestamp":"2026-07-19T00:00:00.500Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"ultrafast"}}}"#, at: 1)
+        lines = lines.map { $0.replacingOccurrences(of: "gpt-5.4", with: "gpt-6-astra") }
+        let harness = try makeHarness(lines: lines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        _ = try await harness.engine.performScan()
+        // Recreate the old parser's persisted NULL and old checkpoint, then
+        // run the real upgrade migration against an already imported file.
+        try await harness.database.pool.write { db in
+            try db.execute(sql: "UPDATE usage_events SET codex_service_tier_preference = NULL")
+            try PricingService.backfillAllValues(in: db)
+            if source == "no-checkpoint" {
+                try db.execute(sql: "UPDATE import_state SET parser_checkpoint = NULL, byte_offset = 0")
+            }
+            try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'v24-codex-ultrafast-reread'")
+        }
+        let oldValues = try await usageRows(in: harness.database).map(\.valueUsd)
+        if source == "missing" { try FileManager.default.removeItem(at: harness.rollout) }
+        if source == "incomplete" {
+            let handle = try FileHandle(forWritingTo: harness.rollout)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data("{unfinished".utf8))
+            try handle.close()
+        }
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(harness.database.pool)
+        let report = try await harness.engine.performScan()
+        #expect(report.errors.isEmpty)
+        let values = try await usageRows(in: harness.database).map(\.valueUsd)
+        #expect(values.count == 1)
+        if source == "complete" || source == "no-checkpoint" {
+            #expect(abs(values[0] - oldValues[0] * 6) < 1e-9)
+            let repeated = try await harness.engine.performScan()
+            #expect(repeated.importedEvents == 0)
+            let state = try await importState(at: harness.rollout.path, in: harness.database)
+            let checkpoint = try CodexRolloutCheckpoint.decoded(from: #require(state.parserCheckpoint))
+            #expect(checkpoint.version == 2)
+        } else {
+            #expect(values == oldValues)
+            // Restoration completes pending recovery without another migration.
+            try rolloutData(lines).write(to: harness.rollout)
+            _ = try await harness.engine.performScan()
+            let restored = try await usageRows(in: harness.database)
+            #expect(restored.count == 1)
+            #expect(abs(restored[0].valueUsd - oldValues[0] * 6) < 1e-9)
+        }
+        try migrator.migrate(harness.database.pool)
+        #expect(try await harness.engine.performScan().importedEvents == 0)
+    }
+
     @Test("scanner and parser persist the same integer file mtime")
     func scannerAndParserMtimeMatch() throws {
         let harness = try makeHarness(lines: prefixLines())
