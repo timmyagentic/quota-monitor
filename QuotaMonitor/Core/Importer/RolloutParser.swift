@@ -252,7 +252,7 @@ struct CodexRolloutReducerState: Codable, Equatable, Sendable {
 }
 
 struct CodexRolloutCheckpoint: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    static let currentVersion = 2
 
     let version: Int
     let offset: Int64

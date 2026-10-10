@@ -700,5 +700,23 @@ enum Migrations {
                 t.column("state", .blob).notNull()
             }
         }
+        // Older parsers discarded Ultrafast evidence, including in checkpoints.
+        // Invalidate only Codex cursors; keep all derived rows until a complete
+        // source can replace its own fragment transactionally. Missing sources
+        // retain their data and NULL is never guessed to mean Ultrafast.
+        migrator.registerMigration("v24-codex-ultrafast-reread") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1,
+                    file_mtime_ms = -1,
+                    byte_offset = 0,
+                    parser_checkpoint = NULL
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
+                """)
+            _ = try PricingService.installBundledCatalog(in: db)
+            try PricingService.backfillAllValues(in: db)
+        }
     }
 }

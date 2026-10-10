@@ -6,6 +6,87 @@ import Testing
 struct CodexRolloutIncrementalParserTests {
     private let sessionId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
+    @Test("Version one checkpoints cannot silently resume lost Ultrafast evidence")
+    func oldCheckpointRejected() throws {
+        let url = try makeRolloutURL()
+        try Data((metaLine() + "\n").utf8).write(to: url)
+        let output = try RolloutParser.parseIncrementally(fileURL: url)
+        let checkpoint = try #require(output.checkpoint)
+        var json = try #require(JSONSerialization.jsonObject(with: try checkpoint.encoded()) as? [String: Any])
+        json["version"] = 1
+        let old = try JSONSerialization.data(withJSONObject: json)
+        #expect(throws: (any Error).self) { try CodexRolloutCheckpoint.decoded(from: old) }
+    }
+
+    @Test("Ultrafast checkpoint resume is identical to one full reduction")
+    func ultrafastCheckpointResumeMatchesFullParse() throws {
+        let url = try makeRolloutURL()
+        let prefixLines = [
+            metaLine(),
+            settingsLine("ultrafast", timestamp: "2026-07-18T00:00:01.000Z"),
+            taskLine("task_started", turn: "turn-a", timestamp: "2026-07-18T00:00:02.000Z"),
+            contextLine(turn: "turn-a", model: "GPT-5.5", timestamp: "2026-07-18T00:00:03.000Z"),
+            tokenLine(total: 100, last: 100, timestamp: "2026-07-18T00:00:04.000Z"),
+        ]
+        let suffixLines = [
+            // Real Codex files can repeat the same root metadata in the middle
+            // of an active turn. It must not reset model/turn/tier/counters.
+            metaLine(timestamp: "2026-07-18T00:00:05.000Z", includeCwd: false),
+            tokenLine(total: 150, last: 50, timestamp: "2026-07-18T00:00:06.000Z"),
+            // Non-consecutive replay of the exact first snapshot: exact seen
+            // state must survive checkpoint encoding, so this emits nothing.
+            tokenLine(total: 100, last: 100, timestamp: "2026-07-18T00:00:07.000Z"),
+            // Because the replay did not move previousUsage backwards, this is
+            // 200 - 150, not 200 - 100.
+            tokenLine(total: 200, last: nil, timestamp: "2026-07-18T00:00:08.000Z"),
+            taskLine("task_complete", turn: "turn-a", timestamp: "2026-07-18T00:00:09.000Z"),
+        ]
+
+        let prefixData = Data((prefixLines.joined(separator: "\n") + "\n").utf8)
+        let suffixData = Data((suffixLines.joined(separator: "\n") + "\n").utf8)
+        try prefixData.write(to: url)
+
+        let prefix = try RolloutParser.parseIncrementally(fileURL: url)
+        let prefixCheckpoint = try #require(prefix.checkpoint)
+        #expect(prefixCheckpoint.state.isIncrementalRootEligible)
+        #expect(prefix.endOffset == Int64(prefixData.count))
+
+        let encoded = try prefixCheckpoint.encoded()
+        let decoded = try CodexRolloutCheckpoint.decoded(from: encoded)
+        #expect(decoded == prefixCheckpoint)
+        #expect(try decoded.encoded() == encoded, "checkpoint encoding must be canonical")
+
+        try append(suffixData, to: url)
+        let resumed = try RolloutParser.parseIncrementally(
+            fileURL: url,
+            checkpoint: decoded)
+        let full = try RolloutParser.parseIncrementally(fileURL: url)
+        let prefixSession = try #require(prefix.session)
+        let resumedSession = try #require(resumed.session)
+        let fullSession = try #require(full.session)
+
+        #expect(prefixSession.usageDeltas + resumedSession.usageDeltas
+            == fullSession.usageDeltas)
+        #expect(prefixSession.rateLimitSamples + resumedSession.rateLimitSamples
+            == fullSession.rateLimitSamples)
+        #expect(fullSession.usageDeltas.map(\.totalTokens) == [100, 50, 50])
+        #expect(fullSession.usageDeltas.map(\.modelId) == ["gpt-5.5", "gpt-5.5", "gpt-5.5"])
+        #expect(fullSession.usageDeltas.map(\.turnId) == ["turn-a", "turn-a", "turn-a"])
+        #expect(fullSession.usageDeltas.map(\.serviceTierPreference)
+            == [.ultrafast, .ultrafast, .ultrafast])
+
+        #expect(resumedSession.sessionId == fullSession.sessionId)
+        #expect(resumedSession.cwd == fullSession.cwd)
+        #expect(resumedSession.startedAt == fullSession.startedAt)
+        #expect(resumedSession.updatedAt == fullSession.updatedAt)
+        #expect(resumedSession.lastModelId == fullSession.lastModelId)
+        #expect(resumed.checkpoint?.state.seenUsageSnapshots.count == 3)
+        #expect(resumed.sequentialBytesRead == Int64(suffixData.count))
+        #expect(prefixCheckpoint.sourceIdentity == resumed.snapshot.sourceIdentity)
+        #expect(prefixCheckpoint.prefixHash == resumed.startPrefixHash)
+        #expect(prefixCheckpoint.boundaryHash == resumed.startBoundaryHash)
+    }
+
     @Test("serialized checkpoint resume is identical to one full reduction")
     func checkpointResumeMatchesFullParse() throws {
         let url = try makeRolloutURL()

@@ -361,6 +361,31 @@ struct RolloutParserTests {
 
     // MARK: - per-turn service tier preference
 
+    @Test("Ultrafast preference is frozen at task start in file order")
+    func ultrafastPreferenceFreezesAtTaskStart() throws {
+        let url = try writeRollout(#"""
+        {"timestamp":"2026-05-20T00:00:00.000Z","type":"session_meta","payload":{"id":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","timestamp":"2026-05-20T00:00:00.000Z","cwd":"/tmp/project"}}
+        {"timestamp":"2026-05-20T00:00:10.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"ultrafast"}}}
+        {"timestamp":"2026-05-20T00:00:11.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:12.000Z","type":"turn_context","payload":{"turn_id":"turn-a","model":"gpt-6-astra"}}
+        {"timestamp":"2026-05-20T00:00:13.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+        {"timestamp":"2026-05-20T00:00:20.000Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"default"}}}
+        {"timestamp":"2026-05-20T00:00:14.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":55}}}}
+        {"timestamp":"2026-05-20T00:00:15.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-a"}}
+        {"timestamp":"2026-05-20T00:00:16.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-b"}}
+        {"timestamp":"2026-05-20T00:00:17.000Z","type":"turn_context","payload":{"turn_id":"turn-b","model":"gpt-6-astra"}}
+        {"timestamp":"2026-05-20T00:00:18.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":30,"cached_input_tokens":0,"output_tokens":3,"reasoning_output_tokens":0,"total_tokens":33}}}}
+        {"timestamp":"2026-05-20T00:00:19.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-b"}}
+        {"timestamp":"2026-05-20T00:00:21.000Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":0,"output_tokens":2,"reasoning_output_tokens":0,"total_tokens":22}}}}
+        """# + "\n")
+        let parsed = try #require(try RolloutParser.parse(fileURL: url))
+
+        #expect(parsed.usageDeltas.map(\.turnId) == ["turn-a", "turn-a", "turn-b", nil])
+        #expect(parsed.usageDeltas.map(\.serviceTierPreference) == [
+            .ultrafast, .ultrafast, .standard, nil,
+        ])
+    }
+
     @Test("service tier preference is frozen at task start in file order")
     func serviceTierPreferenceFreezesAtTaskStart() throws {
         let url = try writeRollout(#"""
