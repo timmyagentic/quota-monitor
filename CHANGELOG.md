@@ -35,6 +35,10 @@ window copy.
 - The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
 - Session events now show the newest activity first, with full dates and times.
 
+### Added
+
+- **Request-tier diagnostics.** Record observed Codex request tiers, including Ultrafast, separately from estimated usage costs; incomplete request evidence does not change prices.
+
 ### Fixed
 
 - **Ultrafast withdrawal.** Removed experimental Ultrafast recognition and pricing while preserving beta database history and checkpoint compatibility.

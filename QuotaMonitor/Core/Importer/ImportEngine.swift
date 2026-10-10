@@ -165,6 +165,17 @@ actor ImportEngine {
                 scopeUnavailable: true)
         }
 
+        // Diagnostics only: absent or unreadable request evidence must not block
+        // rollout import or change the thread-preference pricing fallback.
+        do {
+            let evidence = try await CodexRequestTierImporter.scan(home: codexHome, database: database)
+            DeveloperLog.eventRecord("importer.request_tier.scan", category: "importer", result: evidence.status,
+                                     fields: ["inserted": .int(evidence.inserted), "scanned": .int(evidence.scanned),
+                                              "rejected": .int(evidence.rejected)])
+        } catch {
+            DeveloperLog.eventRecord("importer.request_tier.scan", category: "importer", result: "unavailable")
+        }
+
         let discoveredFiles = SessionScanner.scan(codexHome: codexHome)
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)

@@ -722,5 +722,21 @@ enum Migrations {
                 """)
             try PricingService.backfillValues(in: db, eventIds: eventIds)
         }
+        migrator.registerMigration("v26-codex-request-tier-observations") { db in
+            try db.create(table: "codex_request_tier_sources") { t in
+                t.primaryKey("source", .text)
+                t.column("cursor", .blob).notNull()
+            }
+            try db.create(table: "codex_request_tier_evidence") { t in
+                for name in ["source", "generation", "fingerprint", "normalizedTier", "attribution"] {
+                    t.column(name, .text).notNull()
+                }
+                for name in ["rowID", "timestamp", "nanoseconds"] { t.column(name, .integer).notNull() }
+                for name in ["threadID", "turnID", "model", "rawTier"] { t.column(name, .text) }
+                t.primaryKey(["source", "rowID", "fingerprint"])
+            }
+            try db.create(indexOn: "codex_request_tier_evidence", columns: ["threadID", "turnID"])
+        }
+
     }
 }
