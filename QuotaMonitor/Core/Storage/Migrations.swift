@@ -700,5 +700,27 @@ enum Migrations {
                 t.column("state", .blob).notNull()
             }
         }
+        // Keep the shipped identifier, but do not trigger the withdrawn reread
+        // for databases that never ran beta.5.
+        migrator.registerMigration("v24-codex-ultrafast-reread") { _ in }
+
+        // Roll back derived pricing only. Preserve imported tokens, raw tier
+        // evidence and cursors, including when the original logs are missing.
+        migrator.registerMigration("v25-withdraw-ultrafast-pricing") { db in
+            try db.execute(sql: """
+                DELETE FROM pricing_catalog
+                WHERE price_source = 'bundled' AND model_id IN (
+                    'gpt-6-astra-ultrafast', 'gpt-6-astra-ultrafast-long',
+                    'gpt-6.1-sol-ultrafast', 'gpt-6.1-sol-ultrafast-long'
+                )
+                """)
+            _ = try PricingService.installBundledCatalog(in: db)
+            let eventIds = try Int64.fetchAll(db, sql: """
+                SELECT id FROM usage_events
+                WHERE provider = 'codex'
+                  AND codex_service_tier_preference = 'ultrafast'
+                """)
+            try PricingService.backfillValues(in: db, eventIds: eventIds)
+        }
     }
 }

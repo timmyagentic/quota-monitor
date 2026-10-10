@@ -37,6 +37,8 @@ window copy.
 
 ### Fixed
 
+- **Ultrafast withdrawal.** Removed experimental Ultrafast recognition and pricing while preserving beta database history and checkpoint compatibility.
+
 - **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
 - **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
 
