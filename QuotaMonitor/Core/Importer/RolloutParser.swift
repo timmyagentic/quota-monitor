@@ -252,6 +252,7 @@ struct CodexRolloutReducerState: Codable, Equatable, Sendable {
 }
 
 struct CodexRolloutCheckpoint: Codable, Equatable, Sendable {
+    // Keep beta.5 checkpoints readable; withdrawing pricing does not require a reread.
     static let currentVersion = 2
 
     let version: Int
@@ -288,7 +289,8 @@ struct CodexRolloutCheckpoint: Codable, Equatable, Sendable {
 
     static func decoded(from data: Data) throws -> CodexRolloutCheckpoint {
         let checkpoint = try JSONDecoder().decode(Self.self, from: data)
-        guard checkpoint.version == currentVersion else {
+        // v1 and v2 share the same state layout; accept both without a forced reread.
+        guard (1...currentVersion).contains(checkpoint.version) else {
             throw RolloutParserError.unsupportedCheckpointVersion(checkpoint.version)
         }
         guard checkpoint.offset >= 0 else {

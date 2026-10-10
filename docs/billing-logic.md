@@ -80,6 +80,8 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额；`v21-codex-cache-write-reread` 会安装包含 Codex Short/Long、tier、历史和 cache-write 单价的完整 catalog、立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次。原始 rollout 已不可读的事件仍能选择正确价格行，仍可读的历史前缀则会补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`。
 
+撤回实验性 Ultrafast 支持后，新日志中的该值按未知处理，不再生成或选择 Ultrafast 价格行。为兼容已运行 1.0.11-beta.5 的数据库，保留 v24 迁移标记（对尚未执行的数据库为空操作）及 checkpoint v2 的旧值解码能力；v25 仅移除已撤回的内置派生价格行，并将已有 `ultrafast` 事件按原有 Standard fallback 重算。已有 token、原始档位字段和导入游标均保留，不要求原始日志仍存在，不把 `NULL` 猜成其他档位。该兼容路径不重新启用 Ultrafast 识别或定价。
+
 ### 价格行优先级
 
 对已配置相应档位价格的 Codex 模型，价格行选择顺序如下：

@@ -700,23 +700,27 @@ enum Migrations {
                 t.column("state", .blob).notNull()
             }
         }
-        // Older parsers discarded Ultrafast evidence, including in checkpoints.
-        // Invalidate only Codex cursors; keep all derived rows until a complete
-        // source can replace its own fragment transactionally. Missing sources
-        // retain their data and NULL is never guessed to mean Ultrafast.
-        migrator.registerMigration("v24-codex-ultrafast-reread") { db in
+        // Keep the shipped identifier, but do not trigger the withdrawn reread
+        // for databases that never ran beta.5.
+        migrator.registerMigration("v24-codex-ultrafast-reread") { _ in }
+
+        // Roll back derived pricing only. Preserve imported tokens, raw tier
+        // evidence and cursors, including when the original logs are missing.
+        migrator.registerMigration("v25-withdraw-ultrafast-pricing") { db in
             try db.execute(sql: """
-                UPDATE import_state
-                SET file_size = -1,
-                    file_mtime_ms = -1,
-                    byte_offset = 0,
-                    parser_checkpoint = NULL
-                WHERE session_id IN (
-                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                DELETE FROM pricing_catalog
+                WHERE price_source = 'bundled' AND model_id IN (
+                    'gpt-6-astra-ultrafast', 'gpt-6-astra-ultrafast-long',
+                    'gpt-6.1-sol-ultrafast', 'gpt-6.1-sol-ultrafast-long'
                 )
                 """)
             _ = try PricingService.installBundledCatalog(in: db)
-            try PricingService.backfillAllValues(in: db)
+            let eventIds = try Int64.fetchAll(db, sql: """
+                SELECT id FROM usage_events
+                WHERE provider = 'codex'
+                  AND codex_service_tier_preference = 'ultrafast'
+                """)
+            try PricingService.backfillValues(in: db, eventIds: eventIds)
         }
     }
 }

@@ -32,13 +32,13 @@ window copy.
 
 #### Summary
 
-- Ultrafast usage now shows the correct estimated API cost, including recoverable past sessions.
 - The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
 - Session events now show the newest activity first, with full dates and times.
 
 ### Fixed
 
-- **Ultrafast history.** GPT-6 Astra and GPT-6.1 Sol use published short/long API prices; existing logs are reread safely to restore older usage. History without its original log keeps its previous tier evidence.
+- **Ultrafast withdrawal.** Removed experimental Ultrafast recognition and pricing while preserving beta database history and checkpoint compatibility.
+
 - **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
 - **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
 
@@ -46,7 +46,6 @@ window copy.
 
 #### Summary
 
-- Ultrafast usage now shows the correct estimated API cost, including recoverable past sessions.
 - The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
 - Session events now show the newest activity first, with full dates and times.
 - The menu-bar popover closes when you click elsewhere or switch apps.
@@ -55,7 +54,6 @@ window copy.
 
 ### Fixed
 
-- **Ultrafast history.** GPT-6 Astra and GPT-6.1 Sol use published short/long API prices; existing logs are reread safely to restore older usage. History without its original log keeps its previous tier evidence.
 - **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
 - **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
 - **Popover dismissal.** Clicking outside, opening another app window, switching apps or pressing Escape now dismisses the menu-bar popover reliably, including after reopening it.
