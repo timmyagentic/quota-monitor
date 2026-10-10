@@ -23,7 +23,7 @@
 | `provider` | `codex` 或 `claude`，回填公式按它分支。 |
 | `model_id` | 用来匹配 `pricing_catalog.model_id`。 |
 | `codex_turn_id` | Codex turn 标识；rollout 没有稳定 ID 时为 `NULL`。 |
-| `codex_service_tier_preference` | Codex rollout 为该 turn 记录的服务档位偏好：`priority`、`default`、`flex`，或用 `NULL` 表示未知。它不是实际 served tier。 |
+| `codex_service_tier_preference` | Codex rollout 为该 turn 记录的服务档位偏好：`priority`、`default`、`flex`、`ultrafast`，或用 `NULL` 表示未知。它不是实际 served tier。 |
 | `input_tokens` | 输入 token。Codex 里是包含 cached input 和 cache write input 的 gross input；Claude 里是未缓存输入。 |
 | `cached_input_tokens` | Codex cached input 或 Claude cache read input。 |
 | `output_tokens` | 输出 token。Codex 中已经包含 reasoning output，不再额外加 reasoning。 |
@@ -64,21 +64,37 @@
 
 GPT-5.6 Terra 与 Luna 以 `2026-07-30` 为切换点：此前事件使用上市价格，当日及之后使用降价后的当前价格。GPT-5.6 Sol 以 OpenAI 官方账号发布降价公告的 `2026-08-21T19:34:10Z` 为可审计切点：此前使用 `$5/$0.50/$6.25/$30`，当时及之后使用 `$4/$0.40/$5/$20`。该秒点是可验证的公开公告时间，不声称等同于未公开的内部账单切换秒点。以后供应商调价时，必须同时保留旧区间并更新当前内置行，不能只修改当前数字。
 
-## Codex 服务档位偏好与 Fast 估算
+## Codex 服务档位偏好与 Fast / Ultrafast 估算
 
 ### Rollout 证据与 turn 冻结
 
 Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来 turn** 的线程偏好。`RolloutParser` 按 JSONL 文件行顺序处理事件，不用 timestamp 重新排序：`thread_settings_applied` 只更新待生效偏好，下一条 `task_started` 才把当时的偏好冻结到新 turn。活跃 turn 中途出现新的设置事件不会改写该 turn；它从下一个 `task_started` 起生效。
 
-解析器把 `priority` / `fast` 归一为 `priority`，把明确的 `default` 保存为 `default`，并把明确的 `flex` 保存为 `flex`；缺失、空值或不支持的值保存为未知。`thread_settings_applied` 只能证明 Codex 记录了这个未来-turn 偏好：客户端仍可能按模型或功能支持情况过滤它，rollout 也没有持久化服务端最终响应的 tier。因此这些字段用于估价，不是偏好已传输或 OpenAI 最终按该 tier 提供服务的证明。
+解析器把 `priority` / `fast` 归一为 `priority`，把明确的 `default` 保存为 `default`，把明确的 `flex` 保存为 `flex`，并把明确的 `ultrafast` 保存为 `ultrafast`；缺失、空值或不支持的值保存为未知。`thread_settings_applied` 只能证明 Codex 记录了这个未来-turn 偏好：客户端仍可能按模型或功能支持情况过滤它，rollout 也没有持久化服务端最终响应的 tier。因此这些字段只用于记录偏好对应的 API 等值估算，不是偏好已传输、服务端实际 served tier 或真实账单的证明；[Responses 响应中的 `service_tier`](https://developers.openai.com/api/reference/cli/resources/responses/methods/create/) 也可能不同于请求值。
 
 子代理或 fork rollout 会先重放父会话历史，并可能重写外层事件时间。解析器在首个 child `session_meta` 上建立门禁：重放期间的 `token_count` 只更新累计量基线、不生成 `usage_events`；通常只有遇到 `task_started.started_at >= 子会话创建时间` 的首个真实任务后才开始计费。旧格式缺少 `started_at` 时，优先从 UUIDv7 `turn_id` 的毫秒时间判断；没有父 `session_meta` 重放的直接子任务则可在首个 task 开门，最后才使用严格晚于创建时间的外层时间兼容无法解析 UUIDv7 的旧数据，避免把等于创建时间的重放事件误当真实任务。累计 `total_token_usage` 与上一条完全相同时，即使 `last_token_usage` 内容变化也视为陈旧重发，不产生新增消费。
 
+### 各档位共有的归因限制
+
+上游 Codex [TurnStartParams（固定提交）](https://github.com/openai/codex/blob/4bad6d78e9b50f9fa8bd941f1db012ed491ad2da/codex-rs/app-server-protocol/schema/typescript/v2/TurnStartParams.ts#L52-L61) 还支持 `serviceTierForTurn`，仅覆盖新启动的这一轮，不修改线程默认偏好。该提交的 [turn 构造](https://github.com/openai/codex/blob/4bad6d78e9b50f9fa8bd941f1db012ed491ad2da/codex-rs/core/src/session/turn_context.rs#L1166-L1202) 在保存线程设置之后才把覆盖应用到本轮副本，并返回线程设置快照；[发出的设置事件](https://github.com/openai/codex/blob/4bad6d78e9b50f9fa8bd941f1db012ed491ad2da/codex-rs/core/src/session/turn_input.rs#L144-L192) 不包含这个单轮覆盖。该版 `task_started` 与 `turn_context` 也没有保存覆盖档位。
+
+当前 QuotaMonitor 仅从 `thread_settings_applied` 冻结档位，因此这种单轮覆盖没有通过现有解析链反映：例如线程默认 Standard、单轮请求 Ultrafast 时，估算仍可能使用 Standard；反向覆盖也可能导致高估。这是 Standard、Fast、Flex、Ultrafast 共有的线程偏好估算边界，不是本次新增 Ultrafast 识别或价格表引入的回归。普通线程快照明确记录 `ultrafast` 时，现有识别与对应模型的选价仍然有效。
+
+同一固定提交还支持两条不更新该线程快照的有效档位变化路径：[同轮 settings update](https://github.com/openai/codex/blob/4bad6d78e9b50f9fa8bd941f1db012ed491ad2da/codex-rs/core/src/session/step_activation.rs#L229-L383) 在功能启用时更新后续 step 的设置；[ThreadSpawn 子代理](https://github.com/openai/codex/blob/4bad6d78e9b50f9fa8bd941f1db012ed491ad2da/codex-rs/core/src/session/mod.rs#L3846-L3862) 可以在 step 开始时继承根线程的档位。请求使用的是[该 step 的设置](https://github.com/openai/codex/blob/4bad6d78e9b50f9fa8bd941f1db012ed491ad2da/codex-rs/core/src/session/turn.rs#L2565-L2573)，因此同一 turn 也不一定只有一种有效请求档位。
+
+单纯重读相同事件无法补出其中没有的信息；缺少可关联的原始请求证据时，不能确定这些覆盖后的档位，更不能推断实际 served tier。以上是固定上游源码与合成事件的核查，不代表用户实际走过这些路径，也不代表所有桌面或 CLI 客户端已完整验证。
+
 ### 存储与兼容迁移
 
-每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`default`、`flex`、`NULL` 四种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast 或 Flex。
+已导入的历史无需每次访问原始日志：查询与价格 backfill 可直接使用数据库里仍保存的 token 和档位偏好。会话/历史页面显示据此算出的 `value_usd`，当前事件 DTO 和表格不单列 service tier。
 
-迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额；`v21-codex-cache-write-reread` 会安装包含 Codex Short/Long、tier、历史和 cache-write 单价的完整 catalog、立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次。原始 rollout 已不可读的事件仍能选择正确价格行，仍可读的历史前缀则会补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`。
+每个 Codex `usage_events` 行保存 `codex_turn_id` 和 `codex_service_tier_preference`。后者有 `priority`、`default`、`flex`、`ultrafast`、`NULL` 五种数据库状态；`NULL` 明确表示没有可用的持久化偏好证据。存储上仍保留未知状态，计价时则按保守规则选择 Standard，不能推断为 Fast、Flex 或 Ultrafast。
+
+迁移保留了未发布 trace 方案的兼容路径：`v13-codex-billing-tier` 先建立 `codex_turn_id` 与旧 `codex_billing_tier` 列，`v14-codex-rollout-tier-preference` 再把旧列改名为 `codex_service_tier_preference`、清除 Codex 的 trace 派生值，并把 Codex `import_state` 置为需要从 0 offset 重读。`v15-codex-pricing-policy-reprice` 会在启动查询前安装当前随包价格并强制回填全部派生金额；`v21-codex-cache-write-reread` 会安装包含 Codex Short/Long、tier、历史和 cache-write 单价的完整 catalog、立即重算已有金额，并清除 Codex checkpoint、强制从头重读一次。仅依靠仍保存的 token 与档位证据就能重算的事件无需读取原始 rollout；仍可读的历史前缀则会补齐 `cache_write_input_tokens`。这些失效都通过 `import_state.session_id` 关联 `sessions.provider = 'codex'`，不依赖路径中出现 `/.codex/`。
+
+`v24-codex-ultrafast-reread` 针对旧解析把 `ultrafast` 丢成 `NULL` 的问题，一次性使 Codex 的文件状态和导入游标失效，并把 parser checkpoint 升为 v2。价格 backfill 无法凭空恢复丢失的偏好，因此下一次扫描也会从头重读未变化的日志：完整来源按自身片段事务替换旧事件并重算，再原子保存游标，重复扫描不重复事件。Claude 游标不受影响。
+
+原始日志缺失、不可读或尾记录未完整时，已有历史保留；完整来源恢复后可继续重读。没有原始证据时，`NULL` 仍为未知并按 Standard 估算，不能根据当前配置或猜测还原 Ultrafast。首次重读可能耗时更长；具体恢复行为见 [Ultrafast 历史恢复说明](ultrafast-history.md)。
 
 ### 价格行优先级
 
@@ -86,12 +102,15 @@ Codex rollout 的 `event_msg/thread_settings_applied` 表示一个面向**未来
 
 | 每事件偏好 | 价格行 |
 | --- | --- |
+| `ultrafast` | 仅 GPT-6 Astra 与 GPT-6.1 Sol：Short 使用 `<model_id>-ultrafast`，Long 使用 `<model_id>-ultrafast-long`。 |
 | `priority` | Short 使用 `<model_id>-fast`；GPT-5.6 Long 使用 `<model_id>-fast-long`，缺少 Fast Long 行的旧模型使用 `<model_id>-long`。 |
 | `flex` | Short 使用 `<model_id>-flex`；Long 使用 `<model_id>-flex-long`。 |
 | 明确的 `default` | Short 使用基础 `model_id`；Long 使用 `<model_id>-long`。 |
-| `NULL` | 与 Standard 相同；没有 Fast/Flex 证据就不选择相应 tier 行。 |
+| `NULL` | 与 Standard 相同；没有 Fast/Flex/Ultrafast 证据就不选择相应 tier 行。 |
 
 超过 272K 输入 Token 时，支持模型的整个请求选择预先物化的 Long 行。Long 行在 catalog 构造时已经写入官方最终单价；事件 SQL 不乘 `2.0` 或 `1.5`。GPT-5.6 明确的 `priority` 选择 Fast Long，明确的 `flex` 选择 Flex Long；未发布 Fast Long 价的旧模型选择 Standard Long。边界严格使用 `input_tokens > 272_000`，恰好 272K 仍选择 Short 行。
+
+Ultrafast 仅为 `gpt-6-astra` 和 `gpt-6.1-sol` 物化官方价格行，短、长上下文均为对应 Standard API 单价的 **6 倍**；这是 `value_usd` 的 API 等值，不使用订阅内含额度的 **8 倍**消耗倍率。缓存读、缓存写、输入、输出四项价格均在 catalog 中预先计算，事件 SQL 只选行。恰好 272000 输入 token 仍为 Short，超过才选 Ultrafast Long。不支持 Ultrafast 的模型保持既有 Standard fallback，不擅自套用 6 倍。官方依据（2026-10-10 核实）：[API 定价](https://developers.openai.com/api/docs/pricing)、[Ultrafast API](https://developers.openai.com/api/docs/guides/ultrafast-mode)、[Codex 速度档位](https://learn.chatgpt.com/docs/agent-configuration/speed)。
 
 旧版 `settings.codexFastModeBilling` 偏好不再参与计价，设置页也不再提供“未标记按 Fast”入口；底层回填函数暂时保留同名参数，仅用于源码兼容，传入任何值都不会把未知事件改成 Fast。
 
@@ -179,9 +198,9 @@ UI 不重复实现计费公式。
 
 - 这是 API-equivalent spend，不是 Codex / Claude 订阅费用，也不一定等于供应商账单。
 - Codex 只为 OpenAI 已公布 272K 规则的支持模型生成和选择 Long 行。Claude 及没有公布该规则的模型不会生成或选择这类行。
-- 区域以及未持久化的实际服务层、执行层倍率暂不纳入当前计费要求。例如 regional processing、data residency、batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要逐请求字段或账单侧数据才能准确还原。上文的 Codex Priority/Fast/Flex 逻辑只按 rollout 记录的偏好估算，不能突破这条 served-tier 边界。
+- 区域以及未持久化的实际服务层、执行层倍率暂不纳入当前计费要求。例如 regional processing、data residency、batch、Claude `inference_geo`、Opus fast tier、server-side tool 费用等，都需要逐请求字段或账单侧数据才能准确还原。上文的 Codex Priority/Fast/Flex/Ultrafast 逻辑只按 rollout 记录的偏好估算，不能突破这条 served-tier 边界。
 - 未随 App 内置价格的未知模型不会获得美元估值；需要在新版本中加入模型行后才会开始计价。
-- 近期 Codex 混合历史可以按 turn 中冻结的 `priority` / `default` / `flex` 偏好分别估算；没有 `thread_settings_applied` / `task_started` 证据的旧版或未标记事件仍为 `NULL`，并按 Standard 估算。两种情况都不等同于还原服务端实际 served tier。
+- 近期 Codex 混合历史可以按 turn 中冻结的 `priority` / `default` / `flex` / `ultrafast` 偏好分别估算；没有 `thread_settings_applied` / `task_started` 证据的旧版或未标记事件仍为 `NULL`，并按 Standard 估算。两种情况都不等同于还原服务端实际 served tier。
 - Codex 缺模型的历史事件按 `gpt-5` 估算，`model_inferred = true`。
 - Claude 旧数据必须经过 v6 迁移后的重新扫描，才能从“全部按 5m cache write”升级为 1h / 5m 分开计价。
 

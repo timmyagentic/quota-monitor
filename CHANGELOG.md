@@ -38,6 +38,8 @@ window copy.
 
 ### Fixed
 
+- **Billing guide.** Clarified Ultrafast API-equivalent pricing and the limits of recovering historical tier preferences.
+
 - **Ultrafast history.** GPT-6 Astra and GPT-6.1 Sol use published short/long API prices; existing logs are reread safely to restore older usage. History without its original log keeps its previous tier evidence.
 - **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
 - **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
