@@ -6,12 +6,12 @@ import Testing
 struct CodexRolloutIncrementalParserTests {
     private let sessionId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
-    @Test("serialized checkpoint resume is identical to one full reduction")
-    func checkpointResumeMatchesFullParse() throws {
+    @Test("serialized checkpoint resume is identical to one full reduction", arguments: ["priority", "ultrafast"])
+    func checkpointResumeMatchesFullParse(tier: String) throws {
         let url = try makeRolloutURL()
         let prefixLines = [
             metaLine(),
-            settingsLine("priority", timestamp: "2026-07-18T00:00:01.000Z"),
+            settingsLine(tier, timestamp: "2026-07-18T00:00:01.000Z"),
             taskLine("task_started", turn: "turn-a", timestamp: "2026-07-18T00:00:02.000Z"),
             contextLine(turn: "turn-a", model: "GPT-5.5", timestamp: "2026-07-18T00:00:03.000Z"),
             tokenLine(total: 100, last: 100, timestamp: "2026-07-18T00:00:04.000Z"),
@@ -61,7 +61,7 @@ struct CodexRolloutIncrementalParserTests {
         #expect(fullSession.usageDeltas.map(\.modelId) == ["gpt-5.5", "gpt-5.5", "gpt-5.5"])
         #expect(fullSession.usageDeltas.map(\.turnId) == ["turn-a", "turn-a", "turn-a"])
         #expect(fullSession.usageDeltas.map(\.serviceTierPreference)
-            == [.priority, .priority, .priority])
+            == Array(repeating: CodexServiceTierPreference(rolloutValue: tier), count: 3))
 
         #expect(resumedSession.sessionId == fullSession.sessionId)
         #expect(resumedSession.cwd == fullSession.cwd)
