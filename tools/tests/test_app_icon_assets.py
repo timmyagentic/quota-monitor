@@ -141,6 +141,7 @@ class AppIconAssetTests(unittest.TestCase):
 
         self.assertIn("hasAlpha: yes", result.stdout)
 
+    @unittest.skipUnless(sys.platform == "darwin", "macOS sips is required")
     def test_make_icon_rejects_sources_without_alpha(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = pathlib.Path(tmp)

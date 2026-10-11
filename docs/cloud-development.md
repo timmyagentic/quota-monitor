@@ -62,3 +62,8 @@ Private Beta, mirror upload, signing/notarization and production publication
 remain on their existing authorized release path. Their local Keychain,
 Wrangler/admin credentials must not migrate here. A website bundle dry run is
 not a release dry run and does not validate those credentials or publishing.
+
+The existing installer smoke installs the currently published feed version. It
+does not prove that the source version in Resources/VERSION was installed.
+Record its observed version independently; pinning a release installer is a
+separate release-test change, outside this credential-free development path.
