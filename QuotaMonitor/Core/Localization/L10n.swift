@@ -733,6 +733,10 @@ enum L10n {
     }
 
     // MARK: - chart axis labels (visible in tooltips/legends)
+    static func trendOtherEntries(_ count: Int) -> String {
+        t(en: "Other \(count) entries", zh: "其余 \(count) 项")
+    }
+
     static var chartAxisDay: String { t(en: "Day", zh: "日") }
     static var chartAxisApiValue: String { t(en: "API value", zh: "API 价值") }
 

@@ -154,7 +154,10 @@ struct TrendsSection: View {
             if let selection = selectedTrendSelection(in: activeSeries) {
                 RuleMark(x: .value(L10n.chartAxisDay, selection.date, unit: .day))
                     .foregroundStyle(Color.primary.opacity(0.22))
-
+                    .annotation(position: .top, alignment: .center, spacing: 4,
+                        overflowResolution: .init(x: .fit, y: .fit)) {
+                        trendTooltip(selection)
+                    }
             }
         }
         .chartXScale(domain: xDomain)
@@ -194,12 +197,6 @@ struct TrendsSection: View {
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDay)
         .frame(height: 245)
-        .overlay(alignment: .topTrailing) {
-            if let selection = selectedTrendSelection(in: activeSeries) {
-                trendTooltip(selection)
-                    .padding(8)
-            }
-        }
         .accessibilityRepresentation {
             VStack(alignment: .leading) {
                 ForEach(accessibleDailyPoints) { day in
@@ -224,7 +221,7 @@ struct TrendsSection: View {
                         .font(.caption)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    speedBadge(row.speedTier, color: row.color)
+                    TrendSpeedBadge(tier: row.speedTier, color: row.color)
                     Spacer()
                     Text(compactTokens(row.tokens))
                         .font(.caption.monospacedDigit())
@@ -245,66 +242,7 @@ struct TrendsSection: View {
     }
 
     private func trendTooltip(_ selection: TrendSelection) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(LocalizedDateFormatting.string(
-                from: selection.date,
-                style: .monthDay))
-                .font(.caption.weight(.semibold))
-            Text(compactTokens(selection.totalTokens))
-                .font(.callout.monospacedDigit().weight(.semibold))
-            ScrollView {
-                VStack(spacing: 5) {
-                    ForEach(selection.rows) { row in
-                        HStack(spacing: 6) {
-                            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                                .fill(row.color)
-                                .frame(width: 8, height: 8)
-                            Text(row.label)
-                                .lineLimit(1)
-                            speedBadge(row.speedTier, color: row.color)
-                            Spacer(minLength: 12)
-                            Text(compactTokens(row.tokens))
-                                .monospacedDigit()
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .frame(width: 280, height: CGFloat(min(selection.rows.count, 8)) * 23)
-            Divider()
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(DashboardTheme.cache)
-                    .frame(width: 7, height: 7)
-                Text(L10n.cacheHitRateTitle)
-                Spacer(minLength: 12)
-                Text(formatCacheHitRate(selection.cacheUsage.hitRate))
-                    .monospacedDigit()
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 2)
-        )
-    }
-
-    @ViewBuilder
-    private func speedBadge(_ tier: TrendSpeedTier?, color: Color) -> some View {
-        if let tier {
-            Text(tier.label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(color.opacity(0.14), in: Capsule())
-                .fixedSize()
-        }
+        TrendTooltip(selection: selection, tokenLocale: settings.tokenFormatLocale)
     }
 
     // MARK: - statline
@@ -797,7 +735,7 @@ private struct TrendLegendRow: Identifiable {
     var id: String { key }
 }
 
-private struct TrendSelection {
+struct TrendSelection {
     struct Row: Identifiable {
         let id: String
         let label: String
