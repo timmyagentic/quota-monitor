@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 import tempfile
 import time
@@ -37,6 +38,21 @@ class TestResourceCleanupTests(unittest.TestCase):
         link.symlink_to(self.root, target_is_directory=True)
         self.assertFalse(cleanup.cleanup(link))
         self.assertTrue(self.root.exists())
+
+    def test_competing_cleanup_can_remove_root_between_directory_and_owner_checks(self):
+        original = Path.stat
+        calls = 0
+        def stat(path, *args, **kwargs):
+            nonlocal calls
+            if path == self.root and kwargs.get("follow_symlinks", True):
+                calls += 1
+                if calls == 1:
+                    shutil.rmtree(self.root)
+                    raise FileNotFoundError(str(self.root))
+            return original(path, *args, **kwargs)
+        with patch.object(Path, "stat", stat):
+            cleanup.cleanup(self.root)
+        self.assertFalse(self.root.exists())
 
     def test_active_test_scope_is_preserved(self):
         with (self.root / "lock").open("r+") as lock:

@@ -24,19 +24,19 @@ def is_test_suite(suite):
 
 
 def cleanup(root: Path, wait: bool = False) -> bool:
-    if root.is_symlink() or not root.is_dir() or root.stat().st_uid != os.getuid():
-        return False
-    if not root.name.startswith(PREFIX):
-        return False
     try:
-        uuid.UUID(root.name.removeprefix(PREFIX))
-    except ValueError:
-        return False
-    journal = root / "preferences.json"
-    lock = root / "lock"
-    if journal.is_symlink() or lock.is_symlink():
-        return False
-    try:
+        if root.is_symlink() or not root.is_dir() or root.stat().st_uid != os.getuid():
+            return False
+        if not root.name.startswith(PREFIX):
+            return False
+        try:
+            uuid.UUID(root.name.removeprefix(PREFIX))
+        except ValueError:
+            return False
+        journal = root / "preferences.json"
+        lock = root / "lock"
+        if journal.is_symlink() or lock.is_symlink():
+            return False
         with lock.open("r+") as handle:
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | (0 if wait else fcntl.LOCK_NB))

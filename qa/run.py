@@ -204,15 +204,15 @@ def recover_abandoned_profiles(parent: Path | None = None) -> int:
     parent = parent or Path(tempfile.gettempdir()).resolve()
     cleaned = 0
     for root in parent.glob(f"{RUN_PREFIX}*"):
-        token = root.name.removeprefix(RUN_PREFIX)
-        if not re.fullmatch(r"[0-9a-f]{32}", token) or root.is_symlink():
-            continue
-        marker = root / "session.json"
-        lock = root / "session.lock"
-        if (not marker.is_file() or marker.is_symlink() or lock.is_symlink()
-                or root.stat().st_uid != os.getuid()):
-            continue
         try:
+            token = root.name.removeprefix(RUN_PREFIX)
+            if not re.fullmatch(r"[0-9a-f]{32}", token) or root.is_symlink():
+                continue
+            marker = root / "session.json"
+            lock = root / "session.lock"
+            if (not marker.is_file() or marker.is_symlink() or lock.is_symlink()
+                    or root.stat().st_uid != os.getuid()):
+                continue
             with lock.open("a") as handle:
                 try:
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
