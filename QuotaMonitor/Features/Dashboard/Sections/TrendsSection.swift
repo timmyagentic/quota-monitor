@@ -242,7 +242,10 @@ struct TrendsSection: View {
     }
 
     private func trendTooltip(_ selection: TrendSelection) -> some View {
+        // Charts renders annotations in a separate tree; explicitly carry
+        // the observable environment into that tree.
         TrendTooltip(selection: selection, tokenLocale: settings.tokenFormatLocale)
+            .environment(localization)
     }
 
     // MARK: - statline

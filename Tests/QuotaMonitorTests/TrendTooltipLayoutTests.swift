@@ -1,4 +1,5 @@
 import AppKit
+import Charts
 import SwiftUI
 import Testing
 @testable import QuotaMonitor
@@ -6,6 +7,29 @@ import Testing
 @Suite("Trend tooltip hosted layout", .serialized)
 @MainActor
 struct TrendTooltipLayoutTests {
+    @Test("Chart annotation renders with its own localization environment")
+    func chartAnnotationRendering() throws {
+        let date = Date()
+        let selection = TrendSelection(date: date, rows: [
+            .init(id: "model", label: "GPT-6 Astra", color: .green,
+                  tokens: 100, speedTier: .ultrafast)
+        ], totalTokens: 100, cacheUsage: .zero)
+        // Charts rasterizes annotations in a separate render tree, unlike
+        // the ordinary overlay exercised by the layout test below.
+        let chart = Chart {
+            BarMark(x: .value("Day", date), y: .value("Tokens", 100))
+            RuleMark(x: .value("Day", date))
+                .annotation(position: .top) {
+                    TrendTooltip(selection: selection, tokenLocale: Locale(identifier: "en_US"))
+                        .environment(LocalizationStore.shared)
+                }
+        }
+        .environment(LocalizationStore.shared)
+        .frame(width: 600, height: 300)
+        let renderer = ImageRenderer(content: chart)
+        #expect(try #require(renderer.nsImage).size.width == 600)
+    }
+
     @Test("Tooltip stays compact and leaves the chart pointer target intact", arguments: [3, 24])
     func compactNonInteractiveTooltip(rowCount: Int) async throws {
         let rows = (0..<rowCount).map { index in
