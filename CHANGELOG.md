@@ -11,9 +11,7 @@ Every merged PR should update `## [Unreleased]` before or with the merge.
 These entries become both the GitHub Release notes and the Sparkle update
 window copy.
 
-- Start each release section with `#### Summary
-
-- Ultrafast usage estimates follow the same recorded-preference rules as Fast, and available history is recovered safely.`: plain, user-readable
+- Start each release section with `#### Summary`: plain, user-readable
   bullets. Generated Sparkle update notes render these as rich visual cards.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
@@ -21,7 +19,7 @@ window copy.
 - Put details under `### Added`, `### Changed`, `### Fixed`, `### Removed`,
   or `### Known limitation(s)`. These remain in the GitHub Release notes.
 - Start each detail bullet with a short bold title, then one concise sentence:
-  `- **Ultrafast estimates.** Ultrafast now uses the same recorded-preference estimate as Fast, with supported-model API pricing and a safe reread of available history.
+  `- **Short title.** One concise sentence.`
 - Keep implementation details, commit archaeology, and internal test evidence
   in PR bodies or docs unless they directly explain user impact.
 - Pull-request CI enforces this for non-appcast PRs; the generated appcast PR
@@ -32,27 +30,18 @@ window copy.
 
 ## [Unreleased]
 
-#### Summary
-
-- The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
-- Session events now show the newest activity first, with full dates and times.
-
-### Fixed
-
-- **Ultrafast withdrawal.** Removed experimental Ultrafast recognition and pricing while preserving beta database history and checkpoint compatibility.
-
-- **Tool filter label.** The title-bar filter keeps its selected tool visible when switching pages or languages.
-- **Session event timeline.** Events appear newest first with year, month, day and seconds, making long-running sessions easier to inspect.
-
-## [1.0.11] — 2026-10-06
+## [1.0.11] — 2026-10-11
 
 #### Summary
 
-- The toolbar tool filter clearly shows All tools, Codex or Claude instead of an empty arrow.
-- Session events now show the newest activity first, with full dates and times.
-- The menu-bar popover closes when you click elsewhere or switch apps.
-- Current-cycle tokens, cache hits and estimated costs stay visible when quota reset timing shifts.
-- If the cycle start is unconfirmed, local usage appears with a clear estimated-window explanation.
+- Ultrafast estimates now support GPT-6 Astra and GPT-6.1 Sol, with recovery of available usage history.
+- Current-cycle usage stays visible when quota reset timing shifts, with uncertain windows clearly labelled as estimates.
+- The menu-bar popover reliably closes when you click elsewhere or switch apps.
+- Tool filters show their selected tool, and session events show newest activity first with full dates and times.
+
+### Added
+
+- **Ultrafast estimates.** GPT-6 Astra and GPT-6.1 Sol use the same recorded-preference estimate as Fast, with supported short- and long-context API-equivalent prices at 6× Standard rather than the subscription allowance multiplier.
 
 ### Fixed
 
@@ -61,6 +50,12 @@ window copy.
 - **Popover dismissal.** Clicking outside, opening another app window, switching apps or pressing Escape now dismisses the menu-bar popover reliably, including after reopening it.
 - **Current-cycle usage.** Empty rolling windows and small reset-time changes no longer hide local totals; upgrading also restores estimated local usage for windows whose start was previously lost.
 - **Uncertain resets.** Estimated local totals remain separate from reset confirmation, and consumption forecasts stay unavailable until the cycle can be identified.
+- **Historical recovery.** Upgrading rereads available Codex logs once to recover previously lost Ultrafast preferences and recompute estimates without duplicating events; existing history is preserved while missing or incomplete sources await recovery.
+
+### Known limitations
+
+- **Recorded preferences.** Fast and Ultrafast estimates use the preference recorded at turn start; unrecorded overrides and changes within a turn are not reconstructed or confirmed against server billing.
+- **Missing source logs.** Saved Ultrafast preferences can still be repriced, but erased preferences cannot be recovered without the original logs; unknown values are never guessed to be Ultrafast. The first history scan after upgrading may take longer.
 
 ## [1.0.10] — 2026-09-30
 
