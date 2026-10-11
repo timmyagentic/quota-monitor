@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Contributions can be checked in an isolated environment without personal accounts.
+
+### Changed
+
+- **Cloud development.** Add a credential-free setup and clearly separate portable checks from required macOS verification.
+
 ## [1.0.11] — 2026-10-11
 
 #### Summary

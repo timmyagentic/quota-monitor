@@ -35,3 +35,7 @@ For visible UI changes, also embed at least one verified post-change screenshot 
 ## Security & Configuration Tips
 
 Never commit credentials, keychain data, local history exports, signing keys, or notarization secrets. Keep local QA deterministic; use `LocalQAEnvironment` and `--disable-keychain` paths when tests should avoid external data.
+
+## Cloud development exception
+
+Linux contributors may edit Swift and run `./qa/bootstrap-cloud.sh` followed by `./qa/run-cloud.sh` before commit/push instead of the macOS-only static gate. This exception permits opening a ready PR, not claiming full verification. Delivery/merge requires the same PR head SHA to pass the real `macOS Swift tests` job (static QA plus release build) and `Cloud development checks`; verify with `python3 tools/verify-cloud-pr.py <PR> <full-head-SHA>`. Draft skips and the `swift-test` summary alone are not proof. macOS contributors retain the existing `./qa/run-static.sh` pre-push gate. See `docs/cloud-development.md` for the complete contract and GUI/release limits.

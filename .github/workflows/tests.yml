@@ -247,6 +247,21 @@ jobs:
           /usr/bin/codesign --verify --deep --strict "${qm_smoke_dir}/QuotaMonitor.app"
           /usr/sbin/spctl --assess --type execute --verbose=2 "${qm_smoke_dir}/QuotaMonitor.app"
 
+  cloud_development:
+    name: Cloud development checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+      - run: ./qa/bootstrap-cloud.sh
+      - run: ./qa/run-cloud.sh
+
   macos_swift_test:
     name: macOS Swift tests
     needs: [changes, pr_changelog]
@@ -264,6 +279,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Show toolchain
         # Surface swift / xcode versions in the log so a future Swift-7
@@ -298,7 +314,7 @@ jobs:
 
   swift-test:
     name: swift-test
-    needs: [changes, pr_changelog, website_test, installer_test, installer_macos_smoke, macos_swift_test]
+    needs: [changes, pr_changelog, website_test, installer_test, installer_macos_smoke, macos_swift_test, cloud_development]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -306,6 +322,7 @@ jobs:
       - name: Summarize gated test checks
         shell: bash
         env:
+          CLOUD_RESULT: ${{ needs.cloud_development.result }}
           CHANGES_RESULT: ${{ needs.changes.result }}
           NEEDS_SWIFT_TEST: ${{ needs.changes.outputs.swift-test }}
           PR_CHANGELOG_RESULT: ${{ needs.pr_changelog.result }}
@@ -337,6 +354,11 @@ jobs:
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
             echo "Draft PR; gated tests intentionally skipped"
             exit 0
+          fi
+
+          if [[ "${CLOUD_RESULT}" != "success" ]]; then
+            echo "::error::Cloud development checks did not pass"
+            exit 1
           fi
 
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${PR_CHANGELOG_RESULT}" != "success" ]]; then
