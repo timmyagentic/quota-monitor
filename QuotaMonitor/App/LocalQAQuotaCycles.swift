@@ -70,11 +70,13 @@ extension AppEnvironment {
                     let output = Int64((index % 4 + 1) * 2_000)
                     try db.execute(sql: """
                         INSERT INTO usage_events (session_id, timestamp, model_id, provider,
-                            input_tokens, cached_input_tokens, output_tokens, total_tokens, value_usd)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            input_tokens, cached_input_tokens, output_tokens, total_tokens, value_usd,
+                            codex_service_tier_preference)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, arguments: [session, ISO8601.fractional.string(from: date),
                             provider == "codex" ? "gpt-6-astra" : "claude-fable-5-1", provider,
-                            input, input / 2, output, input + output, 0])
+                            input, input / 2, output, input + output, 0,
+                            provider == "codex" ? ["default", "priority", "ultrafast", nil][index % 4] : nil])
                 }
                 try PricingService.backfillValues(in: db, sessionId: session, provider: provider)
             }

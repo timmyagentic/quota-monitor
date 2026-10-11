@@ -5,6 +5,25 @@ import Testing
 @Suite("Dashboard trend series")
 struct DashboardTrendSeriesTests {
 
+    @Test("top model selection keeps all speed tiers adjacent and preserves Other totals")
+    func speedTiersStayTogether() {
+        let day = Date()
+        let tiers = TrendSpeedTier.allCases.reversed().map { tier in
+            DailyBreakdownPoint(date: day, provider: "codex",
+                key: TrendSpeedTier.seriesKey(modelID: "astra", tier: tier), label: "Astra",
+                valueUSD: 1, tokens: 100, modelID: "astra", speedTier: tier)
+        }
+        let smaller = DailyBreakdownPoint(date: day, provider: "codex", key: "smaller",
+                                         label: "Smaller", valueUSD: 2, tokens: 400)
+        let series = TrendSeriesBuilder.collapsedModelSeries(Array(tiers) + [smaller], topLimit: 1)
+        #expect(series.compactMap(\.speedTier) == TrendSpeedTier.allCases)
+        #expect(series.last?.key == TrendSeriesBuilder.otherKey)
+        #expect(series.last?.tokens == 400)
+        #expect(series.reduce(Int64(0)) { $0 + $1.tokens } == 900)
+        #expect(series.reduce(0.0) { $0 + $1.valueUSD } == 7)
+        #expect(TrendStack.allCases == [.model, .provider])
+    }
+
     @Test("7-day chart domain includes the complete final day across DST")
     func sevenDayChartDomainIncludesCompleteFinalDayAcrossDST() throws {
         var calendar = Calendar(identifier: .gregorian)

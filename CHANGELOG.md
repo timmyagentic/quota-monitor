@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 
+- Dashboard trends now distinguish model speed modes and open grouped by model.
 - Contributions can be checked in an isolated environment without personal accounts.
 
 ### Changed
 
+- **Model speed modes.** Trends separate Standard, Fast, Ultrafast, Flex, and unrecorded Codex usage with matching chart shades and badges; model grouping now appears first and is selected by default.
 - **Cloud development.** Add a credential-free setup and clearly separate portable checks from required macOS verification.
 
 ### Fixed

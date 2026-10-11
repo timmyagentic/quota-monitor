@@ -137,7 +137,7 @@ struct DashboardSnapshotCacheTests {
         #expect(store.load() == nil)
 
         let unsupported = DashboardSnapshotCacheEnvelope(
-            schemaVersion: DashboardSnapshotCacheEnvelope.currentSchemaVersion + 1,
+            schemaVersion: DashboardSnapshotCacheEnvelope.currentSchemaVersion - 1,
             key: cacheKey(),
             generatedAt: Date(),
             snapshot: sampleSnapshot(tokens: 1))
@@ -188,10 +188,12 @@ struct DashboardSnapshotCacheTests {
         let breakdown = DailyBreakdownPoint(
             date: date,
             provider: "codex",
-            key: "gpt-5",
+            key: "gpt-5::fast",
             label: "GPT-5",
             valueUSD: 1,
-            tokens: tokens)
+            tokens: tokens,
+            modelID: "gpt-5",
+            speedTier: .fast)
         let window = TrendWindowSnapshot(
             daily: [daily],
             providerBreakdown: [breakdown],

@@ -19,6 +19,10 @@ import Foundation
 ///
 /// **Mistyping `L10n.refesh` is a compile error.** That's the whole point.
 enum L10n {
+    static var trendSpeedUnrecorded: String {
+        t(en: "Unrecorded", zh: "未记录")
+    }
+
 
     // MARK: - quota cycles
 

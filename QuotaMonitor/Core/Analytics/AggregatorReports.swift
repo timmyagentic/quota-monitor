@@ -11,6 +11,8 @@ private struct RollingTrendBreakdownTotal {
     let label: String
     var valueUSD: Double
     var tokens: Int64
+    var modelID: String? = nil
+    var speedTier: TrendSpeedTier? = nil
 }
 
 private struct RollingTrendAccumulator {
@@ -25,6 +27,7 @@ private struct RollingTrendAccumulator {
         provider: String,
         modelKey: String,
         modelLabel: String,
+        speedTier: TrendSpeedTier?,
         valueUSD: Double,
         tokens: Int64,
         cacheReadTokens: Int64,
@@ -48,10 +51,13 @@ private struct RollingTrendAccumulator {
         addBreakdown(
             to: &modelTotals,
             bucket: RollingTrendBreakdownBucket(
-                date: day, provider: provider, key: modelKey),
+                date: day, provider: provider,
+                key: TrendSpeedTier.seriesKey(modelID: modelKey, tier: speedTier)),
             label: modelLabel,
             valueUSD: valueUSD,
-            tokens: tokens)
+            tokens: tokens,
+            modelID: modelKey,
+            speedTier: speedTier)
     }
 
     private func addBreakdown(
@@ -59,10 +65,13 @@ private struct RollingTrendAccumulator {
         bucket: RollingTrendBreakdownBucket,
         label: String,
         valueUSD: Double,
-        tokens: Int64
+        tokens: Int64,
+        modelID: String? = nil,
+        speedTier: TrendSpeedTier? = nil
     ) {
         var current = totals[bucket] ?? RollingTrendBreakdownTotal(
-            label: label, valueUSD: 0, tokens: 0)
+            label: label, valueUSD: 0, tokens: 0,
+            modelID: modelID, speedTier: speedTier)
         current.valueUSD += valueUSD
         current.tokens += tokens
         totals[bucket] = current
@@ -307,6 +316,7 @@ extension Aggregator {
                 ue.provider,
                 ue.value_usd,
                 ue.total_tokens,
+                ue.codex_service_tier_preference,
                 \(keySQL) AS breakdown_key,
                 \(labelSQL) AS breakdown_label
             FROM usage_events ue
@@ -320,7 +330,7 @@ extension Aggregator {
             let provider: String
             let key: String
         }
-        var totals: [Bucket: (label: String, valueUSD: Double, tokens: Int64)] = [:]
+        var totals: [Bucket: RollingTrendBreakdownTotal] = [:]
         for row in rows {
             let ts: String = row["timestamp"] ?? ""
             guard let date = parseTimestamp(ts) else { continue }
@@ -337,8 +347,13 @@ extension Aggregator {
             let provider = rawProvider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "unknown"
                 : rawProvider
-            let bucket = Bucket(date: dayStart, provider: provider, key: key)
-            var current = totals[bucket] ?? (label: label, valueUSD: 0, tokens: 0)
+            let tier: TrendSpeedTier? = grouping == .model && provider == "codex"
+                ? TrendSpeedTier(recordedValue: row["codex_service_tier_preference"]) : nil
+            let seriesKey = TrendSpeedTier.seriesKey(modelID: key, tier: tier)
+            let bucket = Bucket(date: dayStart, provider: provider, key: seriesKey)
+            var current = totals[bucket] ?? RollingTrendBreakdownTotal(
+                label: label, valueUSD: 0, tokens: 0,
+                modelID: grouping == .model ? key : nil, speedTier: tier)
             current.valueUSD += row["value_usd"] ?? 0
             current.tokens += row["total_tokens"] ?? 0
             totals[bucket] = current
@@ -351,7 +366,8 @@ extension Aggregator {
                 key: bucket.key,
                 label: value.label,
                 valueUSD: value.valueUSD,
-                tokens: value.tokens)
+                tokens: value.tokens,
+                modelID: value.modelID, speedTier: value.speedTier)
         }
         .sorted {
             if $0.date != $1.date { return $0.date < $1.date }
@@ -421,6 +437,7 @@ extension Aggregator {
                 ue.provider,
                 ue.session_id,
                 ue.model_id,
+                ue.codex_service_tier_preference,
                 COALESCE(pc.display_name, ue.model_id) AS model_label,
                 ue.value_usd,
                 ue.total_tokens,
@@ -469,6 +486,8 @@ extension Aggregator {
                         provider: normalizedProvider,
                         modelKey: modelKey,
                         modelLabel: modelLabel,
+                        speedTier: normalizedProvider == "codex"
+                            ? TrendSpeedTier(recordedValue: row["codex_service_tier_preference"]) : nil,
                         valueUSD: valueUSD,
                         tokens: tokens,
                         cacheReadTokens: cacheReadTokens,
@@ -650,7 +669,8 @@ extension Aggregator {
                 key: bucket.key,
                 label: total.label,
                 valueUSD: total.valueUSD,
-                tokens: total.tokens)
+                tokens: total.tokens,
+                modelID: total.modelID, speedTier: total.speedTier)
         }
         .sorted {
             if $0.date != $1.date { return $0.date < $1.date }

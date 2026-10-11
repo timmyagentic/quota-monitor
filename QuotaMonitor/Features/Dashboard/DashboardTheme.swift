@@ -23,14 +23,24 @@ enum DashboardTheme {
         }
     }
 
-    static func modelColor(_ model: String) -> Color {
+    static func modelColor(_ model: String, tier: TrendSpeedTier? = nil) -> Color {
         let lower = model.lowercased()
         if lower == TrendSeriesBuilder.otherKey {
             return Color.secondary.opacity(0.62)
         }
         let bucket = lower.unicodeScalars.reduce(0) { ($0 &* 31) &+ Int($1.value) }
         let hue = Double((bucket & Int.max) % 360) / 360.0
-        return Color(hue: hue, saturation: 0.58, brightness: 0.78)
+        let saturation: Double
+        let brightness: Double
+        switch tier {
+        case .standard: (saturation, brightness) = (0.35, 0.88)
+        case .fast: (saturation, brightness) = (0.58, 0.78)
+        case .ultrafast: (saturation, brightness) = (0.80, 0.62)
+        case .flex: (saturation, brightness) = (0.25, 0.68)
+        case .unrecorded: (saturation, brightness) = (0.12, 0.72)
+        case nil: (saturation, brightness) = (0.58, 0.78)
+        }
+        return Color(hue: hue, saturation: saturation, brightness: brightness)
     }
 }
 
