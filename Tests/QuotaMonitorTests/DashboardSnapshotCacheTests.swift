@@ -123,6 +123,21 @@ struct DashboardSnapshotCacheTests {
         #expect(permissions.intValue & 0o777 == 0o600)
     }
 
+    @Test("legacy Unrecorded cache is discarded so Standard can be recomputed")
+    func legacyUnrecordedSnapshotIsRefreshed() throws {
+        let dir = TestResources.temporaryDirectory
+            .appendingPathComponent("dashboard-cache-legacy-\(UUID().uuidString)", isDirectory: true)
+        let store = DashboardSnapshotStore(fileURL: dir.appendingPathComponent("snapshot.json"))
+        try store.save(DashboardSnapshotCacheEnvelope(key: cacheKey(),
+            generatedAt: Date(), snapshot: sampleSnapshot(tokens: 321)))
+        let current = try String(contentsOf: store.fileURL, encoding: .utf8)
+        let legacy = current.replacingOccurrences(of: "\"speedTier\":\"fast\"",
+                                                  with: "\"speedTier\":\"unrecorded\"")
+        #expect(legacy != current)
+        try Data(legacy.utf8).write(to: store.fileURL)
+        #expect(store.load() == nil)
+    }
+
     @Test("persistent cache ignores corruption and unsupported schemas")
     func persistentSnapshotFailsOpen() throws {
         let dir = TestResources.temporaryDirectory

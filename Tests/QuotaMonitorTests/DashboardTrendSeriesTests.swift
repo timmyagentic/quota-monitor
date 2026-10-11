@@ -19,8 +19,8 @@ struct DashboardTrendSeriesTests {
         #expect(series.compactMap(\.speedTier) == TrendSpeedTier.allCases)
         #expect(series.last?.key == TrendSeriesBuilder.otherKey)
         #expect(series.last?.tokens == 400)
-        #expect(series.reduce(Int64(0)) { $0 + $1.tokens } == 900)
-        #expect(series.reduce(0.0) { $0 + $1.valueUSD } == 7)
+        #expect(series.reduce(Int64(0)) { $0 + $1.tokens } == 800)
+        #expect(series.reduce(0.0) { $0 + $1.valueUSD } == 6)
         #expect(TrendStack.allCases == [.model, .provider])
     }
 

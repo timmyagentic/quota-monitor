@@ -37,7 +37,6 @@ enum DashboardTheme {
         case .fast: (saturation, brightness) = (0.58, 0.78)
         case .ultrafast: (saturation, brightness) = (0.80, 0.62)
         case .flex: (saturation, brightness) = (0.25, 0.68)
-        case .unrecorded: (saturation, brightness) = (0.12, 0.72)
         case nil: (saturation, brightness) = (0.58, 0.78)
         }
         return Color(hue: hue, saturation: saturation, brightness: brightness)

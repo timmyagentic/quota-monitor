@@ -1,8 +1,8 @@
 import Foundation
 
-/// Recorded preferences, independent of the pricing fallback for missing evidence.
+/// Display tiers. Missing or unknown recorded preferences count as Standard.
 enum TrendSpeedTier: String, Codable, Sendable, CaseIterable {
-    case standard, fast, ultrafast, flex, unrecorded
+    case standard, fast, ultrafast, flex
 
     init(recordedValue: String?) {
         switch CodexServiceTierPreference(rolloutValue: recordedValue) {
@@ -10,7 +10,7 @@ enum TrendSpeedTier: String, Codable, Sendable, CaseIterable {
         case .priority: self = .fast
         case .ultrafast: self = .ultrafast
         case .flex: self = .flex
-        case nil: self = .unrecorded
+        case nil: self = .standard
         }
     }
 
@@ -20,7 +20,6 @@ enum TrendSpeedTier: String, Codable, Sendable, CaseIterable {
         case .fast: "Fast"
         case .ultrafast: "Ultrafast"
         case .flex: "Flex"
-        case .unrecorded: L10n.trendSpeedUnrecorded
         }
     }
 
