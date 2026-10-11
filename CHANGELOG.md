@@ -30,39 +30,24 @@ window copy.
 
 ## [Unreleased]
 
-#### Summary
-
-- Usage without a recorded speed tier is included in Standard.
-- Trend tooltips sit beside the selected date so its column stays visible.
-- Opening trend tooltips no longer crashes the app.
-- Trend tooltips stay compact and follow the selected date without flickering.
-
-### Fixed
-
-- **Standard usage.** Merge unrecorded model usage into Standard in trend charts, legends, and date details, preserving token and cost totals.
-- **Tooltip positioning.** Place date details to the side with room and dismiss them when the pointer leaves the plot.
-- **Dashboard stability.** Keep language settings available when rendering trend chart annotations to prevent a crash when selecting a date.
-- **Trend tooltips.** Restore compact date-anchored tips, keep pointer input on the chart, and summarize extra model/speed rows without hiding their token total.
-
-## [1.0.12] — 2026-10-11
+## [1.0.12] — 2026-10-12
 
 #### Summary
 
-- Trend tooltips stay compact and follow the selected date without flickering.
-
-- Dashboard trends now distinguish model speed modes and open grouped by model.
-- Contributions can be checked in an isolated environment without personal accounts.
+- Dashboard trends distinguish model speed modes and open grouped by model; missing tiers count as Standard.
+- Date details stay compact beside the selected column and no longer cause a crash.
+- Local verification stays isolated from personal accounts and history.
 
 ### Changed
 
-- **Model speed modes.** Trends separate Standard, Fast, Ultrafast, Flex, and unrecorded Codex usage with matching chart shades and badges; model grouping now appears first and is selected by default.
+- **Model speed modes.** Trends separate Standard, Fast, Ultrafast and Flex with matching shades and badges, merging missing tiers into Standard without changing token or cost totals.
 - **Cloud development.** Add a credential-free setup and clearly separate portable checks from required macOS verification.
 
 ### Fixed
 
-- **Trend tooltips.** Restore compact date-anchored tips, keep pointer input on the chart, and summarize extra model/speed rows without hiding their token total.
-
-- **Local verification cleanup.** Temporary verification apps and test resources are cleaned up on exit or recovered after interruption, and incomplete isolation can no longer fall back to the installed profile.
+- **Trend details.** Keep date tips compact, place them beside the selected column, and dismiss them when the pointer leaves the plot.
+- **Dashboard stability.** Prevent a crash when opening trend date details.
+- **Local verification cleanup.** Clean up temporary apps and test resources after exit or interruption, keeping verification isolated from the installed profile.
 
 ## [1.0.11] — 2026-10-11
 
