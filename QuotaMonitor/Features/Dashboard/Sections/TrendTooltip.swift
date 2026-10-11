@@ -4,6 +4,7 @@ struct TrendTooltip: View {
     @Environment(LocalizationStore.self) private var localization
     let selection: TrendSelection
     let tokenLocale: Locale
+    var contentWidth: CGFloat = 280
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -51,7 +52,7 @@ struct TrendTooltip: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
         }
-        .frame(width: 280)
+        .frame(width: contentWidth)
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(
@@ -86,5 +87,47 @@ struct TrendSpeedBadge: View {
                 .background(color.opacity(0.14), in: Capsule())
                 .fixedSize()
         }
+    }
+}
+
+/// Keep the selected column and its pointer corridor clear, including at
+/// either plot edge. Narrow plots shrink the tip instead of covering it.
+struct TrendTooltipPlacement {
+    let origin: CGPoint
+    let contentWidth: CGFloat
+    let totalWidth: CGFloat
+
+    init(plotFrame: CGRect, selectedX: CGFloat, selectedHalfWidth: CGFloat = 0) {
+        let inset: CGFloat = 6
+        let gap: CGFloat = 24 + selectedHalfWidth
+        let horizontalPadding: CGFloat = 18
+        let x = min(max(selectedX, plotFrame.minX), plotFrame.maxX)
+        let leftSpace = max(0, x - gap - plotFrame.minX - inset)
+        let rightSpace = max(0, plotFrame.maxX - inset - x - gap)
+        let useLeft = leftSpace >= rightSpace
+        totalWidth = min(298, max(leftSpace, rightSpace))
+        contentWidth = max(0, totalWidth - horizontalPadding)
+        origin = CGPoint(x: useLeft ? x - gap - totalWidth : x + gap,
+                         y: plotFrame.minY + inset)
+    }
+}
+
+struct TrendTooltipOverlay: View {
+    let selection: TrendSelection
+    let tokenLocale: Locale
+    let localization: LocalizationStore
+    let plotFrame: CGRect
+    let selectedX: CGFloat
+    var selectedHalfWidth: CGFloat = 0
+
+    var body: some View {
+        let placement = TrendTooltipPlacement(plotFrame: plotFrame, selectedX: selectedX,
+                                              selectedHalfWidth: selectedHalfWidth)
+        TrendTooltip(selection: selection, tokenLocale: tokenLocale,
+                     contentWidth: placement.contentWidth)
+            .environment(localization)
+            .fixedSize()
+            .offset(x: placement.origin.x, y: placement.origin.y)
+            .allowsHitTesting(false)
     }
 }

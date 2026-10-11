@@ -32,11 +32,13 @@ window copy.
 
 #### Summary
 
+- Trend tooltips sit beside the selected date so its column stays visible.
 - Opening trend tooltips no longer crashes the app.
 - Trend tooltips stay compact and follow the selected date without flickering.
 
 ### Fixed
 
+- **Tooltip positioning.** Place date details to the side with room and dismiss them when the pointer leaves the plot.
 - **Dashboard stability.** Keep language settings available when rendering trend chart annotations to prevent a crash when selecting a date.
 - **Trend tooltips.** Restore compact date-anchored tips, keep pointer input on the chart, and summarize extra model/speed rows without hiding their token total.
 
