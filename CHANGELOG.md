@@ -30,9 +30,19 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Trend tooltips stay compact and follow the selected date without flickering.
+
+### Fixed
+
+- **Trend tooltips.** Restore compact date-anchored tips, keep pointer input on the chart, and summarize extra model/speed rows without hiding their token total.
+
 ## [1.0.12] — 2026-10-11
 
 #### Summary
+
+- Trend tooltips stay compact and follow the selected date without flickering.
 
 - Dashboard trends now distinguish model speed modes and open grouped by model.
 - Contributions can be checked in an isolated environment without personal accounts.
@@ -43,6 +53,8 @@ window copy.
 - **Cloud development.** Add a credential-free setup and clearly separate portable checks from required macOS verification.
 
 ### Fixed
+
+- **Trend tooltips.** Restore compact date-anchored tips, keep pointer input on the chart, and summarize extra model/speed rows without hiding their token total.
 
 - **Local verification cleanup.** Temporary verification apps and test resources are cleaned up on exit or recovered after interruption, and incomplete isolation can no longer fall back to the installed profile.
 
