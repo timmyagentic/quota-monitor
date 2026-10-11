@@ -508,12 +508,12 @@ struct AggregatorTests {
                 db: conn, days: 2, grouping: .model, provider: .codex,
                 now: todayTime, calendar: cal)
         }
-        #expect(codexModels.allSatisfy { $0.provider == "codex" && $0.modelID == "gpt-5" && $0.speedTier == .unrecorded },
+        #expect(codexModels.allSatisfy { $0.provider == "codex" && $0.modelID == "gpt-5" && $0.speedTier == .standard },
                 "provider filter must restrict model trend rows before grouping")
         #expect(codexModels.reduce(0) { $0 + $1.tokens } == 6_000)
     }
 
-    @Test("model speed buckets preserve totals and missing evidence across every rolling range")
+    @Test("missing speed evidence merges into Standard and preserves totals across every rolling range")
     func modelSpeedBuckets() throws {
         let db = try makeDatabase()
         let now = Date()
@@ -533,11 +533,11 @@ struct AggregatorTests {
         for window in RollingTrendWindow.allCases {
             let snapshot = trends.window(for: window)
             let models = snapshot.modelBreakdown.filter { $0.provider == "codex" }
-            #expect(models.count == 5)
+            #expect(models.count == 4)
             #expect(models.first { $0.speedTier == .fast }?.tokens == 200)
             #expect(models.first { $0.speedTier == .ultrafast }?.tokens == 100)
-            #expect(models.first { $0.speedTier == .standard }?.tokens == 100)
-            #expect(models.first { $0.speedTier == .unrecorded }?.tokens == 200)
+            #expect(models.first { $0.speedTier == .standard }?.tokens == 300)
+            #expect(models.first { $0.speedTier == .standard }?.valueUSD == 3)
             #expect(snapshot.modelBreakdown.filter { $0.provider == "claude" }.allSatisfy { $0.speedTier == nil })
             #expect(snapshot.modelBreakdown.reduce(Int64(0)) { $0 + $1.tokens } == 750)
             #expect(snapshot.daily.reduce(Int64(0)) { $0 + $1.tokens } == 750)
@@ -546,7 +546,8 @@ struct AggregatorTests {
         let daily = try db.pool.read {
             try Aggregator.fetchDailyBreakdown(db: $0, days: 2, grouping: .model, provider: .codex, now: now)
         }
-        #expect(daily.count == 5)
+        #expect(daily.count == 4)
+        #expect(daily.first { $0.speedTier == .standard }?.tokens == 300)
         #expect(daily.reduce(Int64(0)) { $0 + $1.tokens } == 700)
         let providers = try db.pool.read {
             try Aggregator.fetchDailyBreakdown(db: $0, days: 2, grouping: .provider, now: now)
