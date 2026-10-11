@@ -90,7 +90,7 @@ struct ClaudeFileWatchTests {
 
     @Test("start() reports success for a real directory and is idempotent")
     func startSucceedsForRealDirectory() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = URL(fileURLWithPath: TestResources.temporaryDirectory.path + "/")
             .appendingPathComponent("qm-fsw-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -103,7 +103,7 @@ struct ClaudeFileWatchTests {
 
     @Test("start()/stop() balance the injected security scope for every root")
     func balancesInjectedSecurityScope() throws {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = URL(fileURLWithPath: TestResources.temporaryDirectory.path + "/")
             .appendingPathComponent("qm-fsw-scope-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }

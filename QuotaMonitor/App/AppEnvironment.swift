@@ -1814,7 +1814,7 @@ final class AppEnvironment {
     func applyLaunchAtLoginPreference() {
         applyLaunchAtLoginPreference(
             enabled: SettingsStore.shared.launchAtLoginEnabled,
-            allowSystemRegistration: !LocalQAEnvironment.isActive())
+            allowSystemRegistration: !LocalQAEnvironment.isQARequested())
     }
 
     func applyLaunchAtLoginPreference(

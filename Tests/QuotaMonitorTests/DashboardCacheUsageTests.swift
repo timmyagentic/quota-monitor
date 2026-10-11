@@ -12,7 +12,7 @@ struct DashboardCacheUsageTests {
     }
 
     private func makeDatabase() throws -> DatabaseManager {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = TestResources.temporaryDirectory
             .appendingPathComponent("quota-monitor-dashboard-cache-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)

@@ -12,6 +12,10 @@ struct QuotaMonitorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
+        if let error = LocalQAEnvironment.launchValidationError() {
+            FileHandle.standardError.write(Data("QA launch refused: \(error)\n".utf8))
+            exit(EXIT_FAILURE)
+        }
         // QA isolation: apply process-environment overrides (e.g. an isolated
         // `QUOTAMONITOR_QA_HOME` / `CODEX_HOME`) via `setenv` BEFORE anything
         // reads those paths or the persisted defaults below. No-op outside a

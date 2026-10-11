@@ -7,7 +7,7 @@ import Testing
 struct UltrafastWithdrawalTests {
     @Test(arguments: ["v23-quota-cycle-evidence", "v24-codex-ultrafast-reread", "v25-withdraw-ultrafast-pricing"])
     func retainsHistoryAndSchedulesReread(migration: String) throws {
-        let root = FileManager.default.temporaryDirectory.appendingPathComponent("qm-withdraw-\(UUID())")
+        let root = TestResources.temporaryDirectory.appendingPathComponent("qm-withdraw-\(UUID())")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let url = root.appendingPathComponent("fixture.sqlite")

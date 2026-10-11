@@ -54,7 +54,7 @@ struct ClaudeUsageClientRefreshWiringTests {
     }
 
     private func tempCacheURL() -> URL {
-        URL(fileURLWithPath: NSTemporaryDirectory())
+        URL(fileURLWithPath: TestResources.temporaryDirectory.path + "/")
             .appendingPathComponent("qm-oauth-\(UUID().uuidString)")
             .appendingPathComponent("claude-oauth.json")
     }

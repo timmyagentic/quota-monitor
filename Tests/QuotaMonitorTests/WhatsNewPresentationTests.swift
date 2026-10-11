@@ -25,7 +25,7 @@ struct WhatsNewPresentationTests {
     @Test("Fresh installs suppress the current campaign permanently")
     func onboardingSuppressionSurvivesRelaunch() throws {
         let suite = "WhatsNewPresentationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WhatsNewPresentationStore(defaults: defaults)
 
@@ -41,7 +41,7 @@ struct WhatsNewPresentationTests {
     @Test("Local QA requires an explicit preview and never writes seen state")
     func localQADoesNotAutoPresent() throws {
         let suite = "WhatsNewPresentationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WhatsNewPresentationStore(defaults: defaults)
 
@@ -52,7 +52,7 @@ struct WhatsNewPresentationTests {
     @Test("First deliberate interaction presents, persists, and consumes pending state")
     func interactionConsumesPendingCampaign() throws {
         let suite = "WhatsNewPresentationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let content = try WhatsNewCatalog.load(
             from: Self.repositoryRoot.appendingPathComponent("Resources"))
@@ -75,7 +75,7 @@ struct WhatsNewPresentationTests {
     @Test("Manual presentation consumes pending state without repeating the window")
     func manualPresentationConsumesPendingCampaign() throws {
         let suite = "WhatsNewPresentationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let content = try WhatsNewCatalog.load(
             from: Self.repositoryRoot.appendingPathComponent("Resources"))
@@ -98,7 +98,7 @@ struct WhatsNewPresentationTests {
     @Test("Handled campaign history survives later campaigns and rollbacks")
     func handledHistoryPreventsRollbackRepeats() throws {
         let suite = "WhatsNewPresentationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = WhatsNewPresentationStore(defaults: defaults)
 
@@ -113,7 +113,7 @@ struct WhatsNewPresentationTests {
     @Test("Manual Local QA presentation never writes campaign history")
     func manualLocalQAPresentationDoesNotPersist() throws {
         let suite = "WhatsNewPresentationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let content = try WhatsNewCatalog.load(
             from: Self.repositoryRoot.appendingPathComponent("Resources"))

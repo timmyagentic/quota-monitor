@@ -21,7 +21,7 @@ enum LocalQAEnvironment {
     static let codexHomeKey = "CODEX_HOME"
     static let configArgument = "--quotamonitor-qa-config"
     static let configBase64Argument = "--quotamonitor-qa-config-base64"
-    static let invalidQADefaultsSuite = "dev.tjzhou.QuotaMonitor.InvalidQA"
+    static let invalidQADefaultsSuite = "dev.tjzhou.QuotaMonitor.InvalidQA.\(UUID().uuidString)"
 
     // Swift initializes static lets once and publishes them atomically. Keeping
     // this value immutable makes every no-argument read concurrency-safe while
@@ -92,13 +92,47 @@ enum LocalQAEnvironment {
 
     static func isQARequested(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        arguments: [String] = ProcessInfo.processInfo.arguments
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
     ) -> Bool {
-        environment.keys.contains { key in
+        // A temporary app reopened from Finder/login items no longer has the
+        // launcher's arguments. Its identity must still keep it out of production.
+        (bundleIdentifier?.hasPrefix("dev.tjzhou.QuotaMonitor.") ?? false)
+        || environment.keys.contains { key in
             key == "QUOTAMONITOR_QA" || key.hasPrefix("QUOTAMONITOR_QA_")
         } || arguments.contains { argument in
             argument == "--quotamonitor-qa" || argument.hasPrefix("--quotamonitor-qa")
         }
+    }
+
+    /// Check before constructing any settings/database singleton. Invalid QA
+    /// requests must never fall back to the installed application's storage.
+    static func launchValidationError(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+    ) -> String? {
+        guard isQARequested(environment: environment, arguments: arguments,
+                            bundleIdentifier: bundleIdentifier) else { return nil }
+        guard let config = resolvedConfiguration(environment: environment, arguments: arguments),
+              config.isActive,
+              let home = config.homeDirectory?.resolvingSymlinksInPath(),
+              let suite = config.defaultsSuite, suite != invalidQADefaultsSuite,
+              let output = config.outputDirectory?.resolvingSymlinksInPath() else {
+            return "QA requires an active isolated home, preferences suite and output directory; use qa/run.py"
+        }
+        let realHome = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
+        func contains(_ parent: URL, _ child: URL) -> Bool {
+            child.path == parent.path || child.path.hasPrefix(parent.path + "/")
+        }
+        guard home.path != "/", !contains(home, realHome) else {
+            return "QA home must not be the real home or one of its ancestors"
+        }
+        guard contains(home, output),
+              config.codexHomeDirectory.map({ contains(home, $0.resolvingSymlinksInPath()) }) ?? true else {
+            return "QA output and provider data must stay inside the isolated home"
+        }
+        return nil
     }
 
     static func homeDirectory() -> URL {

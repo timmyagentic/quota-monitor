@@ -6,7 +6,7 @@ import Testing
 struct LocalQAReportTests {
     @Test("Writes app-state JSON into the requested artifact directory")
     func writesStateJSON() throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("QuotaMonitorQAReportTests-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: root) }
 

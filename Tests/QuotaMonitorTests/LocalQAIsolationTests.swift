@@ -6,8 +6,47 @@ import Testing
 struct LocalQAIsolationTests {
     private let pendingUpdateStorageKey = "app.pendingUpdateSnapshot.v1"
 
+    init() {
+        TestResources.registerPreferences(LocalQAEnvironment.invalidQADefaultsSuite)
+    }
+
+    @Test("A QA bundle opened without its launcher cannot access the installed profile")
+    func qaBundleNeedsConfigurationEvenWithoutArguments() {
+        #expect(LocalQAEnvironment.launchValidationError(
+            environment: [:], arguments: ["QuotaMonitor"],
+            bundleIdentifier: "dev.tjzhou.QuotaMonitor.QA.test") != nil)
+        #expect(LocalQAEnvironment.launchValidationError(
+            environment: [:], arguments: ["QuotaMonitor"],
+            bundleIdentifier: "dev.tjzhou.QuotaMonitor") == nil)
+    }
+
+    @Test("QA startup rejects missing isolation and real-home or escaping paths")
+    func startupRequiresIsolatedProfile() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let base = ["QUOTAMONITOR_QA_MODE": "1",
+                    "QUOTAMONITOR_QA_HOME": "/tmp/qm-safe-profile",
+                    "QUOTAMONITOR_QA_DEFAULTS_SUITE": "dev.tjzhou.QuotaMonitor.QA.test",
+                    "QUOTAMONITOR_QA_OUTPUT_DIR": "/tmp/qm-safe-profile/QA"]
+        #expect(LocalQAEnvironment.launchValidationError(environment: base,
+            arguments: [], bundleIdentifier: "dev.tjzhou.QuotaMonitor.QA.test") == nil)
+        let changes: [[String: String]] = [
+            ["QUOTAMONITOR_QA_HOME": ""],
+            ["QUOTAMONITOR_QA_HOME": home],
+            ["QUOTAMONITOR_QA_HOME": "/"],
+            ["QUOTAMONITOR_QA_DEFAULTS_SUITE": "dev.tjzhou.QuotaMonitor"],
+            ["QUOTAMONITOR_QA_OUTPUT_DIR": home],
+            ["CODEX_HOME": home + "/.codex"],
+            ["QUOTAMONITOR_QA_MODE": "0"]
+        ]
+        for change in changes {
+            #expect(LocalQAEnvironment.launchValidationError(
+                environment: base.merging(change) { _, new in new },
+                arguments: [], bundleIdentifier: "dev.tjzhou.QuotaMonitor.QA.test") != nil)
+        }
+    }
+
     private func writeConfig(_ json: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-qa-isolation-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let url = root.appendingPathComponent("qa-config.json", isDirectory: false)
@@ -54,8 +93,7 @@ struct LocalQAIsolationTests {
             let defaults = try #require(LocalQAEnvironment.userDefaults(
                 environment: testCase.0,
                 arguments: testCase.1))
-            let invalid = try #require(UserDefaults(
-                suiteName: LocalQAEnvironment.invalidQADefaultsSuite))
+            let invalid = try #require(TestResources.userDefaults(suiteName: LocalQAEnvironment.invalidQADefaultsSuite))
             defer {
                 defaults.removeObject(forKey: key)
                 invalid.removeObject(forKey: key)
@@ -84,6 +122,7 @@ struct LocalQAIsolationTests {
     @Test("QA defaults suite uses a separate preferences domain")
     func qaDefaultsSuiteUsesSeparateDomain() throws {
         let suiteName = "dev.tjzhou.QuotaMonitor.QATest.\(UUID().uuidString)"
+        TestResources.registerPreferences(suiteName)
         let defaults = try #require(LocalQAEnvironment.userDefaults(environment: [
             "QUOTAMONITOR_QA_MODE": "1",
             "QUOTAMONITOR_QA_DEFAULTS_SUITE": suiteName
@@ -94,7 +133,7 @@ struct LocalQAIsolationTests {
         defaults.set("qa", forKey: key)
 
         #expect(UserDefaults.standard.string(forKey: key) == nil)
-        #expect(UserDefaults(suiteName: suiteName)?.string(forKey: key) == "qa")
+        #expect(TestResources.userDefaults(suiteName: suiteName)?.string(forKey: key) == "qa")
     }
 
     @Test("QA defaults suite refuses the installed app preferences domain")
@@ -109,8 +148,7 @@ struct LocalQAIsolationTests {
         let defaults = try #require(LocalQAEnvironment.userDefaults(
             environment: [:],
             arguments: arguments))
-        let fallback = try #require(UserDefaults(
-            suiteName: LocalQAEnvironment.invalidQADefaultsSuite))
+        let fallback = try #require(TestResources.userDefaults(suiteName: LocalQAEnvironment.invalidQADefaultsSuite))
         defer {
             defaults.removeObject(forKey: key)
             fallback.removeObject(forKey: key)
@@ -202,6 +240,7 @@ struct LocalQAIsolationTests {
     @Test("QA settings snapshot reads the isolated defaults suite")
     func qaSettingsSnapshotReadsIsolatedDefaultsSuite() throws {
         let suiteName = "dev.tjzhou.QuotaMonitor.QATest.\(UUID().uuidString)"
+        TestResources.registerPreferences(suiteName)
         let json = #"{"mode":true,"home":"/tmp/qm-qa-settings","defaultsSuite":"\#(suiteName)"}"#
         let arguments = [
             "QuotaMonitor",
@@ -260,8 +299,8 @@ struct LocalQAIsolationTests {
     func updaterRuntimeRespectsDistributionAndQABoundaries() throws {
         let productionName = "UpdaterRuntime.production.\(UUID().uuidString)"
         let qaName = "dev.tjzhou.QuotaMonitor.QATest.UpdaterRuntime.\(UUID().uuidString)"
-        let productionDefaults = try #require(UserDefaults(suiteName: productionName))
-        let qaDefaults = try #require(UserDefaults(suiteName: qaName))
+        let productionDefaults = try #require(TestResources.userDefaults(suiteName: productionName))
+        let qaDefaults = try #require(TestResources.userDefaults(suiteName: qaName))
         defer {
             productionDefaults.removePersistentDomain(forName: productionName)
             qaDefaults.removePersistentDomain(forName: qaName)
@@ -321,7 +360,7 @@ struct LocalQAIsolationTests {
     @Test("Any requested QA marker disables the updater default runtime")
     func updaterDefaultRuntimeFailsClosedForEveryQARequest() throws {
         let standardName = "UpdaterRuntime.requestedQA.\(UUID().uuidString)"
-        let standardDefaults = try #require(UserDefaults(suiteName: standardName))
+        let standardDefaults = try #require(TestResources.userDefaults(suiteName: standardName))
         defer { standardDefaults.removePersistentDomain(forName: standardName) }
         let cases: [([String: String], [String])] = [
             (["QUOTAMONITOR_QA_MODE": "false"], ["QuotaMonitor"]),
@@ -361,7 +400,7 @@ struct LocalQAIsolationTests {
     @Test("QA without isolated defaults fails closed without reading or writing standard defaults")
     func updaterRuntimeFailsClosedWhenQADefaultsAreUnavailable() throws {
         let standardName = "UpdaterRuntime.standard.\(UUID().uuidString)"
-        let standardDefaults = try #require(UserDefaults(suiteName: standardName))
+        let standardDefaults = try #require(TestResources.userDefaults(suiteName: standardName))
         defer { standardDefaults.removePersistentDomain(forName: standardName) }
         let productionSnapshot = PendingUpdateSnapshot(
             internalVersion: "41",

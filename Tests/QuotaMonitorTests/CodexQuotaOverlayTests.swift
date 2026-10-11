@@ -589,7 +589,7 @@ struct CodexQuotaOverlayTests {
     @MainActor
     func settingPersists() {
         let suite = "CodexQuotaOverlayTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = TestResources.userDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.removePersistentDomain(forName: suite)
 
@@ -605,7 +605,7 @@ struct CodexQuotaOverlayTests {
     @MainActor
     func manualPositionPersistsAndResets() {
         let suite = "CodexQuotaOverlayPositionTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = TestResources.userDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.removePersistentDomain(forName: suite)
 
@@ -632,7 +632,7 @@ struct CodexQuotaOverlayTests {
     @MainActor
     func overlayRequiresCodexProvider() {
         let suite = "CodexQuotaOverlayProviderTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = TestResources.userDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.removePersistentDomain(forName: suite)
         defaults.set(["claude"], forKey: "settings.enabledProviders")

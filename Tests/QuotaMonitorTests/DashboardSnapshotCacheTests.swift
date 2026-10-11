@@ -105,7 +105,7 @@ struct DashboardSnapshotCacheTests {
 
     @Test("persistent last-good snapshot round-trips atomically with private permissions")
     func persistentSnapshotRoundTrips() throws {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("dashboard-cache-\(UUID().uuidString)", isDirectory: true)
         let url = dir.appendingPathComponent("snapshot.json")
         let store = DashboardSnapshotStore(fileURL: url)
@@ -125,7 +125,7 @@ struct DashboardSnapshotCacheTests {
 
     @Test("persistent cache ignores corruption and unsupported schemas")
     func persistentSnapshotFailsOpen() throws {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("dashboard-cache-invalid-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(

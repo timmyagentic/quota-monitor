@@ -7,7 +7,7 @@ import Testing
 struct LaunchAtLoginTests {
     private static func freshDefaults(_ name: String = #function) -> UserDefaults {
         let suite = "test.\(name).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = TestResources.userDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         return defaults
     }

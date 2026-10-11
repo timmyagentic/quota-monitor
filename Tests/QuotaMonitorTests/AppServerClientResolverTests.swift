@@ -344,7 +344,7 @@ struct AppServerClientResolverTests {
     }
 
     private static func temporaryPIDFile() -> URL {
-        FileManager.default.temporaryDirectory
+        TestResources.temporaryDirectory
             .appendingPathComponent("quota-monitor-shell-pid-\(UUID().uuidString)")
     }
 

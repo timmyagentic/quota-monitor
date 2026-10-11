@@ -38,6 +38,10 @@ window copy.
 
 - **Cloud development.** Add a credential-free setup and clearly separate portable checks from required macOS verification.
 
+### Fixed
+
+- **Local verification cleanup.** Temporary verification apps and test resources are cleaned up on exit or recovered after interruption, and incomplete isolation can no longer fall back to the installed profile.
+
 ## [1.0.11] — 2026-10-11
 
 #### Summary

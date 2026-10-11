@@ -159,7 +159,7 @@ struct UserDefaultsMigrationTests {
 
     private func makeDefaults() throws -> (String, UserDefaults) {
         let suiteName = "UserDefaultsMigrationTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         return (suiteName, defaults)
     }

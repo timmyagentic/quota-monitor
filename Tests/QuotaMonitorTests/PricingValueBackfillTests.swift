@@ -75,7 +75,7 @@ struct PricingValueBackfillTests {
     }
 
     private func makeDatabase() throws -> DatabaseManager {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("codexmonitor-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: dir, withIntermediateDirectories: true)
@@ -683,7 +683,7 @@ struct PricingValueBackfillTests {
 
     @Test("database startup reprices finished history after a bundled price changes")
     func databaseStartupRepricesAfterBundledPriceChange() throws {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("codexmonitor-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: dir, withIntermediateDirectories: true)

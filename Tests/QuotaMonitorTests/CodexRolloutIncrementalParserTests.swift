@@ -210,7 +210,7 @@ struct CodexRolloutIncrementalParserTests {
     }
 
     private func makeRolloutURL() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = TestResources.temporaryDirectory
             .appendingPathComponent("codex-rollout-incremental-\(UUID().uuidString)")
         try FileManager.default.createDirectory(
             at: directory,

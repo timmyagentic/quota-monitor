@@ -735,7 +735,7 @@ struct DailyActiveTokenStoreTests {
 
     private func makeDefaults(named testName: String) -> (UserDefaults, String) {
         let suiteName = "DailyActiveTokenStoreTests.\(testName).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = TestResources.userDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return (defaults, suiteName)
     }

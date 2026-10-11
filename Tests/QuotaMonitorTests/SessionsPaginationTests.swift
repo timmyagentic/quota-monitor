@@ -6,7 +6,7 @@ import Testing
 @Suite("Sessions pagination")
 struct SessionsPaginationTests {
     private func makeDatabase() throws -> DatabaseManager {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = TestResources.temporaryDirectory
             .appendingPathComponent("quota-monitor-session-page-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,

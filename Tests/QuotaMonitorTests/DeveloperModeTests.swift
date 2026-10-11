@@ -9,13 +9,13 @@ struct DeveloperModeTests {
 
     private static func freshDefaults(_ name: String = #function) -> UserDefaults {
         let suite = "test.\(name).\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: suite)!
+        let d = TestResources.userDefaults(suiteName: suite)!
         d.removePersistentDomain(forName: suite)
         return d
     }
 
     private static func tempLogURL(_ name: String = #function) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("QuotaMonitorTests", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

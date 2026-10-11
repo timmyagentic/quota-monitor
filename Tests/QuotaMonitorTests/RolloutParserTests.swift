@@ -32,7 +32,7 @@ struct RolloutParserTests {
     }
 
     private func writeRollout(_ jsonl: String) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-rollout-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("rollout-2026-05-20T00-00-00-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl")

@@ -22,7 +22,7 @@ struct ClaudeRolloutParserIncrementalTests {
 
     private func writeRollout(_ jsonl: String) throws -> URL {
         let dir = URL(
-            fileURLWithPath: NSTemporaryDirectory(),
+            fileURLWithPath: TestResources.temporaryDirectory.path + "/",
             isDirectory: true
         ).appendingPathComponent("qm-claude-incr-\(UUID().uuidString)",
                                  isDirectory: true)
@@ -56,7 +56,7 @@ struct ClaudeRolloutParserIncrementalTests {
 
     private func makeDatabase() throws -> DatabaseManager {
         let dir = URL(
-            fileURLWithPath: NSTemporaryDirectory(),
+            fileURLWithPath: TestResources.temporaryDirectory.path + "/",
             isDirectory: true
         ).appendingPathComponent("qm-claude-import-\(UUID().uuidString)",
                                  isDirectory: true)
@@ -68,7 +68,7 @@ struct ClaudeRolloutParserIncrementalTests {
 
     private func makeProjectRoot() throws -> (root: URL, project: URL) {
         let root = URL(
-            fileURLWithPath: NSTemporaryDirectory(),
+            fileURLWithPath: TestResources.temporaryDirectory.path + "/",
             isDirectory: true
         ).appendingPathComponent("qm-claude-root-\(UUID().uuidString)",
                                  isDirectory: true)
