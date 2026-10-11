@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 
+- Opening trend tooltips no longer crashes the app.
 - Trend tooltips stay compact and follow the selected date without flickering.
 
 ### Fixed
 
+- **Dashboard stability.** Keep language settings available when rendering trend chart annotations to prevent a crash when selecting a date.
 - **Trend tooltips.** Restore compact date-anchored tips, keep pointer input on the chart, and summarize extra model/speed rows without hiding their token total.
 
 ## [1.0.12] — 2026-10-11
