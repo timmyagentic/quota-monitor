@@ -14,7 +14,7 @@ struct TrendsSection: View {
     var quotaCycleUsages: [QuotaCycleUsage] = []
 
     @State private var range: TrendRange = .last30d
-    @State private var stackBy: TrendStack = .provider
+    @State private var stackBy: TrendStack = .model
     @State private var selectedDay: Date?
     @State private var seriesDerivation = TrendSeriesDerivationCache()
 
@@ -154,14 +154,7 @@ struct TrendsSection: View {
             if let selection = selectedTrendSelection(in: activeSeries) {
                 RuleMark(x: .value(L10n.chartAxisDay, selection.date, unit: .day))
                     .foregroundStyle(Color.primary.opacity(0.22))
-                    .annotation(
-                        position: .top,
-                        alignment: .center,
-                        spacing: 4,
-                        overflowResolution: .init(x: .fit, y: .disabled)
-                    ) {
-                        trendTooltip(selection)
-                    }
+
             }
         }
         .chartXScale(domain: xDomain)
@@ -201,6 +194,12 @@ struct TrendsSection: View {
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDay)
         .frame(height: 245)
+        .overlay(alignment: .topTrailing) {
+            if let selection = selectedTrendSelection(in: activeSeries) {
+                trendTooltip(selection)
+                    .padding(8)
+            }
+        }
         .accessibilityRepresentation {
             VStack(alignment: .leading) {
                 ForEach(accessibleDailyPoints) { day in
@@ -225,6 +224,7 @@ struct TrendsSection: View {
                         .font(.caption)
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    speedBadge(row.speedTier, color: row.color)
                     Spacer()
                     Text(compactTokens(row.tokens))
                         .font(.caption.monospacedDigit())
@@ -252,19 +252,26 @@ struct TrendsSection: View {
                 .font(.caption.weight(.semibold))
             Text(compactTokens(selection.totalTokens))
                 .font(.callout.monospacedDigit().weight(.semibold))
-            ForEach(selection.rows.prefix(4)) { row in
-                HStack(spacing: 6) {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(row.color)
-                        .frame(width: 8, height: 8)
-                    Text(row.label)
-                    Spacer(minLength: 12)
-                    Text(compactTokens(row.tokens))
-                        .monospacedDigit()
+            ScrollView {
+                VStack(spacing: 5) {
+                    ForEach(selection.rows) { row in
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(row.color)
+                                .frame(width: 8, height: 8)
+                            Text(row.label)
+                                .lineLimit(1)
+                            speedBadge(row.speedTier, color: row.color)
+                            Spacer(minLength: 12)
+                            Text(compactTokens(row.tokens))
+                                .monospacedDigit()
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
             }
+            .frame(width: 280, height: CGFloat(min(selection.rows.count, 8)) * 23)
             Divider()
             HStack(spacing: 6) {
                 Circle()
@@ -285,6 +292,19 @@ struct TrendsSection: View {
                 .fill(.regularMaterial)
                 .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 2)
         )
+    }
+
+    @ViewBuilder
+    private func speedBadge(_ tier: TrendSpeedTier?, color: Color) -> some View {
+        if let tier {
+            Text(tier.label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background(color.opacity(0.14), in: Capsule())
+                .fixedSize()
+        }
     }
 
     // MARK: - statline
@@ -413,16 +433,18 @@ struct TrendsSection: View {
     ) -> TrendSelection? {
         guard let selectedDay else { return nil }
         let selectedStart = calendar.startOfDay(for: selectedDay)
+        let totals = modelTotals(in: activeSeries)
         let rows = activeSeries
-            .filter { calendar.isDate($0.date, inSameDayAs: selectedStart) }
+            .filter { $0.tokens > 0 && calendar.isDate($0.date, inSameDayAs: selectedStart) }
+            .sorted { TrendSeriesBuilder.ordered($0, before: $1, totals: totals) }
             .map { point in
                 TrendSelection.Row(
                     id: point.id,
                     label: displayLabel(point),
                     color: seriesColor(point),
-                    tokens: point.tokens)
+                    tokens: point.tokens,
+                    speedTier: stackBy == .model ? point.speedTier : nil)
             }
-            .sorted { $0.tokens > $1.tokens }
         guard !rows.isEmpty else { return nil }
         return TrendSelection(
             date: selectedStart,
@@ -435,6 +457,7 @@ struct TrendsSection: View {
         for activeSeries: [DailyBreakdownPoint]
     ) -> [TrendLegendRow] {
         let grouped = Dictionary(grouping: activeSeries, by: \.key)
+        let totals = modelTotals(in: activeSeries)
         let total = max(activeSeries.reduce(Int64(0)) { $0 + $1.tokens }, 1)
         return grouped.map { key, rows in
             let first = rows[0]
@@ -444,10 +467,23 @@ struct TrendsSection: View {
                 label: displayLabel(first),
                 color: seriesColor(first),
                 tokens: tokens,
-                percent: Double(tokens) / Double(total))
+                percent: Double(tokens) / Double(total),
+                modelGroupKey: first.modelGroupKey,
+                speedTier: stackBy == .model ? first.speedTier : nil)
         }
         .filter { $0.tokens > 0 }
-        .sorted { $0.tokens > $1.tokens }
+        .sorted {
+            let lhs = totals[$0.modelGroupKey, default: 0]
+            let rhs = totals[$1.modelGroupKey, default: 0]
+            if lhs != rhs { return lhs > rhs }
+            if $0.modelGroupKey != $1.modelGroupKey { return $0.modelGroupKey < $1.modelGroupKey }
+            return ($0.speedTier?.sortOrder ?? 0) < ($1.speedTier?.sortOrder ?? 0)
+        }
+    }
+
+    private func modelTotals(in series: [DailyBreakdownPoint]) -> [String: Int64] {
+        Dictionary(grouping: series, by: \.modelGroupKey)
+            .mapValues { $0.reduce(Int64(0)) { $0 + $1.tokens } }
     }
 
     private func seriesColor(_ point: DailyBreakdownPoint) -> Color {
@@ -455,7 +491,7 @@ struct TrendsSection: View {
         case .provider:
             return DashboardTheme.providerColor(point.key)
         case .model:
-            return DashboardTheme.modelColor(point.key)
+            return DashboardTheme.modelColor(point.modelGroupKey, tier: point.speedTier)
         }
     }
 
@@ -579,20 +615,30 @@ enum TrendSeriesBuilder {
         guard topLimit > 0 else {
             return collapseOther(raw, label: otherLabel)
         }
-        let totals = Dictionary(grouping: raw, by: \.key)
+        let totals = Dictionary(grouping: raw, by: \.modelGroupKey)
             .mapValues { rows in rows.reduce(Int64(0)) { $0 + $1.tokens } }
         let topKeys = Set(totals
-            .sorted { $0.value > $1.value }
+            .sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }
             .prefix(topLimit)
             .map(\.key))
-        let topRows = raw.filter { topKeys.contains($0.key) }
+        let topRows = raw.filter { topKeys.contains($0.modelGroupKey) }
         let otherRows = collapseOther(
-            raw.filter { !topKeys.contains($0.key) },
+            raw.filter { !topKeys.contains($0.modelGroupKey) },
             label: otherLabel)
         return (topRows + otherRows).sorted {
             if $0.date != $1.date { return $0.date < $1.date }
-            return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+            return ordered($0, before: $1, totals: totals)
         }
+    }
+
+    static func ordered(_ lhs: DailyBreakdownPoint, before rhs: DailyBreakdownPoint,
+                        totals: [String: Int64]) -> Bool {
+        let leftTotal = totals[lhs.modelGroupKey, default: 0]
+        let rightTotal = totals[rhs.modelGroupKey, default: 0]
+        if lhs.key == otherKey || rhs.key == otherKey { return rhs.key == otherKey && lhs.key != otherKey }
+        if leftTotal != rightTotal { return leftTotal > rightTotal }
+        if lhs.modelGroupKey != rhs.modelGroupKey { return lhs.modelGroupKey < rhs.modelGroupKey }
+        return (lhs.speedTier?.sortOrder ?? 0) < (rhs.speedTier?.sortOrder ?? 0)
     }
 
     private static func collapseOther(
@@ -718,9 +764,9 @@ enum TrendRange: CaseIterable, Identifiable {
     }
 }
 
-private enum TrendStack: CaseIterable, Identifiable {
-    case provider
+enum TrendStack: CaseIterable, Identifiable {
     case model
+    case provider
 
     var id: Self { self }
 
@@ -745,6 +791,8 @@ private struct TrendLegendRow: Identifiable {
     let color: Color
     let tokens: Int64
     let percent: Double
+    let modelGroupKey: String
+    let speedTier: TrendSpeedTier?
 
     var id: String { key }
 }
@@ -755,6 +803,7 @@ private struct TrendSelection {
         let label: String
         let color: Color
         let tokens: Int64
+        let speedTier: TrendSpeedTier?
     }
 
     let date: Date

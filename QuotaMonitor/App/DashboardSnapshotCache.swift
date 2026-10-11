@@ -104,7 +104,7 @@ struct DashboardSnapshotMemoryCache: Sendable {
 }
 
 struct DashboardSnapshotCacheEnvelope: Sendable, Equatable, Codable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     let schemaVersion: Int
     let key: DashboardSnapshotCacheKey

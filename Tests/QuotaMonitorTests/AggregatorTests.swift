@@ -508,9 +508,51 @@ struct AggregatorTests {
                 db: conn, days: 2, grouping: .model, provider: .codex,
                 now: todayTime, calendar: cal)
         }
-        #expect(codexModels.allSatisfy { $0.provider == "codex" && $0.key == "gpt-5" },
+        #expect(codexModels.allSatisfy { $0.provider == "codex" && $0.modelID == "gpt-5" && $0.speedTier == .unrecorded },
                 "provider filter must restrict model trend rows before grouping")
         #expect(codexModels.reduce(0) { $0 + $1.tokens } == 6_000)
+    }
+
+    @Test("model speed buckets preserve totals and missing evidence across every rolling range")
+    func modelSpeedBuckets() throws {
+        let db = try makeDatabase()
+        let now = Date()
+        let tiers: [String?] = ["default", "priority", "fast", "ultrafast", "flex", nil, "future-tier"]
+        for (index, tier) in tiers.enumerated() {
+            let session = "tier-\(index)"
+            try seedEvent(in: db, provider: "codex", sessionId: session,
+                          at: now.addingTimeInterval(-3600), valueUSD: 1, tokens: 100)
+            try db.pool.write { conn in
+                try conn.execute(sql: "UPDATE usage_events SET codex_service_tier_preference = ? WHERE session_id = ?",
+                                 arguments: [tier, session])
+            }
+        }
+        try seedEvent(in: db, provider: "claude", sessionId: "claude-tier",
+                      at: now.addingTimeInterval(-3600), valueUSD: 2, tokens: 50)
+        let trends = try db.pool.read { try Aggregator.fetchRollingTrends(db: $0, now: now) }
+        for window in RollingTrendWindow.allCases {
+            let snapshot = trends.window(for: window)
+            let models = snapshot.modelBreakdown.filter { $0.provider == "codex" }
+            #expect(models.count == 5)
+            #expect(models.first { $0.speedTier == .fast }?.tokens == 200)
+            #expect(models.first { $0.speedTier == .ultrafast }?.tokens == 100)
+            #expect(models.first { $0.speedTier == .standard }?.tokens == 100)
+            #expect(models.first { $0.speedTier == .unrecorded }?.tokens == 200)
+            #expect(snapshot.modelBreakdown.filter { $0.provider == "claude" }.allSatisfy { $0.speedTier == nil })
+            #expect(snapshot.modelBreakdown.reduce(Int64(0)) { $0 + $1.tokens } == 750)
+            #expect(snapshot.daily.reduce(Int64(0)) { $0 + $1.tokens } == 750)
+            #expect(snapshot.modelBreakdown.reduce(0.0) { $0 + $1.valueUSD } == 9)
+        }
+        let daily = try db.pool.read {
+            try Aggregator.fetchDailyBreakdown(db: $0, days: 2, grouping: .model, provider: .codex, now: now)
+        }
+        #expect(daily.count == 5)
+        #expect(daily.reduce(Int64(0)) { $0 + $1.tokens } == 700)
+        let providers = try db.pool.read {
+            try Aggregator.fetchDailyBreakdown(db: $0, days: 2, grouping: .provider, now: now)
+        }
+        #expect(providers.count == 2)
+        #expect(providers.allSatisfy { $0.speedTier == nil })
     }
 
     // MARK: - filter clause

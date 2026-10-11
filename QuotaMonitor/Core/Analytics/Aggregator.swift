@@ -70,6 +70,11 @@ struct DailyBreakdownPoint: Sendable, Identifiable, Equatable, Codable {
     let valueUSD: Double
     let tokens: Int64
 
+    var modelID: String? = nil
+    var speedTier: TrendSpeedTier? = nil
+
+    var modelGroupKey: String { modelID ?? key }
+
     var id: String {
         "\(provider)-\(key)-\(date.timeIntervalSinceReferenceDate)"
     }
