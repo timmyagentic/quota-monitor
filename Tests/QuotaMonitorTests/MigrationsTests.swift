@@ -8,7 +8,7 @@ struct MigrationsTests {
 
     private func temporaryDatabaseURL(prefix: String = "qm-migration") throws -> URL {
         let dir = URL(
-            fileURLWithPath: NSTemporaryDirectory(),
+            fileURLWithPath: TestResources.temporaryDirectory.path + "/",
             isDirectory: true
         ).appendingPathComponent("\(prefix)-\(UUID().uuidString)",
                                  isDirectory: true)

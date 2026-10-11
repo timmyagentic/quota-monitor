@@ -25,7 +25,7 @@ struct HistoryPaginationTests {
     }
 
     private func makeDatabase() throws -> DatabaseManager {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = TestResources.temporaryDirectory
             .appendingPathComponent("quota-monitor-history-page-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory, withIntermediateDirectories: true)

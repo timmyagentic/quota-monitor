@@ -54,12 +54,12 @@ struct DashboardSnapshotPublicationTests {
 
     private func makeEnvironment() throws
         -> (AppEnvironment, DatabaseManager, DashboardSnapshotStore, Int64) {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("dashboard-publication-\(UUID().uuidString)")
         let database = try DatabaseManager(url: root.appendingPathComponent("history.sqlite"))
         let store = DashboardSnapshotStore(fileURL: root.appendingPathComponent("snapshot.json"))
         let suiteName = "dashboard-publication-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = TestResources.userDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let settings = SettingsStore.snapshot(defaults: defaults)
         let providers = settings.enabledProviders

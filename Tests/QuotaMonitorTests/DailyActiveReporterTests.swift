@@ -1116,7 +1116,7 @@ private final class StoreFixture: @unchecked Sendable {
 
     init(testName: String) {
         suiteName = "DailyActiveReporterTests.\(testName).\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = TestResources.userDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         let source = SequentialRandomSource()
         store = DailyActiveTokenStore(

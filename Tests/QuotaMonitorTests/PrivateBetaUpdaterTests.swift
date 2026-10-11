@@ -9,7 +9,7 @@ struct PrivateBetaUpdaterTests {
     @Test("The update channel defaults to stable and persists Private Beta")
     func channelPersistence() throws {
         let suite = "PrivateBetaUpdaterTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         #expect(UpdateChannel(defaults: defaults) == .stable)

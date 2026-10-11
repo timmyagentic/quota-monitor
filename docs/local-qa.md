@@ -36,9 +36,37 @@ path; it makes no claim that the UI works. The installed app keeps running.
 Keep the launcher running during the walkthrough. Use the exact app path it
 prints when selecting the app in Computer Use. Quit the QA app, press Ctrl-C,
 or use `--seconds 10` for a bounded launch smoke check. The launcher stops only
-its own child and removes its temporary profile and preferences on normal exit,
-interruption, or failure. `--no-build` can reuse the same worktree's current
-build for a second target; rebuild after source changes.
+its own child and removes its temporary app/profile, preferences, caches,
+HTTP cookies, WebKit data, saved state, and LaunchServices registration on exit,
+interruption (including terminal hangup), or startup failure. A separate
+supervisor owns the child and cleans up when the outer launcher disappears,
+including when that launcher receives SIGKILL. QA apps cannot register login
+items, and opening a temporary app without valid isolation arguments is rejected
+before any database/settings initialization. Copied settings cannot enable login
+registration.
+
+Each run keeps a private, locked cleanup journal. The next launch recovers
+unlocked abandoned profiles, or run `./qa/run.py --cleanup` without building or
+opening an app. Active runs and unrecognized directories are left alone. If both
+the launcher and its supervisor were forcibly killed but the app survived, quit
+the printed QA app first, then run cleanup; recovery never signals a stale PID.
+A machine crash/power loss cannot run exit handlers, so recovery happens on the
+next invocation. Cleanup failures retain the journal and return an error.
+
+`--no-build` can reuse the same worktree's current build for a second target;
+rebuild after source changes. The reusable build in `.build/QuotaMonitor.app`
+and intentional screenshots/test logs are development artifacts, not disposable
+QA app copies, and are retained.
+
+Swift tests use `TestResources.temporaryDirectory` and
+`TestResources.userDefaults(suiteName:)` for run-owned resources. If production
+code creates a test suite itself, register its UUID-suffixed name with
+`TestResources.registerPreferences` before calling that code. A pipe-and-lock watcher waits until the test process has fully exited, then
+removes exact preference plists and the run's temporary tree. Cleanup inside the
+test process alone is insufficient: Foundation can rewrite empty plists during
+its final shutdown. The static gate waits for post-exit cleanup before recording
+success. The next test run recovers unlocked journals after machine crashes. Do not add untracked test temp roots or preferences suites;
+never register a production domain.
 
 Record the behavior checked, build/commit, result, and any untested behavior in
 the PR. Save a screenshot when it helps demonstrate a visible change, before

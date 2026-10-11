@@ -103,7 +103,7 @@ struct ClaudeBinaryLocatorTests {
     @Test("Discovers newest Claude Desktop native CLI bundle")
     func discoversNewestClaudeDesktopNativeCLIBundle() throws {
         let fm = FileManager.default
-        let home = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        let home = URL(fileURLWithPath: TestResources.temporaryDirectory.path + "/", isDirectory: true)
             .appendingPathComponent("qm-claude-desktop-\(UUID().uuidString)",
                                     isDirectory: true)
         defer { try? fm.removeItem(at: home) }

@@ -213,7 +213,7 @@ struct CodexAccountUsageTests {
 
     @Test("AppServerClient sends account/usage/read and decodes its result")
     func clientReadsAccountUsage() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-account-usage-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
             at: root, withIntermediateDirectories: true)

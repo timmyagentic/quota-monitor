@@ -10,7 +10,7 @@ struct StatusItemControllerTests {
     func observationAllowsControllerTeardownWithoutMutation() throws {
         _ = NSApplication.shared
         let defaultsName = "StatusItemControllerTests.teardown.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: defaultsName))
+        let defaults = try #require(TestResources.userDefaults(suiteName: defaultsName))
         defer { defaults.removePersistentDomain(forName: defaultsName) }
         weak var weakController: StatusItemController?
 
@@ -324,7 +324,7 @@ struct StatusItemControllerTests {
 
         init() throws {
             _ = NSApplication.shared
-            defaults = try #require(UserDefaults(suiteName: defaultsName))
+            defaults = try #require(TestResources.userDefaults(suiteName: defaultsName))
             let updater = UpdaterController(runtimeConfiguration: .init(
                 updateAvailability: PersistentUpdateAvailability(), sparkleEnabled: false))
             controller = StatusItemController(

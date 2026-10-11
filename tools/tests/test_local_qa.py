@@ -1,5 +1,10 @@
 from contextlib import closing
 import importlib.util
+import fcntl
+import os
+import signal
+import sys
+import time
 import json
 from pathlib import Path
 import plistlib
@@ -113,6 +118,144 @@ class LocalQATests(unittest.TestCase):
                 qa.remove_preferences(qa.INSTALLED_DOMAIN)
             command.assert_not_called()
 
+    def test_cleanup_removes_owned_system_residue_but_preserves_formal_and_siblings(self):
+        suite = f"{qa.INSTALLED_DOMAIN}.QA." + "a" * 32
+        sibling = f"{qa.INSTALLED_DOMAIN}.QA." + "b" * 32
+        cache = self.root / "darwin-cache"
+        user = self.root / "user"
+        expected = []
+        for parent in [user / "Library/Caches", user / "Library/HTTPStorages",
+                       user / "Library/WebKit", user / "Library/Saved Application State",
+                       cache]:
+            for name in [suite, sibling, qa.INSTALLED_DOMAIN]:
+                path = parent / name
+                path.mkdir(parents=True)
+                (path / "data").write_text("keep unless owned")
+                if name == suite:
+                    expected.append(path)
+        cookies = user / "Library/HTTPStorages" / f"{suite}.binarycookies"
+        cookies.write_text("cookies")
+        expected.append(cookies)
+        with patch.object(qa, "remove_preferences"), patch.object(qa.subprocess, "run"):
+            qa.remove_system_residue(suite, self.root / "QuotaMonitorQA.app", user, cache, self.root / "tmp")
+        self.assertTrue(all(not p.exists() for p in expected))
+        self.assertTrue((cache / sibling / "data").exists())
+        self.assertTrue((user / "Library/Caches" / qa.INSTALLED_DOMAIN / "data").exists())
+
+    def test_cleanup_rejects_path_traversal_before_running_commands(self):
+        with patch.object(qa.subprocess, "run") as command:
+            for suite in [qa.INSTALLED_DOMAIN, f"{qa.INSTALLED_DOMAIN}.QA.../../victim"]:
+                with self.assertRaises(ValueError):
+                    qa.remove_system_residue(suite, self.root / "QuotaMonitorQA.app",
+                                             self.root, self.root, self.root)
+            command.assert_not_called()
+
+    def test_cleanup_unlinks_residue_symlink_without_following_it(self):
+        suite = f"{qa.INSTALLED_DOMAIN}.QA." + "a" * 32
+        cache = self.root / "cache"
+        cache.mkdir()
+        victim = self.root / "formal-data"
+        victim.mkdir()
+        (victim / "keep").write_text("real")
+        (cache / suite).symlink_to(victim, target_is_directory=True)
+        with patch.object(qa, "remove_preferences"), patch.object(qa.subprocess, "run"):
+            qa.remove_system_residue(suite, self.root / "QuotaMonitorQA.app", self.root, cache, self.root / "tmp")
+        self.assertEqual((victim / "keep").read_text(), "real")
+        self.assertFalse((cache / suite).is_symlink())
+
+    def test_recovery_cleans_only_unlocked_versioned_owned_profiles(self):
+        abandoned = self.root / (qa.RUN_PREFIX + "a" * 32)
+        active = self.root / (qa.RUN_PREFIX + "b" * 32)
+        invalid = self.root / (qa.RUN_PREFIX + "c" * 32)
+        for root in [abandoned, active, invalid]:
+            root.mkdir()
+            suite = f"{qa.INSTALLED_DOMAIN}.QA.{root.name.removeprefix(qa.RUN_PREFIX)}"
+            (root / "session.json").write_text(json.dumps({"version": 1, "suite": suite}))
+        (invalid / "session.json").write_text(json.dumps({"version": 1, "suite": qa.INSTALLED_DOMAIN}))
+        with (active / "session.lock").open("w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            with patch.object(qa.subprocess, "check_output", return_value=""), \
+                 patch.object(qa, "remove_system_residue") as clean:
+                self.assertEqual(qa.recover_abandoned_profiles(self.root), 1)
+                clean.assert_called_once()
+        self.assertFalse(abandoned.exists())
+        self.assertTrue(active.exists())
+        self.assertTrue(invalid.exists())
+
+    def test_recovery_does_not_remove_a_surviving_apps_profile(self):
+        root = self.root / (qa.RUN_PREFIX + "a" * 32)
+        root.mkdir()
+        suite = f"{qa.INSTALLED_DOMAIN}.QA." + "a" * 32
+        (root / "session.json").write_text(json.dumps({"version": 1, "suite": suite}))
+        executable = root / "QuotaMonitorQA.app/Contents/MacOS/QuotaMonitor"
+        with patch.object(qa.subprocess, "check_output", return_value=str(executable) + "\n"), \
+             patch.object(qa, "remove_system_residue") as clean:
+            self.assertEqual(qa.recover_abandoned_profiles(self.root), 0)
+            clean.assert_not_called()
+        self.assertTrue(root.exists())
+
+    def test_failed_system_cleanup_keeps_manifest_for_retry(self):
+        profiles = []
+        original = qa.prepare_profile
+        def prepare(root, *args):
+            profiles.append(root)
+            return original(root, *args)
+        with patch.object(qa, "prepare_profile", side_effect=prepare), \
+             patch.object(qa, "prepare_app", side_effect=RuntimeError("build failed")), \
+             patch.object(qa, "remove_system_residue", side_effect=OSError("cleanup failed")):
+            with self.assertRaisesRegex(OSError, "cleanup failed"):
+                with qa.launch("fixture", "settings", None):
+                    pass
+        self.assertTrue((profiles[0] / "session.json").exists())
+        qa.remove_path(profiles[0])
+
+    def test_supervisor_cleans_owned_child_when_outer_launcher_is_killed(self):
+        script = self.root / "supervisor_fixture.py"
+        marker = self.root / "live"
+        done = self.root / "cleaned"
+        script.write_text(f"""
+import importlib.util, subprocess, sys, time
+from pathlib import Path
+from contextlib import contextmanager
+spec = importlib.util.spec_from_file_location('qa', {str(REPO / 'qa/run.py')!r})
+qa = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(qa)
+qa.__file__ = __file__
+qa.recover_abandoned_profiles = lambda: 0
+@contextmanager
+def fake_launch(*args):
+    child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    Path({str(marker)!r}).write_text(str(child.pid))
+    try:
+        yield child
+    finally:
+        qa.stop_app(child)
+        Path({str(marker)!r}).unlink()
+        Path({str(done)!r}).write_text('cleaned')
+qa.launch = fake_launch
+raise SystemExit(qa.main())
+""")
+        outer = subprocess.Popen([sys.executable, str(script), "--no-build"],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(marker.exists())
+            child_pid = int(marker.read_text())
+            outer.kill()
+            outer.wait(timeout=5)
+            while not done.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(done.exists())
+            self.assertFalse(marker.exists())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(child_pid, 0)
+        finally:
+            if outer.poll() is None:
+                outer.terminate()
+                outer.wait(timeout=10)
+
     def test_stop_owns_only_the_child_and_does_not_signal_an_exited_process(self):
         child = Mock()
         child.poll.return_value = 0
@@ -160,7 +303,7 @@ class LocalQATests(unittest.TestCase):
                      patch.object(qa.subprocess, "run"), \
                      patch.object(qa.subprocess, "Popen", return_value=process), \
                      patch.object(qa, "wait_until_ready", side_effect=failure), \
-                     patch.object(qa, "remove_preferences") as remove:
+                     patch.object(qa, "remove_system_residue") as remove:
                     with self.assertRaises(type(failure)):
                         with qa.launch("fixture", "widget", None):
                             self.fail("failed launch must not be yielded")
@@ -185,7 +328,7 @@ class LocalQATests(unittest.TestCase):
              patch.object(qa.subprocess, "run"), \
              patch.object(qa.subprocess, "Popen", return_value=process), \
              patch.object(qa, "wait_until_ready"), \
-             patch.object(qa, "remove_preferences") as remove, patch("builtins.print"):
+             patch.object(qa, "remove_system_residue") as remove, patch("builtins.print"):
             with qa.launch("fixture", "widget", None) as running:
                 self.assertIs(running, process)
         process.terminate.assert_called_once()

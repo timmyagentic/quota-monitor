@@ -5,7 +5,7 @@ import Testing
 @Suite("Codex reset credits client")
 struct CodexResetCreditsClientTests {
     private func makeAuthFile() throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-reset-credits-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let auth = dir.appendingPathComponent("auth.json")
@@ -81,7 +81,7 @@ struct CodexResetCreditsClientTests {
     func missingAuthFile() async throws {
         let client = CodexResetCreditsClient(
             codexHomeProvider: {
-                FileManager.default.temporaryDirectory
+                TestResources.temporaryDirectory
                     .appendingPathComponent("qm-missing-\(UUID().uuidString)", isDirectory: true)
             },
             endpoint: URL(string: "https://example.test/reset")!,

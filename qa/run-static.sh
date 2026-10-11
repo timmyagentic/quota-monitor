@@ -72,11 +72,29 @@ fi
 rm -f "$SUCCESS_STAMP"
 RUN_ID="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
 SWIFT_LOG="${LOG_DIR}/swift-test-${RUN_ID}-${FINGERPRINT_SHORT}.log"
+# Recover previous interrupted gate runs in this worktree. Locked/live scopes
+# are preserved, and only empty per-run containers are removed.
+for previous_parent in "${STATE_DIR}/test-resources/"*; do
+    [[ -d "$previous_parent" && ! -L "$previous_parent" ]] || continue
+    python3 "${ROOT_DIR}/qa/cleanup-tests.py" --parent "$previous_parent"
+    rmdir "$previous_parent" 2>/dev/null || true
+done
+TEST_RESOURCE_PARENT="${STATE_DIR}/test-resources/${RUN_ID}"
+mkdir -p "$TEST_RESOURCE_PARENT"
 
-if (cd "$ROOT_DIR" && swift test --disable-keychain) >"$SWIFT_LOG" 2>&1; then
+if (cd "$ROOT_DIR" && QM_TEST_RESOURCES_PARENT="$TEST_RESOURCE_PARENT" swift test --disable-keychain) >"$SWIFT_LOG" 2>&1; then
     SWIFT_SUMMARY="$(qm_static_swift_summary "$SWIFT_LOG")"
+    SWIFT_STATUS=0
 else
     SWIFT_STATUS=$?
+fi
+
+# Wait for post-exit preference cleanup before certifying the gate. The test
+# process's pipe watcher also performs this cleanup if this shell is interrupted.
+python3 "${ROOT_DIR}/qa/cleanup-tests.py" --parent "$TEST_RESOURCE_PARENT" --wait
+rmdir "$TEST_RESOURCE_PARENT"
+
+if [[ "$SWIFT_STATUS" -ne 0 ]]; then
     printf 'Swift tests: failed with exit %s; full log follows (saved at %s)\n' \
         "$SWIFT_STATUS" "$SWIFT_LOG" >&2
     cat "$SWIFT_LOG" >&2

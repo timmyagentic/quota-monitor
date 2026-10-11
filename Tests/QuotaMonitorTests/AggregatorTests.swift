@@ -59,7 +59,7 @@ struct AggregatorTests {
     /// open it (DatabasePool refuses :memory:). Migrations run as part of
     /// init.
     private func makeDatabase() throws -> DatabaseManager {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("codexmonitor-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: dir, withIntermediateDirectories: true)

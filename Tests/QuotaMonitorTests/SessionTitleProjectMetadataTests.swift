@@ -7,7 +7,7 @@ import Testing
 @Suite("Session title and project metadata")
 struct SessionTitleProjectMetadataTests {
     private func makeDatabase(_ name: String = #function) throws -> DatabaseManager {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent(
                 "qm-session-metadata-\(name)-\(UUID().uuidString)",
                 isDirectory: true)
@@ -16,7 +16,7 @@ struct SessionTitleProjectMetadataTests {
     }
 
     private func writeJSONL(_ content: String, name: String = UUID().uuidString) throws -> URL {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent(
                 "qm-session-metadata-jsonl-\(UUID().uuidString)",
                 isDirectory: true)
@@ -191,7 +191,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store reads session_index thread_name")
     func codexMetadataReadsSessionIndex() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
         try """
@@ -207,7 +207,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata fingerprint detects index replacement and WAL changes")
     func codexMetadataFingerprintTracksSourceChanges() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
 
@@ -245,7 +245,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store combines session_index title with state cwd")
     func codexMetadataCombinesSessionIndexTitleWithStateCwd() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
         try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
@@ -283,7 +283,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store reads root state database path")
     func codexMetadataReadsRootStateDatabasePath() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
         try """
@@ -319,7 +319,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store prefers sqlite state database over root fallback")
     func codexMetadataPrefersPrimaryStateDatabaseOverRootFallback() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try writeCodexStateDatabase(
             at: stateDatabaseURL(codexHome: codexHome),
@@ -340,7 +340,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store reads locked WAL state database cwd")
     func codexMetadataReadsLockedWALStateDatabase() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try writeCodexStateDatabase(
             codexHome: codexHome,
@@ -358,7 +358,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store reads WAL state database snapshots without sidecars")
     func codexMetadataReadsWALStateDatabaseSnapshotWithoutSidecars() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try writeCodexStateDatabase(
             codexHome: codexHome,
@@ -378,7 +378,7 @@ struct SessionTitleProjectMetadataTests {
 
     @Test("Codex metadata store keeps session_index title when state sqlite is unusable")
     func codexMetadataFallsBackWhenStateDatabaseFails() throws {
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sqliteDir = codexHome.appendingPathComponent("sqlite", isDirectory: true)
         try FileManager.default.createDirectory(at: sqliteDir, withIntermediateDirectories: true)
@@ -415,7 +415,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Claude incremental scan preserves existing title and project metadata")
     func claudeIncrementalScanPreservesExistingHeaderMetadata() async throws {
         let db = try makeDatabase()
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-root-\(UUID().uuidString)", isDirectory: true)
         let projectDir = root.appendingPathComponent(
             "-Volumes-SamsungDisk-Code-quota-monitor",
@@ -455,7 +455,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Claude scan preserves real title matching project when file is unchanged")
     func claudeScanPreservesAmbiguousTitleMatchingProject() async throws {
         let db = try makeDatabase()
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-root-\(UUID().uuidString)", isDirectory: true)
         let projectDir = root.appendingPathComponent(
             "-Volumes-SamsungDisk-Code-quota-monitor",
@@ -561,7 +561,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("CSV export title falls back to project metadata")
     func csvExportTitleFallsBackToProjectMetadata() async throws {
         let db = try makeDatabase()
-        let output = FileManager.default.temporaryDirectory
+        let output = TestResources.temporaryDirectory
             .appendingPathComponent("qm-session-metadata-export-\(UUID().uuidString).csv")
         defer { try? FileManager.default.removeItem(at: output) }
 
@@ -619,7 +619,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex scan persists real title and project metadata")
     func codexScanPersistsTitleAndProjectMetadata() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sessionsDir = codexHome.appendingPathComponent(
             "sessions/2026/06/15",
@@ -658,7 +658,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex scan backfills recent late session_index titles without reparsing")
     func codexScanBackfillsLateSessionIndexTitle() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sessionsDir = codexHome.appendingPathComponent(
             "sessions/2026/04/26",
@@ -728,7 +728,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex metadata backfill replaces recent project fallback titles without reparsing")
     func codexBackfillReplacesProjectFallbackTitleWithoutReparsing() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
         let recentActivity = ISO8601.fractional.string(
@@ -783,7 +783,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex metadata refresh leaves inactive history best effort until rollout changes")
     func codexMetadataRefreshLeavesInactiveHistoryBestEffort() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sessionsDir = codexHome.appendingPathComponent(
             "sessions/2026/08/01",
@@ -877,7 +877,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex scan preserves ambiguous project-matching title without metadata")
     func codexScanPreservesAmbiguousProjectMatchingTitleWithoutMetadata() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexHome, withIntermediateDirectories: true)
         try await db.pool.write { conn in
@@ -916,7 +916,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex reread preserves existing title when thread metadata is unavailable")
     func codexRereadPreservesExistingTitleWithoutThreadMetadata() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sessionsDir = codexHome.appendingPathComponent(
             "sessions/2026/06/07",
@@ -965,7 +965,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex scan does not repeatedly reread rollouts that cannot backfill cwd")
     func codexScanDoesNotRepeatNoCwdReread() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sessionsDir = codexHome.appendingPathComponent(
             "sessions/2026/06/18",
@@ -1006,7 +1006,7 @@ struct SessionTitleProjectMetadataTests {
     @Test("Codex reread preserves ambiguous project-matching title")
     func codexRereadPreservesAmbiguousProjectMatchingTitle() async throws {
         let db = try makeDatabase()
-        let codexHome = FileManager.default.temporaryDirectory
+        let codexHome = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-home-\(UUID().uuidString)", isDirectory: true)
         let sessionsDir = codexHome.appendingPathComponent(
             "sessions/2026/06/18",

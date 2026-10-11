@@ -24,7 +24,7 @@ import Testing
 ///     read it without hopping back to the actor.
 ///
 /// `SettingsStore` is `@MainActor`, so the suite is too. We isolate
-/// each test by handing the store its own `UserDefaults(suiteName:)`,
+/// each test by handing the store its own `TestResources.userDefaults(suiteName:)`,
 /// then `removePersistentDomain` in the teardown helper to leave the
 /// host's defaults untouched.
 @MainActor
@@ -33,7 +33,7 @@ struct EnabledProvidersTests {
 
     private static func freshDefaults(_ name: String = #function) -> UserDefaults {
         let suite = "test.\(name).\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: suite)!
+        let d = TestResources.userDefaults(suiteName: suite)!
         d.removePersistentDomain(forName: suite)
         return d
     }
@@ -232,7 +232,7 @@ struct EnabledProvidersTests {
 
     @Test
     func existingAppDataDetectorRequiresActualRowsNotJustAnEmptyDatabase() throws {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-onboarding-footprint-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

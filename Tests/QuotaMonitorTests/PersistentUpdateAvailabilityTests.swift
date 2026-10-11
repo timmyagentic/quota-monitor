@@ -391,7 +391,7 @@ struct PersistentUpdateAvailabilityTests {
 
     private func makeDefaults(named testName: String) -> (UserDefaults, String) {
         let suiteName = "PersistentUpdateAvailabilityTests.\(testName).\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = TestResources.userDefaults(suiteName: suiteName)!
         defaults.removePersistentDomain(forName: suiteName)
         return (defaults, suiteName)
     }

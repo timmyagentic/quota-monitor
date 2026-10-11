@@ -8,7 +8,7 @@ struct QuotaCycleStorageTests {
     private let origin = Date(timeIntervalSince1970: 1_800_000_000)
 
     private func database() throws -> DatabaseManager {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = TestResources.temporaryDirectory
             .appendingPathComponent("quota-cycle-tests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return try DatabaseManager(url: directory.appendingPathComponent("usage.sqlite"))

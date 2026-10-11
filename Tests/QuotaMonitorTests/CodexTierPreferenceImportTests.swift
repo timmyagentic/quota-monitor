@@ -8,7 +8,7 @@ struct CodexTierPreferenceImportTests {
 
     @Test("rollout-only scan persists turn IDs and explicit tier preferences")
     func rolloutOnlyScanPersistsTurnIdAndTierPreference() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent(
                 "qm-codex-tier-import-\(UUID().uuidString)",
                 isDirectory: true)

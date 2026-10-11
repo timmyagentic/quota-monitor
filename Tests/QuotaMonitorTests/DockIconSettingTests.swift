@@ -13,7 +13,7 @@ struct DockIconSettingTests {
 
     private static func freshDefaults(_ name: String = #function) -> UserDefaults {
         let suite = "test.\(name).\(UUID().uuidString)"
-        let d = UserDefaults(suiteName: suite)!
+        let d = TestResources.userDefaults(suiteName: suite)!
         d.removePersistentDomain(forName: suite)
         return d
     }

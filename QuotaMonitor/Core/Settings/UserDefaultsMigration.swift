@@ -80,7 +80,7 @@ enum UserDefaultsMigration {
     private static let updaterFeedMigrationDoneKey = "app.updaterFeedMigrationV2Done"
 
     static func runIfNeeded() {
-        if LocalQAEnvironment.isActive() { return }
+        if LocalQAEnvironment.isQARequested() { return }
         let defaults = LocalQAEnvironment.userDefaults() ?? .standard
         migrateFromLegacyBundleID(defaults: defaults)
         migrateSparkleFeedURL(defaults: defaults)

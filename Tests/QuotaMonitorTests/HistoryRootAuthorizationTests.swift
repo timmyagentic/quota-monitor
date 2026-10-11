@@ -6,7 +6,7 @@ import Testing
 struct HistoryRootAuthorizationTests {
     private func freshDefaults() throws -> (suiteName: String, defaults: UserDefaults) {
         let suite = "dev.tjzhou.QuotaMonitor.HistoryRoots.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defaults.removePersistentDomain(forName: suite)
         return (suite, defaults)
     }
@@ -58,7 +58,7 @@ struct HistoryRootAuthorizationTests {
 
     @Test("History imports open and close security-scoped root access")
     func historyImportsUseSecurityScopedRootAccess() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-history-root-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(
@@ -93,7 +93,7 @@ struct HistoryRootAuthorizationTests {
         #expect(store.authorizedProviders(from: ["codex", "claude"]).isEmpty)
 
         // Grant only Codex's folder.
-        let codexDir = FileManager.default.temporaryDirectory
+        let codexDir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-auth-codex-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: codexDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: codexDir) }
@@ -114,7 +114,7 @@ struct HistoryRootAuthorizationTests {
         defer { defaults.defaults.removePersistentDomain(forName: defaults.suiteName) }
         let store = HistoryRootAuthorizationStore(defaults: defaults.defaults)
 
-        let altDir = FileManager.default.temporaryDirectory
+        let altDir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-auth-claude-config-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: altDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: altDir) }
@@ -132,7 +132,7 @@ struct HistoryRootAuthorizationTests {
         let defaults = try freshDefaults()
         defer { defaults.defaults.removePersistentDomain(forName: defaults.suiteName) }
         let store = HistoryRootAuthorizationStore(defaults: defaults.defaults)
-        let url = FileManager.default.temporaryDirectory
+        let url = TestResources.temporaryDirectory
             .appendingPathComponent("qm-selected-codex-\(UUID().uuidString)",
                                     isDirectory: true)
         try FileManager.default.createDirectory(
@@ -155,9 +155,9 @@ struct HistoryRootAuthorizationTests {
         defer { defaults.defaults.removePersistentDomain(forName: defaults.suiteName) }
         let store = HistoryRootAuthorizationStore(defaults: defaults.defaults)
 
-        let codexDir = FileManager.default.temporaryDirectory
+        let codexDir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-codex-\(UUID().uuidString)", isDirectory: true)
-        let claudeDir = FileManager.default.temporaryDirectory
+        let claudeDir = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-\(UUID().uuidString)", isDirectory: true)
         for d in [codexDir, claudeDir] {
             try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
@@ -182,15 +182,15 @@ struct HistoryRootAuthorizationTests {
 
     @Test("ClaudeImportEngine opens and closes security scope for every root")
     func claudeImportBalancesMultiRootScope() async throws {
-        let rootA = FileManager.default.temporaryDirectory
+        let rootA = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-a-\(UUID().uuidString)", isDirectory: true)
-        let rootB = FileManager.default.temporaryDirectory
+        let rootB = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-b-\(UUID().uuidString)", isDirectory: true)
         for r in [rootA, rootB] {
             try FileManager.default.createDirectory(at: r, withIntermediateDirectories: true)
         }
         defer { for r in [rootA, rootB] { try? FileManager.default.removeItem(at: r) } }
-        let dbURL = FileManager.default.temporaryDirectory
+        let dbURL = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-db-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent("quotamonitor.sqlite", isDirectory: false)
         let db = try DatabaseManager(url: dbURL)
@@ -218,11 +218,11 @@ struct HistoryRootAuthorizationTests {
 
     @Test("Developer ID non-scoped roots are not treated as scope failures")
     func developerIDScopeStartNotAFailure() async throws {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-claude-scope-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
-        let dbURL = FileManager.default.temporaryDirectory
+        let dbURL = TestResources.temporaryDirectory
             .appendingPathComponent("qm-scope-db-\(UUID().uuidString)", isDirectory: true)
             .appendingPathComponent("quotamonitor.sqlite", isDirectory: false)
         let db = try DatabaseManager(url: dbURL)

@@ -5,7 +5,7 @@ import Testing
 @Suite("Local QA launch configuration")
 struct LocalQAConfigurationTests {
     private func writeConfig(_ json: String) throws -> URL {
-        let root = FileManager.default.temporaryDirectory
+        let root = TestResources.temporaryDirectory
             .appendingPathComponent("qm-qa-config-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let url = root.appendingPathComponent("qa-config.json", isDirectory: false)

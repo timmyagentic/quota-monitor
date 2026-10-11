@@ -18,7 +18,7 @@ import GRDB
 struct RateLimitSampleRetentionTests {
 
     private func makeDatabase() throws -> DatabaseManager {
-        let dir = FileManager.default.temporaryDirectory
+        let dir = TestResources.temporaryDirectory
             .appendingPathComponent("codexmonitor-tests", isDirectory: true)
         try FileManager.default.createDirectory(
             at: dir, withIntermediateDirectories: true)

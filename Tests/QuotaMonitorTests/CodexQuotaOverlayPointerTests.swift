@@ -10,7 +10,7 @@ struct CodexQuotaOverlayPointerTests {
     func actualSummaryClick(holdToDrag: Bool) async throws {
         let size = CGSize(width: 148, height: 28)
         let suite = "quota-overlay-pointer-\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
+        let defaults = try #require(TestResources.userDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let settings = SettingsStore(defaults: defaults, hasExistingAppData: { false })
         let environment = AppEnvironment(startBackgroundTasks: false)
