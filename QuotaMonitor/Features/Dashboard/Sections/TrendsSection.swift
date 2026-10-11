@@ -154,10 +154,6 @@ struct TrendsSection: View {
             if let selection = selectedTrendSelection(in: activeSeries) {
                 RuleMark(x: .value(L10n.chartAxisDay, selection.date, unit: .day))
                     .foregroundStyle(Color.primary.opacity(0.22))
-                    .annotation(position: .top, alignment: .center, spacing: 4,
-                        overflowResolution: .init(x: .fit, y: .fit)) {
-                        trendTooltip(selection)
-                    }
             }
         }
         .chartXScale(domain: xDomain)
@@ -196,6 +192,40 @@ struct TrendsSection: View {
         }
         .chartLegend(.hidden)
         .chartXSelection(value: $selectedDay)
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                if let anchor = proxy.plotFrame {
+                    let plotFrame = geometry[anchor]
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onContinuousHover { phase in
+                            switch phase {
+                            case .active(let location):
+                                guard plotFrame.contains(location),
+                                      let date: Date = proxy.value(atX: location.x - plotFrame.minX)
+                                else {
+                                    selectedDay = nil
+                                    return
+                                }
+                                selectedDay = calendar.startOfDay(for: date)
+                            case .ended:
+                                selectedDay = nil
+                            }
+                        }
+                    if let selection = selectedTrendSelection(in: activeSeries),
+                       let day = calendar.dateInterval(of: .day, for: selection.date),
+                       let x = proxy.position(forX: day.start.addingTimeInterval(day.duration / 2)),
+                       let startX = proxy.position(forX: day.start),
+                       let endX = proxy.position(forX: day.end) {
+                        TrendTooltipOverlay(selection: selection,
+                            tokenLocale: settings.tokenFormatLocale,
+                            localization: localization,
+                            plotFrame: plotFrame, selectedX: plotFrame.minX + x,
+                            selectedHalfWidth: abs(endX - startX) / 2)
+                    }
+                }
+            }
+        }
         .frame(height: 245)
         .accessibilityRepresentation {
             VStack(alignment: .leading) {
@@ -239,13 +269,6 @@ struct TrendsSection: View {
                 )
             }
         }
-    }
-
-    private func trendTooltip(_ selection: TrendSelection) -> some View {
-        // Charts renders annotations in a separate tree; explicitly carry
-        // the observable environment into that tree.
-        TrendTooltip(selection: selection, tokenLocale: settings.tokenFormatLocale)
-            .environment(localization)
     }
 
     // MARK: - statline

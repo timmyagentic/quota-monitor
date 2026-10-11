@@ -7,6 +7,56 @@ import Testing
 @Suite("Trend tooltip hosted layout", .serialized)
 @MainActor
 struct TrendTooltipLayoutTests {
+    @Test("Side tooltip leaves the selected date clear at both edges and the center",
+          arguments: [CGFloat(340), CGFloat(600), CGFloat(1200)], [CGFloat(0), CGFloat(0.5), CGFloat(1)])
+    func sidePlacement(width: CGFloat, fraction: CGFloat) {
+        let plot = CGRect(x: 40, y: 20, width: width, height: 245)
+        let x = plot.minX + width * fraction
+        for halfWidth: CGFloat in [0, 80] {
+            let placement = TrendTooltipPlacement(plotFrame: plot, selectedX: x,
+                                                  selectedHalfWidth: halfWidth)
+            #expect(placement.origin.x >= plot.minX)
+            #expect(placement.origin.x + placement.totalWidth <= plot.maxX)
+            #expect(placement.origin.x + placement.totalWidth <= x - halfWidth - 24
+                    || placement.origin.x >= x + halfWidth + 24)
+            #expect(placement.contentWidth + 18 == placement.totalWidth)
+        }
+    }
+
+    @Test("Hosted side tooltip keeps pointer access and compact sizing", arguments: [CGFloat(50), CGFloat(600), CGFloat(1150)])
+    func hostedSideTooltip(selectedX: CGFloat) async throws {
+        let rows = (0..<24).map { index in
+            TrendSelection.Row(id: "row-\(index)", label: "GPT-6 Astra",
+                color: .green, tokens: Int64(index + 1) * 100, speedTier: .ultrafast)
+        }
+        let selection = TrendSelection(date: Date(), rows: rows,
+            totalTokens: rows.reduce(0) { $0 + $1.tokens }, cacheUsage: .zero)
+        let probe = PointerProbe()
+        let content = ProbeSurface(probe: probe)
+            .overlay(alignment: .topLeading) {
+                TrendTooltipOverlay(selection: selection, tokenLocale: Locale(identifier: "en_US"),
+                    localization: LocalizationStore.shared,
+                    plotFrame: CGRect(x: 0, y: 0, width: 1200, height: 245), selectedX: selectedX)
+            }
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 245),
+            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
+        defer { panel.close() }
+        let host = NSHostingView(rootView: content)
+        panel.contentView = host
+        host.frame = NSRect(x: 0, y: 0, width: 1200, height: 245)
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(host.hitTest(CGPoint(x: selectedX, y: 100)) === probe)
+        if let directory = ProcessInfo.processInfo.environment["QM_TEST_TREND_TOOLTIP_IMAGE_DIRECTORY"] {
+            let bitmap = try #require(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+            host.cacheDisplay(in: host.bounds, to: bitmap)
+            let png = try #require(bitmap.representation(using: .png, properties: [:]))
+            try png.write(to: URL(fileURLWithPath: directory)
+                .appendingPathComponent("side-tooltip-\(Int(selectedX)).png"))
+        }
+    }
+
     @Test("Chart annotation renders with its own localization environment")
     func chartAnnotationRendering() throws {
         let date = Date()
