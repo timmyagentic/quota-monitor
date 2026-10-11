@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.12] — 2026-10-11
+
 #### Summary
 
 - Dashboard trends now distinguish model speed modes and open grouped by model.
