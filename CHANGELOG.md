@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- The website makes live quota, usage trends, and session details easier to explore on desktop and mobile.
+
+### Changed
+
+- **Website refresh.** A clearer bilingual homepage adds switchable real-app views, a streamlined installation guide, and accessible mobile navigation while preserving the download and privacy services.
+
 ## [1.0.12] — 2026-10-12
 
 #### Summary
