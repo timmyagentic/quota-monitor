@@ -554,7 +554,72 @@ actor ImportEngine {
                   cached: rhsFingerprint,
                   length: length)
         else { return false }
-        return lhsHash == rhsHash
+        guard lhsHash == rhsHash else { return false }
+        // A common header is only a cheap prefilter, never proof that two
+        // physical files are one fragment. Compare their entire common prefix.
+        return matchingFilePrefix(lhs.file.url, rhs.file.url,
+            length: min(lhs.file.fileSize, rhs.file.fileSize))
+    }
+
+    private static func matchingFilePrefix(_ lhs: URL, _ rhs: URL, length: Int64) -> Bool {
+        guard length > 0,
+              let left = try? RolloutRecordReader(fileURL: lhs),
+              let right = try? RolloutRecordReader(fileURL: rhs) else { return false }
+        defer { try? left.close(); try? right.close() }
+        guard left.snapshot.size >= length, right.snapshot.size >= length else { return false }
+        var offset: Int64 = 0
+        while offset < length {
+            let end = min(length, offset + 64 * 1024)
+            guard let a = try? left.readBytes(in: offset..<end),
+                  let b = try? right.readBytes(in: offset..<end), a == b else { return false }
+            offset = end
+        }
+        // Do not authorize a merge using a file that changed during comparison.
+        guard let afterLeft = try? RolloutRecordReader(fileURL: lhs),
+              let afterRight = try? RolloutRecordReader(fileURL: rhs) else { return false }
+        defer { try? afterLeft.close(); try? afterRight.close() }
+        return left.snapshot == afterLeft.snapshot && right.snapshot == afterRight.snapshot
+    }
+
+    private static func sourceSnapshot(_ url: URL) -> RolloutFileSnapshot? {
+        guard let reader = try? RolloutRecordReader(fileURL: url) else { return nil }
+        defer { try? reader.close() }
+        return reader.snapshot
+    }
+
+    private static func completePrefixMatches(
+        _ state: ImportStateRecord, checkpoint: CodexRolloutCheckpoint, file: SessionFile
+    ) -> Bool {
+        let length = checkpoint.offset
+        guard length > 0, length <= file.fileSize,
+              let target = try? RolloutRecordReader(fileURL: file.url) else { return false }
+        defer { try? target.close() }
+        guard target.snapshot.sourceIdentity == file.sourceIdentity,
+              target.snapshot.size == file.fileSize,
+              target.snapshot.mtimeMs == file.fileMtimeMs else { return false }
+        let window = RolloutParser.fingerprintWindowBytes
+        guard (try? target.sha256(in: 0..<min(length, window))) == checkpoint.prefixHash
+        else { return false }
+        if length > window {
+            guard (try? target.sha256(in: (length - window)..<length)) == checkpoint.boundaryHash
+            else { return false }
+        }
+        if length <= 2 * window {
+            // Head and tail cover every committed byte, including their overlap.
+            return target.snapshot == sourceSnapshot(file.url)
+        }
+        // Long legacy checkpoints leave a gap between their window hashes.
+        // Even the same inode cannot prove that gap after the original is gone.
+        let oldURL = URL(fileURLWithPath: state.sourcePath)
+        guard let old = try? RolloutRecordReader(fileURL: oldURL) else { return false }
+        defer { try? old.close() }
+        guard old.snapshot.sourceIdentity == checkpoint.sourceIdentity,
+              old.snapshot.size >= length,
+              (try? old.sha256(in: 0..<window)) == checkpoint.prefixHash,
+              (try? old.sha256(in: (length - window)..<length)) == checkpoint.boundaryHash,
+              matchingFilePrefix(oldURL, file.url, length: length) else { return false }
+        return old.snapshot == sourceSnapshot(oldURL)
+            && target.snapshot == sourceSnapshot(file.url)
     }
 
     private static func fragmentFingerprint(
@@ -677,7 +742,9 @@ actor ImportEngine {
             guard let data = state.parserCheckpoint,
                   let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
             else { return false }
-            return checkpoint.sourceIdentity == file.sourceIdentity
+            // Recovery must take the unique complete-prefix path below. An
+            // inode surviving a rewrite is not proof of its committed contents.
+            return state.byteOffset > 0 && checkpoint.sourceIdentity == file.sourceIdentity
         }
         return matching.count == 1 ? matching[0] : nil
     }
@@ -690,14 +757,7 @@ actor ImportEngine {
             guard let data = state.parserCheckpoint,
                   let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
             else { return false }
-            let length = min(checkpoint.offset, RolloutParser.fingerprintWindowBytes)
-            guard length > 0,
-                  let sourceHash = fingerprintHash(
-                      file: source.file,
-                      cached: source.headerFingerprint,
-                      length: length)
-            else { return false }
-            return checkpoint.prefixHash == sourceHash
+            return completePrefixMatches(state, checkpoint: checkpoint, file: source.file)
         }
         return matching.count == 1 ? matching[0] : nil
     }
@@ -726,6 +786,8 @@ actor ImportEngine {
         let file = candidate.file
         let expected = candidate.expectedState
         let checkpoint: CodexRolloutCheckpoint? = expected.flatMap { state in
+            // Reread migrations retain source identity for relocation, but a
+            // zero cursor must never resume the old reducer state.
             guard state.byteOffset > 0,
                   let data = state.parserCheckpoint,
                   let decoded = try? CodexRolloutCheckpoint.decoded(from: data),
@@ -934,6 +996,37 @@ actor ImportEngine {
                 targetPath: file.path,
                 in: db)
 
+            if let expectedState, expectedState.byteOffset == 0,
+               (expectedState.sourcePath as NSString).lastPathComponent != file.url.lastPathComponent {
+                // Recheck recovery evidence at the destructive transaction, not
+                // only during discovery. A concurrent file change defers import.
+                guard let data = expectedState.parserCheckpoint,
+                      let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data),
+                      Self.completePrefixMatches(expectedState, checkpoint: checkpoint, file: file)
+                else { throw ImportStateConflict.stale }
+            }
+
+            // Freeze the complete predecessor set before replacing A or saving
+            // B. Otherwise deleting A first can make a newly added C appear
+            // uniquely eligible for cleanup in this same transaction.
+            var predecessors = try Self.matchingSourcePredecessors(
+                sessionId: parsed.sessionId,
+                targetPath: file.path,
+                sourceFile: file,
+                requiresCompletePrefix: expectedState?.byteOffset == 0,
+                in: db)
+            if let expectedState, expectedState.sourcePath != file.path,
+               expectedState.sessionId == parsed.sessionId {
+                // Same-filename relocation may legitimately have no checkpoint.
+                // Its selected predecessor still participates in uniqueness.
+                if !predecessors.contains(where: { $0.sourcePath == expectedState.sourcePath }) {
+                    predecessors.append(expectedState)
+                }
+                guard predecessors.count == 1 else { throw ImportStateConflict.stale }
+            }
+            let duplicate = !output.hasIncompleteTail && predecessors.count == 1
+                ? predecessors.first : nil
+
             // 1. Upsert the session row.
             let existing = try SessionRecord
                 .filter(Column("session_id") == parsed.sessionId)
@@ -1028,16 +1121,9 @@ actor ImportEngine {
             if let oldPath = expectedState?.sourcePath, oldPath != file.path {
                 try ImportStateRecord.deleteOne(db, key: oldPath)
             }
-            try Self.removeDuplicateSourceStates(
-                sessionId: parsed.sessionId,
-                targetPath: file.path,
-                sourceFile: file,
-                sourceFingerprint: FragmentFingerprint(
-                    length: min(
-                        output.endOffset,
-                        RolloutParser.fingerprintWindowBytes),
-                    hash: output.prefixHash),
-                in: db)
+            if let duplicate, duplicate.sourcePath != expectedState?.sourcePath {
+                try Self.removeProvenSourceState(duplicate, sessionId: parsed.sessionId, in: db)
+            }
 
             return PersistCounts(
                 events: parsed.usageDeltas.count,
@@ -1084,41 +1170,40 @@ actor ImportEngine {
         }
     }
 
-    private static func removeDuplicateSourceStates(
+    private static func matchingSourcePredecessors(
         sessionId: String,
         targetPath: String,
         sourceFile: SessionFile,
-        sourceFingerprint: FragmentFingerprint,
+        requiresCompletePrefix: Bool,
         in db: Database
-    ) throws {
+    ) throws -> [ImportStateRecord] {
         let siblings = try ImportStateRecord
             .filter(Column("session_id") == sessionId
                 && Column("source_path") != targetPath)
             .fetchAll(db)
-        for sibling in siblings {
+        return siblings.filter { sibling in
             guard let data = sibling.parserCheckpoint,
                   let checkpoint = try? CodexRolloutCheckpoint.decoded(from: data)
-            else { continue }
-            let length = min(checkpoint.offset, RolloutParser.fingerprintWindowBytes)
-            let matchesFingerprint = length > 0
-                && fingerprintHash(
-                    file: sourceFile,
-                    cached: sourceFingerprint,
-                    length: length) == checkpoint.prefixHash
-            guard checkpoint.sourceIdentity == sourceFile.sourceIdentity
-                    || matchesFingerprint
-            else { continue }
-            try UsageEventRecord
-                .filter(Column("session_id") == sessionId
-                    && Column("source_path") == sibling.sourcePath)
-                .deleteAll(db)
-            try RateLimitSampleRecord
-                .filter(Column("source_kind") == "jsonl"
-                    && Column("source_session_id") == sessionId
-                    && Column("source_path") == sibling.sourcePath)
-                .deleteAll(db)
-            try ImportStateRecord.deleteOne(db, key: sibling.sourcePath)
+            else { return false }
+            let sameIdentity = checkpoint.sourceIdentity == sourceFile.sourceIdentity
+                && sibling.byteOffset > 0 && !requiresCompletePrefix
+            return sameIdentity || completePrefixMatches(sibling, checkpoint: checkpoint, file: sourceFile)
         }
+    }
+
+    private static func removeProvenSourceState(
+        _ sibling: ImportStateRecord, sessionId: String, in db: Database
+    ) throws {
+        try UsageEventRecord
+            .filter(Column("session_id") == sessionId
+                && Column("source_path") == sibling.sourcePath)
+            .deleteAll(db)
+        try RateLimitSampleRecord
+            .filter(Column("source_kind") == "jsonl"
+                && Column("source_session_id") == sessionId
+                && Column("source_path") == sibling.sourcePath)
+            .deleteAll(db)
+        try ImportStateRecord.deleteOne(db, key: sibling.sourcePath)
     }
 
     private static func timestamp(

@@ -373,7 +373,7 @@ struct MigrationsTests {
     }
 
     @Test("Codex reread migrations preserve history and other provider cursors",
-          arguments: ["v21-codex-cache-write-reread", "v26-codex-ultrafast-restore"])
+          arguments: ["v21-codex-cache-write-reread", "v26-codex-ultrafast-restore", "v27-codex-reread-preserve-source-identity"])
     func codexCacheWriteMigrationForcesCodexReread(migrationId: String) throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-cache-write-v21")
         let manager = try DatabaseManager(url: url)
@@ -458,7 +458,8 @@ struct MigrationsTests {
             #expect(codex["file_size"] as Int64 == -1)
             #expect(codex["file_mtime_ms"] as Int64 == -1)
             #expect(codex["byte_offset"] as Int64 == 0)
-            #expect(codex["parser_checkpoint"] as Data? == nil)
+            #expect(codex["parser_checkpoint"] as Data? ==
+                (migrationId == "v21-codex-cache-write-reread" ? nil : Data([0x01, 0x02])))
             #expect(codex["metadata_probe_complete"] as Bool == true)
 
             let repriced = try Double.fetchOne(db, sql: """

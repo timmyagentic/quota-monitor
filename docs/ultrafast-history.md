@@ -50,9 +50,15 @@ checkpoints. Repricing stored events alone cannot recover that evidence.
 Migration `v26-codex-ultrafast-restore` invalidates Codex file metadata and cursors
 once, without deleting events, sessions, or rate samples. It works after the
 retained v24/v25 compatibility migrations, including databases that already ran
-the beta.5 reread or subsequent withdrawal. All old Codex checkpoints are cleared
-by this migration, so an old reducer cannot resume with lost tier evidence. The
-checkpoint format remains version 2 and retains v1/v2 decoding compatibility.
+the beta.5 reread or subsequent withdrawal. The cursor is set to zero while the
+original checkpoint blob is retained for source identity and prefix matching.
+The parser requires a positive cursor matching the checkpoint offset to resume,
+so retaining that blob cannot skip the full reread. Its internal offset, hashes,
+and v1/v2 encoding remain unchanged until a successful import replaces it.
+
+`v27-codex-reread-preserve-source-identity` requests the same full reread for
+databases that already ran v26, retaining any checkpoint evidence still present.
+Neither migration deletes history or invalidates Claude cursors.
 Existing raw Ultrafast events are repriced even if their original source is gone;
 NULL events are never inferred to be Ultrafast.
 
@@ -68,6 +74,43 @@ committed history is retained. Recovery retries when a complete source is availa
 again. Without the original source, NULL stays unknown/Standard: the application
 cannot reconstruct an erased preference or claim that history is fully recovered.
 The first scan can take longer because existing Codex logs are read once again.
+
+### Already-cleared provenance
+
+The originally shipped v26 cleared checkpoints. If a previous source is gone and
+only a differently named replay remains, its stored token counts, timestamps,
+turn IDs and logical session ID cannot prove that it is the same physical
+fragment. v27 deliberately preserves this history; it cannot safely remove an
+existing duplicate or prevent every duplicate in that ambiguous legacy state.
+A missing, corrupt or size-capped checkpoint has the same limitation. A complete
+source returning at its recorded path can be retried, but this is not a promise
+that all previously duplicated rows will be automatically repaired. Preserve a
+backup and original rollout evidence before any separately reviewed recovery.
+
+### Proof required before cross-source replacement
+
+A retained recovery checkpoint is not deletion authorization by itself. In
+particular, a matching inode or 4 KiB header cannot authorize recovery replacement.
+The parser stores hashes of `[0, min(n, 4096))` and `[max(0, n - 4096), n)`, where
+`n` is the committed offset. For `0 < n <= 8192`, those windows cover every
+committed byte; both are checked when the prefix extends beyond the first window.
+For larger prefixes, the original source must still be readable with matching
+identity/window evidence, and its complete committed prefix must match the new
+source. Comparisons stream in bounded chunks and check file snapshots for change.
+If the original is gone, equal head/tail hashes leave an unproven middle: retain
+history, even for an identical long replay or a same-inode rename.
+
+Current differently named files are grouped only after comparing their complete
+common prefix. Recovery relocation requires one proven predecessor, and recovery
+evidence is rechecked in the write transaction before replacement. Before any
+row is deleted, that transaction computes the complete predecessor set, including
+the selected relocated source. If another matching alias appeared meanwhile,
+relocated replacement is deferred without changing history. Cleanup uses this
+same frozen decision rather than recomputing uniqueness after deleting the first
+source, and is skipped for incomplete output. An ambiguous partial replay may therefore add a
+new source while retaining prior aliases; completion or reopening is not a promise
+of automatic consolidation. No token, timestamp, turn or logical-session match is
+used to guess a missing source's identity.
 
 Regression fixtures are synthetic and cover normalization, frozen turns,
 checkpoint serialization/legacy decoding, unchanged-file migration with and

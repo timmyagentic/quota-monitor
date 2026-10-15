@@ -725,17 +725,33 @@ enum Migrations {
         // Re-introduce the same rollout-preference estimate used by Fast. v24
         // may already have run, and v25 may have withdrawn its derived prices.
         // Keep rows until each available, complete source replaces its fragment.
+        // A zero cursor forces a full parse; the retained checkpoint is still
+        // needed to recognize renamed/replayed sources during that rebuild.
         migrator.registerMigration("v26-codex-ultrafast-restore") { db in
             try db.execute(sql: """
                 UPDATE import_state
                 SET file_size = -1, file_mtime_ms = -1,
-                    byte_offset = 0, parser_checkpoint = NULL
+                    byte_offset = 0
                 WHERE session_id IN (
                     SELECT session_id FROM sessions WHERE provider = 'codex'
                 )
                 """)
             _ = try PricingService.installBundledCatalog(in: db)
             try PricingService.backfillAllValues(in: db)
+        }
+
+        // v26 originally cleared the only identity/prefix evidence for missing
+        // fragments. Keep any surviving evidence when requesting another full
+        // parse. Lost evidence cannot be reconstructed from token counts: never
+        // delete historical rows merely because they share a logical session.
+        migrator.registerMigration("v27-codex-reread-preserve-source-identity") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1, file_mtime_ms = -1, byte_offset = 0
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
+                """)
         }
 
     }
