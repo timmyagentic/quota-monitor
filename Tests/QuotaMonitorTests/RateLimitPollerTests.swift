@@ -349,7 +349,11 @@ struct RateLimitPollerTests {
             snapshots: snapshots,
             fetchTimeout: .milliseconds(50))
 
-        let outcome = await completeWithin(.seconds(1)) {
+        // This is a deadlock watchdog, not a wall-clock performance assertion.
+        // Shared CI executors can delay both tasks well beyond one second while
+        // the full suite starts. The poller still has to produce its own 50 ms
+        // timeout failure; a missing timeout must not pass via this watchdog.
+        let outcome = await completeWithin(.seconds(60)) {
             await poller.pollOnce(trigger: "manual")
         }
 

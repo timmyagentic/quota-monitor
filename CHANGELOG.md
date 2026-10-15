@@ -43,6 +43,7 @@ window copy.
 
 ### Fixed
 
+- **Verification reliability.** Avoid false timeout failures when the validation runner is busy, while retaining the hung-request failure check.
 - **Codex upgrade history.** Preserve source evidence and verify committed prefixes before replacing renamed logs; ambiguous history is retained rather than guessed away.
 
 ### Known limitations
