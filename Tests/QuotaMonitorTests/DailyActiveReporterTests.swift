@@ -1016,9 +1016,9 @@ struct RedirectCase: Sendable, CustomTestStringConvertible {
     var target: String {
         switch kind {
         case .foreignHTTPS: "https://collector.example/foreign"
-        case .plainHTTP: "http://quota-monitor.timmyagentic.com/plain-http"
+        case .plainHTTP: "http://quota-monitor.timmyagentic.si/plain-http"
         case .sameHostOtherPath:
-            "https://quota-monitor.timmyagentic.com/other-path"
+            "https://quota-monitor.timmyagentic.si/other-path"
         }
     }
 

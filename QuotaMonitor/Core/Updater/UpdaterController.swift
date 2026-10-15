@@ -124,7 +124,7 @@ final class UpdaterController {
         let privateBetaFeedURL = configuredPrivateBetaFeedURL ?? ""
         let resolvedEnrollmentClient = enrollmentClient ?? PrivateBetaEnrollmentClient(
             endpoint: URL(string:
-                "https://quota-monitor.timmyagentic.com/api/private-beta/enroll")!)
+                "https://quota-monitor.timmyagentic.si/api/private-beta/enroll")!)
         self.defaults = resolvedDefaults
         self.credentialStore = resolvedCredentialStore
         self.enrollmentClient = resolvedEnrollmentClient

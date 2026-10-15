@@ -61,7 +61,7 @@ the command line:
 ```sh
 curl --fail-with-body --user admin \
   --request POST \
-  https://quota-monitor.timmyagentic.com/api/private-beta/admin/enrollment-codes
+  https://quota-monitor.timmyagentic.si/api/private-beta/admin/enrollment-codes
 ```
 
 Enter the prompted admin password, then paste the returned code into
@@ -74,7 +74,7 @@ To revoke one device, obtain its non-secret `device_id` from D1 and call:
 ```sh
 curl --fail-with-body --user admin \
   --request POST \
-  https://quota-monitor.timmyagentic.com/api/private-beta/admin/devices/DEVICE_ID/revoke
+  https://quota-monitor.timmyagentic.si/api/private-beta/admin/devices/DEVICE_ID/revoke
 ```
 
 Selecting Stable immediately removes the authorization header and restores the

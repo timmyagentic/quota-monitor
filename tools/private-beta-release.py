@@ -825,7 +825,7 @@ def main() -> int:
     parser.add_argument("--bucket", default="quota-monitor-private-beta")
     parser.add_argument(
         "--worker-base-url",
-        default="https://quota-monitor.timmyagentic.com/api/private-beta",
+        default="https://quota-monitor.timmyagentic.si/api/private-beta",
     )
     parser.add_argument("--sparkle-account", default="quotamonitor")
     parser.add_argument("--minimum-system-version", default="14.0")

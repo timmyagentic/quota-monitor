@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://quota-monitor.timmyagentic.com/">
+  <a href="https://quota-monitor.timmyagentic.si/">
     <img src="website/public/assets/app-icon.png" width="112" height="112" alt="Quota Monitor 应用图标">
   </a>
 
@@ -13,10 +13,10 @@
   </p>
 
   <p>
-    <a href="https://quota-monitor.timmyagentic.com/">官网</a> ·
-    <a href="https://quota-monitor.timmyagentic.com/download">下载</a> ·
+    <a href="https://quota-monitor.timmyagentic.si/">官网</a> ·
+    <a href="https://quota-monitor.timmyagentic.si/download">下载</a> ·
     <a href="https://github.com/timmyagentic/quota-monitor/releases/latest">Releases</a> ·
-    <a href="https://quota-monitor.timmyagentic.com/privacy">隐私</a> ·
+    <a href="https://quota-monitor.timmyagentic.si/privacy">隐私</a> ·
     <a href="README.md">English</a> · 简体中文
   </p>
 
@@ -47,7 +47,7 @@ npx --yes quotamonitor@latest install
 
 需要 Apple Silicon Mac、macOS 14 或更高版本，以及 Node.js 20.17 或更高版本。
 
-<a href="https://quota-monitor.timmyagentic.com/">
+<a href="https://quota-monitor.timmyagentic.si/">
   <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor Dashboard，展示使用合成数据的额度卡片、Token 趋势和构成图表">
 </a>
 
@@ -127,7 +127,7 @@ Quota Monitor 的用户数据。
 
 ### DMG
 
-1. [下载最新的已公证 DMG](https://quota-monitor.timmyagentic.com/download)。
+1. [下载最新的已公证 DMG](https://quota-monitor.timmyagentic.si/download)。
 2. 打开 DMG，把 **Quota Monitor** 拖入 **Applications（应用程序）**。
 3. 启动应用，并在初始设置中选择 Codex、Claude Code 或两者都启用。
 
@@ -176,7 +176,7 @@ Token。它**不包含**账号详情、额度数值、用量历史、文件路�
 稳定标识。
 
 完整的保留期限、聚合方式和 Cloudflare 网络边界说明，请阅读
-[中英双语隐私政策](https://quota-monitor.timmyagentic.com/privacy)。
+[中英双语隐私政策](https://quota-monitor.timmyagentic.si/privacy)。
 
 ## 从源码构建
 
