@@ -30,6 +30,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Model usage totals are easier to scan, with speed modes tucked into expandable rows.
+
+### Changed
+
+- **Model breakdown.** Trend legends start collapsed at model totals; expand a model to see its Standard, Fast, Ultrafast, or Flex breakdown with unchanged token totals and shares.
+
 ## [1.0.13] — 2026-10-15
 
 #### Summary

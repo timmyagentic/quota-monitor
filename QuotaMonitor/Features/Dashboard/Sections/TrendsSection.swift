@@ -16,6 +16,7 @@ struct TrendsSection: View {
     @State private var range: TrendRange = .last30d
     @State private var stackBy: TrendStack = .model
     @State private var selectedDay: Date?
+    @State private var expandedModelKeys: Set<String> = []
     @State private var seriesDerivation = TrendSeriesDerivationCache()
 
     private var availableRanges: [TrendRange] {
@@ -242,33 +243,62 @@ struct TrendsSection: View {
         activeSeries: [DailyBreakdownPoint]
     ) -> some View {
         VStack(spacing: 2) {
-            ForEach(legendRows(for: activeSeries)) { row in
-                HStack(spacing: 10) {
-                    RoundedRectangle(cornerRadius: 3, style: .continuous)
-                        .fill(row.color)
-                        .frame(width: 10, height: 10)
-                    Text(row.label)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    TrendSpeedBadge(tier: row.speedTier, color: row.color)
-                    Spacer()
-                    Text(compactTokens(row.tokens))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                    Text(row.percent.formatted(.percent.precision(.fractionLength(1))))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 54, alignment: .trailing)
+            ForEach(TrendLegendBuilder.rows(for: activeSeries, grouping: stackBy.grouping)) { row in
+                if row.children.isEmpty {
+                    legendRow(row)
+                        .padding(.leading, stackBy == .model ? 18 : 0)
+                } else {
+                    DisclosureGroup(isExpanded: Binding(
+                        get: { expandedModelKeys.contains(row.key) },
+                        set: { expanded in
+                            if expanded { expandedModelKeys.insert(row.key) }
+                            else { expandedModelKeys.remove(row.key) }
+                        }
+                    )) {
+                        VStack(spacing: 2) {
+                            ForEach(row.children) { child in
+                                legendRow(child, isChild: true)
+                            }
+                        }
+                        .padding(.leading, 6)
+                    } label: {
+                        legendRow(row)
+                    }
+                    .accessibilityIdentifier("trend-model-\(row.key)")
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.primary.opacity(0.025))
-                )
             }
         }
+    }
+
+    private func legendRow(_ row: TrendLegendRow, isChild: Bool = false) -> some View {
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(row.color)
+                .frame(width: 10, height: 10)
+            if isChild, row.speedTier != nil {
+                TrendSpeedBadge(tier: row.speedTier, color: row.color)
+            } else {
+                Text(row.label)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer()
+            Text(compactTokens(row.tokens))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            Text(row.percent.formatted(.percent.precision(.fractionLength(1))))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 54, alignment: .trailing)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(isChild ? 0.015 : 0.025))
+        )
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - statline
@@ -415,34 +445,6 @@ struct TrendsSection: View {
             rows: rows,
             totalTokens: rows.reduce(Int64(0)) { $0 + $1.tokens },
             cacheUsage: selectedCacheDay?.cacheUsage ?? .zero)
-    }
-
-    private func legendRows(
-        for activeSeries: [DailyBreakdownPoint]
-    ) -> [TrendLegendRow] {
-        let grouped = Dictionary(grouping: activeSeries, by: \.key)
-        let totals = modelTotals(in: activeSeries)
-        let total = max(activeSeries.reduce(Int64(0)) { $0 + $1.tokens }, 1)
-        return grouped.map { key, rows in
-            let first = rows[0]
-            let tokens = rows.reduce(Int64(0)) { $0 + $1.tokens }
-            return TrendLegendRow(
-                key: key,
-                label: displayLabel(first),
-                color: seriesColor(first),
-                tokens: tokens,
-                percent: Double(tokens) / Double(total),
-                modelGroupKey: first.modelGroupKey,
-                speedTier: stackBy == .model ? first.speedTier : nil)
-        }
-        .filter { $0.tokens > 0 }
-        .sorted {
-            let lhs = totals[$0.modelGroupKey, default: 0]
-            let rhs = totals[$1.modelGroupKey, default: 0]
-            if lhs != rhs { return lhs > rhs }
-            if $0.modelGroupKey != $1.modelGroupKey { return $0.modelGroupKey < $1.modelGroupKey }
-            return ($0.speedTier?.sortOrder ?? 0) < ($1.speedTier?.sortOrder ?? 0)
-        }
     }
 
     private func modelTotals(in series: [DailyBreakdownPoint]) -> [String: Int64] {
@@ -749,7 +751,7 @@ enum TrendStack: CaseIterable, Identifiable {
     }
 }
 
-private struct TrendLegendRow: Identifiable {
+struct TrendLegendRow: Identifiable {
     let key: String
     let label: String
     let color: Color
@@ -758,7 +760,52 @@ private struct TrendLegendRow: Identifiable {
     let modelGroupKey: String
     let speedTier: TrendSpeedTier?
 
+    var children: [TrendLegendRow] = []
+
     var id: String { key }
+}
+
+enum TrendLegendBuilder {
+    static func rows(for series: [DailyBreakdownPoint],
+                     grouping: TrendBreakdownGrouping) -> [TrendLegendRow] {
+        let total = max(series.reduce(Int64(0)) { $0 + $1.tokens }, 1)
+        let leaves = Dictionary(grouping: series, by: \.key).map { key, points in
+            let first = points[0]
+            let tokens = points.reduce(Int64(0)) { $0 + $1.tokens }
+            return TrendLegendRow(
+                key: key,
+                label: grouping == .model ? first.label : DashboardTheme.providerLabel(key),
+                color: grouping == .model
+                    ? DashboardTheme.modelColor(first.modelGroupKey, tier: first.speedTier)
+                    : DashboardTheme.providerColor(key),
+                tokens: tokens, percent: Double(tokens) / Double(total),
+                modelGroupKey: first.modelGroupKey,
+                speedTier: grouping == .model ? first.speedTier : nil)
+        }.filter { $0.tokens > 0 }
+
+        let rows: [TrendLegendRow]
+        if grouping == .model {
+            rows = Dictionary(grouping: leaves, by: \.modelGroupKey).map { key, tiers in
+                let children = tiers.sorted {
+                    let lhs = $0.speedTier?.sortOrder ?? 0
+                    let rhs = $1.speedTier?.sortOrder ?? 0
+                    return lhs == rhs ? $0.key < $1.key : lhs < rhs
+                }
+                let tokens = children.reduce(Int64(0)) { $0 + $1.tokens }
+                return TrendLegendRow(
+                    key: key, label: children[0].label,
+                    color: DashboardTheme.modelColor(key),
+                    tokens: tokens, percent: Double(tokens) / Double(total),
+                    modelGroupKey: key, speedTier: nil,
+                    children: children.contains { $0.speedTier != nil } ? children : [])
+            }
+        } else {
+            rows = leaves
+        }
+        return rows.sorted {
+            $0.tokens == $1.tokens ? $0.key < $1.key : $0.tokens > $1.tokens
+        }
+    }
 }
 
 struct TrendSelection {
