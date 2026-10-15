@@ -30,6 +30,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.13] — 2026-10-15
+
 #### Summary
 
 - Upgrades check Codex log identity more carefully to protect usage history.
@@ -41,7 +43,12 @@ window copy.
 
 ### Fixed
 
+- **Verification reliability.** Avoid false timeout failures when the validation runner is busy, while retaining the hung-request failure check.
 - **Codex upgrade history.** Preserve source evidence and verify committed prefixes before replacing renamed logs; ambiguous history is retained rather than guessed away.
+
+### Known limitations
+
+- **Unproven older sources.** History without sufficient source evidence is preserved; existing duplicates are not guaranteed to be removed automatically.
 
 ## [1.0.12] — 2026-10-12
 
