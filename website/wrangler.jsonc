@@ -94,7 +94,7 @@
   "streaming_tail_consumers": [],
   "routes": [
     {
-      "pattern": "quota-monitor.timmyagentic.com",
+      "pattern": "quota-monitor.timmyagentic.si",
       "custom_domain": true
     }
   ],

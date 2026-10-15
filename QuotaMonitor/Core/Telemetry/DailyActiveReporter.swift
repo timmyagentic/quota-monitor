@@ -227,7 +227,7 @@ actor DailyActiveReporter {
     typealias Context = @Sendable () async -> DailyActiveReportingContext?
 
     static let endpoint = URL(
-        string: "https://quota-monitor.timmyagentic.com/api/v1/daily-active")!
+        string: "https://quota-monitor.timmyagentic.si/api/v1/daily-active")!
     static let periodicInterval = Duration.seconds(6 * 60 * 60)
     static let maximumRetryCount = 3
     static let maximumRetryAfter = Duration.seconds(15 * 60)

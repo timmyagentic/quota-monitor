@@ -64,8 +64,8 @@ choose the less conservative label.
 
 App Store Connect metadata must be completed manually with both URLs set to:
 
-- Privacy Policy URL: `https://quota-monitor.timmyagentic.com/privacy`
-- Privacy Choices URL: `https://quota-monitor.timmyagentic.com/privacy`
+- Privacy Policy URL: `https://quota-monitor.timmyagentic.si/privacy`
+- Privacy Choices URL: `https://quota-monitor.timmyagentic.si/privacy`
 
 The App Privacy label can be published only by an Account Holder, Admin, or App
 Manager. Until the real archive has passed the report review, Validate App,
