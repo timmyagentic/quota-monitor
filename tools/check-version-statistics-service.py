@@ -14,8 +14,8 @@ import urllib.request
 from dataclasses import dataclass
 
 
-PRODUCTION_ORIGIN = "https://quota-monitor.timmyagentic.com"
-PLAIN_HTTP_ORIGIN = "http://quota-monitor.timmyagentic.com"
+PRODUCTION_ORIGIN = "https://quota-monitor.timmyagentic.si"
+PLAIN_HTTP_ORIGIN = "http://quota-monitor.timmyagentic.si"
 USER_AGENT = "QuotaMonitor-version-statistics-release-probe/1"
 MAX_RESPONSE_BYTES = 64 * 1024
 READ_CHUNK_BYTES = 8 * 1024

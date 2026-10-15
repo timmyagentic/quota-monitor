@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://quota-monitor.timmyagentic.com/">
+  <a href="https://quota-monitor.timmyagentic.si/">
     <img src="website/public/assets/app-icon.png" width="112" height="112" alt="Quota Monitor app icon">
   </a>
 
@@ -13,10 +13,10 @@
   </p>
 
   <p>
-    <a href="https://quota-monitor.timmyagentic.com/">Website</a> ·
-    <a href="https://quota-monitor.timmyagentic.com/download">Download</a> ·
+    <a href="https://quota-monitor.timmyagentic.si/">Website</a> ·
+    <a href="https://quota-monitor.timmyagentic.si/download">Download</a> ·
     <a href="https://github.com/timmyagentic/quota-monitor/releases/latest">Releases</a> ·
-    <a href="https://quota-monitor.timmyagentic.com/privacy">Privacy</a> ·
+    <a href="https://quota-monitor.timmyagentic.si/privacy">Privacy</a> ·
     English · <a href="README.zh-CN.md">简体中文</a>
   </p>
 
@@ -48,7 +48,7 @@ npx --yes quotamonitor@latest install
 
 Requires macOS 14 or later on Apple Silicon and Node.js 20.17 or later.
 
-<a href="https://quota-monitor.timmyagentic.com/">
+<a href="https://quota-monitor.timmyagentic.si/">
   <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor dashboard showing quota cards, token trends, and composition charts with synthetic data">
 </a>
 
@@ -135,7 +135,7 @@ Sparkle updater.
 
 ### DMG
 
-1. [Download the latest notarized DMG](https://quota-monitor.timmyagentic.com/download).
+1. [Download the latest notarized DMG](https://quota-monitor.timmyagentic.si/download).
 2. Open the DMG and drag **Quota Monitor** into **Applications**.
 3. Launch the app and choose Codex, Claude Code, or both during setup.
 
@@ -189,7 +189,7 @@ account details, quota values, usage history, file paths, a device ID, or any
 stable identifier.
 
 Read the complete bilingual
-[privacy policy](https://quota-monitor.timmyagentic.com/privacy) for retention,
+[privacy policy](https://quota-monitor.timmyagentic.si/privacy) for retention,
 aggregation, and Cloudflare network-boundary details.
 
 ## Build from source

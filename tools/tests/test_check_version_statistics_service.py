@@ -165,7 +165,7 @@ class RequestContractTests(unittest.TestCase):
         self.assertEqual(result, {"checks": 4, "status": "ok"})
         self.assertEqual(len(opener.calls), 4)
         expected = (
-            ("GET", "http://quota-monitor.timmyagentic.com/"),
+            ("GET", "http://quota-monitor.timmyagentic.si/"),
             ("GET", CHECKER.PRODUCTION_ORIGIN + "/api/release"),
             ("GET", CHECKER.PRODUCTION_ORIGIN + "/maintainer/versions"),
             ("POST", CHECKER.PRODUCTION_ORIGIN + "/api/v1/daily-active"),
@@ -258,7 +258,7 @@ class RequestContractTests(unittest.TestCase):
 
         self.assertEqual(
             CHECKER.PRODUCTION_ORIGIN,
-            "https://quota-monitor.timmyagentic.com",
+            "https://quota-monitor.timmyagentic.si",
         )
         self.assertNotIn("origin", inspect.signature(CHECKER.run_probe).parameters)
         parser = CHECKER._argument_parser(stderr=io.StringIO())
@@ -593,8 +593,8 @@ class RetryTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual([call[0].full_url for call in opener.calls[:2]], [
-            "http://quota-monitor.timmyagentic.com/",
-            "http://quota-monitor.timmyagentic.com/",
+            "http://quota-monitor.timmyagentic.si/",
+            "http://quota-monitor.timmyagentic.si/",
         ])
         self.assertEqual(sleeps, [0.5])
 

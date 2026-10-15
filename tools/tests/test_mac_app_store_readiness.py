@@ -126,7 +126,7 @@ class MacAppStoreReadinessTests(unittest.TestCase):
             "Generate Privacy Report",
             "Validate App",
             "merged privacy manifests from the app, Sparkle, and every SDK",
-            "https://quota-monitor.timmyagentic.com/privacy",
+            "https://quota-monitor.timmyagentic.si/privacy",
             "Privacy Policy URL",
             "Privacy Choices URL",
             "Account Holder, Admin, or App Manager",

@@ -51,7 +51,7 @@ as a manual fallback (see the bottom of this doc).
 ## Production version-statistics release precondition
 
 The opt-in app reporter is allowed to ship only after the matching Worker and
-D1 migration are live at `quota-monitor.timmyagentic.com`. Before creating a
+D1 migration are live at `quota-monitor.timmyagentic.si`. Before creating a
 release tag, confirm all of these production prerequisites:
 
 - `quota-monitor-site` is deployed from the intended `main` commit and its
@@ -61,7 +61,7 @@ release tag, confirm all of these production prerequisites:
   binding is configured.
 - The Worker itself redirects insecure GET/HEAD requests with an exact 301 to
   the same HTTPS host, path, and query. This is a versioned project contract;
-  do not depend on the shared `timmyagentic.com` zone's **Always Use HTTPS**
+  do not depend on the shared `timmyagentic.si` zone's **Always Use HTTPS**
   setting, because changing that zone-wide switch affects unrelated subdomains.
 - The public release endpoint, unauthenticated private dashboard boundary, and
   daily-active rejection contract all pass the credential-free probe below.

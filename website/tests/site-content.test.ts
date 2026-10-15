@@ -209,7 +209,7 @@ describe("public product content", () => {
     expect(config).not.toHaveProperty("durable_objects");
     expect(config.triggers).toEqual({ crons: ["15 * * * *"] });
     expect(config.routes).toContainEqual({
-      pattern: "quota-monitor.timmyagentic.com",
+      pattern: "quota-monitor.timmyagentic.si",
       custom_domain: true,
     });
     expect(config.secrets).toEqual({
@@ -361,7 +361,7 @@ describe("public product content", () => {
     ].map(readPublic);
     for (const url of files.join("\n").match(/https?:\/\/[^"'\s<]+/g) ?? []) {
       expect(
-        url.startsWith("https://quota-monitor.timmyagentic.com/") ||
+        url.startsWith("https://quota-monitor.timmyagentic.si/") ||
           url === "https://schema.org" ||
           /^https:\/\/github\.com\/timmyagentic\/quota-monitor(?:\/releases)?$/.test(
             url,
@@ -475,7 +475,7 @@ describe("public product content", () => {
     expect(html).toContain('id="software-application"');
     expect(html).not.toContain('"softwareVersion"');
     expect(html).toContain(
-      '"downloadUrl": "https://quota-monitor.timmyagentic.com/download"',
+      '"downloadUrl": "https://quota-monitor.timmyagentic.si/download"',
     );
   });
 
@@ -488,7 +488,7 @@ describe("public product content", () => {
       '<main id="main-content" class="privacy-policy-page">',
     );
     expect(html).toContain(
-      '<link rel="canonical" href="https://quota-monitor.timmyagentic.com/privacy">',
+      '<link rel="canonical" href="https://quota-monitor.timmyagentic.si/privacy">',
     );
     expect(html).toContain('href="/styles.css"');
     expect(html).toContain('type="module" src="/app.js"');
