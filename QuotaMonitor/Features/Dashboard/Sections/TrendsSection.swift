@@ -260,7 +260,7 @@ struct TrendsSection: View {
                                 legendRow(child, isChild: true)
                             }
                         }
-                        .padding(.leading, 6)
+                        .padding(.leading, 24)
                     } label: {
                         legendRow(row)
                     }
