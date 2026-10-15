@@ -32,10 +32,12 @@ window copy.
 
 #### Summary
 
+- Model usage totals are easier to scan, with speed modes tucked into expandable rows.
 - The website, downloads, and private beta updates now use quota-monitor.timmyagentic.si.
 
 ### Changed
 
+- **Model breakdown.** Trend legends start collapsed at model totals; expand a model to see its Standard, Fast, Ultrafast, or Flex breakdown with unchanged token totals and shares.
 - **New website address.** Move product links, private beta services, and anonymous version statistics to the personal website domain.
 
 ## [1.0.13] — 2026-10-15
