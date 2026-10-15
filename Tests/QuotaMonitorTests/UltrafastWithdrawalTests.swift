@@ -42,7 +42,7 @@ struct UltrafastWithdrawalTests {
                 let cursor = try #require(try Row.fetchOne(db, sql: "SELECT * FROM import_state"))
                 #expect(cursor["file_size"] as Int == -1)
                 #expect(cursor["byte_offset"] as Int == 0)
-                #expect(cursor["parser_checkpoint"] as Data? == nil)
+                #expect(cursor["parser_checkpoint"] as Data? == Data([0x01, 0x02, 0x03]))
                 #expect(try Int.fetchOne(db, sql: "SELECT count(*) FROM pricing_catalog WHERE model_id LIKE '%-ultrafast%'") == 4)
                 #expect(try !migrator.hasBeenSuperseded(db))
             }

@@ -216,6 +216,441 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database).byteOffset > 0)
     }
 
+    @Test("replay remains one fragment across a real v25 upgrade",
+          arguments: ["control", "replay", "same-name", "rename", "identical"])
+    func upgradeReplayRemainsOneFragment(mode: String) async throws {
+        let sample = #"{"timestamp":"2026-07-19T00:00:03.500Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"primary":{"used_percent":7.0,"window_minutes":300,"resets_at":1784448000},"plan_type":"pro"}}}"#
+        let lines = prefixLines() + [sample]
+        let harness = try makeHarness(lines: lines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        // Construct an actual v25 database before importing; no migration-ledger deletion.
+        try await harness.database.pool.erase()
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(harness.database.pool, upTo: "v25-withdraw-ultrafast-pricing")
+        _ = try await harness.engine.performScan()
+        let originalRows = try await usageRows(in: harness.database)
+        try await harness.database.pool.write { db in
+            for kind in ["live", "claude_oauth"] {
+                try db.execute(sql: """
+                    INSERT INTO rate_limit_samples
+                        (source_kind, source_session_id, source_path, bucket,
+                         sample_timestamp, resets_at, used_percent, remaining_percent)
+                    VALUES (?, ?, ?, 'primary', '2026-07-19T00:00:03.500Z',
+                            '2026-07-19T05:00:03.500Z', 19, 81)
+                    """, arguments: [kind, sessionId, harness.rollout.path])
+            }
+        }
+        let oldState = try await importState(at: harness.rollout.path, in: harness.database)
+        #expect(oldState.parserCheckpoint != nil)
+        #expect(oldState.byteOffset > 0)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+        let beforeLedger = try await harness.database.pool.read { db in
+            try String.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid")
+        }
+        #expect(beforeLedger.last == "v25-withdraw-ultrafast-pricing")
+        let directory = harness.rollout.deletingLastPathComponent()
+        let replay: URL
+        if mode == "same-name" {
+            let archive = harness.codexHome.appendingPathComponent("archived_sessions")
+            try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+            replay = archive.appendingPathComponent(harness.rollout.lastPathComponent)
+        } else {
+            replay = directory.appendingPathComponent(
+                "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        }
+        let tail = tokenLine(
+            timestamp: "2026-07-19T00:00:04.000Z",
+            total: usage(input: 160, cached: 25, output: 18, reasoning: 5),
+            last: usage(input: 60, cached: 5, output: 8, reasoning: 2))
+        if mode == "rename" {
+            try FileManager.default.moveItem(at: harness.rollout, to: replay)
+        } else {
+            try rolloutData(lines + (mode == "identical" ? [] : [tail])).write(to: replay)
+            try FileManager.default.removeItem(at: harness.rollout)
+        }
+        if mode != "control" {
+            try migrator.migrate(harness.database.pool, upTo: "v26-codex-ultrafast-restore")
+            #expect(try await importState(at: harness.rollout.path, in: harness.database).parserCheckpoint == oldState.parserCheckpoint)
+            try migrator.migrate(harness.database.pool)
+        }
+        let afterState = try await importState(at: harness.rollout.path, in: harness.database)
+        #expect(afterState.parserCheckpoint == oldState.parserCheckpoint)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110])
+        let report = try await harness.engine.performScan()
+        #expect(report.errors.isEmpty)
+        let rows = try await usageRows(in: harness.database)
+        let repeated = try await harness.engine.performScan()
+        #expect(repeated.importedEvents == 0)
+        #expect(try await usageRows(in: harness.database) == rows)
+        #expect(rows.map(\.totalTokens) == ((mode == "identical" || mode == "rename") ? [110] : [110, 68]))
+        let shortReplay = mode == "identical" || mode == "rename"
+        #expect(rows.map(\.inputTokens) == (shortReplay ? [100] : [100, 60]))
+        #expect(rows.map(\.cachedInputTokens) == (shortReplay ? [20] : [20, 5]))
+        #expect(rows.map(\.outputTokens) == (shortReplay ? [10] : [10, 8]))
+        #expect(rows.map(\.reasoningOutputTokens) == (shortReplay ? [3] : [3, 2]))
+        #expect(rows.first?.valueUsd == originalRows.first?.valueUsd)
+        #expect(rows.allSatisfy { $0.valueUsd > 0 })
+        #expect(try await usageSourcePaths(in: harness.database) == [replay.path])
+        try await harness.database.pool.read { db throws -> Void in
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM rate_limit_samples WHERE source_kind='jsonl'") == 1)
+            #expect(try String.fetchOne(db, sql: "SELECT source_path FROM rate_limit_samples WHERE source_kind='jsonl'") == replay.path)
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM rate_limit_samples WHERE source_kind IN ('live','claude_oauth') AND used_percent=19 AND remaining_percent=81") == 2)
+            #expect(try Int64.fetchOne(db, sql: "SELECT SUM(total_tokens) FROM usage_events") == (shortReplay ? 110 : 178))
+        }
+        let reopened = try DatabaseManager(url: harness.root.appendingPathComponent("quotamonitor.sqlite"))
+        let restarted = ImportEngine(database: reopened, codexHome: harness.codexHome)
+        let afterOpen = try await restarted.performScan()
+        #expect(afterOpen.errors.isEmpty)
+        #expect(try await usageRows(in: reopened).map(\.totalTokens) == rows.map(\.totalTokens))
+        #expect(try await restarted.performScan().importedEvents == 0)
+        let extra = tokenLine(
+            timestamp: "2026-07-19T00:00:05.000Z",
+            total: usage(input: 200, cached: 30, output: 22, reasoning: 6),
+            last: usage(input: 40, cached: 5, output: 4, reasoning: 1))
+        let handle = try FileHandle(forWritingTo: replay)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: rolloutData([extra]))
+        try handle.close()
+        let appended = try await restarted.performScan()
+        #expect(appended.incrementalFiles == 1)
+        #expect(appended.importedEvents == 1)
+        let appendedRows = try await usageRows(in: reopened)
+        #expect(appendedRows.dropLast().map(\.totalTokens) == rows.map(\.totalTokens))
+        #expect(appendedRows.last?.totalTokens == 44)
+        #expect(try await usageSourcePaths(in: reopened) == [replay.path])
+
+    }
+
+    @Test("reread preserves divergent history even with a shared header or stale identity",
+          arguments: ["present", "missing", "same-inode-rewrite"], ["tail", "middle"])
+    func upgradeDoesNotMergeDivergentPrefixes(source: String, divergence: String) async throws {
+        let padding = #"{"type":"review_fixture_padding","payload":"\#(String(repeating: "x", count: 5000))"}"#
+        let shared = Array(prefixLines().prefix(3)) + [padding]
+        let oldSample = #"{"timestamp":"2026-07-19T00:00:03.500Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"primary":{"used_percent":10.0,"window_minutes":300,"resets_at":1784448000},"plan_type":"pro"}}}"#
+        let end = divergence == "middle" ? [padding] : []
+        let original = shared + [prefixLines()[3], oldSample] + end
+        let harness = try makeHarness(lines: original)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.database.pool.erase()
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(harness.database.pool, upTo: "v25-withdraw-ultrafast-pricing")
+        _ = try await harness.engine.performScan()
+        let before = try await usageRows(in: harness.database)
+        let different = harness.rollout.deletingLastPathComponent().appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        let divergent = rolloutData(shared + [tokenLine(
+            timestamp: "2026-07-19T00:00:03.000Z",
+            total: usage(input: 900, cached: 20, output: 90, reasoning: 3),
+            last: usage(input: 900, cached: 20, output: 90, reasoning: 3)),
+            oldSample.replacingOccurrences(of: "10.0", with: "30.0")] + end)
+        let oldBytes = try Data(contentsOf: harness.rollout)
+        if source == "same-inode-rewrite" {
+            let identity = try sourceIdentity(of: harness.rollout)
+            try FileManager.default.moveItem(at: harness.rollout, to: different)
+            try overwriteInPlace(divergent, at: different)
+            #expect(try sourceIdentity(of: different) == identity)
+        } else {
+            try divergent.write(to: different)
+            if source == "missing" { try FileManager.default.removeItem(at: harness.rollout) }
+        }
+        #expect(oldBytes.count == divergent.count)
+        #expect(oldBytes.prefix(4096) == divergent.prefix(4096))
+        #expect(oldBytes != divergent)
+        if divergence == "middle" {
+            #expect(oldBytes.count > 8192)
+            #expect(oldBytes.suffix(4096) == divergent.suffix(4096))
+        }
+        try migrator.migrate(harness.database.pool)
+        let report = try await harness.engine.performScan()
+        #expect(report.errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 990])
+        #expect(try await usageCountsBySource(in: harness.database).count == 2)
+        if source != "present" {
+            #expect(try await usageRows(in: harness.database).first == before.first)
+        }
+        try await harness.database.pool.read { db throws -> Void in
+            #expect(try Int64.fetchOne(db, sql: "SELECT SUM(total_tokens) FROM usage_events") == 1100)
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM rate_limit_samples WHERE source_kind='jsonl'") == 2)
+            #expect(try Double.fetchAll(db, sql: "SELECT used_percent FROM rate_limit_samples ORDER BY used_percent") == [10, 30])
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(DISTINCT source_path) FROM rate_limit_samples") == 2)
+        }
+        // Exercise cleanup again after one or both states acquired fresh cursors.
+        try append(rolloutData([padding]), to: different)
+        #expect(try await harness.engine.performScan().errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 990])
+        #expect(try await harness.engine.performScan().importedEvents == 0)
+    }
+
+    @Test("long missing-source replay is preserved when window hashes leave a gap",
+          arguments: [4096, 4097, 8192, 8193])
+    func upgradeOnlyDeletesFullyProvenMissingPrefixes(committedLength: Int) async throws {
+        let emptyPadding = #"{"type":"review_fixture_padding","payload":""}"#
+        let paddingLength = committedLength - rolloutData(prefixLines() + [emptyPadding]).count
+        let padding = #"{"type":"review_fixture_padding","payload":"\#(String(repeating: "x", count: paddingLength))"}"#
+        let lines = prefixLines() + [padding]
+        #expect(rolloutData(lines).count == committedLength)
+        let harness = try makeHarness(lines: lines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.database.pool.erase()
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(harness.database.pool, upTo: "v25-withdraw-ultrafast-pricing")
+        _ = try await harness.engine.performScan()
+        let replay = harness.rollout.deletingLastPathComponent().appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        try rolloutData(lines).write(to: replay)
+        try FileManager.default.removeItem(at: harness.rollout)
+        try migrator.migrate(harness.database.pool)
+        #expect(try await harness.engine.performScan().errors.isEmpty)
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) ==
+            (committedLength <= 8192 ? [110] : [110, 110]))
+        #expect(try await harness.engine.performScan().importedEvents == 0)
+    }
+
+    @Test("incomplete and ambiguous replay never clears multiple recovery aliases")
+    func incompleteReplayKeepsAmbiguousRecoveryAliases() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        _ = try await harness.engine.performScan()
+        let state = try await importState(at: harness.rollout.path, in: harness.database)
+        let aliasPath = harness.rollout.deletingLastPathComponent().appendingPathComponent("missing-alias.jsonl").path
+        try await harness.database.pool.write { db in
+            var alias = state
+            alias.sourcePath = aliasPath
+            alias.byteOffset = 0
+            alias.fileSize = -1
+            alias.fileMtimeMs = -1
+            try alias.insert(db)
+            try db.execute(sql: """
+                INSERT INTO usage_events(session_id,timestamp,model_id,input_tokens,output_tokens,total_tokens,provider,source_path)
+                SELECT session_id,timestamp,model_id,input_tokens,output_tokens,total_tokens,provider,?
+                FROM usage_events
+                """, arguments: [aliasPath])
+            try db.execute(sql: "UPDATE import_state SET byte_offset=0,file_size=-1,file_mtime_ms=-1")
+            for path in [state.sourcePath, aliasPath] {
+                try db.execute(sql: """
+                    INSERT INTO rate_limit_samples(source_kind,source_session_id,source_path,bucket,
+                        sample_timestamp,resets_at,used_percent,remaining_percent)
+                    VALUES ('jsonl', ?, ?, 'primary', '2026-07-19T00:00:03Z', '2026-07-19T05:00:03Z', 10, 90)
+                    """, arguments: [sessionId, path])
+            }
+        }
+        let oldIDs = Set(try await usageRows(in: harness.database).map(\.id))
+        let replay = harness.rollout.deletingLastPathComponent().appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        try (rolloutData(prefixLines()) + Data("{unfinished".utf8)).write(to: replay)
+        try FileManager.default.removeItem(at: harness.rollout)
+        #expect(try await harness.engine.performScan().errors.isEmpty)
+        #expect(oldIDs.isSubset(of: Set(try await usageRows(in: harness.database).map(\.id))))
+        let tail = tokenLine(timestamp: "2026-07-19T00:00:04.000Z",
+            total: usage(input: 160, cached: 25, output: 18, reasoning: 5),
+            last: usage(input: 60, cached: 5, output: 8, reasoning: 2))
+        try overwriteInPlace(rolloutData(prefixLines() + [tail]), at: replay)
+        #expect(try await harness.engine.performScan().errors.isEmpty)
+        #expect(oldIDs.isSubset(of: Set(try await usageRows(in: harness.database).map(\.id))))
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 110, 110, 68])
+        try await harness.database.pool.read { db throws -> Void in
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM rate_limit_samples") == 2)
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM import_state WHERE byte_offset=0") == 2)
+        }
+        let reopened = try DatabaseManager(url: harness.root.appendingPathComponent("quotamonitor.sqlite"))
+        let restarted = ImportEngine(database: reopened, codexHome: harness.codexHome)
+        #expect(try await restarted.performScan().importedEvents == 0)
+        #expect(oldIDs.isSubset(of: Set(try await usageRows(in: reopened).map(\.id))))
+    }
+
+    @Test("recovery validates the predecessor set before any transactional deletion",
+          arguments: ["add-alias", "remove-alias", "remove-expected"], [false, true])
+    func recoveryPredecessorSetChangesBeforeCommit(change: String, incomplete: Bool) async throws {
+        let sample = #"{"timestamp":"2026-07-19T00:00:03.500Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"primary":{"used_percent":10.0,"window_minutes":300,"resets_at":1784448000},"plan_type":"pro"}}}"#
+        let lines = prefixLines() + [sample]
+        let harness = try makeHarness(lines: lines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        _ = try await harness.engine.performScan()
+        let original = try await importState(at: harness.rollout.path, in: harness.database)
+        let originalIDs = Set(try await usageRows(in: harness.database).map(\.id))
+        var pending = original
+        pending.byteOffset = 0
+        pending.fileSize = -1
+        pending.fileMtimeMs = -1
+        let recoveryState = pending
+        let aliasPath = harness.rollout.deletingLastPathComponent().appendingPathComponent("missing-C.jsonl").path
+        let database = harness.database
+        let insertAlias: @Sendable (Database) throws -> Void = { db in
+            var alias = recoveryState
+            alias.sourcePath = aliasPath
+            try alias.insert(db)
+            try db.execute(sql: """
+                INSERT INTO usage_events(session_id,timestamp,model_id,input_tokens,cached_input_tokens,
+                    output_tokens,reasoning_output_tokens,total_tokens,value_usd,provider,
+                    cache_creation_tokens,model_inferred,codex_turn_id,codex_service_tier_preference,source_path)
+                SELECT session_id,timestamp,model_id,input_tokens,cached_input_tokens,
+                    output_tokens,reasoning_output_tokens,total_tokens,value_usd,provider,
+                    cache_creation_tokens,model_inferred,codex_turn_id,codex_service_tier_preference,?
+                FROM usage_events WHERE source_path=?
+                """, arguments: [aliasPath, recoveryState.sourcePath])
+            try db.execute(sql: """
+                INSERT INTO rate_limit_samples(source_kind,source_session_id,source_path,bucket,
+                    sample_timestamp,resets_at,used_percent,remaining_percent)
+                SELECT source_kind,source_session_id,?,bucket,sample_timestamp,resets_at,used_percent,remaining_percent
+                FROM rate_limit_samples WHERE source_path=?
+                """, arguments: [aliasPath, recoveryState.sourcePath])
+        }
+        try await database.pool.write { db in
+            try recoveryState.save(db)
+            if change == "remove-alias" { try insertAlias(db) }
+        }
+        let replay = harness.rollout.deletingLastPathComponent().appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        let tail = tokenLine(timestamp: "2026-07-19T00:00:04.000Z",
+            total: usage(input: 160, cached: 25, output: 18, reasoning: 5),
+            last: usage(input: 60, cached: 5, output: 8, reasoning: 2))
+        try (incomplete ? rolloutData(lines) + Data("{unfinished".utf8) : rolloutData(lines + [tail])).write(to: replay)
+        try FileManager.default.removeItem(at: harness.rollout)
+        let report = try await harness.engine.performScan { progress in
+            guard progress.completedFiles == 0 else { return }
+            do {
+                try await database.pool.write { db in
+                    if change == "add-alias" {
+                        // A itself is unchanged: the old single-record CAS passes.
+                        try insertAlias(db)
+                    } else if change == "remove-alias" {
+                        try ImportStateRecord.deleteOne(db, key: aliasPath)
+                        try db.execute(sql: "DELETE FROM usage_events WHERE source_path=?", arguments: [aliasPath])
+                        try db.execute(sql: "DELETE FROM rate_limit_samples WHERE source_path=?", arguments: [aliasPath])
+                    } else {
+                        try ImportStateRecord.deleteOne(db, key: recoveryState.sourcePath)
+                    }
+                }
+            } catch { Issue.record(error) }
+        }
+        let rows = try await usageRows(in: database)
+        print("PREDECESSOR_RACE change=\(change) incomplete=\(incomplete) tokens=\(rows.map(\.totalTokens)) errors=\(report.errors.count)")
+        if !incomplete && change == "remove-alias" {
+            #expect(report.errors.isEmpty)
+            #expect(rows.map(\.totalTokens) == [110, 68])
+            #expect(try await usageSourcePaths(in: database) == [replay.path])
+        } else {
+            #expect(originalIDs.isSubset(of: Set(rows.map(\.id))))
+            if !incomplete {
+                #expect(report.errors.count == 1)
+                #expect(try await optionalImportState(at: replay.path, in: database) == nil)
+                #expect(rows.map(\.totalTokens) == (change == "add-alias" ? [110, 110] : [110]))
+                if change == "add-alias" {
+                    #expect(try await importState(at: recoveryState.sourcePath, in: database) == recoveryState)
+                    #expect(try await importState(at: aliasPath, in: database).byteOffset == 0)
+                }
+            }
+        }
+        try await database.pool.read { db throws -> Void in
+            let originalSamples = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM rate_limit_samples WHERE source_path=?", arguments: [recoveryState.sourcePath])
+            #expect(originalSamples == ((!incomplete && change == "remove-alias") ? 0 : 1))
+            let aliasSamples = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM rate_limit_samples WHERE source_path=?", arguments: [aliasPath])
+            #expect(aliasSamples == (change == "add-alias" ? 1 : 0))
+        }
+    }
+
+    @Test("v27 retains unprovable old-v26 history", arguments: [true, false])
+    func previouslyClearedProvenanceIsNotGuessed(alreadyScanned: Bool) async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.database.pool.erase()
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(harness.database.pool, upTo: "v25-withdraw-ultrafast-pricing")
+        _ = try await harness.engine.performScan()
+        try migrator.migrate(harness.database.pool, upTo: "v26-codex-ultrafast-restore")
+        try await harness.database.pool.write { db in
+            // Exact destructive statement in the already-shipped v26, after
+            // its real ledger entry. v27 cannot invent the lost provenance.
+            try db.execute(sql: """
+                UPDATE import_state SET file_size=-1, file_mtime_ms=-1,
+                    byte_offset=0, parser_checkpoint=NULL
+                WHERE session_id IN (SELECT session_id FROM sessions WHERE provider='codex')
+                """)
+        }
+        let replay = harness.rollout.deletingLastPathComponent().appendingPathComponent(
+            "rollout-2026-07-20T00-00-00-\(sessionId)_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jsonl")
+        try rolloutData(prefixLines()).write(to: replay)
+        try FileManager.default.removeItem(at: harness.rollout)
+        if alreadyScanned { _ = try await harness.engine.performScan() }
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) ==
+            (alreadyScanned ? [110, 110] : [110]))
+        let originalRow = try await usageRows(in: harness.database).first
+        try migrator.migrate(harness.database.pool)
+        let missing = try await importState(at: harness.rollout.path, in: harness.database)
+        #expect(missing.parserCheckpoint == nil)
+        if alreadyScanned {
+            let retained = try await importState(at: replay.path, in: harness.database)
+            #expect(retained.parserCheckpoint != nil)
+            #expect(retained.byteOffset == 0)
+        }
+        _ = try await harness.engine.performScan()
+        // Equal tokens/timestamps/session/turns are deliberately NOT proof.
+        #expect(try await usageRows(in: harness.database).map(\.totalTokens) == [110, 110])
+        #expect(try await usageRows(in: harness.database).first == originalRow)
+        let reopened = try DatabaseManager(url: harness.root.appendingPathComponent("quotamonitor.sqlite"))
+        let restarted = ImportEngine(database: reopened, codexHome: harness.codexHome)
+        #expect(try await restarted.performScan().importedEvents == 0)
+        #expect(try await usageRows(in: reopened).map(\.totalTokens) == [110, 110])
+    }
+
+    @Test("upgrade preserves checkpoint bytes and retries complete sources",
+          arguments: ["v1", "v2", "corrupt", "nil"], ["complete", "missing", "incomplete"])
+    func upgradeCheckpointFallbackAndRetry(checkpointKind: String, source: String) async throws {
+        let lines = prefixLines()
+        let harness = try makeHarness(lines: lines)
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        try await harness.database.pool.erase()
+        var migrator = DatabaseMigrator()
+        Migrations.register(in: &migrator)
+        try migrator.migrate(harness.database.pool, upTo: "v25-withdraw-ultrafast-pricing")
+        _ = try await harness.engine.performScan()
+        let before = try await usageRows(in: harness.database)
+        let state = try await importState(at: harness.rollout.path, in: harness.database)
+        let saved: Data?
+        if checkpointKind == "nil" {
+            saved = nil
+        } else if checkpointKind == "corrupt" {
+            saved = Data([0x01, 0x02, 0x03])
+        } else {
+            let checkpointData = try #require(state.parserCheckpoint)
+            var json = try #require(JSONSerialization.jsonObject(with: checkpointData) as? [String: Any])
+            json["version"] = checkpointKind == "v1" ? 1 : 2
+            saved = try JSONSerialization.data(withJSONObject: json)
+        }
+        try await harness.database.pool.write { db in
+            try db.execute(sql: "UPDATE import_state SET parser_checkpoint=?", arguments: [saved])
+        }
+        if source == "missing" { try FileManager.default.removeItem(at: harness.rollout) }
+        if source == "incomplete" { try append(Data("{unfinished".utf8), to: harness.rollout) }
+        try migrator.migrate(harness.database.pool)
+        let pending = try await importState(at: harness.rollout.path, in: harness.database)
+        #expect(pending.parserCheckpoint == saved)
+        #expect(pending.byteOffset == 0)
+        let report = try await harness.engine.performScan()
+        #expect(report.errors.isEmpty)
+        #expect(report.incrementalFiles == 0)
+        if source != "complete" {
+            #expect(report.importedEvents == 0)
+            #expect(try await usageRows(in: harness.database) == before)
+            #expect(try await importState(at: harness.rollout.path, in: harness.database) == pending)
+            try rolloutData(lines).write(to: harness.rollout)
+            #expect(try await harness.engine.performScan().importedEvents == 1)
+        } else {
+            #expect(report.importedEvents == 1)
+        }
+        let recovered = try await usageRows(in: harness.database)
+        #expect(recovered.map(\.totalTokens) == [110])
+        #expect(recovered.map(\.valueUsd) == before.map(\.valueUsd))
+        let rebuilt = try await importState(at: harness.rollout.path, in: harness.database)
+        #expect(rebuilt.byteOffset > 0)
+        #expect(try CodexRolloutCheckpoint.decoded(from: #require(rebuilt.parserCheckpoint)).version == 2)
+        #expect(try await harness.engine.performScan().importedEvents == 0)
+    }
+
     @Test("same session continuation rollouts preserve every non-overlapping fragment")
     func sameSessionContinuationRolloutsPreserveAllFragments() async throws {
         let harness = try makeHarness(lines: prefixLines())

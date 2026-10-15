@@ -32,11 +32,16 @@ window copy.
 
 #### Summary
 
+- Upgrades check Codex log identity more carefully to protect usage history.
 - The website makes live quota, usage trends, and session details easier to explore on desktop and mobile.
 
 ### Changed
 
 - **Website refresh.** A clearer bilingual homepage adds switchable real-app views, a streamlined installation guide, and accessible mobile navigation while preserving the download and privacy services.
+
+### Fixed
+
+- **Codex upgrade history.** Preserve source evidence and verify committed prefixes before replacing renamed logs; ambiguous history is retained rather than guessed away.
 
 ## [1.0.12] — 2026-10-12
 

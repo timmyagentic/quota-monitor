@@ -112,8 +112,10 @@ struct ImportStateRecord: Codable, FetchableRecord, PersistableRecord, Equatable
     /// (back-compatible with v4 rows) means "next scan starts from
     /// the beginning of the file." Bumped on every successful persist.
     var byteOffset: Int64
-    /// Versioned Codex reducer state. Nil means the next changed Codex file
-    /// must take the full-parse path before it can resume incrementally.
+    /// Versioned Codex reducer state and source identity/prefix evidence.
+    /// A zero byteOffset forces a full parse even when this is retained for
+    /// source relocation. Nil also requires a full parse, but loses relocation
+    /// evidence for missing, differently named sources.
     var parserCheckpoint: Data? = nil
     /// Replaces the former Codex-only `byte_offset = -1` metadata probe
     /// sentinel so byte offsets are always valid, non-negative cursors.
