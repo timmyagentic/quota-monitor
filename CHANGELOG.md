@@ -32,6 +32,7 @@ window copy.
 
 #### Summary
 
+- Preserve the legacy update hostname so existing private Beta clients can migrate to the new service domain.
 - Model usage totals are easier to scan, with speed modes tucked into expandable rows.
 - The website, downloads, and private beta updates now use quota-monitor.timmyagentic.si.
 

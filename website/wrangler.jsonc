@@ -96,6 +96,11 @@
     {
       "pattern": "quota-monitor.timmyagentic.si",
       "custom_domain": true
+    },
+    // Compatibility for installed clients; see docs/legacy-update-domain.md.
+    {
+      "pattern": "quota-monitor.timmyagentic.com",
+      "custom_domain": true
     }
   ],
   "observability": {
