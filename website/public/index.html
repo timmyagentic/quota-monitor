@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#f8f9f6">
   <title data-i18n="metaTitle">Quota Monitor — Know your quota. Keep your flow.</title>
   <meta name="description" content="Keep Codex and Claude Code quota percentages visible in the macOS menu bar, then open detailed reset times, token trends, cost estimates, and sessions." data-i18n-content="metaDescription">
   <meta property="og:type" content="website">
@@ -27,15 +27,16 @@
     "downloadUrl": "https://quota-monitor.timmyagentic.si/download"
   }
   </script>
+<link rel="stylesheet" href="/brand/brand.css">
 </head>
-<body data-page="home">
+<body data-page="home" class="brand-site brand-quota">
 <a class="skip-link" href="#main-content" data-i18n="skipLink">Skip to main content</a>
 <header class="site-header">
 <div class="container header-inner">
-<a class="brand-lockup" href="/" aria-label="Quota Monitor home" data-i18n-aria-label="homeLinkLabel">
+<div class="studio-identity"><a class="studio-home" href="https://timmyagentic.si/">timmyagentic</a><a class="brand-lockup" href="/" aria-label="Quota Monitor home" data-i18n-aria-label="homeLinkLabel">
 <img class="brand-icon" src="/assets/app-icon.png" width="48" height="48" alt="Quota Monitor app icon" data-i18n-alt="appIconAlt">
 <span class="brand-name">QuotaMonitor</span>
-</a>
+</a></div>
 <nav class="site-navigation" id="primary-navigation" aria-label="Primary navigation" data-i18n-aria-label="primaryNavigationLabel">
 <a href="#features" data-i18n="featuresNav">Features</a>
 <a href="#installation" data-i18n="installNav">Get started</a>
@@ -258,5 +259,6 @@ We’ll keep an eye on your quota.</h2>
 </footer>
 <script type="module" src="/app.js">
 </script>
+<div class="studio-signoff"><a href="https://timmyagentic.si/">timmyagentic</a><p>Built with AI.<br>Shaped by everyday use.</p></div>
 </body>
 </html>

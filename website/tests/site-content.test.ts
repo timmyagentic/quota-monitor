@@ -350,7 +350,7 @@ describe("public product content", () => {
     );
   });
 
-  it("keeps downloads on the product domain and external links on the official repository", () => {
+  it("keeps downloads on the product domain and external links on official product and brand sites", () => {
     const files = [
       "index.html",
       "privacy.html",
@@ -362,6 +362,7 @@ describe("public product content", () => {
     for (const url of files.join("\n").match(/https?:\/\/[^"'\s<]+/g) ?? []) {
       expect(
         url.startsWith("https://quota-monitor.timmyagentic.si/") ||
+          url === "https://timmyagentic.si/" ||
           url === "https://schema.org" ||
           /^https:\/\/github\.com\/timmyagentic\/quota-monitor(?:\/releases)?$/.test(
             url,
@@ -378,7 +379,7 @@ describe("public product content", () => {
       [...readPublic("404.html").matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)].map(
         (match) => match[1],
       ),
-    ).toEqual(["/"]);
+    ).toEqual(["/", "https://timmyagentic.si/"]);
   });
 
   it("has complete English and Simplified Chinese localization coverage", async () => {
@@ -483,7 +484,7 @@ describe("public product content", () => {
     const html = readPublic("privacy.html");
     const css = readPublic("styles.css");
 
-    expect(html).toContain('<body data-page="privacy">');
+    expect(html).toMatch(/<body\b[^>]*\bdata-page="privacy"/);
     expect(html).toContain(
       '<main id="main-content" class="privacy-policy-page">',
     );
