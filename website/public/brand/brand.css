@@ -1,0 +1,244 @@
+@font-face { font-family: "Studio Latin"; font-style: normal; font-weight: 400; font-display: swap; src: url("/brand/fonts/latin-400.ttf") format("truetype"); }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 400; font-display: swap; src: url("/brand/fonts/chinese-400-0.ttf") format("truetype"); unicode-range: U+3000,U+3001,U+3002,U+300C,U+300D,U+4E00,U+4E09,U+4E0A,U+4E0B,U+4E0D,U+4E0E,U+4E13,U+4E14,U+4E1A,U+4E22,U+4E24,U+4E2A,U+4E2D,U+4E34,U+4E3A,U+4E3B,U+4E45,U+4E48,U+4E49,U+4E4B,U+4E5F,U+4E60,U+4E66,U+4E86,U+4E88,U+4E8B,U+4E8C,U+4E8E,U+4E91,U+4E92,U+4E9B,U+4EA4,U+4EA7,U+4EAB,U+4EAE,U+4EBA,U+4EC0,U+4EC5,U+4ECA,U+4ECB,U+4ECD,U+4ECE,U+4ED3,U+4ED6,U+4ED8,U+4EE3,U+4EE4,U+4EE5,U+4EEA,U+4EEC,U+4EF6,U+4EF7,U+4EFB,U+4EFD,U+4F11,U+4F18,U+4F1A,U+4F20,U+4F30,U+4F3C,U+4F46,U+4F4D,U+4F4E,U+4F4F,U+4F53,U+4F55,U+4F59,U+4F5C,U+4F60,U+4F7F,U+4F8B,U+4F9B,U+4F9D,U+4FA7,U+4FDD,U+4FE1,U+4FEE,U+5012,U+5019,U+503C,U+504F,U+505A,U+5065,U+50CF,U+5141,U+5143,U+5145,U+5146,U+5148,U+514B,U+514D,U+515C,U+5165,U+5168,U+516C,U+516D,U+5171,U+5173,U+5176,U+5177,U+517C,U+5185,U+518C,U+518D,U+5199,U+51B3,U+51B5,U+51BB,U+51C6,U+51CF,U+51D1,U+51E0,U+51ED,U+51FA,U+51FB,U+5206,U+5207,U+5212,U+5219,U+521B,U+5220,U+5224,U+5229,U+522B,U+5230,U+5236,U+5237,U+523A,U+523B,U+524D,U+5269,U+526A,U+529B,U+529E,U+529F,U+52A0,U+52A1,U+52A8,U+52A9,U+52BF,U+52FF,U+5305,U+5316,U+5339,U+533A,U+533F,U+5343,U+5347,U+534F,U+5351,U+5355,U+5357,U+5360,U+5361,U+5373,U+5386,U+538B,U+539F,U+53BB,U+53C2,U+53CA,U+53CC,U+53CD,U+53D1,U+53D6,U+53D7,U+53D8,U+53E3,U+53E5,U+53E6,U+53EA,U+53EF,U+53F0,U+53F2,U+53F3,U+53F7,U+5404,U+5408,U+540C,U+540D,U+540E,U+5411,U+5417,U+5426,U+542B,U+542F,U+5448,U+544A,U+5458,U+5468,U+547D,U+548C,U+54C1,U+54C8,U+54CD,U+54EA,U+5546,U+559C,U+5634,U+5668,U+56DE,U+56E0,U+56F4,U+56FA,U+56FE,U+5728,U+5730,U+573A,U+573E,U+5740,U+5747,U+575A,U+5783,U+578B,U+57DF,U+57FA,U+586B,U+5883,U+589E,U+58F0,U+5904,U+5907,U+590D,U+5916,U+591A,U+5927,U+5929,U+5931,U+5934,U+5939,U+5948,U+594F,U+5951,U+5957,U+597D,U+5982,U+59CB,U+59D3,U+5B50,U+5B57,U+5B58,U+5B83,U+5B88,U+5B89,U+5B8C,U+5B98,U+5B9A,U+5B9E,U+5BA1,U+5BA2,U+5BB9,U+5BC6,U+5BDF,U+5BF8,U+5BF9,U+5BFC,U+5C01,U+5C04,U+5C06,U+5C0A,U+5C0F,U+5C11,U+5C1A,U+5C1D,U+5C31,U+5C3A,U+5C3D,U+5C40,U+5C42,U+5C4F,U+5C55,U+5C5E,U+5DE5,U+5DE7,U+5DEE,U+5DF1,U+5DF2,U+5E03,U+5E0C,U+5E26,U+5E27,U+5E2E,U+5E38,U+5E73,U+5E74,U+5E76,U+5E7F,U+5E8F,U+5E93,U+5E94,U+5E95,U+5E97,U+5EA6,U+5EB7,U+5EFA,U+5F00,U+5F02,U+5F04,U+5F0F,U+5F15,U+5F20,U+5F39,U+5F52,U+5F53,U+5F55,U+5F71,U+5F80,U+5F84,U+5F85,U+5F88,U+5F97,U+5FAA,U+5FC3,U+5FC5,U+5FD7,U+5FEB,U+6001,U+600E,U+601D,U+6027,U+602A,U+603B,U+6062,U+606F,U+6070,U+6076,U+6089,U+60C5,U+60EF,U+60F3,U+610F,U+613F,U+61C2,U+6210,U+6211,U+6216,U+622A,U+6233,U+6237,U+6240,U+6247,U+624B,U+624D,U+6253,U+6267,U+6279,U+627E,U+627F,U+628A,U+6293,U+62A4,U+62A5,U+62AB,U+62C5,U+62D2,U+62D6,U+62E5,U+62E9,U+62FF,U+6301,U+6307,U+6309,U+6349,U+6355,U+6362,U+636E,U+6388,U+638C,U+6392,U+63A2,U+63A5,U+63A7,U+63A8,U+63A9,U+63CF,U+63D0,U+63E1,U+641C,U+641E,U+642D,U+643A,U+64A4,U+64CD,U+652F,U+6536,U+6539,U+653E,U+653F,U+6545,U+6548,U+6570,U+6574,U+6587,U+6599,U+65AD; }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 400; font-display: swap; src: url("/brand/fonts/chinese-400-1.ttf") format("truetype"); unicode-range: U+65B0,U+65B9,U+65BD,U+65CB,U+65E0,U+65E5,U+65E7,U+65F6,U+660E,U+6620,U+662F,U+663E,U+666F,U+6682,U+66B4,U+66F4,U+66FF,U+6700,U+6708,U+6709,U+670D,U+671B,U+671F,U+672A,U+672C,U+673A,U+6743,U+6750,U+675F,U+6761,U+6765,U+677F,U+6784,U+6790,U+679C,U+67C4,U+67E5,U+6807,U+680F,U+6821,U+6837,U+6838,U+683C,U+684C,U+6863,U+6865,U+68C0,U+695A,U+6982,U+6A21,U+6B21,U+6B22,U+6B3E,U+6B62,U+6B63,U+6B64,U+6B65,U+6B8B,U+6BB5,U+6BCF,U+6BD4,U+6C14,U+6C42,U+6C47,U+6CA1,U+6CBF,U+6CD5,U+6CE8,U+6D3B,U+6D41,U+6D4B,U+6D4F,U+6D88,U+6DB5,U+6DF1,U+6DF7,U+6DFB,U+6E05,U+6E20,U+6E29,U+6E38,U+6E90,U+6EAF,U+6EDA,U+6EE1,U+6F14,U+70B9,U+70E6,U+70ED,U+7126,U+7136,U+7167,U+7194,U+719F,U+7247,U+7248,U+724C,U+7269,U+7279,U+72B6,U+72EC,U+731B,U+731C,U+732B,U+7387,U+73AF,U+73B0,U+7406,U+751F,U+7528,U+7531,U+7533,U+7535,U+753B,U+754C,U+7559,U+7565,U+7591,U+767B,U+767D,U+767E,U+7684,U+76D1,U+76D6,U+76D8,U+76EE,U+76F4,U+76F8,U+7701,U+770B,U+771F,U+7720,U+773C,U+7740,U+7761,U+77A5,U+77AC,U+77E5,U+77ED,U+7801,U+7840,U+786C,U+786E,U+78C1,U+78E8,U+793A,U+793C,U+7981,U+79BB,U+79C1,U+79CD,U+79D2,U+79F0,U+79FB,U+7A0B,U+7A0D,U+7A33,U+7A7A,U+7A97,U+7ACB,U+7AD9,U+7AEF,U+7B26,U+7B2C,U+7B49,U+7B54,U+7B56,U+7B5B,U+7B7E,U+7B80,U+7B97,U+7BA1,U+7BB1,U+7C7B,U+7C98,U+7CBE,U+7CFB,U+7D20,U+7D22,U+7D27,U+7D2F,U+7EA0,U+7EA6,U+7EA7,U+7EBF,U+7EC4,U+7EC6,U+7EC8,U+7ECD,U+7ECF,U+7ED1,U+7ED3,U+7ED5,U+7ED8,U+7ED9,U+7EDC,U+7EDD,U+7EDF,U+7EE7,U+7EED,U+7EF4,U+7F00,U+7F13,U+7F16,U+7F18,U+7F3A,U+7F51,U+7F6E,U+7F72,U+7FA4,U+8003,U+8005,U+800C,U+8017,U+804A,U+804C,U+8054,U+805A,U+80CC,U+80FD,U+8111,U+811A,U+81EA,U+81F3,U+81F4,U+821E,U+822A,U+8282,U+82F1,U+8303,U+83B7,U+83DC,U+85CF,U+884C,U+8865,U+8868,U+88AB,U+88C1,U+88C5,U+8981,U+8986,U+89C1,U+89C2,U+89C4,U+89C6,U+89C8,U+89E3,U+89E6,U+8A00,U+8B66,U+8BA1,U+8BA2,U+8BA4,U+8BA9,U+8BAE,U+8BB0,U+8BB8,U+8BBA,U+8BBD,U+8BBE,U+8BBF,U+8BC1,U+8BC4,U+8BC6,U+8BC9,U+8BCA,U+8BCD,U+8BD5,U+8BDD,U+8BE2,U+8BE5,U+8BE6,U+8BED,U+8BEF,U+8BF4,U+8BF7,U+8BFA,U+8BFB,U+8C03,U+8C8C,U+8D1F,U+8D23,U+8D25,U+8D26,U+8D34,U+8D39,U+8D44,U+8D56,U+8D70,U+8D77,U+8D85,U+8D8B,U+8DB3,U+8DC3,U+8DD1,U+8DDF,U+8DE8,U+8DEF,U+8DF3,U+8E2A,U+8EAB,U+8F68,U+8F6C,U+8F6E,U+8F6F,U+8F7B,U+8F7D,U+8F85,U+8F91,U+8F93,U+8FB9,U+8FBE,U+8FC1,U+8FC7,U+8FCE,U+8FD0,U+8FD1,U+8FD4,U+8FD8,U+8FD9,U+8FDB,U+8FDC,U+8FDE,U+8FDF,U+8FF0,U+8FF9,U+8FFD,U+9000,U+9001,U+9002,U+9009,U+9010,U+9014,U+901A,U+901F,U+903B,U+9053,U+9075,U+907F,U+90A3,U+90AE,U+90E8,U+90FD,U+914D,U+91C7,U+91CC,U+91CD,U+91CF,U+9489,U+949F,U+94A5,U+94BB,U+9500,U+9501,U+9519,U+952E,U+957F,U+95ED,U+95EE,U+95F4,U+9605,U+961F,U+9633,U+9634,U+9636,U+9644,U+9645,U+9650,U+9664,U+968F,U+9690,U+9694,U+969C,U+96C6,U+96F6,U+9700,U+9732,U+9759,U+975E,U+9760,U+9762,U+9875,U+9879,U+987B,U+987E,U+9884,U+9886,U+9891,U+9898,U+989D,U+98CE,U+98DE,U+9988,U+9996,U+9A7B,U+9A8C,U+9AA4,U+9AD8,U+9EBB,U+9ED8; }
+@font-face { font-family: "Studio Latin"; font-style: normal; font-weight: 500; font-display: swap; src: url("/brand/fonts/latin-500.ttf") format("truetype"); }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 500; font-display: swap; src: url("/brand/fonts/chinese-500-0.ttf") format("truetype"); unicode-range: U+3000,U+3001,U+3002,U+300C,U+300D,U+4E00,U+4E09,U+4E0A,U+4E0B,U+4E0D,U+4E0E,U+4E13,U+4E14,U+4E1A,U+4E22,U+4E24,U+4E2A,U+4E2D,U+4E34,U+4E3A,U+4E3B,U+4E45,U+4E48,U+4E49,U+4E4B,U+4E5F,U+4E60,U+4E66,U+4E86,U+4E88,U+4E8B,U+4E8C,U+4E8E,U+4E91,U+4E92,U+4E9B,U+4EA4,U+4EA7,U+4EAB,U+4EAE,U+4EBA,U+4EC0,U+4EC5,U+4ECA,U+4ECB,U+4ECD,U+4ECE,U+4ED3,U+4ED6,U+4ED8,U+4EE3,U+4EE4,U+4EE5,U+4EEA,U+4EEC,U+4EF6,U+4EF7,U+4EFB,U+4EFD,U+4F11,U+4F18,U+4F1A,U+4F20,U+4F30,U+4F3C,U+4F46,U+4F4D,U+4F4E,U+4F4F,U+4F53,U+4F55,U+4F59,U+4F5C,U+4F60,U+4F7F,U+4F8B,U+4F9B,U+4F9D,U+4FA7,U+4FDD,U+4FE1,U+4FEE,U+5012,U+5019,U+503C,U+504F,U+505A,U+5065,U+50CF,U+5141,U+5143,U+5145,U+5146,U+5148,U+514B,U+514D,U+515C,U+5165,U+5168,U+516C,U+516D,U+5171,U+5173,U+5176,U+5177,U+517C,U+5185,U+518C,U+518D,U+5199,U+51B3,U+51B5,U+51BB,U+51C6,U+51CF,U+51D1,U+51E0,U+51ED,U+51FA,U+51FB,U+5206,U+5207,U+5212,U+5219,U+521B,U+5220,U+5224,U+5229,U+522B,U+5230,U+5236,U+5237,U+523A,U+523B,U+524D,U+5269,U+526A,U+529B,U+529E,U+529F,U+52A0,U+52A1,U+52A8,U+52A9,U+52BF,U+52FF,U+5305,U+5316,U+5339,U+533A,U+533F,U+5343,U+5347,U+534F,U+5351,U+5355,U+5357,U+5360,U+5361,U+5373,U+5386,U+538B,U+539F,U+53BB,U+53C2,U+53CA,U+53CC,U+53CD,U+53D1,U+53D6,U+53D7,U+53D8,U+53E3,U+53E5,U+53E6,U+53EA,U+53EF,U+53F0,U+53F2,U+53F3,U+53F7,U+5404,U+5408,U+540C,U+540D,U+540E,U+5411,U+5417,U+5426,U+542B,U+542F,U+5448,U+544A,U+5458,U+5468,U+547D,U+548C,U+54C1,U+54C8,U+54CD,U+54EA,U+5546,U+559C,U+5634,U+5668,U+56DE,U+56E0,U+56F4,U+56FA,U+56FE,U+5728,U+5730,U+573A,U+573E,U+5740,U+5747,U+575A,U+5783,U+578B,U+57DF,U+57FA,U+586B,U+5883,U+589E,U+58F0,U+5904,U+5907,U+590D,U+5916,U+591A,U+5927,U+5929,U+5931,U+5934,U+5939,U+5948,U+594F,U+5951,U+5957,U+597D,U+5982,U+59CB,U+59D3,U+5B50,U+5B57,U+5B58,U+5B83,U+5B88,U+5B89,U+5B8C,U+5B98,U+5B9A,U+5B9E,U+5BA1,U+5BA2,U+5BB9,U+5BC6,U+5BDF,U+5BF8,U+5BF9,U+5BFC,U+5C01,U+5C04,U+5C06,U+5C0A,U+5C0F,U+5C11,U+5C1A,U+5C1D,U+5C31,U+5C3A,U+5C3D,U+5C40,U+5C42,U+5C4F,U+5C55,U+5C5E,U+5DE5,U+5DE7,U+5DEE,U+5DF1,U+5DF2,U+5E03,U+5E0C,U+5E26,U+5E27,U+5E2E,U+5E38,U+5E73,U+5E74,U+5E76,U+5E7F,U+5E8F,U+5E93,U+5E94,U+5E95,U+5E97,U+5EA6,U+5EB7,U+5EFA,U+5F00,U+5F02,U+5F04,U+5F0F,U+5F15,U+5F20,U+5F39,U+5F52,U+5F53,U+5F55,U+5F71,U+5F80,U+5F84,U+5F85,U+5F88,U+5F97,U+5FAA,U+5FC3,U+5FC5,U+5FD7,U+5FEB,U+6001,U+600E,U+601D,U+6027,U+602A,U+603B,U+6062,U+606F,U+6070,U+6076,U+6089,U+60C5,U+60EF,U+60F3,U+610F,U+613F,U+61C2,U+6210,U+6211,U+6216,U+622A,U+6233,U+6237,U+6240,U+6247,U+624B,U+624D,U+6253,U+6267,U+6279,U+627E,U+627F,U+628A,U+6293,U+62A4,U+62A5,U+62AB,U+62C5,U+62D2,U+62D6,U+62E5,U+62E9,U+62FF,U+6301,U+6307,U+6309,U+6349,U+6355,U+6362,U+636E,U+6388,U+638C,U+6392,U+63A2,U+63A5,U+63A7,U+63A8,U+63A9,U+63CF,U+63D0,U+63E1,U+641C,U+641E,U+642D,U+643A,U+64A4,U+64CD,U+652F,U+6536,U+6539,U+653E,U+653F,U+6545,U+6548,U+6570,U+6574,U+6587,U+6599,U+65AD; }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 500; font-display: swap; src: url("/brand/fonts/chinese-500-1.ttf") format("truetype"); unicode-range: U+65B0,U+65B9,U+65BD,U+65CB,U+65E0,U+65E5,U+65E7,U+65F6,U+660E,U+6620,U+662F,U+663E,U+666F,U+6682,U+66B4,U+66F4,U+66FF,U+6700,U+6708,U+6709,U+670D,U+671B,U+671F,U+672A,U+672C,U+673A,U+6743,U+6750,U+675F,U+6761,U+6765,U+677F,U+6784,U+6790,U+679C,U+67C4,U+67E5,U+6807,U+680F,U+6821,U+6837,U+6838,U+683C,U+684C,U+6863,U+6865,U+68C0,U+695A,U+6982,U+6A21,U+6B21,U+6B22,U+6B3E,U+6B62,U+6B63,U+6B64,U+6B65,U+6B8B,U+6BB5,U+6BCF,U+6BD4,U+6C14,U+6C42,U+6C47,U+6CA1,U+6CBF,U+6CD5,U+6CE8,U+6D3B,U+6D41,U+6D4B,U+6D4F,U+6D88,U+6DB5,U+6DF1,U+6DF7,U+6DFB,U+6E05,U+6E20,U+6E29,U+6E38,U+6E90,U+6EAF,U+6EDA,U+6EE1,U+6F14,U+70B9,U+70E6,U+70ED,U+7126,U+7136,U+7167,U+7194,U+719F,U+7247,U+7248,U+724C,U+7269,U+7279,U+72B6,U+72EC,U+731B,U+731C,U+732B,U+7387,U+73AF,U+73B0,U+7406,U+751F,U+7528,U+7531,U+7533,U+7535,U+753B,U+754C,U+7559,U+7565,U+7591,U+767B,U+767D,U+767E,U+7684,U+76D1,U+76D6,U+76D8,U+76EE,U+76F4,U+76F8,U+7701,U+770B,U+771F,U+7720,U+773C,U+7740,U+7761,U+77A5,U+77AC,U+77E5,U+77ED,U+7801,U+7840,U+786C,U+786E,U+78C1,U+78E8,U+793A,U+793C,U+7981,U+79BB,U+79C1,U+79CD,U+79D2,U+79F0,U+79FB,U+7A0B,U+7A0D,U+7A33,U+7A7A,U+7A97,U+7ACB,U+7AD9,U+7AEF,U+7B26,U+7B2C,U+7B49,U+7B54,U+7B56,U+7B5B,U+7B7E,U+7B80,U+7B97,U+7BA1,U+7BB1,U+7C7B,U+7C98,U+7CBE,U+7CFB,U+7D20,U+7D22,U+7D27,U+7D2F,U+7EA0,U+7EA6,U+7EA7,U+7EBF,U+7EC4,U+7EC6,U+7EC8,U+7ECD,U+7ECF,U+7ED1,U+7ED3,U+7ED5,U+7ED8,U+7ED9,U+7EDC,U+7EDD,U+7EDF,U+7EE7,U+7EED,U+7EF4,U+7F00,U+7F13,U+7F16,U+7F18,U+7F3A,U+7F51,U+7F6E,U+7F72,U+7FA4,U+8003,U+8005,U+800C,U+8017,U+804A,U+804C,U+8054,U+805A,U+80CC,U+80FD,U+8111,U+811A,U+81EA,U+81F3,U+81F4,U+821E,U+822A,U+8282,U+82F1,U+8303,U+83B7,U+83DC,U+85CF,U+884C,U+8865,U+8868,U+88AB,U+88C1,U+88C5,U+8981,U+8986,U+89C1,U+89C2,U+89C4,U+89C6,U+89C8,U+89E3,U+89E6,U+8A00,U+8B66,U+8BA1,U+8BA2,U+8BA4,U+8BA9,U+8BAE,U+8BB0,U+8BB8,U+8BBA,U+8BBD,U+8BBE,U+8BBF,U+8BC1,U+8BC4,U+8BC6,U+8BC9,U+8BCA,U+8BCD,U+8BD5,U+8BDD,U+8BE2,U+8BE5,U+8BE6,U+8BED,U+8BEF,U+8BF4,U+8BF7,U+8BFA,U+8BFB,U+8C03,U+8C8C,U+8D1F,U+8D23,U+8D25,U+8D26,U+8D34,U+8D39,U+8D44,U+8D56,U+8D70,U+8D77,U+8D85,U+8D8B,U+8DB3,U+8DC3,U+8DD1,U+8DDF,U+8DE8,U+8DEF,U+8DF3,U+8E2A,U+8EAB,U+8F68,U+8F6C,U+8F6E,U+8F6F,U+8F7B,U+8F7D,U+8F85,U+8F91,U+8F93,U+8FB9,U+8FBE,U+8FC1,U+8FC7,U+8FCE,U+8FD0,U+8FD1,U+8FD4,U+8FD8,U+8FD9,U+8FDB,U+8FDC,U+8FDE,U+8FDF,U+8FF0,U+8FF9,U+8FFD,U+9000,U+9001,U+9002,U+9009,U+9010,U+9014,U+901A,U+901F,U+903B,U+9053,U+9075,U+907F,U+90A3,U+90AE,U+90E8,U+90FD,U+914D,U+91C7,U+91CC,U+91CD,U+91CF,U+9489,U+949F,U+94A5,U+94BB,U+9500,U+9501,U+9519,U+952E,U+957F,U+95ED,U+95EE,U+95F4,U+9605,U+961F,U+9633,U+9634,U+9636,U+9644,U+9645,U+9650,U+9664,U+968F,U+9690,U+9694,U+969C,U+96C6,U+96F6,U+9700,U+9732,U+9759,U+975E,U+9760,U+9762,U+9875,U+9879,U+987B,U+987E,U+9884,U+9886,U+9891,U+9898,U+989D,U+98CE,U+98DE,U+9988,U+9996,U+9A7B,U+9A8C,U+9AA4,U+9AD8,U+9EBB,U+9ED8; }
+@font-face { font-family: "Studio Latin"; font-style: normal; font-weight: 600; font-display: swap; src: url("/brand/fonts/latin-600.ttf") format("truetype"); }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 600; font-display: swap; src: url("/brand/fonts/chinese-600-0.ttf") format("truetype"); unicode-range: U+3000,U+3001,U+3002,U+300C,U+300D,U+4E00,U+4E09,U+4E0A,U+4E0B,U+4E0D,U+4E0E,U+4E13,U+4E14,U+4E1A,U+4E22,U+4E24,U+4E2A,U+4E2D,U+4E34,U+4E3A,U+4E3B,U+4E45,U+4E48,U+4E49,U+4E4B,U+4E5F,U+4E60,U+4E66,U+4E86,U+4E88,U+4E8B,U+4E8C,U+4E8E,U+4E91,U+4E92,U+4E9B,U+4EA4,U+4EA7,U+4EAB,U+4EAE,U+4EBA,U+4EC0,U+4EC5,U+4ECA,U+4ECB,U+4ECD,U+4ECE,U+4ED3,U+4ED6,U+4ED8,U+4EE3,U+4EE4,U+4EE5,U+4EEA,U+4EEC,U+4EF6,U+4EF7,U+4EFB,U+4EFD,U+4F11,U+4F18,U+4F1A,U+4F20,U+4F30,U+4F3C,U+4F46,U+4F4D,U+4F4E,U+4F4F,U+4F53,U+4F55,U+4F59,U+4F5C,U+4F60,U+4F7F,U+4F8B,U+4F9B,U+4F9D,U+4FA7,U+4FDD,U+4FE1,U+4FEE,U+5012,U+5019,U+503C,U+504F,U+505A,U+5065,U+50CF,U+5141,U+5143,U+5145,U+5146,U+5148,U+514B,U+514D,U+515C,U+5165,U+5168,U+516C,U+516D,U+5171,U+5173,U+5176,U+5177,U+517C,U+5185,U+518C,U+518D,U+5199,U+51B3,U+51B5,U+51BB,U+51C6,U+51CF,U+51D1,U+51E0,U+51ED,U+51FA,U+51FB,U+5206,U+5207,U+5212,U+5219,U+521B,U+5220,U+5224,U+5229,U+522B,U+5230,U+5236,U+5237,U+523A,U+523B,U+524D,U+5269,U+526A,U+529B,U+529E,U+529F,U+52A0,U+52A1,U+52A8,U+52A9,U+52BF,U+52FF,U+5305,U+5316,U+5339,U+533A,U+533F,U+5343,U+5347,U+534F,U+5351,U+5355,U+5357,U+5360,U+5361,U+5373,U+5386,U+538B,U+539F,U+53BB,U+53C2,U+53CA,U+53CC,U+53CD,U+53D1,U+53D6,U+53D7,U+53D8,U+53E3,U+53E5,U+53E6,U+53EA,U+53EF,U+53F0,U+53F2,U+53F3,U+53F7,U+5404,U+5408,U+540C,U+540D,U+540E,U+5411,U+5417,U+5426,U+542B,U+542F,U+5448,U+544A,U+5458,U+5468,U+547D,U+548C,U+54C1,U+54C8,U+54CD,U+54EA,U+5546,U+559C,U+5634,U+5668,U+56DE,U+56E0,U+56F4,U+56FA,U+56FE,U+5728,U+5730,U+573A,U+573E,U+5740,U+5747,U+575A,U+5783,U+578B,U+57DF,U+57FA,U+586B,U+5883,U+589E,U+58F0,U+5904,U+5907,U+590D,U+5916,U+591A,U+5927,U+5929,U+5931,U+5934,U+5939,U+5948,U+594F,U+5951,U+5957,U+597D,U+5982,U+59CB,U+59D3,U+5B50,U+5B57,U+5B58,U+5B83,U+5B88,U+5B89,U+5B8C,U+5B98,U+5B9A,U+5B9E,U+5BA1,U+5BA2,U+5BB9,U+5BC6,U+5BDF,U+5BF8,U+5BF9,U+5BFC,U+5C01,U+5C04,U+5C06,U+5C0A,U+5C0F,U+5C11,U+5C1A,U+5C1D,U+5C31,U+5C3A,U+5C3D,U+5C40,U+5C42,U+5C4F,U+5C55,U+5C5E,U+5DE5,U+5DE7,U+5DEE,U+5DF1,U+5DF2,U+5E03,U+5E0C,U+5E26,U+5E27,U+5E2E,U+5E38,U+5E73,U+5E74,U+5E76,U+5E7F,U+5E8F,U+5E93,U+5E94,U+5E95,U+5E97,U+5EA6,U+5EB7,U+5EFA,U+5F00,U+5F02,U+5F04,U+5F0F,U+5F15,U+5F20,U+5F39,U+5F52,U+5F53,U+5F55,U+5F71,U+5F80,U+5F84,U+5F85,U+5F88,U+5F97,U+5FAA,U+5FC3,U+5FC5,U+5FD7,U+5FEB,U+6001,U+600E,U+601D,U+6027,U+602A,U+603B,U+6062,U+606F,U+6070,U+6076,U+6089,U+60C5,U+60EF,U+60F3,U+610F,U+613F,U+61C2,U+6210,U+6211,U+6216,U+622A,U+6233,U+6237,U+6240,U+6247,U+624B,U+624D,U+6253,U+6267,U+6279,U+627E,U+627F,U+628A,U+6293,U+62A4,U+62A5,U+62AB,U+62C5,U+62D2,U+62D6,U+62E5,U+62E9,U+62FF,U+6301,U+6307,U+6309,U+6349,U+6355,U+6362,U+636E,U+6388,U+638C,U+6392,U+63A2,U+63A5,U+63A7,U+63A8,U+63A9,U+63CF,U+63D0,U+63E1,U+641C,U+641E,U+642D,U+643A,U+64A4,U+64CD,U+652F,U+6536,U+6539,U+653E,U+653F,U+6545,U+6548,U+6570,U+6574,U+6587,U+6599,U+65AD; }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 600; font-display: swap; src: url("/brand/fonts/chinese-600-1.ttf") format("truetype"); unicode-range: U+65B0,U+65B9,U+65BD,U+65CB,U+65E0,U+65E5,U+65E7,U+65F6,U+660E,U+6620,U+662F,U+663E,U+666F,U+6682,U+66B4,U+66F4,U+66FF,U+6700,U+6708,U+6709,U+670D,U+671B,U+671F,U+672A,U+672C,U+673A,U+6743,U+6750,U+675F,U+6761,U+6765,U+677F,U+6784,U+6790,U+679C,U+67C4,U+67E5,U+6807,U+680F,U+6821,U+6837,U+6838,U+683C,U+684C,U+6863,U+6865,U+68C0,U+695A,U+6982,U+6A21,U+6B21,U+6B22,U+6B3E,U+6B62,U+6B63,U+6B64,U+6B65,U+6B8B,U+6BB5,U+6BCF,U+6BD4,U+6C14,U+6C42,U+6C47,U+6CA1,U+6CBF,U+6CD5,U+6CE8,U+6D3B,U+6D41,U+6D4B,U+6D4F,U+6D88,U+6DB5,U+6DF1,U+6DF7,U+6DFB,U+6E05,U+6E20,U+6E29,U+6E38,U+6E90,U+6EAF,U+6EDA,U+6EE1,U+6F14,U+70B9,U+70E6,U+70ED,U+7126,U+7136,U+7167,U+7194,U+719F,U+7247,U+7248,U+724C,U+7269,U+7279,U+72B6,U+72EC,U+731B,U+731C,U+732B,U+7387,U+73AF,U+73B0,U+7406,U+751F,U+7528,U+7531,U+7533,U+7535,U+753B,U+754C,U+7559,U+7565,U+7591,U+767B,U+767D,U+767E,U+7684,U+76D1,U+76D6,U+76D8,U+76EE,U+76F4,U+76F8,U+7701,U+770B,U+771F,U+7720,U+773C,U+7740,U+7761,U+77A5,U+77AC,U+77E5,U+77ED,U+7801,U+7840,U+786C,U+786E,U+78C1,U+78E8,U+793A,U+793C,U+7981,U+79BB,U+79C1,U+79CD,U+79D2,U+79F0,U+79FB,U+7A0B,U+7A0D,U+7A33,U+7A7A,U+7A97,U+7ACB,U+7AD9,U+7AEF,U+7B26,U+7B2C,U+7B49,U+7B54,U+7B56,U+7B5B,U+7B7E,U+7B80,U+7B97,U+7BA1,U+7BB1,U+7C7B,U+7C98,U+7CBE,U+7CFB,U+7D20,U+7D22,U+7D27,U+7D2F,U+7EA0,U+7EA6,U+7EA7,U+7EBF,U+7EC4,U+7EC6,U+7EC8,U+7ECD,U+7ECF,U+7ED1,U+7ED3,U+7ED5,U+7ED8,U+7ED9,U+7EDC,U+7EDD,U+7EDF,U+7EE7,U+7EED,U+7EF4,U+7F00,U+7F13,U+7F16,U+7F18,U+7F3A,U+7F51,U+7F6E,U+7F72,U+7FA4,U+8003,U+8005,U+800C,U+8017,U+804A,U+804C,U+8054,U+805A,U+80CC,U+80FD,U+8111,U+811A,U+81EA,U+81F3,U+81F4,U+821E,U+822A,U+8282,U+82F1,U+8303,U+83B7,U+83DC,U+85CF,U+884C,U+8865,U+8868,U+88AB,U+88C1,U+88C5,U+8981,U+8986,U+89C1,U+89C2,U+89C4,U+89C6,U+89C8,U+89E3,U+89E6,U+8A00,U+8B66,U+8BA1,U+8BA2,U+8BA4,U+8BA9,U+8BAE,U+8BB0,U+8BB8,U+8BBA,U+8BBD,U+8BBE,U+8BBF,U+8BC1,U+8BC4,U+8BC6,U+8BC9,U+8BCA,U+8BCD,U+8BD5,U+8BDD,U+8BE2,U+8BE5,U+8BE6,U+8BED,U+8BEF,U+8BF4,U+8BF7,U+8BFA,U+8BFB,U+8C03,U+8C8C,U+8D1F,U+8D23,U+8D25,U+8D26,U+8D34,U+8D39,U+8D44,U+8D56,U+8D70,U+8D77,U+8D85,U+8D8B,U+8DB3,U+8DC3,U+8DD1,U+8DDF,U+8DE8,U+8DEF,U+8DF3,U+8E2A,U+8EAB,U+8F68,U+8F6C,U+8F6E,U+8F6F,U+8F7B,U+8F7D,U+8F85,U+8F91,U+8F93,U+8FB9,U+8FBE,U+8FC1,U+8FC7,U+8FCE,U+8FD0,U+8FD1,U+8FD4,U+8FD8,U+8FD9,U+8FDB,U+8FDC,U+8FDE,U+8FDF,U+8FF0,U+8FF9,U+8FFD,U+9000,U+9001,U+9002,U+9009,U+9010,U+9014,U+901A,U+901F,U+903B,U+9053,U+9075,U+907F,U+90A3,U+90AE,U+90E8,U+90FD,U+914D,U+91C7,U+91CC,U+91CD,U+91CF,U+9489,U+949F,U+94A5,U+94BB,U+9500,U+9501,U+9519,U+952E,U+957F,U+95ED,U+95EE,U+95F4,U+9605,U+961F,U+9633,U+9634,U+9636,U+9644,U+9645,U+9650,U+9664,U+968F,U+9690,U+9694,U+969C,U+96C6,U+96F6,U+9700,U+9732,U+9759,U+975E,U+9760,U+9762,U+9875,U+9879,U+987B,U+987E,U+9884,U+9886,U+9891,U+9898,U+989D,U+98CE,U+98DE,U+9988,U+9996,U+9A7B,U+9A8C,U+9AA4,U+9AD8,U+9EBB,U+9ED8; }
+@font-face { font-family: "Studio Latin"; font-style: normal; font-weight: 700; font-display: swap; src: url("/brand/fonts/latin-700.ttf") format("truetype"); }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 700; font-display: swap; src: url("/brand/fonts/chinese-700-0.ttf") format("truetype"); unicode-range: U+3000,U+3001,U+3002,U+300C,U+300D,U+4E00,U+4E09,U+4E0A,U+4E0B,U+4E0D,U+4E0E,U+4E13,U+4E14,U+4E1A,U+4E22,U+4E24,U+4E2A,U+4E2D,U+4E34,U+4E3A,U+4E3B,U+4E45,U+4E48,U+4E49,U+4E4B,U+4E5F,U+4E60,U+4E66,U+4E86,U+4E88,U+4E8B,U+4E8C,U+4E8E,U+4E91,U+4E92,U+4E9B,U+4EA4,U+4EA7,U+4EAB,U+4EAE,U+4EBA,U+4EC0,U+4EC5,U+4ECA,U+4ECB,U+4ECD,U+4ECE,U+4ED3,U+4ED6,U+4ED8,U+4EE3,U+4EE4,U+4EE5,U+4EEA,U+4EEC,U+4EF6,U+4EF7,U+4EFB,U+4EFD,U+4F11,U+4F18,U+4F1A,U+4F20,U+4F30,U+4F3C,U+4F46,U+4F4D,U+4F4E,U+4F4F,U+4F53,U+4F55,U+4F59,U+4F5C,U+4F60,U+4F7F,U+4F8B,U+4F9B,U+4F9D,U+4FA7,U+4FDD,U+4FE1,U+4FEE,U+5012,U+5019,U+503C,U+504F,U+505A,U+5065,U+50CF,U+5141,U+5143,U+5145,U+5146,U+5148,U+514B,U+514D,U+515C,U+5165,U+5168,U+516C,U+516D,U+5171,U+5173,U+5176,U+5177,U+517C,U+5185,U+518C,U+518D,U+5199,U+51B3,U+51B5,U+51BB,U+51C6,U+51CF,U+51D1,U+51E0,U+51ED,U+51FA,U+51FB,U+5206,U+5207,U+5212,U+5219,U+521B,U+5220,U+5224,U+5229,U+522B,U+5230,U+5236,U+5237,U+523A,U+523B,U+524D,U+5269,U+526A,U+529B,U+529E,U+529F,U+52A0,U+52A1,U+52A8,U+52A9,U+52BF,U+52FF,U+5305,U+5316,U+5339,U+533A,U+533F,U+5343,U+5347,U+534F,U+5351,U+5355,U+5357,U+5360,U+5361,U+5373,U+5386,U+538B,U+539F,U+53BB,U+53C2,U+53CA,U+53CC,U+53CD,U+53D1,U+53D6,U+53D7,U+53D8,U+53E3,U+53E5,U+53E6,U+53EA,U+53EF,U+53F0,U+53F2,U+53F3,U+53F7,U+5404,U+5408,U+540C,U+540D,U+540E,U+5411,U+5417,U+5426,U+542B,U+542F,U+5448,U+544A,U+5458,U+5468,U+547D,U+548C,U+54C1,U+54C8,U+54CD,U+54EA,U+5546,U+559C,U+5634,U+5668,U+56DE,U+56E0,U+56F4,U+56FA,U+56FE,U+5728,U+5730,U+573A,U+573E,U+5740,U+5747,U+575A,U+5783,U+578B,U+57DF,U+57FA,U+586B,U+5883,U+589E,U+58F0,U+5904,U+5907,U+590D,U+5916,U+591A,U+5927,U+5929,U+5931,U+5934,U+5939,U+5948,U+594F,U+5951,U+5957,U+597D,U+5982,U+59CB,U+59D3,U+5B50,U+5B57,U+5B58,U+5B83,U+5B88,U+5B89,U+5B8C,U+5B98,U+5B9A,U+5B9E,U+5BA1,U+5BA2,U+5BB9,U+5BC6,U+5BDF,U+5BF8,U+5BF9,U+5BFC,U+5C01,U+5C04,U+5C06,U+5C0A,U+5C0F,U+5C11,U+5C1A,U+5C1D,U+5C31,U+5C3A,U+5C3D,U+5C40,U+5C42,U+5C4F,U+5C55,U+5C5E,U+5DE5,U+5DE7,U+5DEE,U+5DF1,U+5DF2,U+5E03,U+5E0C,U+5E26,U+5E27,U+5E2E,U+5E38,U+5E73,U+5E74,U+5E76,U+5E7F,U+5E8F,U+5E93,U+5E94,U+5E95,U+5E97,U+5EA6,U+5EB7,U+5EFA,U+5F00,U+5F02,U+5F04,U+5F0F,U+5F15,U+5F20,U+5F39,U+5F52,U+5F53,U+5F55,U+5F71,U+5F80,U+5F84,U+5F85,U+5F88,U+5F97,U+5FAA,U+5FC3,U+5FC5,U+5FD7,U+5FEB,U+6001,U+600E,U+601D,U+6027,U+602A,U+603B,U+6062,U+606F,U+6070,U+6076,U+6089,U+60C5,U+60EF,U+60F3,U+610F,U+613F,U+61C2,U+6210,U+6211,U+6216,U+622A,U+6233,U+6237,U+6240,U+6247,U+624B,U+624D,U+6253,U+6267,U+6279,U+627E,U+627F,U+628A,U+6293,U+62A4,U+62A5,U+62AB,U+62C5,U+62D2,U+62D6,U+62E5,U+62E9,U+62FF,U+6301,U+6307,U+6309,U+6349,U+6355,U+6362,U+636E,U+6388,U+638C,U+6392,U+63A2,U+63A5,U+63A7,U+63A8,U+63A9,U+63CF,U+63D0,U+63E1,U+641C,U+641E,U+642D,U+643A,U+64A4,U+64CD,U+652F,U+6536,U+6539,U+653E,U+653F,U+6545,U+6548,U+6570,U+6574,U+6587,U+6599,U+65AD; }
+@font-face { font-family: "Studio Chinese"; font-style: normal; font-weight: 700; font-display: swap; src: url("/brand/fonts/chinese-700-1.ttf") format("truetype"); unicode-range: U+65B0,U+65B9,U+65BD,U+65CB,U+65E0,U+65E5,U+65E7,U+65F6,U+660E,U+6620,U+662F,U+663E,U+666F,U+6682,U+66B4,U+66F4,U+66FF,U+6700,U+6708,U+6709,U+670D,U+671B,U+671F,U+672A,U+672C,U+673A,U+6743,U+6750,U+675F,U+6761,U+6765,U+677F,U+6784,U+6790,U+679C,U+67C4,U+67E5,U+6807,U+680F,U+6821,U+6837,U+6838,U+683C,U+684C,U+6863,U+6865,U+68C0,U+695A,U+6982,U+6A21,U+6B21,U+6B22,U+6B3E,U+6B62,U+6B63,U+6B64,U+6B65,U+6B8B,U+6BB5,U+6BCF,U+6BD4,U+6C14,U+6C42,U+6C47,U+6CA1,U+6CBF,U+6CD5,U+6CE8,U+6D3B,U+6D41,U+6D4B,U+6D4F,U+6D88,U+6DB5,U+6DF1,U+6DF7,U+6DFB,U+6E05,U+6E20,U+6E29,U+6E38,U+6E90,U+6EAF,U+6EDA,U+6EE1,U+6F14,U+70B9,U+70E6,U+70ED,U+7126,U+7136,U+7167,U+7194,U+719F,U+7247,U+7248,U+724C,U+7269,U+7279,U+72B6,U+72EC,U+731B,U+731C,U+732B,U+7387,U+73AF,U+73B0,U+7406,U+751F,U+7528,U+7531,U+7533,U+7535,U+753B,U+754C,U+7559,U+7565,U+7591,U+767B,U+767D,U+767E,U+7684,U+76D1,U+76D6,U+76D8,U+76EE,U+76F4,U+76F8,U+7701,U+770B,U+771F,U+7720,U+773C,U+7740,U+7761,U+77A5,U+77AC,U+77E5,U+77ED,U+7801,U+7840,U+786C,U+786E,U+78C1,U+78E8,U+793A,U+793C,U+7981,U+79BB,U+79C1,U+79CD,U+79D2,U+79F0,U+79FB,U+7A0B,U+7A0D,U+7A33,U+7A7A,U+7A97,U+7ACB,U+7AD9,U+7AEF,U+7B26,U+7B2C,U+7B49,U+7B54,U+7B56,U+7B5B,U+7B7E,U+7B80,U+7B97,U+7BA1,U+7BB1,U+7C7B,U+7C98,U+7CBE,U+7CFB,U+7D20,U+7D22,U+7D27,U+7D2F,U+7EA0,U+7EA6,U+7EA7,U+7EBF,U+7EC4,U+7EC6,U+7EC8,U+7ECD,U+7ECF,U+7ED1,U+7ED3,U+7ED5,U+7ED8,U+7ED9,U+7EDC,U+7EDD,U+7EDF,U+7EE7,U+7EED,U+7EF4,U+7F00,U+7F13,U+7F16,U+7F18,U+7F3A,U+7F51,U+7F6E,U+7F72,U+7FA4,U+8003,U+8005,U+800C,U+8017,U+804A,U+804C,U+8054,U+805A,U+80CC,U+80FD,U+8111,U+811A,U+81EA,U+81F3,U+81F4,U+821E,U+822A,U+8282,U+82F1,U+8303,U+83B7,U+83DC,U+85CF,U+884C,U+8865,U+8868,U+88AB,U+88C1,U+88C5,U+8981,U+8986,U+89C1,U+89C2,U+89C4,U+89C6,U+89C8,U+89E3,U+89E6,U+8A00,U+8B66,U+8BA1,U+8BA2,U+8BA4,U+8BA9,U+8BAE,U+8BB0,U+8BB8,U+8BBA,U+8BBD,U+8BBE,U+8BBF,U+8BC1,U+8BC4,U+8BC6,U+8BC9,U+8BCA,U+8BCD,U+8BD5,U+8BDD,U+8BE2,U+8BE5,U+8BE6,U+8BED,U+8BEF,U+8BF4,U+8BF7,U+8BFA,U+8BFB,U+8C03,U+8C8C,U+8D1F,U+8D23,U+8D25,U+8D26,U+8D34,U+8D39,U+8D44,U+8D56,U+8D70,U+8D77,U+8D85,U+8D8B,U+8DB3,U+8DC3,U+8DD1,U+8DDF,U+8DE8,U+8DEF,U+8DF3,U+8E2A,U+8EAB,U+8F68,U+8F6C,U+8F6E,U+8F6F,U+8F7B,U+8F7D,U+8F85,U+8F91,U+8F93,U+8FB9,U+8FBE,U+8FC1,U+8FC7,U+8FCE,U+8FD0,U+8FD1,U+8FD4,U+8FD8,U+8FD9,U+8FDB,U+8FDC,U+8FDE,U+8FDF,U+8FF0,U+8FF9,U+8FFD,U+9000,U+9001,U+9002,U+9009,U+9010,U+9014,U+901A,U+901F,U+903B,U+9053,U+9075,U+907F,U+90A3,U+90AE,U+90E8,U+90FD,U+914D,U+91C7,U+91CC,U+91CD,U+91CF,U+9489,U+949F,U+94A5,U+94BB,U+9500,U+9501,U+9519,U+952E,U+957F,U+95ED,U+95EE,U+95F4,U+9605,U+961F,U+9633,U+9634,U+9636,U+9644,U+9645,U+9650,U+9664,U+968F,U+9690,U+9694,U+969C,U+96C6,U+96F6,U+9700,U+9732,U+9759,U+975E,U+9760,U+9762,U+9875,U+9879,U+987B,U+987E,U+9884,U+9886,U+9891,U+9898,U+989D,U+98CE,U+98DE,U+9988,U+9996,U+9A7B,U+9A8C,U+9AA4,U+9AD8,U+9EBB,U+9ED8; }
+
+/* Shared timmyagentic visual language. Site behavior remains in its own stylesheet. */
+:root {
+  --paper: #f8f9f6;
+  --surface: #f8f9f6;
+  --surface-soft: #eef1f5;
+  --soft: #eef1f5;
+  --ink: #151c23;
+  --muted: #67717d;
+  --line: #d4dadd;
+  --blue: #4059ed;
+  --blue-hover: #3048ce;
+  --accent: #4059ed;
+  --tint: #eaf0fc;
+  --green: #4059ed;
+  --mint: #eaf0fc;
+  --lime: #dce4ff;
+  --sans: "Studio Latin", "Studio Chinese", "PingFang SC", sans-serif;
+}
+html { scroll-padding-top: 32px; }
+body.brand-site { background: var(--paper); color: var(--ink); font-family: var(--sans); font-synthesis: none; -webkit-font-smoothing: antialiased; }
+.brand-site button, .brand-site input, .brand-site textarea { font-family: inherit; }
+.brand-site ::selection { background: #dce4ff; }
+.brand-site :focus-visible { outline: 3px solid var(--blue); outline-offset: 5px; }
+.brand-site .container, .brand-site .wrap { width: min(1100px, calc(100% - 112px)); max-width: 1100px; margin-inline: auto; padding-inline: 0; }
+.brand-site .site-header, .brand-site .header, .brand-site > header { position: relative; background: var(--paper); border: 0; backdrop-filter: none; }
+.brand-site .header-inner, .brand-site .header .nav, .brand-site > header > nav, .brand-site .header.wrap { height: auto; min-height: 96px; padding-block: 17px; border-bottom: 1px solid var(--line); gap: 24px; }
+.studio-identity { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; margin-right: auto; flex-shrink: 0; }
+.brand-site .studio-home { color: var(--ink); font: 700 24px/1 "Studio Latin", sans-serif; letter-spacing: -1.15px; text-decoration: none; }
+.brand-site .studio-identity .brand, .brand-site .studio-identity .brand-lockup { font: 500 12px/1.3 var(--sans); letter-spacing: 0; gap: 6px; margin: 0; color: var(--muted); }
+.brand-site .studio-identity .brand-name { font-size: inherit; font-weight: inherit; letter-spacing: inherit; max-width: none; }
+.brand-site .studio-identity .brand img, .brand-site .studio-identity .brand-icon { width: 16px; height: 16px; filter: none; border-radius: 3px; }
+.brand-site .studio-identity .brand-mark, .brand-site .studio-identity .brand-zh { display: none; }
+.brand-site header nav a:hover, .brand-site .studio-home:hover { color: var(--blue); }
+.brand-site .nav-github { border: 0; background: none; padding: 9px 0; }
+.brand-site .eyebrow { font: 400 11px/1.7 ui-monospace, SFMono-Regular, monospace; letter-spacing: 1.8px; color: var(--muted); }
+.brand-site .hero { position: relative; isolation: isolate; padding-top: 80px; padding-bottom: 76px; background: none; text-align: left; }
+.brand-site .hero::before { content: ""; position: absolute; z-index: -1; pointer-events: none; inset: 0; background: url("/brand/studio-light.png") center / cover no-repeat; }
+.brand-site .hero h1 { color: var(--ink); font-family: var(--sans); font-weight: 700; line-height: 1.17; letter-spacing: -1.9px; margin: 25px 0 25px; text-wrap: balance; }
+.brand-site .hero h1 span, .brand-site .hero h1 em { white-space: normal; }
+.brand-site .hero-description, .brand-site .hero .intro, .brand-site .hero .lede, .brand-site .hero-lead { color: var(--muted); font-size: 19px; line-height: 1.8; }
+.brand-site .hero-description, .brand-site .hero .lede { margin-inline: 0; }
+.brand-site .hero .actions, .brand-site .hero-actions, .brand-site .hero-links { justify-content: flex-start; }
+.brand-site .hero-note, .brand-site .download-note, .brand-site .subtle { font-size: 12px; color: var(--muted); }
+.brand-site .button, .brand-site .header-download, .brand-site .navcta { border-radius: 999px; font-weight: 500; min-height: 52px; font-size: 16px; padding: 13px 25px; box-shadow: none; }
+.brand-site .button-primary, .brand-site .button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+.brand-site .button:hover, .brand-site .button-primary:hover, .brand-site .button.primary:hover { transform: none; background: #2b3542; color: #fff; }
+.brand-site .button-outline { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.brand-site .header-download, .brand-site .navcta { font-size: 13px; min-height: 42px; padding: 10px 20px; }
+.brand-site .section { padding-top: 96px; padding-bottom: 96px; }
+.brand-site h2.section-title, .brand-site .section > h2, .brand-site .section-head h2, .brand-site .section-heading h2, .brand-site .detail-intro h2 { font-weight: 500; font-size: clamp(30px, 3.6vw, 46px); line-height: 1.3; letter-spacing: -1.2px; }
+.brand-site .section-intro, .brand-site .section-description { color: var(--muted); }
+.brand-site .section-intro { text-align: left; margin-inline: 0; }
+.brand-site .text-link { color: var(--ink); text-underline-offset: 6px; border-color: #a6aeb6; }
+.brand-site .text-link:hover { color: var(--blue); }
+.brand-site .site-footer, .brand-site .footer, .brand-site > footer { background: none; color: var(--muted); }
+.brand-site .studio-signoff { width: min(1100px, calc(100% - 112px)); margin: 0 auto; padding: 48px 0 40px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.brand-site .studio-signoff a { font: 700 clamp(32px, 4.3vw, 54px)/1 "Studio Latin", sans-serif; color: var(--ink); letter-spacing: -2px; }
+.brand-site .studio-signoff p { color: var(--muted); font-size: 12px; line-height: 1.7; margin: 0; }
+/* Quota Monitor keeps its three real, keyboard-accessible screenshot tabs. */
+.brand-quota .hero { width: min(1100px, calc(100% - 112px)); margin: auto; display: grid; grid-template-columns: .9fr 1.1fr; gap: 40px; align-items: center; }
+.brand-quota .hero > .hero-copy { width: 100%; max-width: none; padding: 0; text-align: left; }
+.brand-quota .hero h1 { font-size: clamp(44px, 4.9vw, 64px); letter-spacing: -2px; }
+.brand-quota .hero-title-line:last-child { color: var(--blue); }
+.brand-quota .showcase { margin: 0; padding: 0; min-width: 0; }
+.brand-quota .showcase .landscape { display: none; }
+.brand-quota .showcase-tabs { width: 100%; max-width: none; margin-bottom: 28px; background: #ffffffb8; border-radius: 8px; padding: 4px; }
+.brand-quota .showcase-tabs button { font-size: 12px; border-radius: 5px; }
+.brand-quota .showcase-tabs [aria-selected="true"] { background: #e4eaff; color: var(--blue); }
+.brand-quota .showcase-stage { width: 100%; max-width: none; padding: 0; }
+.brand-quota .showcase-panel { min-height: 425px; }
+.brand-quota .hero-product { padding: 65px 0 0 60px; min-height: 395px; }
+.brand-quota .hero-menu-window { width: 155px; left: 0; top: 0; }
+.brand-quota .product-window, .brand-quota .single-window { border-radius: 12px; box-shadow: 0 20px 42px #25334815; }
+.brand-quota .demo-label, .brand-quota .image-hint { font-size: 10px; line-height: 1.6; }
+.brand-quota .benefits > .container > .section-title { text-align: left; }
+.brand-quota .benefits-grid { max-width: none; gap: 50px; }
+.brand-quota .benefits { padding-top: 40px; }
+.brand-quota .privacy-section, .brand-quota .installation-section, .brand-quota .final-cta { background: #edf1f8; }
+/* CC Connect Next uses the same editorial hero and its existing live demo. */
+.brand-cc .hero h1 { font-size: clamp(48px, 6vw, 78px); max-width: 1000px; }
+.brand-cc .hero h1 span:last-child { color: var(--blue); }
+.brand-cc .hero-description { max-width: 690px; }
+.brand-cc .install-command { margin-left: 0; margin-top: 32px; border-radius: 10px; background: #ffffffb8; box-shadow: none; }
+.brand-cc .hero-links { justify-content: flex-start; }
+.brand-cc .demo-section { background: none; }
+.brand-cc .landscape { display: none; }
+.brand-cc .demo-tabs { border-radius: 8px; }
+.brand-cc .feishu-section, .brand-cc .get-started { background: #edf1f8; }
+/* Emomo reuses the two original images already shown in its example switcher. */
+.brand-emomo .hero { display: grid; grid-template-columns: 1.2fr .8fr; align-items: center; gap: 55px; }
+.brand-emomo .hero h1 { font-size: clamp(44px, 5.4vw, 70px); }
+.brand-emomo .hero .lede { font-size: 18px; max-width: 560px; }
+.brand-emomo .hero .actions { justify-content: flex-start; }
+.studio-meme-images { display: grid; grid-template-columns: 1fr 1fr; align-items: center; gap: 18px; padding: 40px 8px; }
+.studio-meme-images img { width: 100%; height: auto; border-radius: 12px; box-shadow: 0 20px 45px #26334217; }
+.studio-meme-images img:first-child { transform: rotate(-8deg); margin-top: 70px; }
+.studio-meme-images img:last-child { transform: rotate(7deg); margin-top: -65px; }
+.brand-emomo .example-shell { background: #edf1f8; border-radius: 16px; }
+.brand-emomo .example-preview { background: #e6ebf5; }
+.brand-emomo .example-tabs [aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: white; }
+.brand-emomo .install-section, .brand-emomo .faq-section { background: #edf1f8; }
+.brand-emomo .account-wrap { max-width: 1100px; padding-top: 64px; }
+.brand-emomo .account-heading h1 { font-family: var(--sans); font-weight: 600; }
+.brand-emomo .account-card, .brand-emomo .quota-card { border-color: var(--line); border-radius: 12px; box-shadow: none; }
+.brand-emomo .quota-card, .brand-emomo .empty { background: #edf1f8; }
+.brand-emomo .account-wrap input:focus, .brand-emomo .account-wrap textarea:focus { outline-color: var(--blue); border-color: var(--blue); }
+.brand-emomo .intro li:before { color: var(--blue); border-color: var(--line); }
+.brand-emomo .text-button { color: var(--blue); }
+/* Device and network pages preserve their labelled conceptual diagrams. */
+.brand-fan .hero, .brand-route .hero, .brand-ledger .hero { grid-template-columns: 1fr 1.08fr; gap: 54px; }
+.brand-fan .hero h1, .brand-route .hero h1, .brand-ledger .hero h1 { font-size: clamp(38px, 4.4vw, 54px); }
+.brand-fan .hero .intro, .brand-route .hero .intro, .brand-ledger .hero .intro { font-size: 16px; }
+.brand-site .product-visual .window { transform: none; border-color: var(--line); border-radius: 15px; box-shadow: 0 22px 44px #20314910; }
+.brand-site .signal { display: none; }
+.brand-site .preview-caption { font-family: var(--sans); font-size: 11px; }
+.brand-site .facts { padding-block: 28px; }
+.brand-site .fact strong { font-size: 18px; }
+.brand-site .fact span { font-size: 12px; line-height: 1.7; }
+.brand-site .feature p, .brand-site .section-intro { font-size: 15px; line-height: 1.9; }
+.brand-site .feature h3 { font-size: 21px; }
+.brand-site .feature { padding-block: 32px; }
+.brand-site .workflow { border-radius: 14px; padding: 36px; background: #edf1f8; }
+.brand-site .step p { font-size: 14px; }
+.brand-site .install:not(.brand-emomo .install) { background: #17212d; border-radius: 16px; }
+.brand-site .copy-card { background: #202c3b; border-color: #49586b; }
+.brand-site .copy-top { border-color: #49586b; }
+.brand-site .copy-card pre { font-size: 12px; line-height: 1.9; }
+.brand-site .install .text-link { color: #fff; }
+.brand-site .faq-list p { font-size: 14px; line-height: 1.9; }
+.brand-site .faq-list summary { font-size: 16px; }
+/* SMB Share: real Android screen, without a decorative phone orbit. */
+.brand-smb .hero { grid-template-columns: 1.1fr .9fr; gap: 64px; min-height: 680px; }
+.brand-smb .hero h1 { font-size: clamp(46px, 5.3vw, 68px); }
+.brand-smb .hero h1 em { color: var(--blue); }
+.brand-smb .hero h1 em:after, .brand-smb .visual-orbit, .brand-smb .dot, .brand-smb .tiny-dot, .brand-smb .stamp-symbol, .brand-smb .hero-bottom span:before { display: none; }
+.brand-smb .hero-visual { min-height: 540px; }
+.brand-smb .hero-phone { transform: none; width: 228px; border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 22px 48px #2533481a; }
+.brand-smb .visual-label { color: var(--muted); border-color: var(--line); background: #ffffffad; }
+.brand-smb .transfer-stamp { transform: none; border-color: var(--line); padding: 16px 20px; bottom: 30px; left: 0; box-shadow: 0 14px 25px #25334810; }
+.brand-smb .hero-bottom { color: var(--muted); gap: 18px; }
+.brand-smb .principles, .brand-smb .screens-section { background: #edf1f8; }
+.brand-smb .screen-frame { border-color: #f8f9f6; }
+.brand-smb .step-number, .brand-smb .detail-list article > span { color: var(--blue); background: #e8edfc; }
+.brand-smb .guide-link a, .brand-smb .footer p a { color: var(--blue); }
+.brand-smb .last-call { background: var(--ink); }
+.brand-smb .last-call .button-light { background: white; color: var(--ink); }
+@media (max-width: 980px) {
+  .brand-site .container, .brand-site .wrap, .brand-quota .hero, .brand-site .studio-signoff { width: calc(100% - 64px); }
+  .brand-site .header-inner, .brand-site .header .nav, .brand-site > header > nav { gap: 16px; }
+  .brand-site .hero { padding-top: 62px; padding-bottom: 60px; }
+  .brand-quota .hero { grid-template-columns: .9fr 1fr; gap: 26px; }
+  .brand-quota .hero h1 { font-size: 44px; }
+  .brand-quota .hero-product { padding: 70px 0 0 36px; min-height: 330px; }
+  .brand-quota .hero-menu-window { width: 120px; }
+  .brand-quota .showcase-panel { min-height: 340px; }
+  .brand-fan .hero, .brand-route .hero, .brand-ledger .hero, .brand-smb .hero { gap: 28px; }
+  .brand-site .hero .intro, .brand-site .hero-description, .brand-site .hero-lead { font-size: 16px; }
+  .brand-emomo .hero { gap: 28px; grid-template-columns: 1.3fr .7fr; }
+  .brand-emomo .hero h1 { font-size: 46px; }
+  .studio-meme-images { gap: 8px; padding-inline: 0; }
+  .brand-smb .hero h1 { font-size: 50px; }
+}
+@media (max-width: 760px) {
+  .brand-site .container, .brand-site .wrap, .brand-quota .hero, .brand-site .studio-signoff { width: calc(100% - 44px); }
+  .brand-site .header-inner, .brand-site .header .nav, .brand-site > header > nav, .brand-site .header.wrap { min-height: 88px; padding-block: 14px; gap: 10px; }
+  .brand-site .studio-home { font-size: 21px; letter-spacing: -1px; }
+  .brand-site .studio-identity { gap: 6px; }
+  .brand-site .studio-identity .brand, .brand-site .studio-identity .brand-lockup { font-size: 10px; }
+  .brand-site .studio-identity .brand img, .brand-site .studio-identity .brand-icon { width: 13px; height: 13px; }
+  .brand-site .hero, .brand-quota .hero, .brand-emomo .hero, .brand-smb .hero { display: flex; flex-direction: column; align-items: stretch; padding-top: 50px; padding-bottom: 56px; gap: 40px; min-height: 0; }
+  .brand-site .hero h1, .brand-quota .hero h1, .brand-emomo .hero h1, .brand-smb .hero h1 { font-size: clamp(34px, 9.2vw, 48px); line-height: 1.25; letter-spacing: -1px; margin: 22px 0; }
+  .brand-site .hero .intro, .brand-site .hero-description, .brand-site .hero .lede, .brand-site .hero-lead { font-size: 16px; line-height: 1.85; }
+  .brand-site .eyebrow { font-size: 10px; letter-spacing: 1.3px; }
+  .brand-site .button { min-height: 48px; padding: 12px 20px; font-size: 14px; }
+  .brand-site .hero .actions, .brand-site .hero-actions { gap: 18px; }
+  .brand-site .hero-note, .brand-site .download-note { font-size: 11px; line-height: 1.8; }
+  .brand-quota .hero > .hero-copy { width: 100%; }
+  .brand-quota .showcase-panel { min-height: 350px; }
+  .brand-quota .hero-product { padding: 55px 0 0 42px; min-height: 320px; }
+  .brand-quota .hero-menu-window { width: 120px; }
+  .brand-quota .showcase-tabs { margin-bottom: 24px; }
+  .brand-quota .showcase-tabs button { font-size: 11px; }
+  .brand-quota .benefits { padding-top: 20px; }
+  .brand-quota .benefits-grid { gap: 28px; }
+  .brand-cc .install-command { gap: 8px; padding-left: 13px; width: 100%; }
+  .brand-cc .install-command code { font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+  .brand-cc .install-command button { font-size: 11px; padding: 10px; }
+  .brand-cc .hero h1 { font-size: clamp(32px, 8.6vw, 47px); }
+  .studio-meme-images { width: min(340px, 100%); margin: 0 auto; padding: 25px 12px; gap: 20px; }
+  .studio-meme-images img:first-child { margin-top: 30px; }
+  .studio-meme-images img:last-child { margin-top: -30px; }
+  .brand-site .section { padding-top: 60px; padding-bottom: 60px; }
+  .brand-site .section-title, .brand-site h2.section-title, .brand-site .section > h2, .brand-site .section-head h2, .brand-site .section-heading h2, .brand-site .detail-intro h2 { font-size: 30px; letter-spacing: -.7px; }
+  .brand-site .fact strong { font-size: 16px; }
+  .brand-site .fact span { font-size: 11px; }
+  .brand-site .feature h3 { font-size: 18px; }
+  .brand-site .feature p, .brand-site .section-intro, .brand-site .faq-list p { font-size: 14px; }
+  .brand-site .faq-list summary { font-size: 15px; }
+  .brand-site .workflow { padding: 26px 22px; }
+  .brand-site .copy-card pre { font-size: 11px; }
+  .brand-site .studio-signoff { padding-block: 34px; flex-direction: column; align-items: flex-start; gap: 18px; }
+  .brand-site .studio-signoff a { font-size: 38px; letter-spacing: -1.7px; }
+  .brand-site .studio-signoff p { font-size: 11px; }
+  .brand-smb .hero-visual { min-height: 530px; margin: 0; }
+  .brand-smb .transfer-stamp { bottom: 26px; }
+  .brand-smb .hero-bottom { flex-wrap: wrap; justify-content: flex-start; gap: 10px 18px; }
+  .brand-emomo .navcta { min-height: 40px; padding: 9px 12px; font-size: 11px; }
+}
+@media (max-width: 360px) {
+  .brand-site .studio-home { font-size: 19px; }
+  .brand-site .studio-identity .brand, .brand-site .studio-identity .brand-lockup { font-size: 9px; }
+  .brand-site .header-inner, .brand-site .header .nav, .brand-site > header > nav { gap: 6px; }
+  .brand-quota .language-control button, .brand-cc .languages button { min-width: 28px; }
+  .brand-quota .menu-toggle, .brand-cc .menu-toggle, .brand-emomo .menu-toggle { width: 36px; height: 40px; }
+  .brand-quota .hero-product { padding-left: 36px; min-height: 300px; }
+  .brand-quota .hero-menu-window { width: 104px; }
+  .brand-quota .showcase-panel { min-height: 315px; }
+  .brand-site .nav-links { gap: 12px; font-size: 10px; }
+  .brand-site .studio-identity .brand-ledger .brand-name { max-width: 156px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .brand-site *, .brand-site *::before, .brand-site *::after { animation: none !important; transition: none !important; }
+}
+
+.brand-smb > header > nav { min-height: 0; padding-block: 0; border: 0; }
+.brand-emomo .studio-accent { color: var(--blue); }
+
+@media (max-width: 760px) { .brand-cc .hero { display: block; } .brand-cc .hero-links { align-items: flex-start; margin-top: 24px; } }
+
+.brand-site .header-inner { display: flex; align-items: center; }
