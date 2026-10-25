@@ -58,6 +58,6 @@ UI strings live in `Core/Localization/L10n.swift` (compile-time-checked static d
 
 ## Contribution workflow
 
-Changes go in via **PR only — never push to `main`** (enforced by a GitHub ruleset; see the `no-direct-push-to-main` memory). Per `AGENTS.md`: branch from latest `origin/main` in an isolated worktree on a `codex/` branch, don't edit the primary checkout or `main` directly. Non-appcast PRs must update **both** `CHANGELOG.md` and `CHANGELOG.zh-Hans.md`. Iterate with affected suites, then run `./qa/run-static.sh` once after the candidate is stable and before publishing. Keep Swift 6 strict concurrency clean, four-space indent, small domain-named types.
+Changes go in via **squash PR only — never push to `main`**. The current GitHub policy and branch archive rules are owned by `AGENTS.md`. Per `AGENTS.md`: branch from latest `origin/main` in an isolated worktree on a `codex/` branch, don't edit the primary checkout or `main` directly. Non-appcast PRs must update **both** `CHANGELOG.md` and `CHANGELOG.zh-Hans.md`. Iterate with affected suites, then run `./qa/run-static.sh` once after the candidate is stable and before publishing. Keep Swift 6 strict concurrency clean, four-space indent, small domain-named types.
 
 For runtime debugging: OSLog subsystem `dev.tjzhou.QuotaMonitor` (`log stream --predicate 'subsystem == "dev.tjzhou.QuotaMonitor"'`), or enable **Settings → Advanced → Developer Mode** for JSONL diagnostics at `~/Library/Application Support/QuotaMonitor/Logs/quotamonitor-dev.log`.

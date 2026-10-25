@@ -44,6 +44,8 @@ window copy.
 
 ### Changed
 
+
+- **Contribution rules.** Require squash PR merges and keep automatic remote-branch deletion, while local branches and worktrees follow the existing archive workflow.
 - **Website design.** Refresh the product website with the timmyagentic visual style while preserving installation, download and documentation paths.
 - **Model breakdown.** Trend legends start collapsed at model totals; expand a model to see its Standard, Fast, Ultrafast, or Flex breakdown with unchanged token totals and shares.
 - **New website address.** Move product links, private beta services, and anonymous version statistics to the personal website domain.
