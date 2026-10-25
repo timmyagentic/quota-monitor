@@ -90,15 +90,34 @@ enum CodexSidebarHeaderSelectionPolicy {
             let actions = header.filter {
                 $0.frame.minX >= title.frame.maxX && abs($0.frame.midY - title.frame.midY) <= 8
             }
-            guard actions.contains(where: { candidate in
+            guard let firstAction = actions.filter({ candidate in
                 candidate.descriptors.contains { text in
                     let text = text.lowercased()
                     return ["search", "notification", "搜索", "通知"].contains { text.contains($0) }
                 }
-            }), let next = actions.min(by: { $0.frame.minX < $1.frame.minX }) else { continue }
+            }).min(by: { $0.frame.minX < $1.frame.minX }) else { continue }
+
+            // AX may expose a title's chevron/text as separate elements. The
+            // first gap can be tiny while the rest of the same row is empty.
+            // Subtract every occupied interval, then use the widest safe gap.
+            let trailingEdge = firstAction.frame.minX - 8
+            var cursor = title.frame.maxX + 8
+            var best = cursor...cursor
+            let rowTop = title.frame.midY - CodexQuotaOverlayLayout.size.height / 2
+            let rowBottom = rowTop + CodexQuotaOverlayLayout.size.height
+            let obstacles = header.filter {
+                $0.frame.maxX > title.frame.maxX && $0.frame.minX < firstAction.frame.minX
+                    && $0.frame.maxY > rowTop && $0.frame.minY < rowBottom
+            }.sorted { $0.frame.minX < $1.frame.minX }
+            for obstacle in obstacles {
+                let end = min(trailingEdge, obstacle.frame.minX - 8)
+                if end - cursor > best.upperBound - best.lowerBound { best = cursor...end }
+                cursor = max(cursor, obstacle.frame.maxX + 8)
+            }
+            if trailingEdge - cursor > best.upperBound - best.lowerBound { best = cursor...trailingEdge }
             let anchor = CodexSidebarHeaderAnchor(
-                leadingInset: title.frame.maxX - windowFrame.minX + 8,
-                trailingXInset: next.frame.minX - windowFrame.minX - 8,
+                leadingInset: best.lowerBound - windowFrame.minX,
+                trailingXInset: best.upperBound - windowFrame.minX,
                 centerYInset: title.frame.midY - windowFrame.minY)
             if anchor.availableWidth >= CodexQuotaOverlayLayout.compactWidth { return anchor }
             narrowAnchor = narrowAnchor ?? anchor

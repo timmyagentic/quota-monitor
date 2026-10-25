@@ -306,12 +306,51 @@ struct CodexQuotaOverlayTests {
         #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [titleText, search]) == nil)
         let chevron = CodexSidebarHeaderCandidate(frame: CGRect(x: -1048, y: 152, width: 12, height: 12),
             descriptors: ["chevron.down"], role: kAXImageRole as String)
-        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, chevron, search]) == nil)
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, chevron, search])
+            == .init(leadingInset: 172, trailingXInset: 398, centerYInset: 60))
 
         let obstacle = CodexSidebarHeaderCandidate(frame: CGRect(x: -1020, y: 146, width: 28, height: 28), descriptors: ["Another action"])
-        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, obstacle, search]) == nil)
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [title, obstacle, search])
+            == .init(leadingInset: 216, trailingXInset: 398, centerYInset: 60))
         let chatTitle = CodexSidebarHeaderCandidate(frame: CGRect(x: -500, y: 146, width: 76, height: 28), descriptors: ["Codex"])
         #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: [chatTitle, search]) == nil)
+    }
+
+    @Test("Header placement uses the widest free interval and avoids every overlapping control")
+    func headerFreeIntervals() throws {
+        let host = CGRect(x: 100, y: 100, width: 1200, height: 800)
+        let title = CodexSidebarHeaderCandidate(frame: CGRect(x: 168, y: 146, width: 76, height: 28),
+            descriptors: ["Codex"])
+        let search = CodexSidebarHeaderCandidate(frame: CGRect(x: 506, y: 146, width: 28, height: 28),
+            descriptors: ["Search"])
+        // The first gap fits a single meter but not the dual one; the second fits both.
+        let obstacle = CodexSidebarHeaderCandidate(frame: CGRect(x: 350, y: 146, width: 20, height: 28),
+            descriptors: ["Action"])
+        let farSearch = CodexSidebarHeaderCandidate(frame: CGRect(x: 606, y: 146, width: 28, height: 28),
+            descriptors: ["Search"])
+        let best = try #require(CodexSidebarHeaderSelectionPolicy.anchor(
+            in: host, candidates: [title, obstacle, farSearch]))
+        #expect(best == .init(leadingInset: 278, trailingXInset: 498, centerYInset: 60))
+        let dual = CodexQuotaOverlayPresentation.make(snapshot: snapshot(
+            primary: window(usedPercent: 42), secondary: window(usedPercent: 8)),
+            displayMode: .remaining, now: now)
+        #expect(CodexQuotaOverlayLayout.summaryPlacement(in: host, presentation: dual, header: best) != nil)
+
+        // Vertical overlap matters even if the centers are more than eight points apart.
+        let tallObstacle = CodexSidebarHeaderCandidate(frame: CGRect(x: 252, y: 160, width: 200, height: 28),
+            descriptors: ["Visible action"])
+        #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host,
+            candidates: [title, tallObstacle, search]) == nil)
+
+        // A control straddling the title edge cannot be ignored or overlapped.
+        let overlapping = CodexSidebarHeaderCandidate(frame: CGRect(x: 240, y: 146, width: 28, height: 28),
+            descriptors: ["Accessory"])
+        let nested = CodexSidebarHeaderCandidate(frame: CGRect(x: 248, y: 152, width: 12, height: 12),
+            descriptors: ["Icon"], role: kAXImageRole as String)
+        let expected = CodexSidebarHeaderAnchor(leadingInset: 176, trailingXInset: 398, centerYInset: 60)
+        for candidates in [[title, overlapping, nested, search], [search, nested, overlapping, title]] {
+            #expect(CodexSidebarHeaderSelectionPolicy.anchor(in: host, candidates: candidates) == expected)
+        }
     }
 
     @Test("The new product-mode selector anchors the Codex header", arguments: [

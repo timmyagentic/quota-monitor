@@ -34,6 +34,7 @@ window copy.
 
 #### Summary
 
+- The Codex quota widget stays visible when small header icons leave enough room beside them.
 - Preserve the legacy update hostname so existing private Beta clients can migrate to the new service domain.
 - Model usage totals are easier to scan, with speed modes tucked into expandable rows.
 - The website, downloads, and private beta updates now use quota-monitor.timmyagentic.si.
@@ -43,6 +44,10 @@ window copy.
 - **Website design.** Refresh the product website with the timmyagentic visual style while preserving installation, download and documentation paths.
 - **Model breakdown.** Trend legends start collapsed at model totals; expand a model to see its Standard, Fast, Ultrafast, or Flex breakdown with unchanged token totals and shares.
 - **New website address.** Move product links, private beta services, and anonymous version statistics to the personal website domain.
+
+### Fixed
+
+- **Widget placement.** Use the widest unobstructed header gap instead of hiding the quota widget when the first gap beside the title is too small, while still avoiding nearby controls.
 
 ## [1.0.13] — 2026-10-15
 
