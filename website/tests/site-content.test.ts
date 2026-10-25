@@ -364,6 +364,8 @@ describe("public product content", () => {
         url.startsWith("https://quota-monitor.timmyagentic.si/") ||
           url === "https://timmyagentic.si/" ||
           url === "https://schema.org" ||
+          url === "https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md" ||
+          url === "https://github.com/timmyagentic/quota-monitor/blob/main/docs/agent-install.md" ||
           /^https:\/\/github\.com\/timmyagentic\/quota-monitor(?:\/releases)?$/.test(
             url,
           ),

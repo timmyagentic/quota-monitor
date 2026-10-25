@@ -16,7 +16,9 @@ window copy.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
   plumbing terms in Summary.
-- Put details under `### Added`, `### Changed`, `### Fixed`, `### Removed`,
+- Put details under `### Added`, `### Changed
+
+- **Guided installation.** Add a copyable website prompt and extend the Agent guide through provider setup, the first live quota reading and menu-bar verification.`, `### Fixed`, `### Removed`,
   or `### Known limitation(s)`. These remain in the GitHub Release notes.
 - Start each detail bullet with a short bold title, then one concise sentence:
   `- **Short title.** One concise sentence.`

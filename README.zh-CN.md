@@ -37,7 +37,7 @@
 > 请在这台 Mac 上安装最新的 Quota Monitor 官方版本，严格按照
 > <https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md>
 > 操作。不要使用 sudo，也不要修改 Shell 配置；替换已有 App 前先征求我的确认。
-> 完成后请报告已安装版本、路径、Developer ID 和 Gatekeeper 验证结果。
+> 完成后请报告已安装版本、路径、Developer ID 和 Gatekeeper 验证结果，再引导我完成数据源设置，验证首次真实额度和菜单栏运行，保留已有设置与历史。
 
 更喜欢自己运行命令？一条命令即可验证、安装并打开应用：
 
