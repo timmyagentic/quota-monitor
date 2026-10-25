@@ -34,6 +34,8 @@ window copy.
 
 ## [Unreleased]
 
+- Require the existing CI summary and remove duplicate website checks already covered by the portable development gate. Scope detection and PR metadata now share the portable job; preserve Node 20 installer compatibility in manual CI and make the publication-lock unit test independent of request completion order.
+
 #### Summary
 
 - The website clearly identifies supported Macs and keeps its preview steady when changing views.
