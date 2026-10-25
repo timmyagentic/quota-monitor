@@ -79,7 +79,10 @@ body.brand-site { background: var(--paper); color: var(--ink); font-family: var(
 .brand-quota .showcase-tabs { width: 100%; max-width: none; margin-bottom: 28px; background: #ffffffb8; border-radius: 8px; padding: 4px; }
 .brand-quota .showcase-tabs button { font-size: 12px; border-radius: 5px; }
 .brand-quota .showcase-tabs [aria-selected="true"] { background: #e4eaff; color: var(--blue); }
-.brand-quota .showcase-stage { width: 100%; max-width: none; padding: 0; }
+.brand-quota .showcase-stage { width: 100%; max-width: none; padding: 0; display: grid; }
+.brand-quota .showcase-stage > .showcase-panel { grid-area: 1 / 1; }
+/* Keep every panel's footprint while hidden content stays invisible and unfocusable. */
+.brand-quota .showcase-stage > .showcase-panel[hidden] { display: block !important; visibility: hidden; pointer-events: none; }
 .brand-quota .showcase-panel { min-height: 425px; }
 .brand-quota .hero-product { padding: 65px 0 0 60px; min-height: 395px; }
 .brand-quota .hero-menu-window { width: 155px; left: 0; top: 0; }
