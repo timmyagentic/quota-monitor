@@ -294,6 +294,13 @@ const simplifiedChinese = Object.freeze({
 });
 
 const homeEnglish = {
+  agentInstallTitle: "Install with your AI agent",
+  agentInstallPrompt: "Install the latest official Quota Monitor on this Mac. Follow https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md to verify the release and installed app, guide me through provider setup, and check my first live quota reading and menu-bar operation. Preserve existing settings and history; leave required authentication and permissions to me and report unverified steps.",
+  agentInstallCopy: "Copy installation prompt",
+  agentInstallGuide: "Read the installation guide",
+  agentInstallManual: "Or install manually:",
+  agentInstallCopied: "Copied. Paste it into your Agent.",
+  agentInstallCopyFailed: "Select and copy the prompt above manually.",
   heroTitleFirstLine: "Know your quota.",
   heroTitleSecondLine: "Keep your flow.",
   heroDescription:
@@ -353,6 +360,13 @@ const homeEnglish = {
   showcaseLabel: "Explore the app",
 };
 const homeChinese = {
+  agentInstallTitle: "交给你的 Agent 安装",
+  agentInstallPrompt: "请按 https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md 在这台 Mac 安装最新 Quota Monitor 官方版，校验发行包和应用，引导我完成数据源设置并验证首次真实额度与菜单栏运行；保留已有设置和历史，必要登录与权限由我完成，未验证步骤明确说明。",
+  agentInstallCopy: "复制安装提示词",
+  agentInstallGuide: "阅读完整安装指南",
+  agentInstallManual: "也可以手动安装：",
+  agentInstallCopied: "已复制，可以粘贴给 Agent。",
+  agentInstallCopyFailed: "请手动选择并复制上方提示词。",
   heroTitleFirstLine: "看清额度，",
   heroTitleSecondLine: "保持专注。",
   heroDescription:
@@ -681,7 +695,19 @@ function initialize() {
       }
       persistLanguage(requested);
       applyLanguage(requested);
+      const feedback = document.querySelector("#agent-install-feedback");
+      if (feedback) feedback.textContent = "";
     });
+  });
+  document.querySelector("#copy-agent-install")?.addEventListener("click", async () => {
+    const messages = translations[document.documentElement.lang] ?? translations.en;
+    const feedback = document.querySelector("#agent-install-feedback");
+    try {
+      await navigator.clipboard.writeText(document.querySelector("#agent-install-prompt").textContent);
+      feedback.textContent = messages.agentInstallCopied;
+    } catch {
+      feedback.textContent = messages.agentInstallCopyFailed;
+    }
   });
   initializeShowcase();
   void hydrateRelease();

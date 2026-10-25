@@ -38,7 +38,8 @@ Paste this into Codex, Claude Code, Cursor, or another local coding agent:
 > <https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/docs/agent-install.md>
 > exactly. Do not use sudo or change shell configuration. Ask before replacing
 > an existing app. At the end, report the installed version, path, Developer ID,
-> and Gatekeeper result.
+> and Gatekeeper result, then guide me through provider setup and verify the first
+> live quota reading and menu-bar operation. Keep my existing settings and history.
 
 Prefer the terminal? One command installs and opens the verified app:
 
