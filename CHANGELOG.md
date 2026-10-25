@@ -18,6 +18,8 @@ window copy.
   plumbing terms in Summary.
 - Put details under `### Added`, `### Changed
 
+- **Website clarity.** State Apple Silicon compatibility in both languages and reserve stable space for all three app previews.
+
 - **Guided installation.** Add a copyable website prompt and extend the Agent guide through provider setup, the first live quota reading and menu-bar verification.`, `### Fixed`, `### Removed`,
   or `### Known limitation(s)`. These remain in the GitHub Release notes.
 - Start each detail bullet with a short bold title, then one concise sentence:
@@ -33,6 +35,8 @@ window copy.
 ## [Unreleased]
 
 #### Summary
+
+- The website clearly identifies supported Macs and keeps its preview steady when changing views.
 
 - Preserve the legacy update hostname so existing private Beta clients can migrate to the new service domain.
 - Model usage totals are easier to scan, with speed modes tucked into expandable rows.

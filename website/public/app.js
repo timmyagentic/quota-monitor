@@ -30,7 +30,7 @@ const english = Object.freeze({
   downloadAction: "Download QuotaMonitor",
   exploreFeatures: "Explore features",
   downloadRequirementsLabel: "Download requirements and security",
-  systemRequirement: "macOS 14+",
+  systemRequirement: "macOS 14+ · Apple Silicon",
   signedStatus: "Developer ID signed",
   notarizedStatus: "Apple notarized",
   dashboardHeroAlt:
@@ -180,7 +180,7 @@ const simplifiedChinese = Object.freeze({
   downloadAction: "下载 QuotaMonitor",
   exploreFeatures: "了解功能",
   downloadRequirementsLabel: "下载要求与安全信息",
-  systemRequirement: "macOS 14+",
+  systemRequirement: "macOS 14+ · Apple Silicon",
   signedStatus: "Developer ID 已签名",
   notarizedStatus: "Apple 已公证",
   dashboardHeroAlt:
@@ -309,7 +309,7 @@ const homeEnglish = {
   installNav: "Get started",
   shortDownload: "Download",
   menuLabel: "Open navigation",
-  freeNote: "macOS 14+ · Free and open source",
+  freeNote: "macOS 14+ · Apple Silicon · Free and open source",
   overviewTab: "Live quota",
   trendsTab: "Usage trends",
   sessionsTab: "Session details",
@@ -352,7 +352,7 @@ const homeEnglish = {
     "QuotaMonitor shows the windows the provider currently supplies. Missing windows are omitted instead of being filled with stale data.",
   faqMacQ: "Which Macs are supported?",
   faqMacA:
-    "QuotaMonitor requires macOS 14 or later. The official release is Developer ID signed and Apple notarized.",
+    "QuotaMonitor requires macOS 14 or later on Apple Silicon. Intel Macs are not supported by the official release. The app is Developer ID signed and Apple notarized.",
   sourceLink: "Source code",
   releaseLink: "Release notes",
   finalTitle: "Keep your focus.\nWe’ll keep an eye on your quota.",
@@ -375,7 +375,7 @@ const homeChinese = {
   installNav: "使用指南",
   shortDownload: "下载",
   menuLabel: "打开导航",
-  freeNote: "macOS 14+ · 免费开源",
+  freeNote: "macOS 14+ · Apple Silicon · 免费开源",
   overviewTab: "实时额度",
   trendsTab: "使用趋势",
   sessionsTab: "会话明细",
@@ -413,7 +413,7 @@ const homeChinese = {
     "应用显示服务提供方当前实际返回的额度周期。没有提供的周期会被省略，不会拿旧数据补上。",
   faqMacQ: "支持哪些 Mac？",
   faqMacA:
-    "需要 macOS 14 或更新版本。官方发行版经过 Developer ID 签名和 Apple 公证。",
+    "需要搭载 Apple Silicon 的 Mac 与 macOS 14 或更新版本。官方发行版不支持 Intel Mac，经过 Developer ID 签名和 Apple 公证。",
   sourceLink: "源代码",
   releaseLink: "更新日志",
   finalTitle: "把心思留给创作，\n把额度交给 QuotaMonitor。",
