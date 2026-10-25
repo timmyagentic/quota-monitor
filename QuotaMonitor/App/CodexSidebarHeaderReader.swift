@@ -17,6 +17,7 @@ struct CodexSidebarHeaderReadResult: Equatable, Sendable {
     var visitedCount = 0
     var candidateCount = 0
     var webAreaCount = 0
+    var measuredAnchor: CodexSidebarHeaderAnchor?
 
     func anchorForPlacement(previous: CodexSidebarHeaderAnchor?) -> CodexSidebarHeaderAnchor? {
         if let anchor { return anchor }
@@ -116,6 +117,7 @@ enum CodexSidebarHeaderReader {
         else {
             if let anchor = CodexSidebarHeaderSelectionPolicy.measuredAnchor(
                 in: windowFrame, candidates: candidates) {
+                result.measuredAnchor = anchor
                 if anchor.availableWidth >= CodexQuotaOverlayLayout.compactWidth {
                     result.anchor = anchor
                 } else {

@@ -136,6 +136,26 @@ struct CodexSidebarHeaderReaderTests {
         #expect(result.unavailableStatus == .headerSpaceUnavailable)
     }
 
+    @Test("A separately exposed title accessory does not discard the remaining header space")
+    func titleAccessoryAppearsAndDisappears() throws {
+        let tree = tree()
+        let original = try #require(CodexSidebarHeaderReader.read(
+            application: 0, windowFrame: host, access: tree.access).anchor)
+        tree.nodes[1000]?.children = [1002]
+        tree.nodes[1002] = .init(role: "AXImage",
+            frame: CGRect(x: 252, y: 152, width: 12, height: 12), labels: ["chevron.down"])
+        let expanded = CodexSidebarHeaderReader.read(application: 0, windowFrame: host, access: tree.access)
+        let anchor = try #require(expanded.anchor)
+        #expect(anchor.leadingInset == 172)
+        #expect(anchor.trailingXInset == original.trailingXInset)
+        #expect(anchor.availableWidth == 226)
+        #expect(expanded.failure == nil)
+
+        tree.nodes[1000]?.children = []
+        #expect(CodexSidebarHeaderReader.read(application: 0, windowFrame: host,
+            access: tree.access).anchor == original)
+    }
+
     @Test("An overlapping popup cannot borrow the document's accessibility tree")
     func overlappingWindowMismatch() {
         let tree = tree()

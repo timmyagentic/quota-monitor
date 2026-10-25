@@ -20,6 +20,7 @@ final class LocalQAOverlayPreview {
     var scenario = "Weekly"
     private(set) var transientWindow: NSPanel?
     var transientVisible = false
+    var titleAccessoryVisible = false
 
     var sidebarWidth: CGFloat { narrow ? 320 : 438 }
     var header: CodexSidebarHeaderAnchor? {
@@ -81,6 +82,7 @@ final class LocalQAOverlayPreview {
     }
 
     func toggleWidth() { narrow.toggle(); updateLayout() }
+    func toggleTitleAccessory() { titleAccessoryVisible.toggle(); updateLayout() }
     func toggleTransientWindow() {
         if transientVisible {
             if let transientWindow { window.removeChildWindow(transientWindow); transientWindow.orderOut(nil) }
@@ -145,6 +147,11 @@ private struct LocalQAOverlayPreviewView: View {
                         }
                         .frame(height: 28)
                         .background(headerMeasurement("Codex"))
+                        if preview.titleAccessoryVisible {
+                            Image(systemName: "circle.fill").font(.system(size: 12))
+                                .frame(width: 12, height: 12)
+                                .background(headerMeasurement("Title accessory"))
+                        }
                         Spacer()
                         Image(systemName: "bell").frame(width: 22, height: 28)
                             .background(headerMeasurement("Notifications"))
@@ -185,6 +192,7 @@ private struct LocalQAOverlayPreviewView: View {
                             Button("Inspect floating windows") { preview.onInspectPanels?() }
                             Button("Previous position") { preview.placeAtPreviousPosition() }
                             Button("Transient preview") { preview.toggleTransientWindow() }
+                            Button("Title accessory") { preview.toggleTitleAccessory() }
                         }
                         HStack {
                             Button("Reset position") { preview.onResetPosition?() }
