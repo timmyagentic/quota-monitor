@@ -343,9 +343,12 @@ describe("private Beta administration", () => {
       ),
     ]);
     expect([first.status, competing.status].sort()).toEqual([201, 404]);
+    const holderID = first.status === 201 ? firstID : secondID;
+    const contenderID = holderID === firstID ? secondID : firstID;
+
 
     const wrongRelease = await handlePrivateBetaAdmin(
-      adminJSONRequest(releasePath, { publicationID: secondID }),
+      adminJSONRequest(releasePath, { publicationID: contenderID }),
       env,
       releasePath,
       20_000,
@@ -353,7 +356,7 @@ describe("private Beta administration", () => {
     expect(wrongRelease.status).toBe(404);
 
     const release = await handlePrivateBetaAdmin(
-      adminJSONRequest(releasePath, { publicationID: firstID }),
+      adminJSONRequest(releasePath, { publicationID: holderID }),
       env,
       releasePath,
       20_000,
@@ -361,7 +364,7 @@ describe("private Beta administration", () => {
     expect(release.status).toBe(200);
 
     const next = await handlePrivateBetaAdmin(
-      adminJSONRequest(acquirePath, { publicationID: secondID }),
+      adminJSONRequest(acquirePath, { publicationID: contenderID }),
       env,
       acquirePath,
       20_000,

@@ -1,405 +1,268 @@
-# Runs static QA checks plus a release-build smoke check when changes can affect
-# the Swift app, tests, QA scripts, or release tooling.
-#
-# Why gate the macOS job: macOS runners are slow to queue and expensive. Keep a
-# cheap Ubuntu change detector and summary check on every PR so the required
-# `swift-test` check is present, but run the macOS job only for ready PRs whose
-# changes can affect the app/test/tooling surface.
-# Job-level skips report success, avoiding the Pending required-check problem
-# caused by workflow-level path filters.
-#
-# Why keep the macOS job broad when it runs: the project's main risk is upstream
-# wire-format drift (Codex CLI app-server JSON-RPC + Anthropic OAuth usage
-# payloads) silently breaking the decoder. The static QA suite includes Swift
-# tests as the canary, plus shell/Python checks for the local QA and release-note
-# helper scripts. It does not launch a GUI app instance.
-#
-# The release-build step is the second canary: Swift 6 strict concurrency
-# + release-mode optimization occasionally surface issues that debug
-# (which is what `swift test` uses) misses. Catching them here keeps
-# the failure visible on the PR instead of waiting for a tag push to
-# invoke release.sh and finding out mid-DMG-build.
-#
-# macos-15 runner ships Swift 6 (Xcode 16.x) — the project requires
-# Swift 6 + StrictConcurrency, so an older runner image won't compile.
-
 name: tests
-
-on:
+'on':
   push:
-    branches: [main]
-    tags: ['v*']
+    branches:
+    - main
+    tags:
+    - v*
   pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
-
-# Cancel in-flight runs for the same ref when a new push lands —
-# saves macOS minutes (which are 10x linux on the free tier).
+    branches:
+    - main
+    types:
+    - opened
+    - synchronize
+    - reopened
+    - ready_for_review
+  workflow_dispatch: null
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      swift-test: ${{ steps.filter.outputs.swift-test }}
-      website-test: ${{ steps.filter.outputs.website-test }}
-      installer-test: ${{ steps.filter.outputs.installer-test }}
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Detect affected test surfaces
-        id: filter
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            echo "swift-test=true" >> "${GITHUB_OUTPUT}"
-            echo "website-test=true" >> "${GITHUB_OUTPUT}"
-            echo "installer-test=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          else
-            BASE="${{ github.event.before }}"
-            HEAD="${GITHUB_SHA}"
-          fi
-
-          if [[ -z "${BASE}" || "${BASE}" =~ ^0+$ ]]; then
-            echo "swift-test=true" >> "${GITHUB_OUTPUT}"
-            echo "website-test=true" >> "${GITHUB_OUTPUT}"
-            echo "installer-test=true" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          mapfile -t changed < <(git diff --name-only "${BASE}" "${HEAD}")
-          printf 'Changed files:\n'
-          printf '  %s\n' "${changed[@]}"
-
-          needs_swift_test=false
-          needs_website_test=false
-          needs_installer_test=false
-          for path in "${changed[@]}"; do
-            case "${path}" in
-              .github/workflows/tests.yml|\
-              Package.swift|Package.resolved|\
-              QuotaMonitor/*|QuotaMonitor/**|\
-              Tests/*|Tests/**|\
-              Resources/*|Resources/**|\
-              qa/*|qa/**|\
-              tools/*|tools/**)
-                needs_swift_test=true
-                ;;
-            esac
-            case "${path}" in
-              .github/workflows/tests.yml|\
-              website/**)
-                needs_website_test=true
-                ;;
-            esac
-            case "${path}" in
-              .github/workflows/tests.yml|\
-              npm/quotamonitor/**)
-                needs_installer_test=true
-                ;;
-            esac
-          done
-
-          echo "swift-test=${needs_swift_test}" >> "${GITHUB_OUTPUT}"
-          echo "website-test=${needs_website_test}" >> "${GITHUB_OUTPUT}"
-          echo "installer-test=${needs_installer_test}" >> "${GITHUB_OUTPUT}"
-
-  pr_changelog:
-    name: PR changelog
-    needs: changes
-    if: >-
-      ${{
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.draft == false
-      }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-
-      - name: Validate PR changelog
-        run: python3 tools/validate-pr-changelog.py --base "${{ github.event.pull_request.base.sha }}" --head HEAD
-
-  website_test:
-    name: Website checks
-    needs: [changes, pr_changelog]
-    if: >-
-      ${{
-        always() &&
-        needs.changes.result == 'success' &&
-        needs.changes.outputs.website-test == 'true' &&
-        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
-        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
-      }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: website
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: website/package-lock.json
-
-      - name: Install website dependencies
-        run: npm ci
-
-      - name: Check website
-        run: npm run check
-
-  installer_test:
-    name: npm installer checks
-    needs: [changes, pr_changelog]
-    if: >-
-      ${{
-        always() &&
-        needs.changes.result == 'success' &&
-        needs.changes.outputs.installer-test == 'true' &&
-        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
-        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
-      }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [20.17.0, 22]
-    defaults:
-      run:
-        working-directory: npm/quotamonitor
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: npm
-          cache-dependency-path: npm/quotamonitor/package-lock.json
-
-      - name: Install package dependencies
-        # The published CLI is intentionally Darwin-only, while this job runs
-        # its platform-independent parser/crypto tests on Linux. `--force`
-        # bypasses only npm's root-package OS guard; the macOS smoke below
-        # remains the supported-platform installation gate.
-        run: npm ci --ignore-scripts --force
-
-      - name: Test installer
-        run: npm test
-
-      - name: Verify published file allowlist
-        run: npm run pack:check
-
-  installer_macos_smoke:
-    name: npm installer macOS smoke
-    needs: [changes, pr_changelog]
-    if: >-
-      ${{
-        always() &&
-        needs.changes.result == 'success' &&
-        needs.changes.outputs.installer-test == 'true' &&
-        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
-        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
-      }}
-    runs-on: macos-15
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: npm/quotamonitor
-    steps:
-      - uses: actions/checkout@v6.0.2
-
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: npm/quotamonitor/package-lock.json
-
-      - name: Install package dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Install the delivered app into an isolated directory
-        shell: bash
-        run: |
-          set -euo pipefail
-          qm_smoke_dir="$(mktemp -d "${RUNNER_TEMP}/quotamonitor-installer.XXXXXX")"
-          output="$(node bin/quotamonitor.js install --app-dir "${qm_smoke_dir}" --no-open)"
-          echo "${output}"
-          grep -F "Checks: SHA-256, Sparkle Ed25519, Developer ID, Gatekeeper" <<< "${output}"
-          test -d "${qm_smoke_dir}/QuotaMonitor.app"
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${qm_smoke_dir}/QuotaMonitor.app/Contents/Info.plist"
-          /usr/bin/codesign --verify --deep --strict "${qm_smoke_dir}/QuotaMonitor.app"
-          /usr/sbin/spctl --assess --type execute --verbose=2 "${qm_smoke_dir}/QuotaMonitor.app"
-
   cloud_development:
     name: Cloud development checks
     runs-on: ubuntu-latest
     timeout-minutes: 15
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - run: ./qa/bootstrap-cloud.sh
-      - run: ./qa/run-cloud.sh
+    - uses: actions/checkout@v6.0.2
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        fetch-depth: 0
+    - uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 22
+    - name: Detect affected test surfaces
+      id: filter
+      shell: bash
+      run: |
+        set -euo pipefail
 
-  macos_swift_test:
-    name: macOS Swift tests
-    needs: [changes, pr_changelog]
-    if: >-
+        if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+        elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+          echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+          echo "installer-test=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        else
+          BASE="${{ github.event.before }}"
+          HEAD="${GITHUB_SHA}"
+        fi
+
+        if [[ -z "${BASE}" || "${BASE}" =~ ^0+$ ]]; then
+          echo "swift-test=true" >> "${GITHUB_OUTPUT}"
+          echo "installer-test=true" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        mapfile -t changed < <(git diff --name-only "${BASE}" "${HEAD}")
+        printf 'Changed files:\n'
+        printf '  %s\n' "${changed[@]}"
+
+        needs_swift_test=false
+        needs_installer_test=false
+        for path in "${changed[@]}"; do
+          case "${path}" in
+            .github/workflows/tests.yml|\
+            Package.swift|Package.resolved|\
+            QuotaMonitor/*|\
+            Tests/*|\
+            Resources/*|\
+            qa/*|\
+            tools/*)
+              needs_swift_test=true
+              ;;
+          esac
+          case "${path}" in
+            .github/workflows/tests.yml|\
+            npm/quotamonitor/**)
+              needs_installer_test=true
+              ;;
+          esac
+        done
+
+        echo "swift-test=${needs_swift_test}" >> "${GITHUB_OUTPUT}"
+        echo "installer-test=${needs_installer_test}" >> "${GITHUB_OUTPUT}"
+    - name: Validate PR changelog
+      run: python3 tools/validate-pr-changelog.py --base "${{ github.event.pull_request.base.sha }}" --head HEAD
+      if: ${{ github.event_name == 'pull_request' }}
+    - run: ./qa/bootstrap-cloud.sh
+    - run: ./qa/run-cloud.sh
+    outputs:
+      swift-test: ${{ steps.filter.outputs.swift-test }}
+      installer-test: ${{ steps.filter.outputs.installer-test }}
+  installer_test:
+    name: npm installer checks
+    needs:
+    - cloud_development
+    if: |-
       ${{
         always() &&
-        needs.changes.result == 'success' &&
-        needs.changes.outputs.swift-test == 'true' &&
-        (github.event_name != 'pull_request' || github.event.pull_request.draft == false) &&
-        (github.event_name != 'pull_request' || needs.pr_changelog.result == 'success')
+        needs.cloud_development.result == 'success' &&
+        needs.cloud_development.outputs.installer-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: npm/quotamonitor
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: npm/quotamonitor/package-lock.json
+    - name: Install package dependencies
+      run: npm ci --ignore-scripts --force
+    - name: Test installer
+      run: npm test
+    - name: Verify published file allowlist
+      run: npm run pack:check
+  installer_macos_smoke:
+    name: npm installer macOS smoke
+    needs:
+    - cloud_development
+    if: |-
+      ${{
+        always() &&
+        needs.cloud_development.result == 'success' &&
+        needs.cloud_development.outputs.installer-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
+      }}
+    runs-on: macos-15
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: npm/quotamonitor
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 22
+        cache: npm
+        cache-dependency-path: npm/quotamonitor/package-lock.json
+    - name: Install package dependencies
+      run: npm ci --ignore-scripts
+    - name: Install the delivered app into an isolated directory
+      shell: bash
+      run: |
+        set -euo pipefail
+        qm_smoke_dir="$(mktemp -d "${RUNNER_TEMP}/quotamonitor-installer.XXXXXX")"
+        output="$(node bin/quotamonitor.js install --app-dir "${qm_smoke_dir}" --no-open)"
+        echo "${output}"
+        grep -F "Checks: SHA-256, Sparkle Ed25519, Developer ID, Gatekeeper" <<< "${output}"
+        test -d "${qm_smoke_dir}/QuotaMonitor.app"
+        /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${qm_smoke_dir}/QuotaMonitor.app/Contents/Info.plist"
+        /usr/bin/codesign --verify --deep --strict "${qm_smoke_dir}/QuotaMonitor.app"
+        /usr/sbin/spctl --assess --type execute --verbose=2 "${qm_smoke_dir}/QuotaMonitor.app"
+  macos_swift_test:
+    name: macOS Swift tests
+    needs:
+    - cloud_development
+    if: |-
+      ${{
+        always() &&
+        needs.cloud_development.result == 'success' &&
+        needs.cloud_development.outputs.swift-test == 'true' &&
+        (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
       }}
     runs-on: macos-15
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Show toolchain
-        # Surface swift / xcode versions in the log so a future Swift-7
-        # default on the runner is visible at the top of the run.
-        run: |
-          swift --version
-          xcodebuild -version || true
-
-      - name: static QA checks
-        # Non-GUI gate: shell/Python helper tests, release-note format,
-        # whitespace checks, and the Swift test suite. This must not launch
-        # a QuotaMonitor.app instance. Visible UI validation is explicit:
-        # run an interactive QA setup locally, then use Computer Use.
-        run: ./qa/run-static.sh --force
-
-      - name: Upload Swift test log
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: swift-test-log-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .build/qa-logs/swift-test-*.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: swift build -c release (smoke)
-        # Belt-and-suspenders check: tests run in debug, but release
-        # optimization can expose problems debug never sees (implicit
-        # Sendable inference, @inlinable boundaries, etc). Compile only
-        # — no app bundle, no DMG. release.yml still does the full
-        # build + bundle + DMG on tag push.
-        run: swift build -c release
-
+    - uses: actions/checkout@v6.0.2
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+    - name: Show toolchain
+      run: |
+        swift --version
+        xcodebuild -version || true
+    - name: static QA checks
+      run: ./qa/run-static.sh --force
+    - name: Upload Swift test log
+      if: ${{ always() }}
+      uses: actions/upload-artifact@v4.6.2
+      with:
+        name: swift-test-log-${{ github.run_id }}-${{ github.run_attempt }}
+        path: .build/qa-logs/swift-test-*.log
+        if-no-files-found: ignore
+        retention-days: 7
+    - name: swift build -c release (smoke)
+      run: swift build -c release
   swift-test:
     name: swift-test
-    needs: [changes, pr_changelog, website_test, installer_test, installer_macos_smoke, macos_swift_test, cloud_development]
+    needs:
+    - cloud_development
+    - installer_test
+    - installer_macos_smoke
+    - macos_swift_test
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Summarize gated test checks
-        shell: bash
-        env:
-          CLOUD_RESULT: ${{ needs.cloud_development.result }}
-          CHANGES_RESULT: ${{ needs.changes.result }}
-          NEEDS_SWIFT_TEST: ${{ needs.changes.outputs.swift-test }}
-          PR_CHANGELOG_RESULT: ${{ needs.pr_changelog.result }}
-          NEEDS_WEBSITE_TEST: ${{ needs.changes.outputs.website-test }}
-          WEBSITE_RESULT: ${{ needs.website_test.result }}
-          NEEDS_INSTALLER_TEST: ${{ needs.changes.outputs.installer-test }}
-          INSTALLER_RESULT: ${{ needs.installer_test.result }}
-          INSTALLER_SMOKE_RESULT: ${{ needs.installer_macos_smoke.result }}
-          MACOS_SWIFT_RESULT: ${{ needs.macos_swift_test.result }}
-          IS_DRAFT: ${{ github.event.pull_request.draft || 'false' }}
-        run: |
-          set -euo pipefail
-
-          echo "changes result: ${CHANGES_RESULT}"
-          echo "needs macOS Swift tests: ${NEEDS_SWIFT_TEST}"
-          echo "PR changelog result: ${PR_CHANGELOG_RESULT}"
-          echo "needs website tests: ${NEEDS_WEBSITE_TEST}"
-          echo "website result: ${WEBSITE_RESULT}"
-          echo "needs npm installer tests: ${NEEDS_INSTALLER_TEST}"
-          echo "npm installer result: ${INSTALLER_RESULT}"
-          echo "npm installer macOS smoke result: ${INSTALLER_SMOKE_RESULT}"
-          echo "macOS Swift result: ${MACOS_SWIFT_RESULT}"
-
-          if [[ "${CHANGES_RESULT}" != "success" ]]; then
-            echo "::error::Change detection failed"
-            exit 1
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
-            echo "Draft PR; gated tests intentionally skipped"
-            exit 0
-          fi
-
-          if [[ "${CLOUD_RESULT}" != "success" ]]; then
-            echo "::error::Cloud development checks did not pass"
-            exit 1
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${PR_CHANGELOG_RESULT}" != "success" ]]; then
-            echo "::error::PR changelog validation failed"
-            exit 1
-          fi
-
-          if [[ "${NEEDS_SWIFT_TEST}" == "true" && "${MACOS_SWIFT_RESULT}" != "success" ]]; then
-            echo "::error::macOS Swift tests did not pass"
-            exit 1
-          fi
-
-          if [[ "${NEEDS_WEBSITE_TEST}" == "true" && "${WEBSITE_RESULT}" != "success" ]]; then
-            echo "::error::Website tests did not pass"
-            exit 1
-          fi
-
-          if [[ "${NEEDS_INSTALLER_TEST}" == "true" && "${INSTALLER_RESULT}" != "success" ]]; then
-            echo "::error::npm installer tests did not pass"
-            exit 1
-          fi
-
-          if [[ "${NEEDS_INSTALLER_TEST}" == "true" && "${INSTALLER_SMOKE_RESULT}" != "success" ]]; then
-            echo "::error::npm installer macOS smoke did not pass"
-            exit 1
-          fi
-
-          if [[ "${NEEDS_SWIFT_TEST}" == "true" ]]; then
-            echo "macOS Swift tests passed"
-          else
-            echo "No app/test/tooling changes; macOS Swift tests intentionally skipped"
-          fi
-
-          if [[ "${NEEDS_WEBSITE_TEST}" == "true" ]]; then
-            echo "Website tests passed"
-          else
-            echo "No website changes; website tests intentionally skipped"
-          fi
-
-          if [[ "${NEEDS_INSTALLER_TEST}" == "true" ]]; then
-            echo "npm installer tests passed"
-          else
-            echo "No npm installer changes; npm installer tests intentionally skipped"
-          fi
+    - name: Summarize gated test checks
+      shell: bash
+      env:
+        CLOUD_RESULT: ${{ needs.cloud_development.result }}
+        NEEDS_SWIFT_TEST: ${{ needs.cloud_development.outputs.swift-test }}
+        NEEDS_INSTALLER_TEST: ${{ needs.cloud_development.outputs.installer-test }}
+        MACOS_SWIFT_RESULT: ${{ needs.macos_swift_test.result }}
+        INSTALLER_RESULT: ${{ needs.installer_test.result }}
+        INSTALLER_SMOKE_RESULT: ${{ needs.installer_macos_smoke.result }}
+        IS_DRAFT: ${{ github.event.pull_request.draft || 'false' }}
+      run: |
+        set -euo pipefail
+        if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && "${IS_DRAFT}" == "true" ]]; then
+          echo "Draft PR; gated tests intentionally skipped"
+          exit 0
+        fi
+        if [[ "${CLOUD_RESULT}" != "success" ]]; then
+          echo "::error::Portable, scope or changelog checks failed"
+          exit 1
+        fi
+        for flag in "${NEEDS_SWIFT_TEST}" "${NEEDS_INSTALLER_TEST}"; do
+          case "$flag" in
+            true|false) ;;
+            *) echo "::error::Unknown change-scope flag"; exit 1 ;;
+          esac
+        done
+        for result in "${MACOS_SWIFT_RESULT}" "${INSTALLER_RESULT}" "${INSTALLER_SMOKE_RESULT}"; do
+          case "$result" in
+            success|skipped) ;;
+            *) echo "::error::A dependent check failed or was cancelled"; exit 1 ;;
+          esac
+        done
+        if [[ "${NEEDS_SWIFT_TEST}" == "true" && "${MACOS_SWIFT_RESULT}" != "success" ]]; then
+          echo "::error::Applicable macOS Swift tests did not run successfully"
+          exit 1
+        fi
+        if [[ "${NEEDS_INSTALLER_TEST}" == "true" && ( "${INSTALLER_RESULT}" != "success" || "${INSTALLER_SMOKE_RESULT}" != "success" ) ]]; then
+          echo "::error::Applicable installer checks did not run successfully"
+          exit 1
+        fi
+        echo "All applicable checks passed; path skips are not application test results"
+  installer_compatibility:
+    name: npm installer Node 20 compatibility
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: npm/quotamonitor
+    steps:
+    - uses: actions/checkout@v6.0.2
+    - uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 20.17.0
+        cache: npm
+        cache-dependency-path: npm/quotamonitor/package-lock.json
+    - name: Install package dependencies
+      run: npm ci --ignore-scripts --force
+    - name: Test installer
+      run: npm test
+    - name: Verify published file allowlist
+      run: npm run pack:check
+permissions:
+  contents: read

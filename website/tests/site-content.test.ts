@@ -110,31 +110,23 @@ async function loadAppModule(): Promise<SiteModule> {
 }
 
 describe("public product content", () => {
-  it("gates website changes through the required CI summary", () => {
+  it("gates website checks through the portable CI result", () => {
     const workflow = readFileSync(
       join(repositoryDirectory, ".github", "workflows", "tests.yml"),
       "utf8",
     );
+    const bootstrap = readFileSync(join(repositoryDirectory, "qa", "bootstrap-cloud.sh"), "utf8");
+    const portable = readFileSync(join(repositoryDirectory, "qa", "run-cloud.sh"), "utf8");
+    const summary = workflow.slice(workflow.indexOf("\n  swift-test:"));
 
-    expect(workflow).toContain(
-      "types: [opened, synchronize, reopened, ready_for_review]",
-    );
-    expect(workflow).toContain(
-      "website-test: ${{ steps.filter.outputs.website-test }}",
-    );
-    expect(workflow).toContain("website/**)");
-    expect(workflow).toContain("website_test:");
-    expect(workflow).toMatch(/uses: actions\/setup-node@v\d+(?:\.\d+){0,2}/);
-    expect(workflow).toMatch(/node-version:\s*['\"]?22['\"]?/);
-    expect(workflow).toContain("working-directory: website");
-    expect(workflow).toContain("run: npm ci");
-    expect(workflow).toContain("run: npm run check");
-    expect(workflow).toContain(
-      "WEBSITE_RESULT: ${{ needs.website_test.result }}",
-    );
-    expect(workflow).toContain(
-      '[[ "${NEEDS_WEBSITE_TEST}" == "true" && "${WEBSITE_RESULT}" != "success" ]]',
-    );
+    expect(workflow).toContain("ready_for_review");
+    expect(workflow).toContain("run: ./qa/bootstrap-cloud.sh");
+    expect(workflow).toContain("run: ./qa/run-cloud.sh");
+    expect(bootstrap).toContain("npm --prefix website ci");
+    expect(portable).toContain("npm --prefix website run check");
+    expect(summary).toContain("cloud_development");
+    expect(summary).toContain("CLOUD_RESULT: " + "$" + "{{ needs.cloud_development.result }}");
+    expect(summary).toContain('[[ "' + "$" + '{CLOUD_RESULT}" != "success" ]]');
   });
 
   it("defines the production Worker and static asset deployment contract", () => {
