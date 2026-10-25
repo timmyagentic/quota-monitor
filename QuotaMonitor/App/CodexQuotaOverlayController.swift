@@ -552,11 +552,19 @@ final class CodexQuotaOverlayController: NSObject {
         }
 
         if headerReadResult != result {
+            var fields: [String: DeveloperLogValue] = [
+                "visited": .int(result.visitedCount),
+                "candidates": .int(result.candidateCount),
+                "web_areas": .int(result.webAreaCount)]
+            if let measured = result.measuredAnchor {
+                // Geometry only: never log host control text or conversation content.
+                fields["slot_width"] = .double(Double(measured.availableWidth))
+                fields["slot_leading"] = .double(Double(measured.leadingInset))
+                fields["slot_trailing"] = .double(Double(measured.trailingXInset))
+            }
             DeveloperLog.eventRecord("codex_overlay.header_discovery", category: "codex_overlay",
                 result: result.failure?.rawValue ?? "found",
-                fields: ["visited": .int(result.visitedCount),
-                         "candidates": .int(result.candidateCount),
-                         "web_areas": .int(result.webAreaCount)])
+                fields: fields)
         }
         headerReadResult = result
         if let anchor = result.anchor {
