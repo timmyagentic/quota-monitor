@@ -73,6 +73,7 @@ enum CodexFastMode {
     static let multipliers: [String: Double] = [
         "gpt-6-astra": 2.0,
         "gpt-6.1-sol": 2.0,
+        "gpt-6.1-terra": 2.0,
         "gpt-6-sol": 2.0,
         "gpt-6-luna": 2.0,
         "gpt-5.6-sol": 2.0,
@@ -95,6 +96,7 @@ enum CodexFlexMode {
     static let multipliers: [String: Double] = [
         "gpt-6-astra": 0.5,
         "gpt-6.1-sol": 0.5,
+        "gpt-6.1-terra": 0.5,
         "gpt-6-sol": 0.5,
         "gpt-6-luna": 0.5,
         "gpt-5.6-sol": 0.5,
@@ -120,6 +122,7 @@ enum CodexLongContextPricing {
     static let modelIds: Set<String> = [
         "gpt-6-astra",
         "gpt-6.1-sol",
+        "gpt-6.1-terra",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -131,6 +134,7 @@ enum CodexLongContextPricing {
     static let fastModelIds: Set<String> = [
         "gpt-6-astra",
         "gpt-6.1-sol",
+        "gpt-6.1-terra",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -227,6 +231,7 @@ enum BundledPricingCatalog {
         "gpt-5",
         "gpt-6-astra",
         "gpt-6.1-sol",
+        "gpt-6.1-terra",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -268,6 +273,12 @@ enum BundledPricingCatalog {
               effectiveModelId: "gpt-6.1-sol", isOfficial: true,
               note: "Official Standard Short price; cache reads cost 5% of input. Tier and >272K variants are materialized separately.",
               sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6.1-sol"),
+        .init(modelId: "gpt-6.1-terra", displayName: "GPT-6.1 Terra",
+              inputPricePerMillion: 1.00, cachedInputPricePerMillion: 0.05, outputPricePerMillion: 5.00,
+              cacheCreationPricePerMillion: 1.25,
+              effectiveModelId: "gpt-6.1-terra", isOfficial: true,
+              note: "Official Standard Short price; cache reads cost 5% of input. Tier and >272K variants are materialized separately.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6.1-terra"),
         .init(modelId: "gpt-6-sol", displayName: "GPT-6 Sol",
               inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 10.00,
               cacheCreationPricePerMillion: 2.50,
