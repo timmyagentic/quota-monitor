@@ -16,6 +16,19 @@
           keeping newest-first is conventional and human-readable.
         -->
         <item>
+            <title>QuotaMonitor 1.0.14</title>
+            <pubDate>Sun, 01 Nov 2026 08:59:22 +0000</pubDate>
+            <sparkle:version>10000149000</sparkle:version>
+            <sparkle:shortVersionString>1.0.14</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:releaseNotesLink xml:lang="en">https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/ReleaseNotes/1.0.14.en.html</sparkle:releaseNotesLink>
+            <sparkle:releaseNotesLink xml:lang="zh-Hans">https://raw.githubusercontent.com/timmyagentic/quota-monitor/main/ReleaseNotes/1.0.14.zh-Hans.html</sparkle:releaseNotesLink>
+            <enclosure
+                url="https://github.com/timmyagentic/quota-monitor/releases/download/v1.0.14/QuotaMonitor-1.0.14.dmg"
+                type="application/octet-stream"
+                sparkle:edSignature="kJX78HYXmzI7MsV6rA0X2v0AneSW5aCN0w8ugTlWvJzXh7YdbAS4egUVq+Kv/Ml10eojoNRI/UYuDNWG9Y4vCA==" length="9181580" />
+        </item>
+        <item>
             <title>QuotaMonitor 1.0.12</title>
             <pubDate>Sun, 11 Oct 2026 16:46:48 +0000</pubDate>
             <sparkle:version>10000129000</sparkle:version>
