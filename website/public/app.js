@@ -301,8 +301,9 @@ const homeEnglish = {
   agentInstallManual: "Or install manually:",
   agentInstallCopied: "Copied. Paste it into your Agent.",
   agentInstallCopyFailed: "Select and copy the prompt above manually.",
-  heroTitleFirstLine: "Know your quota.",
-  heroTitleSecondLine: "Keep your flow.",
+  heroTitleFirstLine: "Coding quotas,",
+  fullDashboard: "View the full dashboard",
+  heroTitleSecondLine: "in your Mac menu bar.",
   heroDescription:
     "Codex and Claude Code quotas, reset times, and usage trends. Right in your Mac menu bar.",
   heroEyebrow: "A LITTLE CLARITY. A LOT MORE FOCUS.",
@@ -367,8 +368,9 @@ const homeChinese = {
   agentInstallManual: "也可以手动安装：",
   agentInstallCopied: "已复制，可以粘贴给 Agent。",
   agentInstallCopyFailed: "请手动选择并复制上方提示词。",
-  heroTitleFirstLine: "看清额度，",
-  heroTitleSecondLine: "保持专注。",
+  heroTitleFirstLine: "在 Mac 菜单栏",
+  fullDashboard: "查看完整仪表盘",
+  heroTitleSecondLine: "看清编程额度。",
   heroDescription:
     "Codex 与 Claude Code 的额度、重置时间和使用趋势，就在 Mac 菜单栏。",
   heroEyebrow: "少一点猜测，多一点专注",
