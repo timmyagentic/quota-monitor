@@ -1,3 +1,5 @@
+import { initializeViewport } from "./viewport.js";
+
 const STORAGE_KEY = "quota-monitor-site-language";
 const supported = new Set(["en", "zh-Hans"]);
 
@@ -712,6 +714,7 @@ function initialize() {
     }
   });
   initializeShowcase();
+  initializeViewport();
   void hydrateRelease();
 }
 
