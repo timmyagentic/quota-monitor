@@ -34,6 +34,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- See your coding quota and reset time at a readable size on the mobile website.
+
+### Changed
+
+- **Mobile quota preview.** Show the menu-bar quota at full width and keep the complete dashboard one tap away.
+
 ## [1.0.14] — 2026-11-01
 
 

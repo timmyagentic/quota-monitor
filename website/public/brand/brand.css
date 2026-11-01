@@ -245,3 +245,14 @@ body.brand-site { background: var(--paper); color: var(--ink); font-family: var(
 @media (max-width: 760px) { .brand-cc .hero { display: block; } .brand-cc .hero-links { align-items: flex-start; margin-top: 24px; } }
 
 .brand-site .header-inner { display: flex; align-items: center; }
+
+.brand-quota .mobile-dashboard-link { display: none; }
+@media (max-width: 760px) {
+  .brand-quota .showcase .showcase-stage { width: 100%; }
+  .brand-quota .hero-product { display: grid; justify-items: center; gap: 8px; margin: 0; padding: 0; min-height: 0; }
+  .brand-quota .hero-menu-window { position: static; width: min(100%, 386px); }
+  .brand-quota .hero-menu-window img { width: 100%; height: auto; aspect-ratio: 386 / 298; object-fit: cover; object-position: center top; }
+  .brand-quota .hero-dashboard-window { width: auto; border: 0; background: none; box-shadow: none; border-radius: 0; }
+  .brand-quota .hero-dashboard-window img { display: none; }
+  .brand-quota .mobile-dashboard-link { display: inline-flex; align-items: center; min-height: 44px; font-size: 14px; text-decoration: underline; text-underline-offset: .2em; }
+}

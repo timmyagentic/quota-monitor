@@ -333,10 +333,10 @@ describe("public product content", () => {
     expect(attributeValues(html, "data-i18n")).toEqual(
       expect.arrayContaining(["heroTitleFirstLine", "heroTitleSecondLine"]),
     );
-    expect(translations.en.heroTitleFirstLine).toBe("Know your quota.");
-    expect(translations.en.heroTitleSecondLine).toBe("Keep your flow.");
-    expect(translations["zh-Hans"].heroTitleFirstLine).toBe("看清额度，");
-    expect(translations["zh-Hans"].heroTitleSecondLine).toBe("保持专注。");
+    expect(translations.en.heroTitleFirstLine).toBe("Coding quotas,");
+    expect(translations.en.heroTitleSecondLine).toBe("in your Mac menu bar.");
+    expect(translations["zh-Hans"].heroTitleFirstLine).toBe("在 Mac 菜单栏");
+    expect(translations["zh-Hans"].heroTitleSecondLine).toBe("看清编程额度。");
     expect(translations.en.heroPrivacy).toContain(
       "Quota history stays on your Mac",
     );
