@@ -36,6 +36,7 @@ window copy.
 
 #### Summary
 
+- Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
 - See your coding quota and reset time at a readable size on the mobile website.
 
 ### Changed
