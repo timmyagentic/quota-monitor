@@ -38,11 +38,16 @@ window copy.
 
 #### Summary
 
+- GPT-6.1 Terra usage now has cost estimates, including cached usage and speed modes.
 - The website clearly identifies supported Macs and keeps its preview steady when changing views.
 - The Codex quota widget stays visible when small header icons leave enough room beside them.
 - Preserve the legacy update hostname so existing private Beta clients can migrate to the new service domain.
 - Model usage totals are easier to scan, with speed modes tucked into expandable rows.
 - The website, downloads, and private beta updates now use quota-monitor.timmyagentic.si.
+
+### Added
+
+- **GPT-6.1 Terra pricing.** Add Standard, Fast, Flex and long-context API-equivalent estimates, including cache reads and writes.
 
 ### Changed
 
