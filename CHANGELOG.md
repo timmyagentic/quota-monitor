@@ -34,6 +34,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.15] — 2026-11-02
+
 #### Summary
 
 - Keep the known part of this cycle's cost visible when some models do not yet have prices.
