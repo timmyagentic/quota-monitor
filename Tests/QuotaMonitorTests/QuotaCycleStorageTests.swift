@@ -128,6 +128,32 @@ struct QuotaCycleStorageTests {
         #expect(result.eventCount == 2)
         #expect(result.unpricedEventCount == 1)
         #expect(result.valueUSD == 0.1)
+        #expect(result.points.last?.valueUSD == result.valueUSD)
+        #expect(L10n.cycleAPIValueAmount(valueUSD: result.valueUSD,
+            unpricedEventCount: result.unpricedEventCount) == "≥ \(0.1.formatted(.currency(code: "USD")))")
+    }
+
+    @Test func entirelyUnpricedRecordsDoNotPresentZeroAsACostEstimate() throws {
+        let manager = try database()
+        try manager.pool.write { db in
+            try seed(db: db, provider: "codex", offset: 0)
+            try db.execute(sql: "UPDATE usage_events SET value_usd = 0")
+        }
+        let result = try #require(try manager.pool.read { db in
+            try Aggregator.quotaCycleUsage(db: db,
+                cycles: [QuotaCycle.resolve(observation(), previous: nil)],
+                now: origin.addingTimeInterval(1_000)).first
+        })
+        #expect(result.tokens == 120)
+        #expect(result.unpricedEventCount == 1)
+        #expect(L10n.cycleAPIValueAmount(valueUSD: result.valueUSD,
+            unpricedEventCount: result.unpricedEventCount) == "—")
+    }
+
+    @Test("Complete cycle costs retain their currency value, including zero", arguments: [0.0, 871.27])
+    func completeCostsRemainUnqualified(valueUSD: Double) {
+        #expect(L10n.cycleAPIValueAmount(valueUSD: valueUSD,
+            unpricedEventCount: 0) == valueUSD.formatted(.currency(code: "USD")))
     }
 
     @Test func unconfirmedStartKeepsPaceUnavailableButShowsEstimatedLocalRecordsAfterRelaunch() throws {
