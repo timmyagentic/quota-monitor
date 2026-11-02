@@ -36,12 +36,17 @@ window copy.
 
 #### Summary
 
+- Keep the known part of this cycle's cost visible when some models do not yet have prices.
 - Let the website fill the browser width and adapt its opening layout to the available height, including wide monitors and phone orientations.
 - See your coding quota and reset time at a readable size on the mobile website.
 
 ### Changed
 
 - **Mobile quota preview.** Show the menu-bar quota at full width and keep the complete dashboard one tap away.
+
+### Fixed
+
+- **Partial cycle costs.** Show the priced subtotal with a lower-bound marker in cycle cards and charts instead of hiding it when another record has no price.
 
 ## [1.0.14] — 2026-11-01
 
