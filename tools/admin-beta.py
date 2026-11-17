@@ -12,6 +12,7 @@ import urllib.parse
 import urllib.request
 
 ADMIN = 'https://admin.timmyagentic.si'
+USER_AGENT = 'timmy-release-admin/1.0 (+https://admin.timmyagentic.si)'
 REPO = os.environ.get('GITHUB_REPOSITORY', '')
 JOB_ID = os.environ.get('RELEASE_JOB_ID', '')
 
@@ -28,10 +29,10 @@ def gh(*args):
 
 def ci(action, body=None, method='POST', query=''):
     oidc_url = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=' + urllib.parse.quote(ADMIN, safe='')
-    token_request = urllib.request.Request(oidc_url, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
+    token_request = urllib.request.Request(oidc_url, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN'], 'User-Agent': USER_AGENT})
     with urllib.request.urlopen(token_request, timeout=60) as response:
         token = json.load(response)['value']
-    headers = {'Authorization': 'Bearer ' + token}
+    headers = {'Authorization': 'Bearer ' + token, 'User-Agent': USER_AGENT}
     if isinstance(body, Path):
         # urllib needs bytes. The current signed DMG is below the Worker request limit.
         data = body.read_bytes()
@@ -39,7 +40,8 @@ def ci(action, body=None, method='POST', query=''):
     else:
         data = json.dumps(body or {}).encode()
         headers['Content-Type'] = 'application/json'
-    request = urllib.request.Request(f'{ADMIN}/api/ci/{JOB_ID}/{action}{query}', data=data, headers=headers, method=method)
+    endpoint = f'{ADMIN}/api/ci/health' if action == 'health' else f'{ADMIN}/api/ci/{JOB_ID}/{action}{query}'
+    request = urllib.request.Request(endpoint, data=data, headers=headers, method=method)
     with urllib.request.urlopen(request, timeout=600) as response:
         return json.load(response)
 
@@ -298,7 +300,7 @@ def release_cc(version, source):
             info = gh('release', 'view', tag, '--repo', REPO, '--json', 'url,isPrerelease,assets')
             if not info['isPrerelease'] or len(info['assets']) < 7:
                 raise RuntimeError('Release assets are incomplete')
-            with urllib.request.urlopen('https://registry.npmjs.org/cc-connect-next', timeout=60) as response:
+            with urllib.request.urlopen(urllib.request.Request('https://registry.npmjs.org/cc-connect-next', headers={'User-Agent': USER_AGENT}), timeout=60) as response:
                 registry = json.load(response)
             if registry['dist-tags'].get('beta') != version:
                 raise RuntimeError('npm beta has not reached the expected version')
@@ -339,10 +341,10 @@ def publish_quota():
         ci('upload', path, method='PUT', query='?name=' + urllib.parse.quote(name, safe=''))
     # Publish the feed only after every immutable object is present and verified.
     oidc_url = os.environ['ACTIONS_ID_TOKEN_REQUEST_URL'] + '&audience=' + urllib.parse.quote(ADMIN, safe='')
-    req = urllib.request.Request(oidc_url, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN']})
+    req = urllib.request.Request(oidc_url, headers={'Authorization': 'Bearer ' + os.environ['ACTIONS_ID_TOKEN_REQUEST_TOKEN'], 'User-Agent': USER_AGENT})
     with urllib.request.urlopen(req, timeout=60) as response:
         token = json.load(response)['value']
-    req = urllib.request.Request(f'{ADMIN}/api/ci/{JOB_ID}/publish', data=feed.read_bytes(), headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/xml'}, method='POST')
+    req = urllib.request.Request(f'{ADMIN}/api/ci/{JOB_ID}/publish', data=feed.read_bytes(), headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/xml', 'User-Agent': USER_AGENT}, method='POST')
     with urllib.request.urlopen(req, timeout=60) as response:
         result = json.load(response)
     if not result.get('ok'):
@@ -356,6 +358,7 @@ def main():
     if sys.argv[1:] == ['publish-quota']:
         publish_quota(); return
     if sys.argv[1:] == ['verify-only']:
+        ci('health')
         tests()
         return
     job = ci('claim')

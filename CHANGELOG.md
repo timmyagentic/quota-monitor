@@ -40,7 +40,7 @@ window copy.
 
 ### Added
 
-- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site.
+- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site. Authenticated callbacks keep release progress available in the admin page.
 
 ## [1.0.16] — 2026-11-17
 
