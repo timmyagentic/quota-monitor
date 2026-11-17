@@ -754,5 +754,18 @@ enum Migrations {
                 """)
         }
 
+        // Rebuild available fragments with response/compatibility-event
+        // deduplication. Retain source identity and history until each complete
+        // fragment is reparsed and replaced atomically by the importer.
+        migrator.registerMigration("v28-codex-response-deduplication-reread") { db in
+            try db.execute(sql: """
+                UPDATE import_state
+                SET file_size = -1, file_mtime_ms = -1, byte_offset = 0
+                WHERE session_id IN (
+                    SELECT session_id FROM sessions WHERE provider = 'codex'
+                )
+                """)
+        }
+
     }
 }

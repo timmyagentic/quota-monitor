@@ -373,7 +373,7 @@ struct MigrationsTests {
     }
 
     @Test("Codex reread migrations preserve history and other provider cursors",
-          arguments: ["v21-codex-cache-write-reread", "v26-codex-ultrafast-restore", "v27-codex-reread-preserve-source-identity"])
+          arguments: ["v21-codex-cache-write-reread", "v26-codex-ultrafast-restore", "v27-codex-reread-preserve-source-identity", "v28-codex-response-deduplication-reread"])
     func codexCacheWriteMigrationForcesCodexReread(migrationId: String) throws {
         let url = try temporaryDatabaseURL(prefix: "qm-codex-cache-write-v21")
         let manager = try DatabaseManager(url: url)

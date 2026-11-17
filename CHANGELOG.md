@@ -34,6 +34,19 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- See accurate Codex token totals when a response appears in both usage log formats.
+- Include additional local Codex histories, including bot activity, in your totals.
+
+### Fixed
+
+- **Token totals.** Count each response and its compatibility event once, including when cumulative counters differ, and rebuild available history with the corrected parser.
+
+### Added
+
+- **Additional histories.** Import configured additional Codex home directories alongside the default history.
+
 ## [1.0.15] — 2026-11-02
 
 #### Summary

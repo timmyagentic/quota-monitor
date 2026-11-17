@@ -11,8 +11,8 @@ import Foundation
 //      total_token_usage streams, so total_token_usage is not always monotonic
 //      in file order.
 //   2. token_usage_record.usage is already the per-response delta. Its
-//      thread_token_usage field suppresses the duplicate token_count record
-//      emitted by current Codex builds.
+//      companion token_count is consumed once even when its cumulative
+//      counter differs from the response record.
 //   3. Older rollouts may only have total_token_usage. For those, compute the
 //      delta from the previous cumulative value, and treat a backwards counter
 //      as the start of a fresh cumulative segment.
@@ -168,6 +168,25 @@ struct UsageSnapshotKey: Codable, Hashable, Sendable, Comparable {
     }
 }
 
+/// One response can be represented by both current and legacy wire formats.
+/// Keep the unmatched format across incremental reads until its companion arrives.
+struct PendingUsageCompanion: Codable, Equatable, Sendable {
+    enum Format: String, Codable, Sendable {
+        case responseRecord
+        case tokenCount
+    }
+
+    let format: Format
+    let usage: TokenUsageWire
+    let cumulative: TokenUsageWire?
+    let turnId: String?
+
+    func matches(_ usage: TokenUsageWire?, turnId: String?) -> Bool {
+        guard usage == self.usage else { return false }
+        return self.turnId == nil || turnId == nil || self.turnId == turnId
+    }
+}
+
 /// Everything the Codex reducer needs in order to continue at an exact JSONL
 /// record boundary. Emitted usage/rate-limit rows deliberately do not live in
 /// this value: a checkpoint describes parser state, not already-persisted data.
@@ -190,6 +209,8 @@ struct CodexRolloutReducerState: Codable, Equatable, Sendable {
     var sawReplayedSessionMeta = false
     var previousUsage: TokenUsageWire?
     var seenUsageSnapshots: [UsageSnapshotKey] = []
+    var pendingUsageCompanion: PendingUsageCompanion?
+    var seenResponseIds: [String]?
     /// True only when a real session_meta established one stable root session
     /// and no later metadata introduced a parent/fork/subagent marker.
     var isIncrementalRootEligible = false
@@ -221,6 +242,8 @@ struct CodexRolloutReducerState: Codable, Equatable, Sendable {
         sawReplayedSessionMeta: Bool = false,
         previousUsage: TokenUsageWire? = nil,
         seenUsageSnapshots: [UsageSnapshotKey] = [],
+        pendingUsageCompanion: PendingUsageCompanion? = nil,
+        seenResponseIds: [String]? = nil,
         isIncrementalRootEligible: Bool = false
     ) {
         self.sessionId = sessionId
@@ -241,6 +264,8 @@ struct CodexRolloutReducerState: Codable, Equatable, Sendable {
         self.sawReplayedSessionMeta = sawReplayedSessionMeta
         self.previousUsage = previousUsage
         self.seenUsageSnapshots = seenUsageSnapshots
+        self.pendingUsageCompanion = pendingUsageCompanion
+        self.seenResponseIds = seenResponseIds
         self.isIncrementalRootEligible = isIncrementalRootEligible
         normalizeCollections()
     }
@@ -248,6 +273,9 @@ struct CodexRolloutReducerState: Codable, Equatable, Sendable {
     mutating func normalizeCollections() {
         seenModels = Array(Set(seenModels)).sorted()
         seenUsageSnapshots = Array(Set(seenUsageSnapshots)).sorted()
+        if let seenResponseIds {
+            self.seenResponseIds = Array(Set(seenResponseIds)).sorted()
+        }
     }
 }
 
@@ -509,6 +537,7 @@ struct CodexRolloutReducer {
     private let isResumingRoot: Bool
     private var seenModels: Set<String>
     private var seenUsageSnapshots: Set<UsageSnapshotKey>
+    private var seenResponseIds: Set<String>
 
     init(
         state: CodexRolloutReducerState = CodexRolloutReducerState(),
@@ -520,6 +549,7 @@ struct CodexRolloutReducer {
         self.isResumingRoot = isResumingRoot
         self.seenModels = Set(canonical.seenModels)
         self.seenUsageSnapshots = Set(canonical.seenUsageSnapshots)
+        self.seenResponseIds = Set(canonical.seenResponseIds ?? [])
     }
 
     mutating func consume(_ event: RolloutEvent) throws -> CodexRolloutReduction {
@@ -629,6 +659,7 @@ struct CodexRolloutReducer {
             {
                 state.childReplayGate = nil
             }
+            state.pendingUsageCompanion = nil
             state.activeTurn = ActiveCodexTurn(
                 id: task.turnId,
                 serviceTierPreference: state.pendingServiceTierPreference)
@@ -655,10 +686,14 @@ struct CodexRolloutReducer {
                     rateLimitSamples: samples)
             }
 
-            // Current Codex emits token_usage_record followed by a duplicate
-            // token_count with the same cumulative thread usage. The record
-            // updates previousUsage so usageDelta returns nil for that legacy
-            // companion event.
+            // The legacy cumulative stream may diverge from the response
+            // record's thread counter. Pair their single-response usage instead.
+            let pending = state.pendingUsageCompanion
+            let isResponseCompanion = pending?.format == .responseRecord
+                && (pending?.matches(info.lastTokenUsage, turnId: state.activeTurn?.id) == true
+                    || (info.lastTokenUsage == nil
+                        && pending?.cumulative != nil
+                        && pending?.cumulative == info.totalTokenUsage))
             let (resolvedModel, inferred) = resolveModel(
                 explicit: extractPayloadModel(from: tokenCount))
 
@@ -666,8 +701,17 @@ struct CodexRolloutReducer {
                 from: info,
                 previousTotal: &state.previousUsage,
                 seenUsageSnapshots: &seenUsageSnapshots)
+            if isResponseCompanion {
+                state.pendingUsageCompanion = nil
+            } else if let tokenDelta {
+                state.pendingUsageCompanion = PendingUsageCompanion(
+                    format: .tokenCount,
+                    usage: tokenDelta,
+                    cumulative: info.totalTokenUsage,
+                    turnId: state.activeTurn?.id)
+            }
             let usage: UsageDelta?
-            if state.childReplayGate == nil, let tokenDelta {
+            if !isResponseCompanion, state.childReplayGate == nil, let tokenDelta {
                 usage = UsageDelta(
                     timestamp: timestamp,
                     modelId: resolvedModel,
@@ -692,15 +736,31 @@ struct CodexRolloutReducer {
             let timestamp = envelopeTs ?? ISO8601.fractional.string(from: Date())
             let (resolvedModel, inferred) = resolveModel(explicit: nil)
             let tokenUsage = record.usage.flatMap(Self.meaningfulUsage)
-            let duplicatesLegacyTokenCount = tokenUsage != nil
+            let pending = state.pendingUsageCompanion
+            let duplicatesLegacyTokenCount = pending?.format == .tokenCount
+                && pending?.matches(tokenUsage, turnId: record.turnId ?? state.activeTurn?.id) == true
                 && record.threadTokenUsage != nil
-                && record.threadTokenUsage == state.previousUsage
+                && record.threadTokenUsage == pending?.cumulative
+            let responseId = record.responseId.flatMap { $0.isEmpty ? nil : $0 }
+            let repeatedResponse = responseId.map { seenResponseIds.contains($0) } ?? false
+            if tokenUsage != nil, let responseId {
+                seenResponseIds.insert(responseId)
+            }
             if tokenUsage != nil, let threadUsage = record.threadTokenUsage {
                 state.previousUsage = threadUsage
             }
+            if duplicatesLegacyTokenCount {
+                state.pendingUsageCompanion = nil
+            } else if let tokenUsage {
+                state.pendingUsageCompanion = PendingUsageCompanion(
+                    format: .responseRecord,
+                    usage: tokenUsage,
+                    cumulative: record.threadTokenUsage,
+                    turnId: record.turnId ?? state.activeTurn?.id)
+            }
 
             let usage: UsageDelta?
-            if !duplicatesLegacyTokenCount,
+            if !duplicatesLegacyTokenCount, !repeatedResponse,
                state.childReplayGate == nil,
                let tokenUsage
             {
@@ -752,6 +812,7 @@ struct CodexRolloutReducer {
     mutating func checkpointState() -> CodexRolloutReducerState {
         state.seenModels = seenModels.sorted()
         state.seenUsageSnapshots = seenUsageSnapshots.sorted()
+        state.seenResponseIds = seenResponseIds.isEmpty ? nil : seenResponseIds.sorted()
         return state
     }
 

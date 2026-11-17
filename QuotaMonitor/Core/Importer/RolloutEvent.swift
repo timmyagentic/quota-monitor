@@ -160,14 +160,16 @@ struct TokenCountPayload: Decodable {
 
 // Current Codex builds emit this top-level record alongside (and in some
 // rollouts instead of) event_msg/token_count. `usage` is the per-response
-// delta; `thread_token_usage` is the cumulative value used to deduplicate the
-// legacy token_count record for the same response.
+// delta; `response_id` identifies repeated response records. The paired legacy
+// token_count can carry a different cumulative counter.
 struct TokenUsageRecordPayload: Decodable {
+    let responseId: String?
     let turnId: String?
     let usage: TokenUsageWire?
     let threadTokenUsage: TokenUsageWire?
 
     enum CodingKeys: String, CodingKey {
+        case responseId = "response_id"
         case turnId = "turn_id"
         case usage
         case threadTokenUsage = "thread_token_usage"
