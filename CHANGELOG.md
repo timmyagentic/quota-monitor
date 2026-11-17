@@ -34,6 +34,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Start Beta updates from your personal admin page.
+
+### Added
+
+- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site.
+
 ## [1.0.16] — 2026-11-17
 
 #### Summary
