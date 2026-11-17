@@ -1,0 +1,130 @@
+name: Admin Beta
+run-name: Beta · ${{ inputs.job_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        description: Release Admin job ID
+        required: true
+        type: string
+      verify_only:
+        description: Validate the current branch without merging or publishing
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+
+concurrency:
+  group: admin-beta
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_ADMIN_GITHUB_TOKEN }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: '22'
+      - name: Configure repository authentication
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_ADMIN_GITHUB_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN"
+          gh auth setup-git
+          git config user.name 'timmyagentic release admin'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Validate and merge the confirmed PRs
+        id: prepare
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_ADMIN_GITHUB_TOKEN }}
+          RELEASE_JOB_ID: ${{ inputs.job_id }}
+          VERIFY_ONLY: ${{ inputs.verify_only }}
+        run: |
+          if [ "$VERIFY_ONLY" = "true" ]; then
+            python3 tools/admin-beta.py verify-only
+          else
+            python3 tools/admin-beta.py
+          fi
+      - name: Import Developer ID certificate
+        if: ${{ !inputs.verify_only }}
+        id: signing
+        env:
+          DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_BASE64 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          keychain_path="${RUNNER_TEMP}/developer-id-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          certificate_path="${RUNNER_TEMP}/developer-id.p12"
+
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security list-keychains -d user -s "${keychain_path}"
+          security default-keychain -s "${keychain_path}"
+
+          printf '%s' "${DEVELOPER_ID_CERTIFICATE_BASE64}" | base64 -D > "${certificate_path}"
+          security import "${certificate_path}" \
+            -k "${keychain_path}" \
+            -P "${DEVELOPER_ID_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "${keychain_password}" "${keychain_path}"
+
+          security find-identity -v -p codesigning "${keychain_path}"
+          if [[ -n "${DEVELOPER_ID_APPLICATION}" ]] \
+             && ! security find-identity -v -p codesigning "${keychain_path}" \
+               | grep -Fq "${DEVELOPER_ID_APPLICATION}"; then
+            echo "::error::DEVELOPER_ID_APPLICATION does not match the imported identity"
+            exit 1
+          fi
+          echo "keychain_path=${keychain_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build, sign, and notarize Private Beta
+        if: ${{ !inputs.verify_only }}
+        env:
+          QM_RELEASE_CHANNEL: private-beta
+          QM_BETA_SEQUENCE: ${{ steps.prepare.outputs.beta_sequence }}
+          QM_RELEASE_SIGNING: developer-id
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          NOTARYTOOL_TIMEOUT: 2h
+        run: ./tools/release.sh --force
+
+
+      - name: Sign and publish Private Beta
+        if: ${{ !inputs.verify_only }}
+        env:
+          RELEASE_JOB_ID: ${{ inputs.job_id }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: python3 tools/admin-beta.py publish-quota
+      - name: Report interrupted build
+        if: ${{ !inputs.verify_only && (failure() || cancelled()) }}
+        env:
+          RELEASE_JOB_ID: ${{ inputs.job_id }}
+        run: |
+          python3 - <<'PYTHON'
+          import runpy
+          module = runpy.run_path('tools/admin-beta.py', run_name='admin_beta')
+          module['progress']('构建或发布失败，请查看 GitHub 日志并核对已有产物。', status='needs_attention')
+          PYTHON
+      - name: Remove temporary signing keychain
+        if: ${{ always() && steps.signing.outputs.keychain_path != '' }}
+        env:
+          SIGNING_KEYCHAIN: ${{ steps.signing.outputs.keychain_path }}
+        run: security delete-keychain "$SIGNING_KEYCHAIN"
