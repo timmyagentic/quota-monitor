@@ -81,6 +81,22 @@ class AdminBetaTests(unittest.TestCase):
                 self.assertEqual(sent.full_url, admin.ADMIN + '/api/ci/health')
                 self.assertEqual(sent.get_header('User-agent'), admin.USER_AGENT)
 
+    def test_behind_pr_is_updated_with_an_expected_head_and_rechecked(self):
+        responses = [{'headRefOid': 'original', 'mergeStateStatus': 'BEHIND'},
+                     {'message': 'Updating'}, {'headRefOid': 'updated'}]
+        with patch.object(admin, 'gh', side_effect=responses) as github:
+            with patch.object(admin, 'run', return_value='updated') as command:
+                with patch.object(admin, 'progress'), patch.object(admin, 'wait_checks') as checks:
+                    self.assertEqual(admin.refresh_pr_head({'number': 7, 'sha': 'original'}), 'updated')
+                    self.assertIn('expected_head_sha=original', github.call_args_list[1].args)
+                    command.assert_any_call('git', 'merge-base', '--is-ancestor', 'original', 'updated')
+                    checks.assert_called_once_with(7, 'updated')
+
+    def test_branch_update_cannot_change_the_previously_tested_content(self):
+        with patch.object(admin, 'run', return_value='changed'):
+            with self.assertRaisesRegex(RuntimeError, 'changed the validated'):
+                admin.verify_remaining_tree([{'number': 7, 'sha': 'original', 'merge_sha': 'updated'}], 'tested')
+
 
 if __name__ == '__main__':
     unittest.main()

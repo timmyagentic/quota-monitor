@@ -171,6 +171,45 @@ def tests():
         run('swift', 'build', '-c', 'release', env=environment)
 
 
+def refresh_pr_head(pr):
+    deadline = time.monotonic() + 60
+    while True:
+        info = gh('pr', 'view', str(pr['number']), '--repo', REPO,
+                  '--json', 'headRefOid,mergeStateStatus')
+        if info['mergeStateStatus'] != 'UNKNOWN' or time.monotonic() >= deadline:
+            break
+        time.sleep(5)
+    if info['headRefOid'] != pr['sha']:
+        raise RuntimeError(f"PR #{pr['number']} changed after confirmation")
+    if info['mergeStateStatus'] != 'BEHIND':
+        return pr['sha']
+    progress(f"同步 PR #{pr['number']} 到最新主分支，并等待检查")
+    gh('api', '--method', 'PUT', f"repos/{REPO}/pulls/{pr['number']}/update-branch",
+       '-f', f"expected_head_sha={pr['sha']}")
+    deadline = time.monotonic() + 120
+    while time.monotonic() < deadline:
+        updated = gh('pr', 'view', str(pr['number']), '--repo', REPO, '--json', 'headRefOid')
+        sha = updated['headRefOid']
+        if sha != pr['sha']:
+            run('git', 'fetch', 'origin', f"pull/{pr['number']}/head")
+            if run('git', 'rev-parse', 'FETCH_HEAD', capture=True) != sha:
+                raise RuntimeError('PR changed during branch synchronization')
+            run('git', 'merge-base', '--is-ancestor', pr['sha'], sha)
+            wait_checks(pr['number'], sha)
+            return sha
+        time.sleep(5)
+    raise TimeoutError('GitHub did not finish updating the PR branch')
+
+
+def verify_remaining_tree(remaining, expected_tree):
+    run('git', 'fetch', 'origin', 'main')
+    run('git', 'checkout', '--detach', 'origin/main')
+    for pr in remaining:
+        run('git', 'merge', '--no-edit', '--no-ff', pr.get('merge_sha', pr['sha']))
+    if run('git', 'rev-parse', 'HEAD^{tree}', capture=True) != expected_tree:
+        raise RuntimeError('Branch synchronization changed the validated release content')
+
+
 def merge_snapshot(job):
     prs = job['prs']
     progress(f'检查 {len(prs)} 个已确认 PR，并验证合并后的完整代码')
@@ -187,10 +226,14 @@ def merge_snapshot(job):
             pending.append(pr)
     tree = run('git', 'rev-parse', 'HEAD^{tree}', capture=True)
     tests()
-    for pr in pending:
-        check_pr(pr['number'], pr['sha'])
+    for index, pr in enumerate(pending):
+        if not check_pr(pr['number'], pr['sha']):
+            continue
+        pr['merge_sha'] = refresh_pr_head(pr)
+        verify_remaining_tree(pending[index:], tree)
+        check_pr(pr['number'], pr['merge_sha'])
         progress(f"合并 PR #{pr['number']}")
-        run('gh', 'pr', 'merge', str(pr['number']), '--repo', REPO, '--squash', '--match-head-commit', pr['sha'])
+        run('gh', 'pr', 'merge', str(pr['number']), '--repo', REPO, '--squash', '--match-head-commit', pr['merge_sha'])
     run('git', 'fetch', 'origin', 'main')
     if run('git', 'rev-parse', 'origin/main^{tree}', capture=True) != tree:
         raise RuntimeError('Main changed concurrently or differs from the tested merged tree')
