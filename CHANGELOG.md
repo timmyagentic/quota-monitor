@@ -36,7 +36,7 @@ window copy.
 
 #### Summary
 
-- Start Beta updates from your personal admin page.
+- The maintainer can publish Beta updates from a dedicated admin page.
 
 ### Added
 
