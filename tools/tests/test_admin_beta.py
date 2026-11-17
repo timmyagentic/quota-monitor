@@ -71,6 +71,16 @@ class AdminBetaTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'differs'):
                 admin.checkout_release_source('pinned-sha', 'validated-tree')
 
+    def test_ci_health_identifies_the_client_and_uses_read_only_endpoint(self):
+        import io
+        responses = [io.BytesIO(b'{"value":"test-token"}'), io.BytesIO(b'{"ok":true}')]
+        with patch.dict(os.environ, {'ACTIONS_ID_TOKEN_REQUEST_URL': 'https://example.test/token?job=1', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'fixture'}):
+            with patch.object(admin.urllib.request, 'urlopen', side_effect=responses) as request:
+                self.assertEqual(admin.ci('health'), {'ok': True})
+                sent = request.call_args_list[1].args[0]
+                self.assertEqual(sent.full_url, admin.ADMIN + '/api/ci/health')
+                self.assertEqual(sent.get_header('User-agent'), admin.USER_AGENT)
+
 
 if __name__ == '__main__':
     unittest.main()
