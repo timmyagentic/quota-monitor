@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Owner-triggered Beta release. Every GitHub write preserves branch protection."""
-import base64
 import hashlib
-import html
 import json
 import os
 from pathlib import Path
@@ -16,7 +14,6 @@ import urllib.request
 ADMIN = 'https://admin.timmyagentic.si'
 REPO = os.environ.get('GITHUB_REPOSITORY', '')
 JOB_ID = os.environ.get('RELEASE_JOB_ID', '')
-ROOT = Path.cwd()
 
 
 def run(*args, capture=False, timeout=3600, env=None):
@@ -110,14 +107,39 @@ def check_pr(number, expected_sha):
 
 def wait_checks(number, sha):
     if REPO.endswith('/quota-monitor'):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('verify_cloud', 'tools/verify-cloud-pr.py')
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
         deadline = time.monotonic() + 2700
+        dispatched = False
+        previous_run = None
         while time.monotonic() < deadline:
-            runs = gh('run', 'list', '--repo', REPO, '--workflow', 'tests.yml', '--commit', sha, '--event', 'pull_request', '--json', 'databaseId,status,conclusion', '--limit', '1')
+            runs = gh('run', 'list', '--repo', REPO, '--workflow', 'tests.yml', '--commit', sha,
+                      '--json', 'databaseId,headSha,status,conclusion,url', '--limit', '1')
+            if dispatched and runs and runs[0]['databaseId'] == previous_run:
+                time.sleep(20)
+                continue
             if runs and runs[0]['status'] == 'completed':
                 if runs[0]['conclusion'] != 'success':
                     raise RuntimeError(f'PR #{number} checks failed')
-                run('python3', 'tools/verify-cloud-pr.py', str(number), sha)
-                return
+                pages = gh('api', '--paginate', '--slurp', f'repos/{REPO}/actions/runs/{runs[0]["databaseId"]}/jobs?filter=latest&per_page=100')
+                jobs = [job for page in pages for job in page['jobs']]
+                pr = gh('pr', 'view', str(number), '--repo', REPO, '--json', 'headRefOid,isDraft,headRefName')
+                try:
+                    verifier.validate(pr, sha, runs[0], jobs)
+                    return
+                except ValueError:
+                    if dispatched:
+                        raise
+                    # Path-filtered and bot-created PRs still receive real full checks.
+                    run('gh', 'workflow', 'run', 'tests.yml', '--repo', REPO, '--ref', pr['headRefName'])
+                    dispatched = True
+                    previous_run = runs[0]['databaseId']
+            elif not runs and not dispatched:
+                pr = gh('pr', 'view', str(number), '--repo', REPO, '--json', 'headRefName')
+                run('gh', 'workflow', 'run', 'tests.yml', '--repo', REPO, '--ref', pr['headRefName'])
+                dispatched = True
             time.sleep(20)
         raise TimeoutError(f'PR #{number} checks timed out')
     else:

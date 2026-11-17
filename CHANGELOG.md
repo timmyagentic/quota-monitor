@@ -16,9 +16,7 @@ window copy.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
   plumbing terms in Summary.
-- Put details under `### Added
-
-- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site.`, `### Changed
+- Put details under `### Added`, `### Changed
 
 - **Website clarity.** State Apple Silicon compatibility in both languages and reserve stable space for all three app previews.
 
@@ -35,6 +33,14 @@ window copy.
   `python3 tools/validate-release-notes.py X.Y.Z`.
 
 ## [Unreleased]
+
+#### Summary
+
+- Start Beta updates from your personal admin page.
+
+### Added
+
+- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site.
 
 ## [1.0.16] — 2026-11-17
 
