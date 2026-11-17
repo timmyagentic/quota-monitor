@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -353,18 +354,22 @@ def release_cc(version, source):
     raise TimeoutError('Release workflow timed out; inspect the existing run before retrying')
 
 
+def sign_private_artifact(artifact):
+    with tempfile.NamedTemporaryFile(mode='w', prefix='sparkle-', dir=os.environ['RUNNER_TEMP']) as key:
+        key.write(os.environ['SPARKLE_PRIVATE_KEY'])
+        key.flush()
+        return run('.build/artifacts/sparkle/Sparkle/bin/sign_update',
+                   '--ed-key-file', key.name, str(artifact), capture=True)
+
+
 def publish_quota():
     job = ci('claim')
     version = job['version']; source = job['sourceSha']
     if run('git', 'rev-parse', 'HEAD', capture=True) != source:
         raise RuntimeError('Package source differs from the prepared commit')
     run('./tools/verify-signing-key.sh')
-    key = Path(os.environ['RUNNER_TEMP']) / 'sparkle-key'
-    key.write_text(os.environ['SPARKLE_PRIVATE_KEY']); key.chmod(0o600)
-    run('.build/artifacts/sparkle/Sparkle/bin/generate_keys', '-f', str(key), '--account', 'admin-beta')
-    key.unlink()
     artifact = Path(f'dist/QuotaMonitor-{version}.dmg')
-    signature = run('.build/artifacts/sparkle/Sparkle/bin/sign_update', '--account', 'admin-beta', str(artifact), capture=True)
+    signature = sign_private_artifact(artifact)
     import importlib.util
     spec = importlib.util.spec_from_file_location('private_beta', 'tools/private-beta-release.py')
     publisher = importlib.util.module_from_spec(spec); spec.loader.exec_module(publisher)

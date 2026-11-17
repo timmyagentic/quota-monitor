@@ -97,6 +97,23 @@ class AdminBetaTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'changed the validated'):
                 admin.verify_remaining_tree([{'number': 7, 'sha': 'original', 'merge_sha': 'updated'}], 'tested')
 
+    def test_private_signing_is_headless_and_removes_the_key_after_failure(self):
+        seen = []
+        def signer(*args, **kwargs):
+            self.assertIn('--ed-key-file', args)
+            self.assertNotIn('--account', args)
+            key = Path(args[2])
+            seen.append(key)
+            self.assertEqual(key.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(key.read_text(), 'fixture-key')
+            raise RuntimeError('signing failed')
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(os.environ, {'RUNNER_TEMP': directory, 'SPARKLE_PRIVATE_KEY': 'fixture-key'}):
+                with patch.object(admin, 'run', side_effect=signer):
+                    with self.assertRaisesRegex(RuntimeError, 'signing failed'):
+                        admin.sign_private_artifact(Path('fixture.dmg'))
+            self.assertFalse(seen[0].exists())
+
 
 if __name__ == '__main__':
     unittest.main()
