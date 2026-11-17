@@ -227,6 +227,14 @@ def promote_notes(version):
         path.write_text(content)
 
 
+def checkout_release_source(source, expected_tree):
+    run('git', 'fetch', 'origin', 'main')
+    run('git', 'merge-base', '--is-ancestor', source, 'origin/main')
+    run('git', 'checkout', '--detach', source)
+    if run('git', 'rev-parse', 'HEAD^{tree}', capture=True) != expected_tree:
+        raise RuntimeError('Release source differs from the validated version preparation')
+
+
 def prepare_version(job):
     current = json.loads(Path('npm/package.json').read_text())['version'] if REPO.endswith('/cc-connect-next') else Path('Resources/VERSION').read_text().strip()
     tags = run('git', 'tag', capture=True).splitlines()
@@ -251,20 +259,22 @@ def prepare_version(job):
             output = run('python3', 'tools/changelog-to-html.py', '--lang', language, base, filename, capture=True)
             Path(f'ReleaseNotes/{base}.{language}.html').write_text(output + '\n')
         run('python3', 'tools/validate-release-notes.py', base, 'CHANGELOG.md', 'CHANGELOG.zh-Hans.md')
+    source = run('git', 'rev-parse', 'HEAD', capture=True)
+    expected_tree = run('git', 'rev-parse', 'HEAD^{tree}', capture=True)
     if run('git', 'status', '--porcelain', capture=True):
         files = ['npm/package.json', 'Makefile', f'changelogs/v{version}.md'] if REPO.endswith('/cc-connect-next') else ['Resources/VERSION', f'ReleaseNotes/{base}.en.html', f'ReleaseNotes/{base}.zh-Hans.html', 'CHANGELOG.md', 'CHANGELOG.zh-Hans.md']
         run('git', 'add', '--', *files)
         run('git', 'commit', '-m', f'Prepare Beta release {version}')
         sha = run('git', 'rev-parse', 'HEAD', capture=True)
+        expected_tree = run('git', 'rev-parse', 'HEAD^{tree}', capture=True)
         run('git', 'push', 'origin', f'HEAD:refs/heads/{branch}')
         url = run('gh', 'pr', 'create', '--repo', REPO, '--head', branch, '--base', 'main', '--title', f'Prepare Beta release {version}', '--body', f'由发布后台任务 {JOB_ID} 生成。包含已确认的版本元数据与变更记录。', capture=True)
         number = int(url.rstrip('/').split('/')[-1])
         wait_checks(number, sha)
         review_resolved(number)
         run('gh', 'pr', 'merge', str(number), '--repo', REPO, '--squash', '--match-head-commit', sha)
-    run('git', 'fetch', 'origin', 'main')
-    run('git', 'checkout', '--detach', 'origin/main')
-    source = run('git', 'rev-parse', 'HEAD', capture=True)
+        source = gh('pr', 'view', str(number), '--repo', REPO, '--json', 'mergeCommit')['mergeCommit']['oid']
+    checkout_release_source(source, expected_tree)
     progress(f'版本已准备，开始从 {source[:12]} 构建', version=version, sourceSha=source)
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         output.write(f'version={version}\nsource_sha={source}\nbeta_sequence={sequence}\n')

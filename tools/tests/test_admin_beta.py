@@ -62,6 +62,15 @@ class AdminBetaTests(unittest.TestCase):
             finally:
                 os.chdir(previous)
 
+    def test_release_uses_exact_merge_commit_and_checks_the_tree(self):
+        with patch.object(admin, 'run', return_value='tree') as command:
+            admin.checkout_release_source('pinned-sha', 'tree')
+            command.assert_any_call('git', 'checkout', '--detach', 'pinned-sha')
+            command.assert_any_call('git', 'merge-base', '--is-ancestor', 'pinned-sha', 'origin/main')
+        with patch.object(admin, 'run', return_value='concurrent-tree'):
+            with self.assertRaisesRegex(RuntimeError, 'differs'):
+                admin.checkout_release_source('pinned-sha', 'validated-tree')
+
 
 if __name__ == '__main__':
     unittest.main()
