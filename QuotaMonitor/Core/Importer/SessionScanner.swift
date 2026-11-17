@@ -54,6 +54,33 @@ enum SessionScanner {
         return home.appendingPathComponent(".codex", isDirectory: true)
     }
 
+    /// Additional Developer ID history roots, for independent CLI or bot homes.
+    /// App Store roots continue to require their security-scoped bookmarks.
+    static func additionalCodexHomes(
+        distribution: DistributionChannel = .current,
+        defaults: UserDefaults = .standard,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> [URL] {
+        guard distribution == .developerID,
+              LocalQAEnvironment.allowsExternalDataSources(
+                environment: environment, arguments: arguments)
+        else { return [] }
+        let paths = defaults.stringArray(forKey: "settings.additionalCodexHomes") ?? []
+        return uniqueHomes(paths.compactMap { path in
+            let expanded = (path as NSString).expandingTildeInPath
+            guard expanded.hasPrefix("/") else { return nil }
+            return URL(fileURLWithPath: expanded, isDirectory: true)
+        })
+    }
+
+    static func uniqueHomes(_ homes: [URL]) -> [URL] {
+        var seen: Set<String> = []
+        return homes.filter {
+            seen.insert($0.standardizedFileURL.resolvingSymlinksInPath().path).inserted
+        }
+    }
+
     /// Walk both `<codexHome>/sessions/` and `<codexHome>/archived_sessions/`
     /// and return rollout-*.jsonl entries from each. Codex moves rollouts to
     /// archived_sessions/ when the user uses the CLI's archive command;

@@ -145,7 +145,7 @@ struct RolloutEventDecoderTests {
     @Test("current token usage records decode their per-response usage")
     func tokenUsageRecord() throws {
         let line = Data(#"""
-        {"timestamp":"2026-09-19T05:03:05.915Z","type":"token_usage_record","payload":{"turn_id":"turn-record","usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110},"thread_token_usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110}}}
+        {"timestamp":"2026-09-19T05:03:05.915Z","type":"token_usage_record","payload":{"response_id":"response-record","turn_id":"turn-record","usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110},"thread_token_usage":{"input_tokens":100,"cached_input_tokens":40,"cache_write_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":5,"total_tokens":110}}}
         """#.utf8)
 
         let event = try #require(RolloutEvent.decode(line: line))
@@ -153,6 +153,7 @@ struct RolloutEventDecoderTests {
             Issue.record("expected .tokenUsageRecord, got \(event)")
             return
         }
+        #expect(payload.responseId == "response-record")
         #expect(payload.turnId == "turn-record")
         #expect(payload.usage?.totalTokens == 110)
         #expect(payload.threadTokenUsage?.cachedInputTokens == 40)

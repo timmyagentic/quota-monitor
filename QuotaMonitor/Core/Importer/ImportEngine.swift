@@ -12,14 +12,14 @@ actor ImportEngine {
     private static let proactiveMetadataBackfillWindow: TimeInterval = 7 * 24 * 60 * 60
 
     private let database: DatabaseManager
-    private let codexHome: URL?
+    private let codexHomes: [URL]
     private let securityScopedAccess: any SecurityScopedResourceAccessing
     private let maxCheckpointBytes: Int
     private var warnedOversizedSources: Set<RolloutSourceIdentity> = []
-    private var cachedCodexSessionMetadata: (
+    private var cachedCodexSessionMetadata: [String: (
         fingerprint: CodexSessionMetadataSourceFingerprint,
         metadata: [String: CodexSessionMetadata]
-    )?
+    )] = [:]
 
     private struct ProbedSource {
         let file: SessionFile
@@ -135,37 +135,37 @@ actor ImportEngine {
     init(
         database: DatabaseManager,
         codexHome: URL? = SessionScanner.defaultCodexHome(),
+        additionalCodexHomes: [URL] = [],
         securityScopedAccess: any SecurityScopedResourceAccessing =
             FoundationSecurityScopedResourceAccessing(),
         maxCheckpointBytes: Int = 4 * 1024 * 1024
     ) {
         self.database = database
-        self.codexHome = codexHome
+        self.codexHomes = SessionScanner.uniqueHomes(
+            [codexHome].compactMap { $0 } + additionalCodexHomes)
         self.securityScopedAccess = securityScopedAccess
         self.maxCheckpointBytes = max(0, maxCheckpointBytes)
     }
 
     func performScan(progress: ScanProgressHandler? = nil) async throws -> ScanReport {
-        guard let codexHome else {
-            return .empty
+        guard !codexHomes.isEmpty else { return .empty }
+
+        let scopedRoots = codexHomes.map {
+            (root: $0, access: securityScopedAccess.access($0))
         }
+        defer { scopedRoots.forEach { $0.access.stop() } }
 
-        let scopedAccess = securityScopedAccess.access(codexHome)
-        defer { scopedAccess.stop() }
-
-        // App Store: the bookmark resolved but its security scope wouldn't open
-        // (folder moved/revoked/TCC reset). Enumerating would silently find
-        // nothing; instead report it so the user is told to re-select the folder.
-        if DistributionChannel.current == .appStore, !scopedAccess.didStart {
+        if DistributionChannel.current == .appStore,
+           let unavailable = scopedRoots.first(where: { !$0.access.didStart }) {
             return ScanReport(
                 scannedFiles: 0, changedFiles: 0,
                 importedSessions: 0, importedEvents: 0,
                 importedRateLimitSamples: 0,
-                errors: ["codex history folder scope unavailable: \(codexHome.path)"],
+                errors: ["codex history folder scope unavailable: \(unavailable.root.path)"],
                 scopeUnavailable: true)
         }
 
-        let discoveredFiles = SessionScanner.scan(codexHome: codexHome)
+        let discoveredFiles = codexHomes.flatMap { SessionScanner.scan(codexHome: $0) }
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })
@@ -174,35 +174,42 @@ actor ImportEngine {
         let metadataBackfillCutoff = ISO8601.fractional.string(
             from: Date().addingTimeInterval(-Self.proactiveMetadataBackfillWindow))
 
-        let metadataFingerprint = try? CodexSessionMetadataStore.sourceFingerprint(
-            codexHome: codexHome)
-        let codexMetadata: [String: CodexSessionMetadata]
+        var codexMetadata: [String: CodexSessionMetadata] = [:]
+        var sessionMetadataCacheHit = true
+        for codexHome in codexHomes {
+            let rootKey = codexHome.standardizedFileURL.path
+            let metadataFingerprint = try? CodexSessionMetadataStore.sourceFingerprint(
+                codexHome: codexHome)
+            let metadata: [String: CodexSessionMetadata]
+            if let metadataFingerprint,
+               let cached = cachedCodexSessionMetadata[rootKey],
+               cached.fingerprint == metadataFingerprint {
+                metadata = cached.metadata
+            } else {
+                sessionMetadataCacheHit = false
+                let loadResult = CodexSessionMetadataStore.loadResult(codexHome: codexHome)
+                metadata = loadResult.metadata
+                let fingerprintAfterLoad = try? CodexSessionMetadataStore.sourceFingerprint(
+                    codexHome: codexHome)
+                if loadResult.isComplete,
+                   let metadataFingerprint,
+                   fingerprintAfterLoad == metadataFingerprint {
+                    cachedCodexSessionMetadata[rootKey] = (
+                        fingerprint: metadataFingerprint,
+                        metadata: metadata)
+                } else {
+                    cachedCodexSessionMetadata.removeValue(forKey: rootKey)
+                }
+            }
+            codexMetadata.merge(metadata, uniquingKeysWith: { first, _ in first })
+        }
         let updatedSessionMetadata: Int
-        let sessionMetadataCacheHit: Bool
-        if let metadataFingerprint,
-           let cached = cachedCodexSessionMetadata,
-           cached.fingerprint == metadataFingerprint {
-            codexMetadata = cached.metadata
+        if sessionMetadataCacheHit {
             updatedSessionMetadata = 0
-            sessionMetadataCacheHit = true
         } else {
-            let loadResult = CodexSessionMetadataStore.loadResult(codexHome: codexHome)
-            codexMetadata = loadResult.metadata
             updatedSessionMetadata = try await backfillCodexSessionMetadata(
                 codexMetadata,
                 activeSince: metadataBackfillCutoff)
-            let fingerprintAfterLoad = try? CodexSessionMetadataStore.sourceFingerprint(
-                codexHome: codexHome)
-            if loadResult.isComplete,
-               let metadataFingerprint,
-               fingerprintAfterLoad == metadataFingerprint {
-                cachedCodexSessionMetadata = (
-                    fingerprint: metadataFingerprint,
-                    metadata: codexMetadata)
-            } else {
-                cachedCodexSessionMetadata = nil
-            }
-            sessionMetadataCacheHit = false
         }
 
         // Proactively repair recent metadata only. Inactive history is best
@@ -243,13 +250,13 @@ actor ImportEngine {
                 return (ids, paths)
         }
 
-        let codexRootPrefix = codexHome.standardizedFileURL.path + "/"
+        let codexRootPrefixes = codexHomes.map { $0.standardizedFileURL.path + "/" }
         var priorBySession: [String: [ImportStateRecord]] = [:]
         var priorByFragment: [SourceKey: [ImportStateRecord]] = [:]
         for state in priorState.values {
             guard let sessionId = state.sessionId,
                   codexSessions.ids.contains(sessionId)
-                    || state.sourcePath.hasPrefix(codexRootPrefix)
+                    || codexRootPrefixes.contains(where: { state.sourcePath.hasPrefix($0) })
             else { continue }
             priorBySession[sessionId, default: []].append(state)
             let key = SourceKey(

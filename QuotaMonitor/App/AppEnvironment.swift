@@ -277,7 +277,9 @@ final class AppEnvironment {
             fields: ["database_path": .string(database?.pool.path ?? DatabaseManager.defaultURL().path)])
         do {
             let db = try database ?? DatabaseManager(url: DatabaseManager.defaultURL())
-            let eng = ImportEngine(database: db)
+            let eng = ImportEngine(
+                database: db,
+                additionalCodexHomes: SessionScanner.additionalCodexHomes())
             self.database = db
             self.importEngine = eng
             self.claudeEngine = ClaudeImportEngine(database: db)
@@ -291,7 +293,9 @@ final class AppEnvironment {
 
     func reloadHistoryImportRoots() {
         guard let db = database else { return }
-        importEngine = ImportEngine(database: db)
+        importEngine = ImportEngine(
+            database: db,
+            additionalCodexHomes: SessionScanner.additionalCodexHomes())
         claudeEngine = ClaudeImportEngine(database: db)
         // Rebuild the Claude file-watcher against the new roots so a mid-session
         // folder grant/clear (App Store) starts/stops live watching instead of
