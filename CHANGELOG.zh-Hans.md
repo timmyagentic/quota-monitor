@@ -28,10 +28,11 @@ appcast 中按系统语言切换的双语更新说明。
 
 ## [Unreleased]
 
+## [1.0.17] — 2026-11-18
+
 #### Summary
 
 - 可查看 GPT-6.2 Astra、GPT-6.2 Sol 和 Claude Fable 5.2 的用量估值。
-- 维护者可从个人后台一键完成测试版发布。
 
 ### 新增
 
