@@ -34,10 +34,11 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.17] — 2026-11-18
+
 #### Summary
 
 - See estimated usage costs for GPT-6.2 Astra, GPT-6.2 Sol, and Claude Fable 5.2.
-- The maintainer can publish Beta updates from a dedicated admin page.
 
 ### Added
 
