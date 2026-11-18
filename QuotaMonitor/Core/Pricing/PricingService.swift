@@ -71,6 +71,8 @@ enum CodexFastMode {
     /// model_id → multiplier used only to materialize Fast catalog rows.
     /// Empty for any model not listed (toggle effectively no-ops for it).
     static let multipliers: [String: Double] = [
+        "gpt-6.2-astra": 2.0,
+        "gpt-6.2-sol": 2.0,
         "gpt-6-astra": 2.0,
         "gpt-6.1-sol": 2.0,
         "gpt-6.1-terra": 2.0,
@@ -94,6 +96,8 @@ enum CodexFastMode {
 /// the tier ultimately served by OpenAI.
 enum CodexFlexMode {
     static let multipliers: [String: Double] = [
+        "gpt-6.2-astra": 0.5,
+        "gpt-6.2-sol": 0.5,
         "gpt-6-astra": 0.5,
         "gpt-6.1-sol": 0.5,
         "gpt-6.1-terra": 0.5,
@@ -120,6 +124,8 @@ enum CodexLongContextPricing {
     static let outputPriceMultiplier = 1.5
     static let suffix = "-long"
     static let modelIds: Set<String> = [
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-6.1-terra",
@@ -132,6 +138,8 @@ enum CodexLongContextPricing {
         "gpt-5.4",
     ]
     static let fastModelIds: Set<String> = [
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-6.1-terra",
@@ -193,7 +201,11 @@ enum CodexPriceHistory {
 
 /// API-equivalent Ultrafast prices, not the 8× included-subscription usage rate.
 enum CodexUltrafastMode {
-    static let modelIds: Set<String> = ["gpt-6-astra", "gpt-6.1-sol"]
+    static let promotionalModelIds: Set<String> = ["gpt-6.2-astra", "gpt-6.2-sol"]
+    static let modelIds: Set<String> = promotionalModelIds.union(["gpt-6-astra", "gpt-6.1-sol"])
+    static let promotionalSuffix = "-promo"
+    // March 1 at midnight Pacific, expressed as a UTC timestamp prefix.
+    static let promotionEndsBefore = "2027-03-01T08:00:00"
     static let suffix = "-ultrafast"
 }
 
@@ -229,6 +241,8 @@ enum BundledPricingCatalog {
 
     private static let codexBaseModelIds: Set<String> = [
         "gpt-5",
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
         "gpt-6-astra",
         "gpt-6.1-sol",
         "gpt-6.1-terra",
@@ -261,6 +275,18 @@ enum BundledPricingCatalog {
               effectiveModelId: "gpt-5", isOfficial: true,
               note: "Used for sessions that lack turn_context model metadata.",
               sourceUrl: "https://openai.com/api/pricing/"),
+        .init(modelId: "gpt-6.2-astra", displayName: "GPT-6.2 Astra",
+              inputPricePerMillion: 8.00, cachedInputPricePerMillion: 0.40, outputPricePerMillion: 40.00,
+              cacheCreationPricePerMillion: 10.00,
+              effectiveModelId: "gpt-6.2-astra", isOfficial: true,
+              note: "Official Standard Short price with 30-minute cache writes.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6.2-astra"),
+        .init(modelId: "gpt-6.2-sol", displayName: "GPT-6.2 Sol",
+              inputPricePerMillion: 2.00, cachedInputPricePerMillion: 0.10, outputPricePerMillion: 10.00,
+              cacheCreationPricePerMillion: 2.50,
+              effectiveModelId: "gpt-6.2-sol", isOfficial: true,
+              note: "Official Standard Short price with 30-minute cache writes.",
+              sourceUrl: "https://developers.openai.com/api/docs/models/gpt-6.2-sol"),
         .init(modelId: "gpt-6-astra", displayName: "GPT-6 Astra",
               inputPricePerMillion: 10.00, cachedInputPricePerMillion: 1.00, outputPricePerMillion: 50.00,
               cacheCreationPricePerMillion: 12.50,
@@ -392,6 +418,12 @@ enum BundledPricingCatalog {
               cacheCreationPricePerMillion: 6.25,
               effectiveModelId: "claude-opus-5", isOfficial: true, note: nil,
               sourceUrl: "https://platform.claude.com/docs/en/about-claude/pricing"),
+        .init(modelId: "claude-fable-5-2", displayName: "Claude Fable 5.2",
+              inputPricePerMillion: 8.00, cachedInputPricePerMillion: 0.20, outputPricePerMillion: 40.00,
+              cacheCreationPricePerMillion: 10.00,
+              effectiveModelId: "claude-fable-5-2", isOfficial: true,
+              note: "Official Standard price; 1-hour cache writes cost 2× input.",
+              sourceUrl: "https://platform.claude.com/docs/en/about-claude/pricing"),
         .init(modelId: "claude-fable-5-1", displayName: "Claude Fable 5.1",
               inputPricePerMillion: 10.00, cachedInputPricePerMillion: 0.25, outputPricePerMillion: 50.00,
               cacheCreationPricePerMillion: 12.50,
@@ -517,15 +549,23 @@ enum BundledPricingCatalog {
 
     private static let ultrafastVariants: [PricingEntry] = base
         .filter { CodexUltrafastMode.modelIds.contains($0.modelId) }
-        .map { b in
-            scaledVariant(
-                from: b,
-                modelId: b.modelId + CodexUltrafastMode.suffix,
-                displayName: "\(b.displayName) (Ultrafast Short)",
-                inputMultiplier: 6,
-                outputMultiplier: 6,
-                note: "Materialized Ultrafast Short API price (= 6× Standard Short).",
-                sourceUrl: "https://developers.openai.com/api/docs/guides/ultrafast-mode")
+        .flatMap { b in
+            var rates: [(suffix: String, label: String, multiplier: Double)] = [
+                ("", "Ultrafast Short", 6),
+            ]
+            if CodexUltrafastMode.promotionalModelIds.contains(b.modelId) {
+                rates.append((CodexUltrafastMode.promotionalSuffix, "Ultrafast Short, launch pricing", 3))
+            }
+            return rates.map { rate in
+                scaledVariant(
+                    from: b,
+                    modelId: b.modelId + CodexUltrafastMode.suffix + rate.suffix,
+                    displayName: "\(b.displayName) (\(rate.label))",
+                    inputMultiplier: rate.multiplier,
+                    outputMultiplier: rate.multiplier,
+                    note: "Materialized Ultrafast Short API price (= \(rate.multiplier)× Standard Short).",
+                    sourceUrl: "https://developers.openai.com/api/docs/pricing")
+            }
         }
 
     private static let ultrafastLongVariants: [PricingEntry] = ultrafastVariants
@@ -956,6 +996,8 @@ enum PricingService {
                    "Codex tier multiplier key '\(id)' has a single quote — SQL not safe to interpolate")
         }
         let quotedUltrafast = ultrafastIds.map { "'\($0)'" }.joined(separator: ",")
+        let quotedUltrafastPromo = CodexUltrafastMode.promotionalModelIds.sorted()
+            .map { "'\($0)'" }.joined(separator: ",")
         let ultrafastSuffix = CodexUltrafastMode.suffix
         let quotedFast = fastIds.map { "'\($0)'" }.joined(separator: ",")
         let quotedFlex = flexIds.map { "'\($0)'" }.joined(separator: ",")
@@ -974,6 +1016,9 @@ enum PricingService {
             WHEN usage_events.codex_service_tier_preference = 'ultrafast'
                  AND usage_events.model_id IN (\(quotedUltrafast))
               THEN (\(basePriceRow)) || '\(ultrafastSuffix)' ||
+                CASE WHEN usage_events.model_id IN (\(quotedUltrafastPromo))
+                       AND usage_events.timestamp < '\(CodexUltrafastMode.promotionEndsBefore)'
+                     THEN '\(CodexUltrafastMode.promotionalSuffix)' ELSE '' END ||
                 CASE WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
                      THEN '\(longSuffix)' ELSE '' END
             WHEN usage_events.input_tokens > \(CodexLongContextPricing.inputTokenThreshold)
