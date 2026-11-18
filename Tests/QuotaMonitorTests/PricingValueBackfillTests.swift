@@ -59,6 +59,35 @@ struct PricingValueBackfillTests {
         }
     }
 
+    @Test("GPT-6.2 Ultrafast switches from launch to list price at midnight Pacific",
+          arguments: ["gpt-6.2-astra", "gpt-6.2-sol"])
+    func gpt62UltrafastPromotion(model: String) throws {
+        let db = try makeDatabase()
+        let baseOutputRate: Double = model == "gpt-6.2-astra" ? 40 : 10
+        for (timestamp, multiplier) in [
+            ("2027-03-01T07:59:59.999Z", 3.0),
+            ("2027-03-01T08:00:00.000Z", 6.0),
+        ] {
+            for (input, inputMultiplier, outputMultiplier) in [
+                (272_000 as Int64, 1.0, 1.0),
+                (272_001 as Int64, 2.0, 1.5),
+            ] {
+                let sid = try insertUsageEvent(
+                    in: db, provider: "codex", modelId: model,
+                    input: input, cached: 0, output: 1_000,
+                    serviceTierPreference: "ultrafast", timestamp: timestamp)
+                let expected = (Double(input) * (baseOutputRate / 5) * inputMultiplier
+                    + 1_000 * baseOutputRate * outputMultiplier) * multiplier / 1_000_000
+                let actual = try db.pool.write { conn in
+                    try PricingService.backfillValues(in: conn, sessionId: sid, provider: "codex")
+                    return try Double.fetchOne(conn, sql:
+                        "SELECT value_usd FROM usage_events WHERE session_id = ?", arguments: [sid])
+                }
+                #expect(abs(try #require(actual) - expected) < 1e-9)
+            }
+        }
+    }
+
     @Test("Unsupported Ultrafast models retain Standard fallback without a synthetic tier")
     func unsupportedUltrafastDoesNotMultiply() throws {
         let db = try makeDatabase()
@@ -329,30 +358,28 @@ struct PricingValueBackfillTests {
                 "5m: 1M * 6.25 + 1h: 1M * (5.00 * 2) = 16.25, got \(values[0])")
     }
 
-    @Test("Claude Fable 5.1 usage uses the official reduced cache-read price")
-    func claudeFable51UsesOfficialPricing() throws {
+    @Test("Claude Fable usage includes cache reads and both write durations",
+          arguments: [("claude-fable-5-1", 92.75), ("claude-fable-5-2", 74.20)])
+    func claudeFableUsesOfficialPricing(model: String, expected: Double) throws {
         let db = try makeDatabase()
         try insertUsageEvent(
             in: db,
             provider: "claude",
-            modelId: "claude-fable-5-1",
+            modelId: model,
             input: 1_000_000,
             cached: 1_000_000,
             output: 1_000_000,
             cacheCreation: 2_000_000,
             cacheCreation5m: 1_000_000,
             cacheCreation1h: 1_000_000,
-            timestamp: "2026-09-01T00:00:00Z")
+            timestamp: "2026-11-18T00:00:00Z")
 
         try db.pool.write { conn in
             try PricingService.backfillAllValues(in: conn)
         }
 
         let value = try #require(valueUSD(in: db).first)
-        // 1M input ($10) + 1M cache read ($0.25)
-        // + 1M 5m write ($12.50) + 1M 1h write ($20)
-        // + 1M output ($50) = $92.75.
-        #expect(abs(value - 92.75) < 1e-9)
+        #expect(abs(value - expected) < 1e-9)
     }
 
     @Test("Claude Opus 5.5 usage uses the official lower cache-read and write prices")
@@ -956,6 +983,8 @@ struct PricingValueBackfillTests {
 
         #expect(!entries.isEmpty)
         let cacheWritePremiumModelIds: Set<String> = [
+            "gpt-6.2-astra",
+            "gpt-6.2-sol",
             "gpt-6-astra",
             "gpt-6.1-sol",
             "gpt-6.1-terra",

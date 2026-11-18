@@ -36,11 +36,13 @@ window copy.
 
 #### Summary
 
+- See estimated usage costs for GPT-6.2 Astra, GPT-6.2 Sol, and Claude Fable 5.2.
 - The maintainer can publish Beta updates from a dedicated admin page.
 
 ### Added
 
 - **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site. Authenticated callbacks keep release progress available in the admin page, and sequential merges synchronize protected branches before continuing.
+- **Model pricing.** Add official rates for the new GPT-6.2 and Claude Fable 5.2 models, including date-aware GPT-6.2 Ultrafast pricing.
 
 ## [1.0.16] — 2026-11-17
 
