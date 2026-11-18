@@ -36,11 +36,11 @@ window copy.
 
 #### Summary
 
-- Start Beta updates from your personal admin page.
+- The maintainer can publish Beta updates from a dedicated admin page.
 
 ### Added
 
-- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site.
+- **Release administration.** Add an owner-triggered cloud workflow that checks confirmed changes and publishes a private Beta through the personal admin site. Authenticated callbacks keep release progress available in the admin page, and sequential merges synchronize protected branches before continuing.
 
 ## [1.0.16] — 2026-11-17
 
