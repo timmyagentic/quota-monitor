@@ -316,9 +316,9 @@ describe("public product content", () => {
     );
     expect(html.match(/<section\b/g)?.length ?? 0).toBeGreaterThanOrEqual(7);
     expect(html).toMatch(/<h1\b[^>]*id="hero-title"/);
-    expect(html).toContain('class="hero-product"');
-    expect(html).toContain('class="product-window hero-dashboard-window"');
-    expect(html).toContain('class="product-window hero-menu-window"');
+    expect(html).toContain('class="pi-hero quota-desk"');
+    expect(html).toContain('class="quota-main"');
+    expect(html).toContain('class="quota-side"');
     expect(html).toContain('src="/assets/dashboard-hero.webp"');
     expect(html).toContain('src="/assets/menu-bar-popover.webp"');
     expect(html).toContain('data-i18n="heroPrivacy"');
@@ -351,7 +351,7 @@ describe("public product content", () => {
       "app.js",
       "robots.txt",
     ].map(readPublic);
-    for (const url of files.join("\n").match(/https?:\/\/[^"'\s<]+/g) ?? []) {
+    for (const url of files.join("\n").replaceAll('xmlns="http://www.w3.org/2000/svg"', "").match(/https?:\/\/[^"'\s<]+/g) ?? []) {
       expect(
         url.startsWith("https://quota-monitor.timmyagentic.si/") ||
           url === "https://timmyagentic.si/" ||
@@ -883,7 +883,6 @@ describe("public product content", () => {
         "/assets/dashboard-hero.webp",
         "/assets/dashboard-insights.webp",
         "/assets/model-tiers.webp",
-        "/assets/soft-landscape.webp",
         "/assets/menu-bar-popover.webp",
         "/assets/sessions-detail.webp",
       ]),
@@ -927,12 +926,19 @@ describe("public product content", () => {
       ["trends", "dashboard-insights"],
       ["sessions", "sessions-detail"],
     ]) {
-      const start = html.indexOf(`id="panel-${panel}"`);
-      const end = html.indexOf('class="showcase-caption"', start);
-      expect(html.slice(start, end)).toContain(`src="/assets/${image}.webp"`);
-      expect(html).toContain(`aria-controls="panel-${panel}"`);
-      expect(html).toContain(`aria-labelledby="tab-${panel}"`);
+      const start = html.indexOf(`data-product-panel="${panel}"`);
+      const next = html.indexOf('data-product-panel="', start + 1);
+      expect(start).toBeGreaterThan(-1);
+      expect(html.slice(start, next === -1 ? undefined : next)).toContain(`src="/assets/${image}.webp"`);
+      expect(html).toContain(`data-key="${panel}"`);
     }
+    const active = html.match(/<div[^>]*data-product-panel="overview"[^>]*>/)?.[0] ?? "";
+    const panelId = active.match(/ id="([^"]+)"/)?.[1];
+    const tabId = active.match(/ aria-labelledby="([^"]+)"/)?.[1];
+    expect(panelId).toBeTruthy();
+    expect(tabId).toBeTruthy();
+    expect(html).toContain(`aria-controls="${panelId}"`);
+    expect(html).toContain(`id="${tabId}"`);
   });
 
   it("documents the compact menu-bar readout and click-to-open popover in both languages", async () => {

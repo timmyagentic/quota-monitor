@@ -477,6 +477,7 @@ function localizeAttributes(locale) {
 
   for (const [selector, dataKey, attribute] of bindings) {
     document.querySelectorAll(selector).forEach((node) => {
+      if (node.closest?.("[data-product-surface]")) return;
       const translationKey = node.dataset[dataKey];
       const value = translations[locale][translationKey];
       if (typeof value === "string") {
@@ -494,6 +495,7 @@ export function applyLanguage(language) {
 
   document.documentElement.lang = locale;
   document.querySelectorAll("[data-i18n]").forEach((node) => {
+    if (node.closest?.("[data-product-surface]")) return;
     const translationKey = node.dataset.i18n;
     const value = translations[locale][translationKey];
     if (typeof value === "string") {
@@ -631,66 +633,18 @@ export async function hydrateRelease(fetcher = availableFetch()) {
   }
 }
 
-function initializeShowcase() {
-  const tabs = [...document.querySelectorAll("[data-showcase-tab]")];
-  const panels = [...document.querySelectorAll("[data-showcase-panel]")];
-  const select = (tab, focus = false) => {
-    if (!tab) return;
-    tabs.forEach((item) => {
-      const active = item === tab;
-      item.setAttribute("aria-selected", String(active));
-      item.tabIndex = active ? 0 : -1;
-    });
-    panels.forEach((panel) => {
-      panel.hidden = panel.id !== tab.getAttribute("aria-controls");
-    });
-    if (focus) tab.focus();
-  };
-  tabs.forEach((tab, index) => {
-    tab.addEventListener("click", () => select(tab));
-    tab.addEventListener("keydown", (event) => {
-      let next;
-      if (event.key === "ArrowRight") next = (index + 1) % tabs.length;
-      if (event.key === "ArrowLeft")
-        next = (index + tabs.length - 1) % tabs.length;
-      if (event.key === "Home") next = 0;
-      if (event.key === "End") next = tabs.length - 1;
-      if (next !== undefined) {
-        event.preventDefault();
-        select(tabs[next], true);
-      }
-    });
-  });
-  const toggle = document.querySelector("[data-menu-toggle]");
-  const nav = document.getElementById("primary-navigation");
-  if (toggle && nav) {
-    const close = () => {
-      toggle.setAttribute("aria-expanded", "false");
-      nav.classList.remove("is-open");
-    };
-    toggle.addEventListener("click", () => {
-      const open = toggle.getAttribute("aria-expanded") !== "true";
-      toggle.setAttribute("aria-expanded", String(open));
-      nav.classList.toggle("is-open", open);
-    });
-    nav
-      .querySelectorAll("a")
-      .forEach((link) => link.addEventListener("click", close));
-    document.addEventListener("keydown", (event) => {
-      if (
-        event.key === "Escape" &&
-        toggle.getAttribute("aria-expanded") === "true"
-      ) {
-        close();
-        toggle.focus();
-      }
-    });
-  }
-}
 
 function initialize() {
   const language = resolveLanguage();
   applyLanguage(language);
+  if (document.querySelector("[data-product-surface]")) {
+    void import("./product-ui/product.js");
+    document.addEventListener("product-language", event => {
+      const locale = event.detail === "en" ? "en" : "zh-Hans";
+      persistLanguage(locale);
+      applyLanguage(locale);
+    });
+  }
   document.querySelectorAll("[data-language]").forEach((button) => {
     button.addEventListener("click", () => {
       const requested = button.dataset.language;
@@ -713,7 +667,6 @@ function initialize() {
       feedback.textContent = messages.agentInstallCopyFailed;
     }
   });
-  initializeShowcase();
   if (document.querySelector("[data-gallery-title]")) void import("./ui/gallery.js");
   initializeViewport();
   void hydrateRelease();
