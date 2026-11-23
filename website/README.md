@@ -1,5 +1,7 @@
 # Product website
 
+Source for the React and HeroUI interface lives in `interface/`. Run `npm ci && npm run build` there after editing components. Commit the generated HTML and local assets with their source.
+
 Static source for the existing public product website.
 
 

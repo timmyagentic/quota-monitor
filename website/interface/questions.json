@@ -1,0 +1,42 @@
+[
+  {
+    "question": {
+      "zh": "QuotaMonitor 免费吗？",
+      "en": "Is QuotaMonitor free?"
+    },
+    "answer": {
+      "zh": "<p data-i18n=\"faqPriceA\">是的。QuotaMonitor 免费开源，代码采用 MIT 许可证。服务提供方的订阅与 API 用量另行计算。</p>",
+      "en": "<p data-i18n=\"faqPriceA\">Yes. QuotaMonitor is free and open source under the MIT license. Provider subscriptions and API usage are separate.</p>"
+    }
+  },
+  {
+    "question": {
+      "zh": "费用估算就是实际账单吗？",
+      "en": "Are the cost estimates my actual bill?"
+    },
+    "answer": {
+      "zh": "<p data-i18n=\"faqCostsA\">不是。API 等价费用估算帮助理解用量，不代表订阅费用，也不是服务提供方的账单。</p>",
+      "en": "<p data-i18n=\"faqCostsA\">No. API-equivalent estimates help you understand usage. They are not subscription charges or a provider invoice.</p>"
+    }
+  },
+  {
+    "question": {
+      "zh": "为什么有时只显示一个额度周期？",
+      "en": "Why do quota windows differ?"
+    },
+    "answer": {
+      "zh": "<p data-i18n=\"faqWindowsA\">应用显示服务提供方当前实际返回的额度周期。没有提供的周期会被省略，不会拿旧数据补上。</p>",
+      "en": "<p data-i18n=\"faqWindowsA\">QuotaMonitor shows the windows the provider currently supplies. Missing windows are omitted instead of being filled with stale data.</p>"
+    }
+  },
+  {
+    "question": {
+      "zh": "支持哪些 Mac？",
+      "en": "Which Macs are supported?"
+    },
+    "answer": {
+      "zh": "<p data-i18n=\"faqMacA\">需要搭载 Apple Silicon 的 Mac 与 macOS 14 或更新版本。官方发行版不支持 Intel Mac，经过 Developer ID 签名和 Apple 公证。</p>",
+      "en": "<p data-i18n=\"faqMacA\">QuotaMonitor requires macOS 14 or later on Apple Silicon. Intel Macs are not supported by the official release. The app is Developer ID signed and Apple notarized.</p>"
+    }
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "publicDirectory": "../public",
+  "key": "quota",
+  "documents": [
+    "privacy"
+  ]
+}

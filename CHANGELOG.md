@@ -36,9 +36,13 @@ window copy.
 
 #### Summary
 
+- Switch between quotas, trends and sessions in the redesigned product website.
+
 - Read small labels in the website screenshots at their original size.
 
 ### Changed
+
+- **Interactive dashboard tour.** Compare the menu bar with individual dashboard views, switch language and navigate the privacy guide with the keyboard.
 
 - **Screenshot viewer.** Browse all five views with the keyboard, in English or Chinese.
 
