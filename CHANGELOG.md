@@ -34,6 +34,8 @@ window copy.
 
 ## [Unreleased]
 
+- Explore the website’s five app screenshots in an accessible, bilingual full-size viewer.
+
 ## [1.0.17] — 2026-11-18
 
 #### Summary

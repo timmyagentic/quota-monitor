@@ -714,6 +714,7 @@ function initialize() {
     }
   });
   initializeShowcase();
+  if (document.querySelector("[data-gallery-title]")) void import("./ui/gallery.js");
   initializeViewport();
   void hydrateRelease();
 }
