@@ -96,7 +96,7 @@
     margin-top: 18px;
   }
   .quota-stage {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 15px;
   }
   .quota-main {
@@ -186,4 +186,24 @@ body[data-product-subpage] main {
 }
 body[data-product-subpage] main :is(h2, section[id]) {
   scroll-margin-top: 12px;
+}
+
+@media (max-width: 360px) {
+  .pi-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .pi-identity > span {
+    display: none;
+  }
+}
+@media (max-width: 360px) {
+  .quota-stage .pi-tab {
+    gap: 3px;
+    padding-inline: 6px;
+  }
+  .quota-stage .pi-tab svg {
+    display: none;
+  }
 }
