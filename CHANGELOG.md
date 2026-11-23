@@ -34,7 +34,13 @@ window copy.
 
 ## [Unreleased]
 
-- Explore the website’s five app screenshots in an accessible, bilingual full-size viewer.
+#### Summary
+
+- Read small labels in the website screenshots at their original size.
+
+### Changed
+
+- **Screenshot viewer.** Browse all five views with the keyboard, in English or Chinese.
 
 ## [1.0.17] — 2026-11-18
 
