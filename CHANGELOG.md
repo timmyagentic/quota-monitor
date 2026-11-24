@@ -36,6 +36,7 @@ window copy.
 
 #### Summary
 
+- Explore the dashboard and menu-bar view directly on the website.
 - The website navigation and dashboard tabs now fit narrow phone screens.
 
 - Switch between quotas, trends and sessions in the redesigned product website.
@@ -44,6 +45,7 @@ window copy.
 
 ### Changed
 
+- **Product website.** Open quota, trend, and session screenshots beside the Mac download and menu-bar preview.
 - **Narrow screens.** On a 320-pixel screen, the language switch, menu and all three dashboard tabs stay within reach.
 
 - **Interactive dashboard tour.** Compare the menu bar with individual dashboard views, switch language and navigate the privacy guide with the keyboard.

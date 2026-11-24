@@ -13,7 +13,7 @@ export const copy = {
     sessionsDetailAlt:
       "Quota Monitor Sessions view showing searchable model, token, event timing, and API-equivalent cost estimate details with synthetic data",
     overviewDetail:
-      "A quiet menu-bar readout. A complete dashboard when you need it.",
+      "The menu-bar readout shows your remaining quota and reset time.",
   },
   zh: {
     heroTitleFirstLine: "在 Mac 菜单栏",
@@ -28,6 +28,6 @@ export const copy = {
       "使用合成数据展示活跃度指标、12 个月热力图以及 provider 与模型构成的 Quota Monitor 仪表盘",
     sessionsDetailAlt:
       "使用合成数据展示可搜索的模型、Token、事件时间与 API 等价费用估算明细的 Quota Monitor 会话视图",
-    overviewDetail: "菜单栏里轻轻一瞥；需要细看时，再展开完整仪表盘。",
+    overviewDetail: "菜单栏显示剩余额度与重置时间。",
   },
 };

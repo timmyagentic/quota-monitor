@@ -4,10 +4,10 @@ const STORAGE_KEY = "quota-monitor-site-language";
 const supported = new Set(["en", "zh-Hans"]);
 
 const english = Object.freeze({
-  metaTitle: "Quota Monitor — Know your quota. Keep your flow.",
+  metaTitle: "Quota Monitor | Codex and Claude Code usage for Mac",
   metaDescription:
     "Keep Codex and Claude Code quota percentages visible in the macOS menu bar, then open detailed reset times, token trends, cost estimates, and sessions.",
-  ogTitle: "Quota Monitor — Know your quota. Keep your flow.",
+  ogTitle: "Quota Monitor | Codex and Claude Code usage for Mac",
   ogDescription:
     "Keep Codex and Claude Code quotas visible in the menu bar, then open reset times, token trends, cost estimates, and session details.",
   ogImageAlt: "Quota Monitor product page with a native macOS dashboard window",
@@ -121,7 +121,7 @@ const english = Object.freeze({
   privacyPolicyWebsiteTitle: "This website",
   privacyPolicyWebsiteBody:
     "The website stores only your language choice in localStorage. It uses no cookies, client analytics, or third-party UI runtime. Cloudflare processes network data at the boundary described above.",
-  installationTitle: "Get started in minutes",
+  installationTitle: "Install on your Mac",
   installationIntro: "Install Quota Monitor like any other native Mac app.",
   stepOneTitle: "Download the latest DMG",
   stepOneBody:
@@ -132,7 +132,7 @@ const english = Object.freeze({
   stepThreeTitle: "Open and choose tools to track",
   stepThreeBody:
     "Select Codex, Claude Code, or both, then start monitoring quota right away.",
-  finalTitle: "Know your quota. Keep your flow.",
+  finalTitle: "Download Quota Monitor",
   finalDescription: "Stay in control of your usage so you can keep building.",
   footerNavigationLabel: "Footer information",
   license: "MIT License",
@@ -269,7 +269,7 @@ const simplifiedChinese = Object.freeze({
   privacyPolicyWebsiteTitle: "本网站",
   privacyPolicyWebsiteBody:
     "网站只在 localStorage 中保存你的语言选择。不使用 Cookie、客户端分析或第三方 UI runtime。Cloudflare 按上述网络边界处理网络数据。",
-  installationTitle: "几分钟即可开始",
+  installationTitle: "在 Mac 上安装",
   installationIntro: "像安装其他原生 Mac 应用一样安装 Quota Monitor。",
   stepOneTitle: "下载最新 DMG",
   stepOneBody: "获取当前经过 Developer ID 签名和 Apple 公证的磁盘映像。",
@@ -277,7 +277,7 @@ const simplifiedChinese = Object.freeze({
   stepTwoBody: "像其他 Mac 应用一样，把 Quota Monitor 移到“应用程序”文件夹。",
   stepThreeTitle: "打开应用并选择要跟踪的工具",
   stepThreeBody: "选择 Codex、Claude Code 或两者，然后立即开始监控额度。",
-  finalTitle: "看清额度，保持专注。",
+  finalTitle: "下载 Quota Monitor",
   finalDescription: "掌握用量，专注继续构建。",
   footerNavigationLabel: "页脚信息",
   license: "MIT 许可证",
@@ -307,7 +307,7 @@ const homeEnglish = {
   fullDashboard: "View the full dashboard",
   heroTitleSecondLine: "in your Mac menu bar.",
   heroDescription:
-    "Codex and Claude Code quotas, reset times, and usage trends. Right in your Mac menu bar.",
+    "Track your Codex and Claude Code quotas, reset times, and usage history on your Mac.",
   heroEyebrow: "A LITTLE CLARITY. A LOT MORE FOCUS.",
   installNav: "Get started",
   shortDownload: "Download",
@@ -319,8 +319,8 @@ const homeEnglish = {
   demoLabel: "Real app. Demonstration data.",
   overviewCaption: "The whole picture, without breaking your flow.",
   overviewDetail:
-    "A quiet menu-bar readout. A complete dashboard when you need it.",
-  benefitsTitle: "Less guessing. More perspective.",
+    "The menu-bar readout shows your remaining quota and reset time.",
+  benefitsTitle: "Quotas and reset times",
   resetBenefit: "Know when you can keep going.",
   resetBody:
     "See your active quota windows and reset countdowns together. Choose used or remaining percentages to match how you think.",
@@ -328,22 +328,22 @@ const homeEnglish = {
   localBody:
     "Review token trends, model composition, and session details. Your history is indexed on your own Mac.",
   deeperEyebrow: "A CLEARER PICTURE",
-  deeperTitle: "Your tools.\nYour patterns.",
+  deeperTitle: "Models and sessions",
   deeperBody:
     "Move from the big picture to individual models and speed tiers. See Standard, Fast, and Ultrafast usage separately, with cached-token trends alongside.",
   modelTiersAlt:
     "QuotaMonitor model and speed-tier usage trends, captured with demonstration data",
-  privacyHeadline: "Your history belongs on your Mac.",
+  privacyHeadline: "Local history and privacy",
   privacyLead: "Local history. Clear boundaries.",
   privacyDetails: "What connects to the network?",
   installEyebrow: "READY WHEN YOU ARE",
-  installationTitle: "A small app. A simpler routine.",
+  installationTitle: "Install on your Mac",
   installDownloadBody:
     "Download the current signed and notarized DMG. No account required.",
   installMoveBody: "Drag QuotaMonitor into Applications, then open it.",
   installChooseBody:
     "Choose Codex, Claude Code, or both. Pick your preferred menu-bar display.",
-  faqTitle: "A few things worth knowing.",
+  faqTitle: "Frequently asked questions",
   faqPriceQ: "Is QuotaMonitor free?",
   faqPriceA:
     "Yes. QuotaMonitor is free and open source under the MIT license. Provider subscriptions and API usage are separate.",
@@ -358,7 +358,7 @@ const homeEnglish = {
     "QuotaMonitor requires macOS 14 or later on Apple Silicon. Intel Macs are not supported by the official release. The app is Developer ID signed and Apple notarized.",
   sourceLink: "Source code",
   releaseLink: "Release notes",
-  finalTitle: "Keep your focus.\nWe’ll keep an eye on your quota.",
+  finalTitle: "Download Quota Monitor",
   footerNote: "Made for your Mac. Built in the open.",
   showcaseLabel: "Explore the app",
 };
@@ -374,7 +374,7 @@ const homeChinese = {
   fullDashboard: "查看完整仪表盘",
   heroTitleSecondLine: "看清编程额度。",
   heroDescription:
-    "Codex 与 Claude Code 的额度、重置时间和使用趋势，就在 Mac 菜单栏。",
+    "在 Mac 上查看 Codex 和 Claude Code 的剩余额度、重置时间与使用记录。",
   heroEyebrow: "少一点猜测，多一点专注",
   installNav: "使用指南",
   shortDownload: "下载",
@@ -385,27 +385,27 @@ const homeChinese = {
   sessionsTab: "会话明细",
   demoLabel: "真实应用 · 演示数据",
   overviewCaption: "完整的使用概览，不打断你的思路。",
-  overviewDetail: "菜单栏里轻轻一瞥；需要细看时，再展开完整仪表盘。",
-  benefitsTitle: "少一点猜测，多一点掌控。",
+  overviewDetail: "菜单栏显示剩余额度与重置时间。",
+  benefitsTitle: "额度和重置时间",
   resetBenefit: "一眼看见重置时间",
   resetBody: "把当前额度周期与重置倒计时放在一起。已用或剩余，按你的习惯显示。",
   localBenefit: "留存你的使用轨迹",
   localBody: "在本地回顾 Token 趋势、模型构成与会话明细，了解自己的使用节奏。",
   deeperEyebrow: "从概览，到细节",
-  deeperTitle: "工具各有所长，\n用量清楚有数。",
+  deeperTitle: "模型和会话用量",
   deeperBody:
     "从整体趋势看到每个模型和速度档位。Standard、Fast、Ultrafast 分开查看，缓存命中趋势也在同一处。",
   modelTiersAlt: "使用演示数据展示模型速度档位和缓存命中趋势的 QuotaMonitor",
-  privacyHeadline: "使用历史，留在自己的 Mac。",
+  privacyHeadline: "本地历史和隐私",
   privacyLead: "本地记录，清楚边界。",
   privacyDetails: "哪些功能会访问网络？",
   installEyebrow: "几分钟，开始使用",
-  installationTitle: "轻轻装好，安心开工。",
+  installationTitle: "在 Mac 上安装",
   installDownloadBody: "下载经过签名和公证的最新 DMG，无需注册账户。",
   installMoveBody: "把 QuotaMonitor 拖入“应用程序”，然后打开。",
   installChooseBody:
     "选择 Codex、Claude Code 或两者，设置你喜欢的菜单栏显示方式。",
-  faqTitle: "你可能还想知道",
+  faqTitle: "常见问题",
   faqPriceQ: "QuotaMonitor 免费吗？",
   faqPriceA:
     "是的。QuotaMonitor 免费开源，代码采用 MIT 许可证。服务提供方的订阅与 API 用量另行计算。",
@@ -420,7 +420,7 @@ const homeChinese = {
     "需要搭载 Apple Silicon 的 Mac 与 macOS 14 或更新版本。官方发行版不支持 Intel Mac，经过 Developer ID 签名和 Apple 公证。",
   sourceLink: "源代码",
   releaseLink: "更新日志",
-  finalTitle: "把心思留给创作，\n把额度交给 QuotaMonitor。",
+  finalTitle: "下载 Quota Monitor",
   footerNote: "为 Mac 而生，与开源同行。",
   showcaseLabel: "查看应用界面",
 };

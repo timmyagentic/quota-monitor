@@ -646,3 +646,100 @@ body[data-product-edition]
 .pi-faq-trigger[aria-expanded="true"] > svg {
   transform: rotate(180deg);
 }
+
+/* A compact masthead and quiet section navigation leave space for each product. */
+body[data-product-edition] .pi-header {
+  background: #fff;
+  border-bottom: 1px solid #dadde0;
+  color: #1d252b;
+}
+.pi-header .pi-header-row {
+  min-height: 57px;
+}
+.pi-header .pi-identity {
+  gap: 9px;
+}
+.pi-header .pi-brand {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  color: #19242a;
+  font-weight: 700;
+}
+.pi-brand img {
+  width: 23px;
+  height: 23px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+.pi-header .pi-publisher {
+  font-size: 13px;
+  color: #56616b;
+}
+.pi-header .pi-desktop-nav a,
+.pi-header .pi-lang,
+.pi-header .pi-mobile-toggle {
+  color: #233039;
+}
+.pi-header .pi-nav-end > button {
+  border-radius: 5px;
+  border-color: #c8cfd1;
+}
+body[data-product-edition] .pi-hero {
+  min-height: 0;
+}
+.pi-surface .pi-tabs .pi-tab-list {
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid currentColor;
+  padding: 0;
+  gap: 3px;
+  max-width: 100%;
+}
+.pi-surface .pi-tabs .pi-tab {
+  box-shadow: none;
+  border-radius: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  margin-bottom: -1px;
+  color: inherit;
+  min-width: 0;
+}
+.pi-surface .pi-tabs .pi-tab[data-selected] {
+  border-bottom-color: currentColor;
+  background: transparent;
+}
+.pi-surface .pi-action {
+  border-radius: 5px;
+}
+.pi-surface .pi-ghost {
+  background: transparent;
+}
+.pi-surface .pi-enlarge {
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+}
+body[data-product-edition] main > .section .section-title,
+body[data-product-edition] main > .section .section-head h2 {
+  font-size: clamp(24px, 2.7vw, 40px);
+  letter-spacing: -0.028em;
+}
+body[data-product-edition] .studio-signoff {
+  background: #fff;
+  color: #25313b;
+}
+@media (max-width: 360px) {
+  .pi-identity {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .pi-identity > span {
+    display: none;
+  }
+  .pi-header .pi-header-row {
+    min-height: 48px;
+  }
+}
