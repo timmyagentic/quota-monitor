@@ -186,3 +186,5 @@ html:lang(en) .lo-zh, html:lang(zh) .lo-en { display:none; }
     @keyframes nav-appear {from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:none;}}
   }
 }
+
+.landing-quota main :is(.demo-label, .image-hint, .eyebrow) { color: var(--muted-text); }
