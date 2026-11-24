@@ -36,6 +36,7 @@ window copy.
 
 #### Summary
 
+- Improve the contrast of website captions and image hints.
 - Show remaining coding quota with an interactive overview on the product website.
 - The website uses its original layout, colors, and dashboard controls.
 
