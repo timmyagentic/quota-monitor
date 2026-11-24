@@ -36,10 +36,12 @@ window copy.
 
 #### Summary
 
+- Show remaining coding quota with an interactive overview on the product website.
 - The website uses its original layout, colors, and dashboard controls.
 
 ### Changed
 
+- **Product website.** The landing page pairs the download with real screenshots and supports language switching, keyboard navigation and narrow screens.
 - **Product website.** The menu-bar and dashboard views retain their original placement, with keyboard-operable showcase controls.
 
 
