@@ -1,5 +1,1 @@
-# Website interface
-
-Run `npm ci && npm run build` to regenerate the deployable HTML, JavaScript, CSS and third-party notices. The project owns its JSX in `Page.jsx`, its page composition in `template.html`, and its typography and layout in `style.css`. The checked-in assets work with the existing static deployment.
-
-HeroUI supplies the accessible controls. The browser hydrates the same React components used to render the initial HTML. All runtime assets are served by this site.
+The dashboard tabs uses HeroUI with the existing website markup and CSS. Run `npm ci && npm run build` in this directory after changing the control, then commit the scripts and notices generated in the public assets directory.

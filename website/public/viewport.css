@@ -125,3 +125,7 @@
 
 /* Media fits the allocated track without contributing its native pixel dimensions. */
 .viewport-home .single-window { contain: size; width: 100%; }
+
+@layer {
+  [data-react-aria-pressable] { touch-action: pan-x pan-y pinch-zoom; }
+}

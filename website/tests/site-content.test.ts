@@ -309,15 +309,16 @@ describe("public product content", () => {
     expect(html).toContain('data-i18n="privacyProviderSummary"');
     expect(html).toContain('id="installation"');
     expect(html.match(/href="\/download"/g)).toHaveLength(4);
-    expect(html).toContain("Quota Monitor | Codex and Claude Code usage for Mac");
+    expect(html).toContain("Know your quota.");
+    expect(html).toContain("Keep your flow.");
     expect(html).toContain(
-      "Track your Codex and Claude Code quotas, reset times, and usage history on your Mac.",
+      "Codex and Claude Code quotas, reset times, and usage trends. Right in your Mac menu bar.",
     );
     expect(html.match(/<section\b/g)?.length ?? 0).toBeGreaterThanOrEqual(7);
     expect(html).toMatch(/<h1\b[^>]*id="hero-title"/);
-    expect(html).toContain('class="pi-hero quota-desk"');
-    expect(html).toContain('class="quota-main"');
-    expect(html).toContain('class="quota-side"');
+    expect(html).toContain('class="hero-product"');
+    expect(html).toContain('class="product-window hero-dashboard-window"');
+    expect(html).toContain('class="product-window hero-menu-window"');
     expect(html).toContain('src="/assets/dashboard-hero.webp"');
     expect(html).toContain('src="/assets/menu-bar-popover.webp"');
     expect(html).toContain('data-i18n="heroPrivacy"');
@@ -326,13 +327,16 @@ describe("public product content", () => {
     expect(html).toContain('src="/app.js"');
   });
 
-  it("names the product and describes quota tracking in both languages", async () => {
+  it("keeps the hero promise in two bilingual lines", async () => {
     const html = readPublic("index.html");
     const { translations } = await loadAppModule();
-    expect(html).toContain('<h1 id="hero-title">Quota Monitor</h1>');
-    expect(attributeValues(html, "data-i18n")).toContain("heroDescription");
-    expect(translations.en.heroDescription).toContain("Codex and Claude Code quotas");
-    expect(translations["zh-Hans"].heroDescription).toContain("剩余额度");
+    expect(attributeValues(html, "data-i18n")).toEqual(
+      expect.arrayContaining(["heroTitleFirstLine", "heroTitleSecondLine"]),
+    );
+    expect(translations.en.heroTitleFirstLine).toBe("Coding quotas,");
+    expect(translations.en.heroTitleSecondLine).toBe("in your Mac menu bar.");
+    expect(translations["zh-Hans"].heroTitleFirstLine).toBe("在 Mac 菜单栏");
+    expect(translations["zh-Hans"].heroTitleSecondLine).toBe("看清编程额度。");
     expect(translations.en.heroPrivacy).toContain(
       "Quota history stays on your Mac",
     );
@@ -347,7 +351,7 @@ describe("public product content", () => {
       "app.js",
       "robots.txt",
     ].map(readPublic);
-    for (const url of files.join("\n").replaceAll('xmlns="http://www.w3.org/2000/svg"', "").match(/https?:\/\/[^"'\s<]+/g) ?? []) {
+    for (const url of files.join("\n").match(/https?:\/\/[^"'\s<]+/g) ?? []) {
       expect(
         url.startsWith("https://quota-monitor.timmyagentic.si/") ||
           url === "https://timmyagentic.si/" ||
@@ -879,6 +883,7 @@ describe("public product content", () => {
         "/assets/dashboard-hero.webp",
         "/assets/dashboard-insights.webp",
         "/assets/model-tiers.webp",
+        "/assets/soft-landscape.webp",
         "/assets/menu-bar-popover.webp",
         "/assets/sessions-detail.webp",
       ]),
@@ -922,19 +927,12 @@ describe("public product content", () => {
       ["trends", "dashboard-insights"],
       ["sessions", "sessions-detail"],
     ]) {
-      const start = html.indexOf(`data-product-panel="${panel}"`);
-      const next = html.indexOf('data-product-panel="', start + 1);
-      expect(start).toBeGreaterThan(-1);
-      expect(html.slice(start, next === -1 ? undefined : next)).toContain(`src="/assets/${image}.webp"`);
-      expect(html).toContain(`data-key="${panel}"`);
+      const start = html.indexOf(`id="panel-${panel}"`);
+      const end = html.indexOf('class="showcase-caption"', start);
+      expect(html.slice(start, end)).toContain(`src="/assets/${image}.webp"`);
+      expect(html).toContain(`aria-controls="panel-${panel}"`);
+      expect(html).toContain(`aria-labelledby="tab-${panel}"`);
     }
-    const active = html.match(/<div[^>]*data-product-panel="overview"[^>]*>/)?.[0] ?? "";
-    const panelId = active.match(/ id="([^"]+)"/)?.[1];
-    const tabId = active.match(/ aria-labelledby="([^"]+)"/)?.[1];
-    expect(panelId).toBeTruthy();
-    expect(tabId).toBeTruthy();
-    expect(html).toContain(`aria-controls="${panelId}"`);
-    expect(html).toContain(`id="${tabId}"`);
   });
 
   it("documents the compact menu-bar readout and click-to-open popover in both languages", async () => {

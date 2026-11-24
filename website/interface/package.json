@@ -1,5 +1,5 @@
 {
-  "name": "quota-monitor-product-interface",
+  "name": "product-site-controls",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -10,17 +10,9 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "@heroui/react": "3.2.8",
-    "@heroui/styles": "3.2.8",
-    "class-variance-authority": "0.7.1",
-    "clsx": "2.1.1",
-    "tailwind-merge": "3.7.1",
-    "lucide-react": "1.78.0",
-    "motion": "14.14.0",
-    "sonner": "2.0.8"
+    "@heroui/styles": "3.2.8"
   },
   "devDependencies": {
-    "esbuild": "0.28.2",
-    "tailwindcss": "4.3.5",
-    "@tailwindcss/cli": "4.3.5"
+    "esbuild": "0.28.2"
   }
 }
