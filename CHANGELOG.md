@@ -36,6 +36,7 @@ window copy.
 
 #### Summary
 
+- Keep the menu-bar screenshot and full dashboard side by side at every supported website width.
 - Improve the contrast of website captions and image hints.
 - Show remaining coding quota with an interactive overview on the product website.
 - The website uses its original layout, colors, and dashboard controls.
