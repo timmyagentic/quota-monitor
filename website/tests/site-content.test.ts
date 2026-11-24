@@ -309,10 +309,9 @@ describe("public product content", () => {
     expect(html).toContain('data-i18n="privacyProviderSummary"');
     expect(html).toContain('id="installation"');
     expect(html.match(/href="\/download"/g)).toHaveLength(4);
-    expect(html).toContain("Know your quota.");
-    expect(html).toContain("Keep your flow.");
+    expect(html).toContain("Quota Monitor | Codex and Claude Code usage for Mac");
     expect(html).toContain(
-      "Codex and Claude Code quotas, reset times, and usage trends. Right in your Mac menu bar.",
+      "Track your Codex and Claude Code quotas, reset times, and usage history on your Mac.",
     );
     expect(html.match(/<section\b/g)?.length ?? 0).toBeGreaterThanOrEqual(7);
     expect(html).toMatch(/<h1\b[^>]*id="hero-title"/);
@@ -327,16 +326,13 @@ describe("public product content", () => {
     expect(html).toContain('src="/app.js"');
   });
 
-  it("keeps the hero promise in two bilingual lines", async () => {
+  it("names the product and describes quota tracking in both languages", async () => {
     const html = readPublic("index.html");
     const { translations } = await loadAppModule();
-    expect(attributeValues(html, "data-i18n")).toEqual(
-      expect.arrayContaining(["heroTitleFirstLine", "heroTitleSecondLine"]),
-    );
-    expect(translations.en.heroTitleFirstLine).toBe("Coding quotas,");
-    expect(translations.en.heroTitleSecondLine).toBe("in your Mac menu bar.");
-    expect(translations["zh-Hans"].heroTitleFirstLine).toBe("在 Mac 菜单栏");
-    expect(translations["zh-Hans"].heroTitleSecondLine).toBe("看清编程额度。");
+    expect(html).toContain('<h1 id="hero-title">Quota Monitor</h1>');
+    expect(attributeValues(html, "data-i18n")).toContain("heroDescription");
+    expect(translations.en.heroDescription).toContain("Codex and Claude Code quotas");
+    expect(translations["zh-Hans"].heroDescription).toContain("剩余额度");
     expect(translations.en.heroPrivacy).toContain(
       "Quota history stays on your Mac",
     );

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@heroui/react/button";
 import { Tabs } from "@heroui/react/tabs";
-import { Chip } from "@heroui/react/chip";
 import { Accordion } from "@heroui/react/accordion";
 import { Dropdown } from "@heroui/react/dropdown";
 import { Modal } from "@heroui/react/modal";
@@ -53,14 +52,6 @@ export function useLanguage(initial) {
 }
 export const tx = (value, lang) =>
   typeof value === "string" ? value : (value?.[lang] ?? value?.zh ?? "");
-export function Mark({ Icon, children }) {
-  return (
-    <Chip className="pi-mark" size="sm">
-      {Icon && <Icon size={15} aria-hidden="true" />}
-      <Chip.Label>{children}</Chip.Label>
-    </Chip>
-  );
-}
 export function Action({
   href,
   onPress,
@@ -141,6 +132,7 @@ export function Header({ site, lang }) {
           </a>
           <span aria-hidden="true">/</span>
           <a className="pi-brand" href="/">
+            <img src="/assets/app-icon.png" width={23} height={23} alt="" />
             {site.name}
           </a>
         </div>
@@ -198,22 +190,6 @@ export function Header({ site, lang }) {
         </div>
       </div>
     </header>
-  );
-}
-export function HeroCopy({
-  title,
-  description,
-  children,
-  mark,
-  id = "hero-title",
-}) {
-  return (
-    <div className="pi-copy">
-      {mark}
-      <h1 id={id}>{title}</h1>
-      <p className="pi-lead">{description}</p>
-      {children}
-    </div>
   );
 }
 export function Choices({
