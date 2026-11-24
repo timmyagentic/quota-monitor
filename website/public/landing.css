@@ -130,8 +130,7 @@
 .landing-quota .showcase-tabs button { min-width:0; height:auto; min-height:36px; padding:4px 12px; border-radius:6px; font:var(--caption-2); }
 .landing-quota .showcase-tabs button[aria-selected=true] { background:var(--key); color:white; }
 .landing-quota .showcase-stage, .landing-quota .showcase-panel { width:100%; height:auto; min-height:0; padding:0; margin:0 auto; }
-.landing-quota :is(.showcase-panel:not([hidden]), .hero-product) { display:block; position:relative; }
-.landing-quota .hero-product { width:min(100%,760px); height:auto; margin:0 auto; }
+.landing-quota .showcase-panel:not([hidden]) { display:block; position:relative; }
 .landing-quota .hero-product .product-window { background:transparent; box-shadow:none; border:0; }
 .landing-quota .hero-dashboard-window { display:block; position:relative; inset:auto; width:82%; margin-left:auto; }
 .landing-quota .hero-menu-window { position:absolute; inset:8% auto auto 0; width:24%; z-index:1; }
@@ -153,10 +152,10 @@
 
 .landing-quota .hero-product {
   display:grid; grid-template-columns:minmax(0,.27fr) minmax(0,.73fr);
-  align-items:center; gap:16px; padding:0; min-height:0; width:min(100%,860px);
+  position:relative; align-items:center; gap:16px; margin:0 auto; padding:0; min-height:0; width:min(100%,860px);
 }
 .landing-quota .hero-product :is(.hero-menu-window,.hero-dashboard-window) {
-  inset:auto; position:static; width:100%; margin:0; height:auto; overflow:visible; transform:none;
+  inset:auto; position:static; width:100%; min-width:0; margin:0; height:auto; overflow:visible; transform:none;
 }
 .landing-quota .hero-product .hero-dashboard-window img { height:auto; max-height:none; object-fit:contain; }
 .landing-quota .showcase-panel { display:block; }
