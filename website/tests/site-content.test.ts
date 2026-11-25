@@ -883,6 +883,7 @@ describe("public product content", () => {
         "/assets/dashboard-hero.webp",
         "/assets/dashboard-insights.webp",
         "/assets/model-tiers.webp",
+        "/assets/soft-landscape.webp",
         "/assets/menu-bar-popover.webp",
         "/assets/sessions-detail.webp",
       ]),
