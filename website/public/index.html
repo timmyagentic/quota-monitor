@@ -28,12 +28,13 @@
     "downloadUrl": "https://quota-monitor.timmyagentic.si/download"
   }
   </script>
+<link rel="stylesheet" href="/brand/brand.css">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://quota-monitor.timmyagentic.si/assets/social-card.webp">
 <meta name="twitter:image:alt" content="Quota Monitor for Apple Silicon Macs">
-<link id="react-aria-pressable-style" rel="stylesheet" href="/landing.css">
+<link id="react-aria-pressable-style" rel="stylesheet" href="/viewport.css">
 </head>
-<body data-page="home" class="landing landing-quota">
+<body data-page="home" class="brand-site brand-quota viewport-home" data-viewport-page>
 <a class="skip-link" href="#main-content" data-i18n="skipLink">Skip to main content</a>
 <header class="site-header">
 <div class="container header-inner">
@@ -57,14 +58,23 @@
 </div>
 </header>
 <main id="main-content">
-<section class="landing-hero" aria-labelledby="hero-title">
-  <div class="landing-copy">
-    <h1 id="hero-title"><span class="landing-line"><span data-i18n="heroTitleFirstLine">Coding quotas,</span></span><span class="landing-line"><span data-i18n="heroTitleSecondLine">in your Mac menu bar.</span></span></h1>
-    <p class="landing-desc"><span data-i18n="heroDescription">Codex and Claude Code quotas, reset times, and usage trends. Right in your Mac menu bar.</span></p>
-    <div class="landing-actions"><a class="landing-action" data-primary-action href="/download"><span data-i18n="downloadAction">Download QuotaMonitor</span> <span aria-hidden="true">↗</span></a></div>
-    <p class="landing-note"><span data-i18n="freeNote">macOS 14+ · Apple Silicon · Free and open source</span></p>
-  </div>
-  <div class="showcase landing-proof" aria-label="Explore the app" data-i18n-aria-label="showcaseLabel">
+<section class="hero" aria-labelledby="hero-title">
+<div class="container hero-copy">
+<h1 id="hero-title">
+<span class="hero-title-line" data-i18n="heroTitleFirstLine">Coding quotas,</span>
+<span class="hero-title-line" data-i18n="heroTitleSecondLine">in your Mac menu bar.</span>
+</h1>
+<p data-i18n="heroDescription" class="hero-description">Codex and Claude Code quotas, reset times, and usage trends. Right in your Mac menu bar.</p>
+<div class="hero-actions">
+<a class="button button-primary" href="/download">
+<span data-i18n="downloadAction">Download QuotaMonitor</span>
+<img class="icon" src="/icons/arrow-right.svg" width="24" height="24" alt="" aria-hidden="true">
+</a>
+</div>
+<p data-i18n="freeNote" class="download-note">macOS 14+ · Apple Silicon · Free and open source</p>
+</div>
+<div class="showcase" aria-label="Explore the app" data-i18n-aria-label="showcaseLabel">
+<img class="landscape" src="/assets/soft-landscape.webp" width="1774" height="887" alt="" aria-hidden="true">
 <div class="showcase-tabs" role="tablist" aria-label="Explore the app" data-i18n-aria-label="showcaseLabel">
 <button id="tab-overview" role="tab" data-showcase-tab aria-controls="panel-overview" aria-selected="true" data-i18n="overviewTab">Live quota</button>
 <button id="tab-trends" role="tab" data-showcase-tab aria-controls="panel-trends" aria-selected="false" tabindex="-1" data-i18n="trendsTab">Usage trends</button>
@@ -74,7 +84,7 @@
 <div class="showcase-panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-showcase-panel tabindex="0">
 <div class="hero-product">
 <a class="product-window hero-menu-window" href="/assets/menu-bar-popover.webp">
-<img src="/assets/menu-bar-popover.webp" width="386" height="661" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards" data-i18n-alt="menuPopoverAlt" loading="eager" decoding="async">
+<img src="/assets/menu-bar-popover.webp" width="386" height="661" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards" data-i18n-alt="menuPopoverAlt" loading="eager" decoding="async" >
 </a>
 <a class="product-window hero-dashboard-window" href="/assets/dashboard-hero.webp">
 <img src="/assets/dashboard-hero.webp" width="980" height="732" alt="Quota Monitor dashboard showing Codex and Claude Code quota cards, token trends, and API-equivalent cost estimates with synthetic data" data-i18n-alt="dashboardHeroAlt" loading="eager" decoding="async" fetchpriority="high">
@@ -88,7 +98,7 @@
 </div>
 <div class="showcase-panel" id="panel-trends" role="tabpanel" aria-labelledby="tab-trends" data-showcase-panel tabindex="0" hidden>
 <a class="single-window" href="/assets/dashboard-insights.webp">
-<img src="/assets/dashboard-insights.webp" width="980" height="732" alt="Quota Monitor dashboard showing activity metrics, a 12-month heatmap, and provider and model composition with synthetic data" data-i18n-alt="dashboardTrendsAlt" loading="lazy" decoding="async">
+<img src="/assets/dashboard-insights.webp" width="980" height="732" alt="Quota Monitor dashboard showing activity metrics, a 12-month heatmap, and provider and model composition with synthetic data" data-i18n-alt="dashboardTrendsAlt" loading="lazy" decoding="async" >
 </a>
 <div class="showcase-caption">
 <h2 data-i18n="featureTrendsTitle">Trends and forecast</h2>
@@ -97,7 +107,7 @@
 </div>
 <div class="showcase-panel" id="panel-sessions" role="tabpanel" aria-labelledby="tab-sessions" data-showcase-panel tabindex="0" hidden>
 <a class="single-window" href="/assets/sessions-detail.webp">
-<img src="/assets/sessions-detail.webp" width="980" height="732" alt="Quota Monitor Sessions view showing searchable model, token, event timing, and API-equivalent cost estimate details with synthetic data" data-i18n-alt="sessionsDetailAlt" loading="lazy" decoding="async">
+<img src="/assets/sessions-detail.webp" width="980" height="732" alt="Quota Monitor Sessions view showing searchable model, token, event timing, and API-equivalent cost estimate details with synthetic data" data-i18n-alt="sessionsDetailAlt" loading="lazy" decoding="async" >
 </a>
 <div class="showcase-caption">
 <h2 data-i18n="featureSessionsTitle">Session drill-down</h2>
@@ -130,7 +140,6 @@
 </div>
 </div>
 </section>
-<div class="benefit-statement"><p><span class="lo-zh" lang="zh-Hans"><span class="benefit-line"><span class="benefit-word">先看</span><span class="benefit-word">还有多少额度，</span></span><span class="benefit-line"><span class="benefit-word">再决定</span><span class="benefit-word">下一项任务用哪个工具。</span></span></span><span class="lo-en" lang="en"><span class="benefit-line"><span class="benefit-word">Check the quota </span><span class="benefit-word">you have left.</span></span><span class="benefit-line"><span class="benefit-word">Then choose </span><span class="benefit-word">your next tool.</span></span></span></p></div>
 <section class="deep-dive section">
 <div class="container">
 <div class="section-intro">
