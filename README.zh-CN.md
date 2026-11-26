@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://quota-monitor.timmyagentic.si/">
-    <img src="website/public/assets/app-icon.png" width="112" height="112" alt="Quota Monitor 应用图标">
+    <img src="https://quota-monitor.timmyagentic.si/assets/app-icon.png" width="112" height="112" alt="Quota Monitor 应用图标">
   </a>
 
   <h1>Quota Monitor</h1>
@@ -48,7 +48,7 @@ npx --yes quotamonitor@latest install
 需要 Apple Silicon Mac、macOS 14 或更高版本，以及 Node.js 20.17 或更高版本。
 
 <a href="https://quota-monitor.timmyagentic.si/">
-  <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor Dashboard，展示使用合成数据的额度卡片、Token 趋势和构成图表">
+  <img src="https://quota-monitor.timmyagentic.si/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor Dashboard，展示使用合成数据的额度卡片、Token 趋势和构成图表">
 </a>
 
 ## 为什么选择 Quota Monitor
@@ -65,8 +65,8 @@ Codex 与 Claude Code 的额度和用量信息分散在不同位置。Quota Moni
 ## 先看菜单栏
 
 <p align="center">
-  <a href="website/public/assets/menu-bar-popover.webp">
-    <img src="website/public/assets/menu-bar-popover.webp" width="386" alt="使用合成数据展示 Codex 与 Claude Code 额度、重置时间、节奏提示、模型独立额度和主动重置卡的 Quota Monitor 菜单栏弹窗">
+  <a href="https://quota-monitor.timmyagentic.si/assets/menu-bar-popover.webp">
+    <img src="https://quota-monitor.timmyagentic.si/assets/menu-bar-popover.webp" width="386" alt="使用合成数据展示 Codex 与 Claude Code 额度、重置时间、节奏提示、模型独立额度和主动重置卡的 Quota Monitor 菜单栏弹窗">
   </a>
 </p>
 
@@ -101,7 +101,7 @@ Provider 账单。上方截图完全使用隔离的合成数据。
 
 | Dashboard | Sessions | History |
 | --- | --- | --- |
-| ![使用合成数据的 Dashboard 洞察](website/public/assets/dashboard-insights.webp) | ![使用合成数据的会话明细](website/public/assets/sessions-detail.webp) | ![使用合成数据的历史明细](website/public/assets/history-detail.webp) |
+| ![使用合成数据的 Dashboard 洞察](https://quota-monitor.timmyagentic.si/assets/dashboard-insights.webp) | ![使用合成数据的会话明细](https://quota-monitor.timmyagentic.si/assets/sessions-detail.webp) | ![使用合成数据的历史明细](https://quota-monitor.timmyagentic.si/assets/history-detail.webp) |
 
 ## 安装
 
@@ -197,16 +197,7 @@ open .build/QuotaMonitor.app
 CONFIG=release ./build.sh
 ```
 
-官网源码与应用一起保存在 [`website/`](website/)：
-
-```bash
-cd website
-npm ci
-npm run dev
-
-# 校验完整官网
-npm run check
-```
+[官网源码与部署](https://github.com/timmyagentic/personal-hub/tree/main/sites/quota-monitor)。
 
 签名、公证、打包和发布流程见 [`docs/release.md`](docs/release.md)。
 
@@ -218,7 +209,7 @@ QuotaMonitor/
 ├── Core/                导入、额度、分析、存储和设置逻辑
 └── Features/            菜单栏、Dashboard、History、Sessions 和 Settings UI
 Tests/QuotaMonitorTests/ Swift Testing 测试与 Fixtures
-website/                 官网、Worker API、D1 Migration 和测试
+website/                 Website source pointer
 npm/quotamonitor/        可验证的一条命令安装器及其测试
 qa/                      静态检查与隔离的 macOS QA 工具
 docs/                    架构、行为、发布与产品文档

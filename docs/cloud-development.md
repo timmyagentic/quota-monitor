@@ -1,27 +1,16 @@
 # Cloud development contract
 
 Use a clean checkout with Git, Bash, Python 3.10+ and Node 22 LTS (at least
-22.12), npm, and network access to the public npm registry during setup:
+22.12), and npm:
 
 ```sh
 ./qa/bootstrap-cloud.sh
 ./qa/run-cloud.sh
 ```
 
-Bootstrap installs only the locked website dependencies with `npm ci` and is
-safe to rerun. No Swift SDK, global packages, GitHub token, Cloudflare login,
-Keychain export, signing identity or production data is needed. Cache, config
-and Wrangler logs go under ignored `.build/cloud/`; HOME is never changed.
-Use the same bootstrap as the environment maintenance command after a cache
-restore. Re-run it when the lockfile changes. Setup needs internet; website
-checks start local workerd processes and require loopback networking.
+Bootstrap verifies the local toolchain. The portable check runs the Python tool tests, validates the current release notes, and checks the Git diff for whitespace errors. Cache and configuration paths stay under the ignored `.build/cloud/` directory.
 
-The check runs Python tool tests (platform-specific tests explicitly skip on
-Linux), release-note/whitespace checks, TypeScript and website unit tests,
-local D1 migrations/integration tests, and the existing Worker bundle dry run
-and startup profile. D1 tests use Miniflare fixture bindings; no remote database
-is used. No cloud credentials are configured, and website `.env*`/`.dev.vars*`
-files are rejected. This is a development checkout, not a publishing host.
+Website type checks, D1 integration tests and Worker startup profiling run in [the shared website repository](https://github.com/timmyagentic/personal-hub/tree/main/sites/quota-monitor).
 
 ## Evidence required before delivery
 

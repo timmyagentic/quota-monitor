@@ -52,7 +52,7 @@ Linux contributors may edit Swift and run `./qa/bootstrap-cloud.sh` followed by 
 ## Continuous integration
 
 - Keep `swift-test` as the one required GitHub Actions context. Its always-running summary must fail when any applicable real job fails or is unexpectedly skipped.
-- `Cloud development checks` owns change detection, PR changelog validation, portable tooling and website checks via `qa/bootstrap-cloud.sh` and `qa/run-cloud.sh`. Do not add a second website job running the same check.
+- `Cloud development checks` owns change detection, PR changelog validation, portable tooling checks via `qa/bootstrap-cloud.sh` and `qa/run-cloud.sh`. Do not add a second website job running the same check.
 - Keep path-gated `macOS Swift tests` and npm installer tests/smoke checks. App/build/tooling changes still require actual macOS static QA and release compilation; installer changes still require the real macOS installation smoke test.
 - Release, private Beta packaging, signing verification and update-feed monitoring remain independent workflows.
 
