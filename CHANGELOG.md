@@ -40,6 +40,8 @@ window copy.
 
 ### Changed
 
+- Move website maintenance and deployment to the shared websites repository.
+
 - **Product website.** The menu-bar and dashboard views retain their original placement, with keyboard-operable showcase controls.
 
 

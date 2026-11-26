@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://quota-monitor.timmyagentic.si/">
-    <img src="website/public/assets/app-icon.png" width="112" height="112" alt="Quota Monitor app icon">
+    <img src="https://quota-monitor.timmyagentic.si/assets/app-icon.png" width="112" height="112" alt="Quota Monitor app icon">
   </a>
 
   <h1>Quota Monitor</h1>
@@ -50,7 +50,7 @@ npx --yes quotamonitor@latest install
 Requires macOS 14 or later on Apple Silicon and Node.js 20.17 or later.
 
 <a href="https://quota-monitor.timmyagentic.si/">
-  <img src="website/public/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor dashboard showing quota cards, token trends, and composition charts with synthetic data">
+  <img src="https://quota-monitor.timmyagentic.si/assets/dashboard-hero.webp" width="100%" alt="Quota Monitor dashboard showing quota cards, token trends, and composition charts with synthetic data">
 </a>
 
 ## Why Quota Monitor
@@ -69,8 +69,8 @@ you want to investigate further.
 ## Start in the menu bar
 
 <p align="center">
-  <a href="website/public/assets/menu-bar-popover.webp">
-    <img src="website/public/assets/menu-bar-popover.webp" width="386" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards">
+  <a href="https://quota-monitor.timmyagentic.si/assets/menu-bar-popover.webp">
+    <img src="https://quota-monitor.timmyagentic.si/assets/menu-bar-popover.webp" width="386" alt="Quota Monitor menu-bar popover showing synthetic Codex and Claude Code quota data, reset times, pace guidance, model limits, and reset cards">
   </a>
 </p>
 
@@ -109,7 +109,7 @@ isolated synthetic data.
 
 | Dashboard | Sessions | History |
 | --- | --- | --- |
-| ![Dashboard insights with synthetic data](website/public/assets/dashboard-insights.webp) | ![Session details with synthetic data](website/public/assets/sessions-detail.webp) | ![History details with synthetic data](website/public/assets/history-detail.webp) |
+| ![Dashboard insights with synthetic data](https://quota-monitor.timmyagentic.si/assets/dashboard-insights.webp) | ![Session details with synthetic data](https://quota-monitor.timmyagentic.si/assets/sessions-detail.webp) | ![History details with synthetic data](https://quota-monitor.timmyagentic.si/assets/history-detail.webp) |
 
 ## Install
 
@@ -212,16 +212,7 @@ open .build/QuotaMonitor.app
 CONFIG=release ./build.sh
 ```
 
-The official website is versioned in [`website/`](website/) alongside the app:
-
-```bash
-cd website
-npm ci
-npm run dev
-
-# Validate the complete website surface
-npm run check
-```
+[Website source and deployment](https://github.com/timmyagentic/personal-hub/tree/main/sites/quota-monitor).
 
 For signing, notarization, packaging, and releases, see
 [`docs/release.md`](docs/release.md).
@@ -234,7 +225,7 @@ QuotaMonitor/
 ├── Core/                Import, quota, analytics, storage, and settings logic
 └── Features/            Menu bar, Dashboard, History, Sessions, and Settings UI
 Tests/QuotaMonitorTests/ Swift Testing suites and fixtures
-website/                 Official website, Worker APIs, D1 migrations, and tests
+website/                 Website source pointer
 npm/quotamonitor/        Verified one-command installer and its tests
 qa/                      Static checks and isolated macOS QA helpers
 docs/                    Architecture, behavior, release, and product documentation

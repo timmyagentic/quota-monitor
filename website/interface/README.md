@@ -1,1 +1,0 @@
-The dashboard tabs uses HeroUI with the existing website markup and CSS. Run `npm ci && npm run build` in this directory after changing the control, then commit the scripts and notices generated in the public assets directory.
