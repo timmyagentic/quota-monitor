@@ -123,10 +123,7 @@ extension AppEnvironment {
                     self.isScanning = false
                     self.resumeDashboardAfterScan()
                     self.clearScanProgress(runID: scanRunID)
-                    // Fire any Claude file-watch write that was coalesced while
-                    // this scan held `isScanning`, so a post-read append isn't
-                    // stranded until the next write / manual refresh.
-                    self.runPendingClaudeFileWatchScanIfNeeded()
+                    self.drainPendingHistoryWrites()
                 }
             }
             do {

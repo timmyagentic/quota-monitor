@@ -835,6 +835,59 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database).map(\.totalTokens) == [45])
     }
 
+    @Test("File notifications import appended Codex usage before and after archival")
+    func fileNotificationsImportCodexTails() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        let database = harness.database
+        let engine = harness.engine
+        _ = try await engine.performScan()
+        let (events, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let watcher = HistoryFileWatcher(
+            directories: SessionScanner.historyDirectories(in: harness.codexHome), latency: 0.1
+        ) { continuation.yield(()) }
+        try #require(watcher.start())
+        let worker = Task {
+            for await _ in events { _ = try await engine.performScan() }
+        }
+        defer {
+            watcher.stop()
+            continuation.finish()
+            worker.cancel()
+        }
+        func awaitTokens(_ expected: [Int64]) async throws {
+            let until = ContinuousClock.now + .seconds(10)
+            while try await usageRows(in: database).map(\.totalTokens) != expected {
+                try #require(ContinuousClock.now < until, "Timed out waiting for a filesystem-triggered import")
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
+
+        let delta = usage(input: 60, cached: 5, output: 8, reasoning: 2)
+        let first = tokenLine(timestamp: "2026-07-19T00:00:04.000Z",
+                              total: usage(input: 160, cached: 25, output: 18, reasoning: 5), last: delta)
+        try append(Data((first + "\n").utf8), to: harness.rollout)
+        try await awaitTokens([110, 68])
+
+        let archive = harness.codexHome.appendingPathComponent("archived_sessions", isDirectory: true)
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        let moved = archive.appendingPathComponent(harness.rollout.lastPathComponent)
+        try FileManager.default.moveItem(at: harness.rollout, to: moved)
+        let next = tokenLine(timestamp: "2026-07-19T00:00:05.000Z",
+                             total: usage(input: 220, cached: 30, output: 26, reasoning: 7), last: delta)
+        try append(Data((next + "\n").utf8), to: moved)
+        try await awaitTokens([110, 68, 68])
+
+        // This write occurs after relocation was imported and only touches the archive.
+        let last = tokenLine(timestamp: "2026-07-19T00:00:06.000Z",
+                             total: usage(input: 280, cached: 35, output: 34, reasoning: 9), last: delta)
+        try append(Data((last + "\n").utf8), to: moved)
+        try await awaitTokens([110, 68, 68, 68])
+        watcher.stop()
+        continuation.finish()
+        try await worker.value
+    }
+
     @Test("append imports only the tail, preserves row IDs, and prices new events")
     func appendPreservesRowsAndPricesTail() async throws {
         let harness = try makeHarness(lines: prefixLines())

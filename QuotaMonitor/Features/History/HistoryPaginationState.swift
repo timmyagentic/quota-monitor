@@ -15,6 +15,7 @@ struct HistoryPaginationState {
         let trigger: HistoryPageLoadTrigger
         let cursor: Date?
         let pageSize: Int
+        var refreshThrough: Date?
     }
 
     private(set) var days: [DaySummary] = []
@@ -24,6 +25,7 @@ struct HistoryPaginationState {
     private(set) var paginationFailure: Failure?
     private(set) var inFlightRequest: Request?
     private(set) var viewportFillPageCount = 0
+    private var refreshPending = false
 
     var isLoadingInitial: Bool { inFlightRequest?.trigger == .initial }
     var isLoadingNextPage: Bool {
@@ -46,6 +48,7 @@ struct HistoryPaginationState {
             cursor: nil,
             pageSize: Self.initialPageSize)
         days = []
+        refreshPending = false
         nextCursor = nil
         hasMore = false
         initialFailure = nil
@@ -53,6 +56,23 @@ struct HistoryPaginationState {
         inFlightRequest = request
         viewportFillPageCount = 0
         return request
+    }
+
+    mutating func refreshAfterImport() {
+        guard inFlightRequest == nil else {
+            refreshPending = true
+            return
+        }
+        inFlightRequest = Request(id: UUID(), trigger: .initial, cursor: nil,
+                                  pageSize: Self.initialPageSize, refreshThrough: nextCursor)
+    }
+
+    private mutating func finishRequest() {
+        inFlightRequest = nil
+        if refreshPending {
+            refreshPending = false
+            refreshAfterImport()
+        }
     }
 
     mutating func beginNextPage(
@@ -82,13 +102,14 @@ struct HistoryPaginationState {
         guard inFlightRequest == request else { return false }
         if let requestedCursor = request.cursor,
            page.nextCursor >= requestedCursor {
-            inFlightRequest = nil
+            finishRequest()
             paginationFailure = .nonAdvancingCursor
             return false
         }
         if request.trigger == .initial {
             days = page.days
             initialFailure = nil
+            paginationFailure = nil
         } else {
             var seen = Set(days.map(\.id))
             days.append(contentsOf: page.days.filter {
@@ -101,14 +122,14 @@ struct HistoryPaginationState {
         }
         nextCursor = page.nextCursor
         hasMore = page.hasMore
-        inFlightRequest = nil
+        finishRequest()
         return true
     }
 
     @discardableResult
     mutating func fail(_ message: String, for request: Request) -> Bool {
         guard inFlightRequest == request else { return false }
-        inFlightRequest = nil
+        finishRequest()
         if request.trigger == .initial {
             initialFailure = .query(message)
         } else {
@@ -119,6 +140,6 @@ struct HistoryPaginationState {
 
     mutating func cancel(_ request: Request) {
         guard inFlightRequest == request else { return }
-        inFlightRequest = nil
+        finishRequest()
     }
 }

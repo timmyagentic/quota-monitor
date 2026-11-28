@@ -113,19 +113,8 @@ final class AppEnvironment {
     var isRefreshingRateLimits = false
     var isRefreshingCodexResetCredits = false
     var isScanning = false
-    /// Coalescing flag for the Claude file-watcher. A `~/.claude` write that
-    /// lands while a scan is already running can't just rely on `runScan`'s
-    /// `isScanning` early-return: if the append happened after the importer
-    /// already read that JSONL file, that FSEvents notification would be lost
-    /// and the menu bar could stay stale until the next write / manual
-    /// refresh. So a write-during-scan sets this; the in-flight scan's `defer`
-    /// fires exactly one trailing Claude-only rescan. At most one queued
-    /// re-run regardless of how many writes arrived during the window.
-    private var claudeFileWatchScanPending = false
-    /// Single in-flight timer for the throttle-with-trailing watcher path (a
-    /// write that lands inside the throttle window). Coalesces a burst into one
-    /// trailing scan; cancelled when the watcher stops.
-    private var claudeFileWatchTrailingTask: Task<Void, Never>?
+    @ObservationIgnored private(set) var pendingHistoryWrites = Set<HistoryFileWatcher.Provider>()
+    @ObservationIgnored private(set) var historyWriteTimers: [HistoryFileWatcher.Provider: Task<Void, Never>] = [:]
     var isLoadingDashboard = false
     var isLoadingDashboardActivity = false
     private enum DashboardAfterScan { case revalidateMount, warmSummaries }
@@ -210,13 +199,7 @@ final class AppEnvironment {
     var claudeEngine: ClaudeImportEngine?
     private var poller: RateLimitPoller?
     private var claudeUsagePoller: ClaudeUsagePoller?
-    /// Watches `~/.claude/projects` and triggers a Claude-only rescan on
-    /// write, so local usage/cost stays current without opening the popover.
-    private var claudeFileWatcher: ClaudeFileWatcher?
-    /// Throttle for file-watch-triggered scans. The Claude import is cheap
-    /// (incremental byte-offset read), so this can be short — it just stops
-    /// a chatty session from scanning on every keystroke-sized append.
-    static let claudeFileWatchScanMinInterval: TimeInterval = 5
+    @ObservationIgnored private var historyWatchers: [HistoryFileWatcher.Provider: HistoryFileWatcher] = [:]
     private let codexResetCreditsClient: any CodexResetCreditsFetching
     private let launchAtLoginController: any LaunchAtLoginControlling
     private var lastCodexResetCreditsRefreshAttemptAt: Date?
@@ -299,13 +282,8 @@ final class AppEnvironment {
             database: db,
             additionalCodexHomes: SessionScanner.additionalCodexHomes())
         claudeEngine = ClaudeImportEngine(database: db)
-        // Rebuild the Claude file-watcher against the new roots so a mid-session
-        // folder grant/clear (App Store) starts/stops live watching instead of
-        // staying pinned to the roots captured at launch. Stop then re-ensure —
-        // both are self-gating on enabled/appStore/roots, so Developer ID just
-        // re-installs the same HOME watcher.
-        stopClaudeFileWatcher()
-        ensureClaudeFileWatcher()
+        for provider in HistoryFileWatcher.Provider.allCases { stopHistoryFileWatcher(provider) }
+        ensureHistoryFileWatchers()
     }
 
     /// Settings entry point for a history-folder grant/clear: rebuild the
@@ -355,7 +333,7 @@ final class AppEnvironment {
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
             }
-            ensureClaudeFileWatcher()
+            ensureHistoryFileWatchers()
             guard LocalQAEnvironment.allowsExternalDataSources() else {
                 DeveloperLog.eventRecord(
                     "poller.background.start.skip",
@@ -546,155 +524,97 @@ final class AppEnvironment {
         Task { await cp.stop() }
     }
 
-    /// Start the Claude transcript file-watcher. Self-gating + idempotent:
-    /// no-op in Local QA (scans there are driven by scripted steps), when
-    /// Claude is disabled / onboarding isn't done, when no Claude directory
-    /// exists yet, or when it's already running. On a write it triggers a
-    /// **Claude-only** rescan, throttled and routed through `runScan`'s
-    /// `isScanning` guard so a busy session can't cause a scan storm or
-    /// trigger a separate Codex scan.
-    private func ensureClaudeFileWatcher() {
-        guard claudeFileWatcher == nil else { return }
-        guard LocalQAEnvironment.allowsExternalDataSources() else { return }
-        let snap = SettingsStore.snapshot()
-        guard snap.hasCompletedProviderOnboarding,
-              snap.enabledProviders.contains("claude") else { return }
-        let dirs: [URL]
-        let scopedAccess: (any SecurityScopedResourceAccessing)?
-        if DistributionChannel.current == .appStore {
-            // App Store: watch the authorized bookmark roots (the same set the
-            // importer scans), holding their security scope for the stream's
-            // lifetime. Don't fileExists-filter — a scoped path can read as
-            // missing until its scope is opened, which the watcher does itself.
-            dirs = ClaudeImportEngine.defaultRoots()
-            scopedAccess = FoundationSecurityScopedResourceAccessing()
-        } else {
-            dirs = ClaudeFileWatcher.watchedDirectories(
-                home: LocalQAEnvironment.homeDirectory())
-            scopedAccess = nil
-        }
-        guard !dirs.isEmpty else {
-            DeveloperLog.eventRecord(
-                "claude_file_watch.start.skip",
-                category: "scan",
-                provider: "claude",
-                result: "skipped",
-                fields: ["reason": "no-claude-directory"])
-            return
-        }
-        let watcher = ClaudeFileWatcher(
-            directories: dirs,
-            securityScopedAccess: scopedAccess
-        ) { [weak self] in
-            Task { @MainActor in
-                self?.triggerClaudeFileWatchScan()
+    /// Use the same roots and security grants as the import engines. Register
+    /// both Codex subdirectories even before the first session or archive exists.
+    private func ensureHistoryFileWatchers() {
+        let external = LocalQAEnvironment.allowsExternalDataSources()
+        let settings = SettingsStore.snapshot()
+        guard settings.hasCompletedProviderOnboarding else { return }
+        let scoped = external && DistributionChannel.current == .appStore
+        for provider in HistoryFileWatcher.Provider.allCases
+            where settings.enabledProviders.contains(provider.rawValue) && historyWatchers[provider] == nil {
+            let roots: [URL]
+            let directories: [URL]
+            switch provider {
+            case .codex:
+                if external {
+                    roots = SessionScanner.uniqueHomes(
+                        [SessionScanner.defaultCodexHome()].compactMap { $0 } + SessionScanner.additionalCodexHomes())
+                } else {
+                    // An isolated QA launch may observe only its explicit fixture.
+                    guard let fixture = LocalQAEnvironment.codexHomeDirectory(),
+                          FileManager.default.fileExists(atPath: fixture.path) else { continue }
+                    roots = [fixture]
+                }
+                directories = roots.flatMap(SessionScanner.historyDirectories(in:))
+            case .claude:
+                guard external else { continue }
+                roots = scoped ? ClaudeImportEngine.defaultRoots()
+                    : HistoryFileWatcher.claudeDirectories(home: LocalQAEnvironment.homeDirectory())
+                directories = roots
+            }
+            guard !directories.isEmpty else { continue }
+            let id = UUID()
+            let watcher = HistoryFileWatcher(
+                id: id, directories: directories, scopeRoots: roots,
+                securityScopedAccess: scoped ? FoundationSecurityScopedResourceAccessing() : nil
+            ) { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.historyWatchers[provider]?.id == id else { return }
+                    self.historyFileChanged(provider)
+                }
+            }
+            if watcher.start() {
+                historyWatchers[provider] = watcher
+                DeveloperLog.eventRecord("\(provider.rawValue)_file_watch.start", category: "scan",
+                                         provider: provider.rawValue, result: "success",
+                                         fields: ["watched_dirs": .int(directories.count)])
+            } else {
+                DeveloperLog.eventRecord("\(provider.rawValue)_file_watch.start.skip", category: "scan",
+                                         provider: provider.rawValue, result: "failed")
             }
         }
-        // Only retain the watcher if a stream is actually active. On failure
-        // we drop it so the `claudeFileWatcher == nil` guard above lets the
-        // next refresh retry, rather than being stuck on a dead watcher.
-        guard watcher.start() else {
-            DeveloperLog.eventRecord(
-                "claude_file_watch.start.skip",
-                category: "scan",
-                provider: "claude",
-                result: "failed",
-                fields: ["reason": "stream-start-failed"])
-            return
-        }
-        self.claudeFileWatcher = watcher
-        DeveloperLog.eventRecord(
-            "claude_file_watch.start",
-            category: "scan",
-            provider: "claude",
-            result: "success",
-            fields: ["watched_dirs": .int(dirs.count)])
     }
 
-    /// Entry point for a Claude transcript write. Throttle-with-**trailing**
-    /// semantics so no append is ever dropped:
-    ///   - A scan is already running → mark a pending rescan that the in-flight
-    ///     scan's `defer` fires (the append may post-date the importer's read).
-    ///   - We scanned < `claudeFileWatchScanMinInterval` ago → don't drop it;
-    ///     arm a single timer to scan once the throttle window expires. (A bare
-    ///     `runScan(minInterval:)` would return `throttled` and lose the event
-    ///     if it was the last append in a burst.)
-    ///   - Otherwise → scan now. The leading scan + the trailing timer give a
-    ///     scan at most every ~5s during continuous writes, never starving like
-    ///     a pure trailing debounce would.
+    /// Continuous writes get a leading read and at most one trailing request
+    /// per provider. Drain pending writes through the same throttle after a scan.
     @MainActor
-    func triggerClaudeFileWatchScan() {
+    func historyFileChanged(_ provider: HistoryFileWatcher.Provider) {
         guard !isScanning else {
-            claudeFileWatchScanPending = true
-            DeveloperLog.eventRecord(
-                "claude_file_watch.scan.coalesced",
-                category: "scan",
-                trigger: "claude-file-watch",
-                provider: "claude",
-                result: "coalesced")
+            pendingHistoryWrites.insert(provider)
             return
         }
-        let key = Self.scanThrottleKey(forRequested: ["claude"])
-        let interval = Self.claudeFileWatchScanMinInterval
-        if let last = lastScanAtByScope[key] {
-            let elapsed = Date().timeIntervalSince(last)
-            if elapsed < interval {
-                scheduleClaudeFileWatchTrailingScan(after: interval - elapsed)
+        let interval: TimeInterval = provider == .codex ? 15 : 5
+        if let last = lastScanAtByScope[provider.rawValue] {
+            let delay = interval - Date().timeIntervalSince(last)
+            if delay > 0 {
+                guard historyWriteTimers[provider] == nil else { return }
+                historyWriteTimers[provider] = Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(delay))
+                    guard let self, !Task.isCancelled else { return }
+                    self.historyWriteTimers[provider] = nil
+                    self.historyFileChanged(provider)
+                }
                 return
             }
         }
-        runScan(providers: ["claude"], trigger: "claude-file-watch")
+        historyWriteTimers.removeValue(forKey: provider)?.cancel()
+        runScan(providers: [provider.rawValue], trigger: "\(provider.rawValue)-file-watch")
     }
 
-    /// Arm a single timer that re-evaluates `triggerClaudeFileWatchScan` once
-    /// the throttle window expires. Coalesced: extra writes during the window
-    /// no-op rather than stacking timers, so a burst still yields one trailing
-    /// scan. Cancelled on watcher stop.
     @MainActor
-    private func scheduleClaudeFileWatchTrailingScan(after delay: TimeInterval) {
-        guard claudeFileWatchTrailingTask == nil else { return }
-        claudeFileWatchTrailingTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard let self, !Task.isCancelled else { return }
-            self.claudeFileWatchTrailingTask = nil
-            self.triggerClaudeFileWatchScan()
+    func drainPendingHistoryWrites() {
+        let pending = pendingHistoryWrites
+        pendingHistoryWrites.removeAll()
+        for provider in HistoryFileWatcher.Provider.allCases where pending.contains(provider) {
+            historyFileChanged(provider)
         }
     }
 
-    /// Fire the trailing Claude-only rescan queued by a write that arrived
-    /// mid-scan, if any. Called from `runScan`'s `defer` once `isScanning`
-    /// clears. Throttle-free on purpose: it's coalesced to at most one run per
-    /// scan, so it represents real un-imported bytes rather than spam.
-    @MainActor
-    func runPendingClaudeFileWatchScanIfNeeded() {
-        guard claudeFileWatchScanPending else { return }
-        claudeFileWatchScanPending = false
-        runScan(providers: ["claude"], trigger: "claude-file-watch-trailing")
-    }
-
-    /// Test seam: whether a coalesced trailing Claude file-watch rescan is
-    /// currently queued. Not used in production.
-    var _claudeFileWatchScanPendingForTest: Bool { claudeFileWatchScanPending }
-
-    /// Test seam: whether the throttle-window trailing timer is armed. Not
-    /// used in production.
-    var _claudeFileWatchHasTrailingTaskForTest: Bool { claudeFileWatchTrailingTask != nil }
-
-    /// Test seam: cancel the trailing timer so a test doesn't leave a 5s sleep
-    /// running. Not used in production.
-    func _cancelClaudeFileWatchTrailingTaskForTest() {
-        claudeFileWatchTrailingTask?.cancel()
-        claudeFileWatchTrailingTask = nil
-    }
-
-    private func stopClaudeFileWatcher() {
-        guard claudeFileWatcher != nil else { return }
-        claudeFileWatcher?.stop()
-        self.claudeFileWatcher = nil
-        claudeFileWatchTrailingTask?.cancel()
-        claudeFileWatchTrailingTask = nil
-        DeveloperLog.eventRecord(
-            "claude_file_watch.stop", category: "scan", provider: "claude")
+    func stopHistoryFileWatcher(_ provider: HistoryFileWatcher.Provider) {
+        historyWatchers.removeValue(forKey: provider)?.stop()
+        historyWriteTimers.removeValue(forKey: provider)?.cancel()
+        pendingHistoryWrites.remove(provider)
     }
 
     /// React to a change in `SettingsStore.enabledProviders` — start /
@@ -719,7 +639,8 @@ final class AppEnvironment {
         guard LocalQAEnvironment.allowsExternalDataSources() else {
             stopCodexPoller()
             stopClaudePoller()
-            stopClaudeFileWatcher()
+            for provider in HistoryFileWatcher.Provider.allCases { stopHistoryFileWatcher(provider) }
+            ensureHistoryFileWatchers()
             DeveloperLog.eventRecord(
                 "settings.enabled_providers.apply.skip_live_sources",
                 category: "settings",
@@ -737,14 +658,15 @@ final class AppEnvironment {
                 startCodexPoller(database: db)
             } else {
                 stopCodexPoller()
+                stopHistoryFileWatcher(.codex)
             }
             if enabled.contains("claude") {
                 startClaudePoller(database: db)
-                ensureClaudeFileWatcher()
             } else {
                 stopClaudePoller()
-                stopClaudeFileWatcher()
+                stopHistoryFileWatcher(.claude)
             }
+            ensureHistoryFileWatchers()
         } catch {
             self.lastError = String(describing: error)
             DeveloperLog.eventRecord(
@@ -836,12 +758,8 @@ final class AppEnvironment {
             trigger: trigger,
             parentOperation: op)
         refreshClaudeUsage(trigger: trigger, parentOperation: op)
-        // Retry watcher startup here (idempotent + self-gating): a user who
-        // enabled Claude before Claude Code had created ~/.claude/projects
-        // gets no watcher at launch, and nothing else would start one until
-        // relaunch / toggling the provider. Each refresh re-attempts cheaply
-        // and installs it once the transcript directory finally exists.
-        ensureClaudeFileWatcher()
+        // Retry directories that could not be watched at launch.
+        ensureHistoryFileWatchers()
         runScan(
             minInterval: throttle ? 20 : nil,
             trigger: trigger,

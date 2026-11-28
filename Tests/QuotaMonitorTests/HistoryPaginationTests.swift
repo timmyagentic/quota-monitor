@@ -142,6 +142,24 @@ struct HistoryPaginationTests {
         #expect(page.hasMore)
     }
 
+    @Test("An import refresh keeps all opened days current without pulling in older history")
+    func refreshOpenedHistory() throws {
+        let db = try makeDatabase()
+        let calendar = utcCalendar()
+        let now = try #require(ISO8601.parse("2026-07-15T12:00:00Z"))
+        let lower = try #require(ISO8601.parse("2026-06-18T00:00:00Z"))
+        for (day, tokens) in [("2026-07-15", 20), ("2026-06-20", 10), ("2026-06-20", 30), ("2026-04-01", 1)] {
+            try seed(in: db, sessionId: day, timestamp: day + "T10:00:00.000Z", tokens: Int64(tokens))
+        }
+        let refreshed = try db.pool.read {
+            try Aggregator.fetchHistoryPage(db: $0, refreshThrough: lower, pageSize: 21,
+                                            now: now, calendar: calendar)
+        }
+        #expect(refreshed.days.map(\.tokens) == [20, 40])
+        #expect(refreshed.nextCursor == lower)
+        #expect(refreshed.hasMore)
+    }
+
     @Test("21-day initial page continues with one seven-day page")
     func widerInitialPageKeepsIncrementalPageSize() throws {
         let calendar = utcCalendar()
