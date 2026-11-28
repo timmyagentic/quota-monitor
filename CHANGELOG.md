@@ -37,6 +37,11 @@ window copy.
 #### Summary
 
 - Codex usage updates while an active session keeps its transcript open.
+- Dashboard totals and trends update faster as usage history grows.
+
+### Changed
+
+- **Large usage histories.** Dashboard reads reuse hourly totals and count individual events at time-window boundaries to keep charts accurate.
 
 ### Fixed
 

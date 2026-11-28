@@ -606,8 +606,8 @@ struct AggregatorTests {
         #expect(snapshot.modelShares30d.reduce(Int64(0)) { $0 + $1.tokens } == 1_000)
     }
 
-    @Test("Dashboard load reads recent usage once and keeps Activity separate")
-    func loadDashboardUsesOneRecentRawRead() throws {
+    @Test("Dashboard loads hourly usage and exact edges once and keeps Activity separate")
+    func loadDashboardUsesOneBucketAndEdgeRead() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!
         let now = try #require(calendar.date(from: DateComponents(
@@ -629,8 +629,9 @@ struct AggregatorTests {
             return statements
         }
         let recentUsageReads = statements.filter { statement in
-            statement.contains("AS cache_eligible_input_tokens")
-                && statement.contains("ue.session_id")
+            statement.contains("FROM dashboard_usage_buckets b")
+                && statement.contains("FROM edges CROSS JOIN usage_events ue")
+                && statement.contains("ue.timestamp >= edges.lo AND ue.timestamp < edges.hi")
         }
         let activityReads = statements.filter { statement in
             statement.contains("SELECT timestamp, value_usd, total_tokens")
@@ -665,8 +666,9 @@ struct AggregatorTests {
             return (primary, statements)
         }
         let recentUsageReads = values.1.filter { statement in
-            statement.contains("AS cache_eligible_input_tokens")
-                && statement.contains("ue.session_id")
+            statement.contains("FROM dashboard_usage_buckets b")
+                && statement.contains("FROM edges CROSS JOIN usage_events ue")
+                && statement.contains("ue.timestamp >= edges.lo AND ue.timestamp < edges.hi")
         }
         let activityReads = values.1.filter { statement in
             statement.contains("SELECT timestamp, value_usd, total_tokens")
