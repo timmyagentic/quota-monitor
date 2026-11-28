@@ -121,6 +121,7 @@ extension AppEnvironment {
             defer {
                 Task { @MainActor in
                     self.isScanning = false
+                    self.resumeDashboardMountAfterScan()
                     self.clearScanProgress(runID: scanRunID)
                     // Fire any Claude file-watch write that was coalesced while
                     // this scan held `isScanning`, so a post-read append isn't

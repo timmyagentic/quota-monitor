@@ -45,7 +45,10 @@ struct DashboardRefreshCoalescer: Sendable {
             return true
         }
 
-        if activeInputs != inputs || requiresFreshPass {
+        let differentData = activeInputs.providerFilter != inputs.providerFilter
+            || activeInputs.enabledProviders != inputs.enabledProviders
+        let needsAdditionalSurface = inputs.includesMenuBar && !activeInputs.includesMenuBar
+        if differentData || needsAdditionalSurface || requiresFreshPass {
             hasPendingRefresh = true
             pendingIncludesMenuBar = pendingIncludesMenuBar || inputs.includesMenuBar
         }

@@ -68,6 +68,20 @@ struct SummaryRefreshCoordinatorTests {
         #expect(secondFinish == nil)
     }
 
+    @Test("A combined read already covers a subsequent Dashboard mount")
+    func combinedPassCoversMount() {
+        var coalescer = DashboardRefreshCoalescer()
+        let dashboard = DashboardRefreshInputs(
+            providerFilter: all.providerFilter, enabledProviders: all.enabledProviders,
+            includesMenuBar: false)
+        let started = coalescer.begin(inputs: all, requiresFreshPass: false)
+        let duplicate = coalescer.begin(inputs: dashboard, requiresFreshPass: false)
+        let trailing = coalescer.finish()
+        #expect(started)
+        #expect(!duplicate)
+        #expect(trailing == nil)
+    }
+
     @Test("changed inputs queue a pass and preserve the strongest surface")
     func changedInputsQueueLatestPass() {
         var coalescer = DashboardRefreshCoalescer()
