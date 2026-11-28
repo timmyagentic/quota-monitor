@@ -52,6 +52,69 @@ struct DashboardSnapshotPublicationTests {
         await waitForIdle(reopened)
     }
 
+    @Test("Opening a cached dashboard during an import waits for the scan's combined read")
+    func cachedMountDuringImport() async throws {
+        let (environment, _, _, _) = try makeEnvironment()
+        environment.refreshDashboard()
+        await waitForIdle(environment)
+        let cached = try #require(environment.dashboardSnapshot)
+        environment.markDashboardReadModelChanged()
+        environment.isScanning = true
+        environment.ensureDashboardVisible()
+        environment.ensureDashboardVisible()
+        #expect(environment.dashboardSnapshot == cached)
+        #expect(!environment.isLoadingDashboard)
+
+        environment.refreshDashboard(includeMenuBar: true, trigger: "scan")
+        environment.isScanning = false
+        await waitForIdle(environment)
+        #expect(environment.menuBarSnapshot != nil)
+        environment.ensureDashboardVisible()
+        #expect(!environment.isLoadingDashboard)
+    }
+
+    @Test("A scan with no combined read still revalidates the deferred dashboard")
+    func deferredMountSurvivesScanFallback() async throws {
+        let (environment, _, _, _) = try makeEnvironment()
+        environment.refreshDashboard()
+        await waitForIdle(environment)
+        environment.markDashboardReadModelChanged()
+        environment.isScanning = true
+        environment.ensureDashboardVisible()
+        #expect(!environment.isLoadingDashboard)
+        environment.isScanning = false
+        environment.resumeDashboardAfterScan()
+        #expect(environment.isLoadingDashboard)
+        await waitForIdle(environment)
+        environment.resumeDashboardAfterScan()
+        #expect(!environment.isLoadingDashboard)
+    }
+
+    @Test("A foreground warmup during an existing scan waits for the shared read")
+    func foregroundWarmupDuringScan() async throws {
+        let (environment, _, _, _) = try makeEnvironment()
+        environment.isScanning = true
+        environment.warmDashboardAfterScan()
+        #expect(!environment.isLoadingDashboard)
+        environment.isScanning = false
+        environment.resumeDashboardAfterScan()
+        #expect(environment.isLoadingDashboard)
+        await waitForIdle(environment)
+        #expect(environment.menuBarSnapshot != nil)
+    }
+
+    @Test("An empty dashboard starts its first read even while an import is running")
+    func emptyMountDuringImport() async throws {
+        let (environment, _, _, _) = try makeEnvironment()
+        environment.isScanning = true
+        environment.ensureDashboardVisible()
+        #expect(environment.isLoadingDashboard)
+        environment.isScanning = false
+        await waitForIdle(environment)
+        #expect(environment.dashboardSnapshot != nil)
+        #expect(environment.menuBarSnapshot != nil, "Cold reads can cover the scan's menu request")
+    }
+
     private func makeEnvironment() throws
         -> (AppEnvironment, DatabaseManager, DashboardSnapshotStore, Int64) {
         let root = TestResources.temporaryDirectory

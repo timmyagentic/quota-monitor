@@ -11,12 +11,15 @@ Every merged PR should update `## [Unreleased]` before or with the merge.
 These entries become both the GitHub Release notes and the Sparkle update
 window copy.
 
+- Dashboard charts update faster on Macs with long usage histories.
 - Start each release section with `#### Summary`: plain, user-readable
   bullets. Generated Sparkle update notes render these as rich visual cards.
   Write these bullets for a non-technical user who only needs to know what
   feels better after updating. Avoid implementation, test, CI, PR, and release
   plumbing terms in Summary.
 - Put details under `### Added`, `### Changed
+
+- **Dashboard refresh.** Opening the Dashboard during an import keeps the previous charts visible and shares the next update with the menu bar.
 
 - **Website clarity.** State Apple Silicon compatibility in both languages and reserve stable space for all three app previews.
 

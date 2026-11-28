@@ -27,8 +27,16 @@ extension Aggregator {
                 FROM rate_limit_samples
                 WHERE limit_name IS NULL
                   AND source_kind IN ('live', 'jsonl')
-                ORDER BY sample_timestamp DESC,
-                         CASE WHEN source_kind = 'live' THEN 0 ELSE 1 END,
+                  AND sample_timestamp = (
+                      SELECT MAX(stamp) FROM (
+                          SELECT MAX(sample_timestamp) AS stamp FROM rate_limit_samples
+                          WHERE source_kind = 'live' AND limit_name IS NULL
+                          UNION ALL
+                          SELECT MAX(sample_timestamp) AS stamp FROM rate_limit_samples
+                          WHERE source_kind = 'jsonl' AND limit_name IS NULL
+                      )
+                  )
+                ORDER BY CASE WHEN source_kind = 'live' THEN 0 ELSE 1 END,
                          id DESC
                 LIMIT 1
             )
