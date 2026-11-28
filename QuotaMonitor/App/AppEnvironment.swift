@@ -117,6 +117,8 @@ final class AppEnvironment {
     @ObservationIgnored private(set) var historyWriteTimers: [HistoryFileWatcher.Provider: Task<Void, Never>] = [:]
     var isLoadingDashboard = false
     var isLoadingDashboardActivity = false
+    private enum DashboardAfterScan { case revalidateMount, warmSummaries }
+    @ObservationIgnored private var dashboardAfterScan: DashboardAfterScan?
     private var dashboardRefreshCoalescer = DashboardRefreshCoalescer()
     private var dashboardRefreshGeneration = RefreshGeneration()
     private var dashboardActivityRefreshGeneration = RefreshGeneration()
@@ -1270,7 +1272,34 @@ final class AppEnvironment {
                 "has_snapshot": .bool(decision.snapshot != nil)
             ])
         guard decision.needsRefresh else { return }
-        refreshDashboard(trigger: "mount")
+        if isScanning, decision.snapshot != nil, !isLoadingDashboard {
+            dashboardAfterScan = dashboardAfterScan ?? .revalidateMount
+            return
+        }
+        // A cold mount cannot wait for the scanner. Let its first read cover
+        // the menu too so an unchanged scan can share the same payload.
+        refreshDashboard(includeMenuBar: isScanning && decision.snapshot == nil, trigger: "mount")
+    }
+
+    func warmDashboardAfterScan(parentOperation: DeveloperLogOperation? = nil) {
+        if isScanning {
+            dashboardAfterScan = .warmSummaries
+        } else {
+            refreshDashboard(includeMenuBar: true, trigger: "scan-fallback", parentOperation: parentOperation)
+        }
+    }
+
+    /// Satisfy outstanding demand after either success or failure. A combined
+    /// refresh arranged by the scan will already have consumed the request.
+    func resumeDashboardAfterScan() {
+        let pending = dashboardAfterScan
+        dashboardAfterScan = nil
+        switch pending {
+        case .revalidateMount: ensureDashboardVisible()
+        case .warmSummaries:
+            refreshDashboard(includeMenuBar: true, trigger: "scan-fallback", forceTrailingRead: false)
+        case nil: break
+        }
     }
 
     /// Called only after a committed read-model mutation. Existing snapshots
@@ -1416,17 +1445,20 @@ final class AppEnvironment {
     func refreshDashboard(
         includeMenuBar: Bool = false,
         trigger: String = "internal",
-        parentOperation: DeveloperLogOperation? = nil
+        parentOperation: DeveloperLogOperation? = nil,
+        forceTrailingRead: Bool? = nil
     ) {
+        if includeMenuBar || dashboardAfterScan == .revalidateMount { dashboardAfterScan = nil }
         refreshQuotaCycles()
+        let cacheKey = currentDashboardCacheKey()
+        let readModelGeneration = dashboardReadModelGeneration
         let inputs = DashboardRefreshInputs(
             providerFilter: providerFilter,
             enabledProviders: dashboardSettings.enabledProviders,
-            includesMenuBar: includeMenuBar)
-        let cacheKey = currentDashboardCacheKey()
-        let readModelGeneration = dashboardReadModelGeneration
-        let requiresFreshPass = DashboardRefreshCoalescer.requiresFreshPass(
-            for: trigger)
+            includesMenuBar: includeMenuBar,
+            readModelGeneration: readModelGeneration,
+            timeZoneIdentifier: cacheKey.timeZoneIdentifier)
+        let requiresFreshPass = forceTrailingRead ?? DashboardRefreshCoalescer.requiresFreshPass(for: trigger)
         guard dashboardRefreshCoalescer.begin(
             inputs: inputs,
             requiresFreshPass: requiresFreshPass
@@ -1477,11 +1509,13 @@ final class AppEnvironment {
                 let (db, _) = try self.ensureServices()
                 let generatedAt = Date()
                 let payload = try await db.pool.read { conn in
+                    let readStartedAt = Date()
                     let primary = try Aggregator.loadDashboardPrimary(
                         db: conn,
                         provider: inputs.providerFilter,
                         enabledProviders: inputs.enabledProviders,
                         now: generatedAt)
+                    let primaryFinishedAt = Date()
                     let includesClaude = inputs.providerFilter != .codex
                         && inputs.enabledProviders.contains("claude")
                     let needsBlocks = includesClaude || inputs.includesMenuBar
@@ -1497,7 +1531,10 @@ final class AppEnvironment {
                     return (
                         primary: primary,
                         dashboardBlocks: includesClaude ? allBlocks : nil,
-                        menuBar: menuBarSnapshot)
+                        menuBar: menuBarSnapshot,
+                        readStartedAt: readStartedAt,
+                        primaryFinishedAt: primaryFinishedAt,
+                        readFinishedAt: Date())
                 }
                 let publication = await MainActor.run {
                     // An atomic read remains useful last-good content even if
@@ -1534,6 +1571,10 @@ final class AppEnvironment {
                     op,
                     fields: [
                         "filter": .string(inputs.providerFilter.rawValue),
+                        "reader_wait_ms": .int(Int(payload.readStartedAt.timeIntervalSince(generatedAt) * 1000)),
+                        "primary_ms": .int(Int(payload.primaryFinishedAt.timeIntervalSince(payload.readStartedAt) * 1000)),
+                        "supplement_ms": .int(Int(payload.readFinishedAt.timeIntervalSince(payload.primaryFinishedAt) * 1000)),
+                        "publication_ms": .int(Int(Date().timeIntervalSince(payload.readFinishedAt) * 1000)),
                         "has_billing_blocks": .bool(payload.dashboardBlocks != nil),
                         "published_dashboard": .bool(publication.dashboard),
                         "updated_menu_bar": .bool(publication.menuBar)

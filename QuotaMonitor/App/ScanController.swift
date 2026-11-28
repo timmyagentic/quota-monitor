@@ -121,6 +121,7 @@ extension AppEnvironment {
             defer {
                 Task { @MainActor in
                     self.isScanning = false
+                    self.resumeDashboardAfterScan()
                     self.clearScanProgress(runID: scanRunID)
                     self.drainPendingHistoryWrites()
                 }
@@ -248,7 +249,8 @@ extension AppEnvironment {
                         self.refreshDashboard(
                             includeMenuBar: true,
                             trigger: "scan",
-                            parentOperation: op)
+                            parentOperation: op,
+                            forceTrailingRead: Self.scanTriggerRefreshesWithoutChanges(trigger))
                     }
                 }
             } catch {
@@ -410,8 +412,7 @@ extension AppEnvironment {
     ) {
         if Self.scanTriggerWarmsDashboard(trigger),
            SettingsStore.snapshot().hasCompletedProviderOnboarding {
-            refreshDashboard(includeMenuBar: true, trigger: "scan-fallback",
-                             parentOperation: parentOperation)
+            warmDashboardAfterScan(parentOperation: parentOperation)
             return
         }
         guard Self.scanTriggerRefreshesWithoutChanges(trigger) else { return }

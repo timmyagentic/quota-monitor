@@ -1,6 +1,19 @@
 import Foundation
 import GRDB
 
+/// Reuse Calendar's exact local boundaries for nearby events, including DST.
+private struct CalendarBucket {
+    let calendar: Calendar
+    let component: Calendar.Component
+    var interval: DateInterval?
+
+    mutating func start(containing date: Date) -> Date? {
+        if let interval, date >= interval.start, date < interval.end { return interval.start }
+        interval = calendar.dateInterval(of: component, for: date)
+        return interval?.start
+    }
+}
+
 private struct RollingTrendBreakdownBucket: Hashable {
     let date: Date
     let provider: String
@@ -431,7 +444,7 @@ extension Aggregator {
             ISO8601.fractional.string(from: conservativeQueryStart).prefix(10))
         let cacheRead = cacheReadTokensExpression(table: "ue")
         let cacheEligibleInput = cacheEligibleInputExpression(table: "ue")
-        let rows = try Row.fetchAll(db, sql: """
+        let rows = try Row.fetchCursor(db, sql: """
             SELECT
                 ue.timestamp,
                 ue.provider,
@@ -456,7 +469,17 @@ extension Aggregator {
         var modelSharesPrior30d: [String: RecentModelShareTotal] = [:]
         var providerShares30d: [String: RecentProviderShareTotal] = [:]
 
-        for row in rows {
+        var dayBucket = CalendarBucket(calendar: calendar, component: .day)
+        var monthBucket = CalendarBucket(calendar: monthlyCalendar, component: .month)
+        var normalizedLabels: [String: String] = [:]
+        func label(_ raw: String, fallback: String) -> String {
+            if let cached = normalizedLabels[raw] { return cached.isEmpty ? fallback : cached }
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            normalizedLabels[raw] = trimmed
+            return trimmed.isEmpty ? fallback : trimmed
+        }
+
+        while let row = try rows.next() {
             let timestamp: String = row["timestamp"] ?? ""
             guard let date = parseTimestamp(timestamp),
                   date >= earliestCutoff
@@ -464,21 +487,23 @@ extension Aggregator {
 
             let valueUSD: Double = row["value_usd"] ?? 0
             let rawProvider: String = row["provider"] ?? "unknown"
-            let normalizedProvider = normalizedTrendValue(
+            let normalizedProvider = label(
                 rawProvider, fallback: "unknown")
             let rawModelKey: String = row["model_id"] ?? "unknown"
-            let modelKey = normalizedTrendValue(
+            let modelKey = label(
                 rawModelKey, fallback: "unknown")
             let rawModelLabel: String = row["model_label"] ?? modelKey
-            let modelLabel = normalizedTrendValue(
+            let modelLabel = label(
                 rawModelLabel, fallback: modelKey)
-            let day = calendar.startOfDay(for: date)
+            let day = dayBucket.start(containing: date) ?? calendar.startOfDay(for: date)
             let tokens: Int64 = row["total_tokens"] ?? 0
             let cacheReadTokens: Int64 = row["cache_read_tokens"] ?? 0
             let cacheEligibleInputTokens: Int64 =
                 row["cache_eligible_input_tokens"] ?? 0
 
             if date < now {
+                let speedTier = normalizedProvider == "codex"
+                    ? TrendSpeedTier(recordedValue: row["codex_service_tier_preference"]) : nil
                 for window in RollingTrendWindow.allCases {
                     guard let cutoff = cutoffs[window], date >= cutoff else { continue }
                     accumulators[window, default: RollingTrendAccumulator()].add(
@@ -486,8 +511,7 @@ extension Aggregator {
                         provider: normalizedProvider,
                         modelKey: modelKey,
                         modelLabel: modelLabel,
-                        speedTier: normalizedProvider == "codex"
-                            ? TrendSpeedTier(recordedValue: row["codex_service_tier_preference"]) : nil,
+                        speedTier: speedTier,
                         valueUSD: valueUSD,
                         tokens: tokens,
                         cacheReadTokens: cacheReadTokens,
@@ -520,17 +544,11 @@ extension Aggregator {
                 providerShares30d[normalizedProvider] = providerTotal
             }
 
-            if date >= monthlyStart, date < now {
-                let components = monthlyCalendar.dateComponents(
-                    [.year, .month], from: date)
-                if let month = monthlyCalendar.date(from: components) {
-                    var total = monthlyTotals[month] ?? RecentMonthlyTotal()
-                    total.valueUSD += valueUSD
-                    total.tokens += tokens
-                    if let sessionID: String = row["session_id"] {
-                        total.sessionIDs.insert(sessionID)
-                    }
-                    monthlyTotals[month] = total
+            if date >= monthlyStart, date < now, let month = monthBucket.start(containing: date) {
+                monthlyTotals[month, default: RecentMonthlyTotal()].valueUSD += valueUSD
+                monthlyTotals[month, default: RecentMonthlyTotal()].tokens += tokens
+                if let sessionID: String = row["session_id"] {
+                    monthlyTotals[month, default: RecentMonthlyTotal()].sessionIDs.insert(sessionID)
                 }
             }
         }

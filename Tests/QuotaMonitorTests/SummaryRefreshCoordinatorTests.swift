@@ -68,6 +68,34 @@ struct SummaryRefreshCoordinatorTests {
         #expect(secondFinish == nil)
     }
 
+    @Test("A combined read already covers a subsequent Dashboard mount")
+    func combinedPassCoversMount() {
+        var coalescer = DashboardRefreshCoalescer()
+        let dashboard = DashboardRefreshInputs(
+            providerFilter: all.providerFilter, enabledProviders: all.enabledProviders,
+            includesMenuBar: false)
+        let started = coalescer.begin(inputs: all, requiresFreshPass: false)
+        let duplicate = coalescer.begin(inputs: dashboard, requiresFreshPass: false)
+        let trailing = coalescer.finish()
+        #expect(started)
+        #expect(!duplicate)
+        #expect(trailing == nil)
+    }
+
+    @Test("An automatic scan shares a combined read unless it committed a newer generation")
+    func automaticScanChecksTheReadGeneration() {
+        for didCommit in [false, true] {
+            var coalescer = DashboardRefreshCoalescer()
+            _ = coalescer.begin(inputs: all, requiresFreshPass: false)
+            var afterScan = all
+            if didCommit { afterScan.readModelGeneration += 1 }
+            let began = coalescer.begin(inputs: afterScan, requiresFreshPass: false)
+            let trailing = coalescer.finish()
+            #expect(!began)
+            #expect(trailing == (didCommit ? true : nil))
+        }
+    }
+
     @Test("changed inputs queue a pass and preserve the strongest surface")
     func changedInputsQueueLatestPass() {
         var coalescer = DashboardRefreshCoalescer()
