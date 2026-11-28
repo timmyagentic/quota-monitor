@@ -34,6 +34,8 @@ window copy.
 
 ## [Unreleased]
 
+## [1.0.19] — 2026-11-28
+
 #### Summary
 
 - Codex usage updates while an active session keeps its transcript open.
