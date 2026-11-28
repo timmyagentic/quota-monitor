@@ -767,5 +767,9 @@ enum Migrations {
                 """)
         }
 
+        migrator.registerMigration("v29-dashboard-usage-buckets") { db in
+            try DashboardUsageBuckets.install(in: db)
+        }
+
     }
 }

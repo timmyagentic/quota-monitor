@@ -34,6 +34,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Dashboard totals and trends update faster as usage history grows.
+
+### Changed
+
+- **Large usage histories.** Dashboard reads reuse hourly totals and count individual events at time-window boundaries to keep charts accurate.
+
 ## [1.0.18] — 2026-11-28
 
 #### Summary

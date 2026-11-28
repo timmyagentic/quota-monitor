@@ -54,14 +54,14 @@ private struct RollingTrendAccumulator {
             eligibleInputTokens: currentCache.eligibleInputTokens
                 + cacheEligibleInputTokens)
 
-        addBreakdown(
+        Self.addBreakdown(
             to: &providerTotals,
             bucket: RollingTrendBreakdownBucket(
                 date: day, provider: provider, key: provider),
             label: provider,
             valueUSD: valueUSD,
             tokens: tokens)
-        addBreakdown(
+        Self.addBreakdown(
             to: &modelTotals,
             bucket: RollingTrendBreakdownBucket(
                 date: day, provider: provider,
@@ -73,7 +73,7 @@ private struct RollingTrendAccumulator {
             speedTier: speedTier)
     }
 
-    private func addBreakdown(
+    private static func addBreakdown(
         to totals: inout [RollingTrendBreakdownBucket: RollingTrendBreakdownTotal],
         bucket: RollingTrendBreakdownBucket,
         label: String,
@@ -172,7 +172,7 @@ extension Aggregator {
     ) throws -> DashboardPrimarySnapshot {
         let overview = try fetchOverview(
             db: db, provider: provider, enabledProviders: enabledProviders)
-        // One recent raw-row scan derives every elapsed-time Trends range,
+        // One bucket/edge read derives every elapsed-time Trends range,
         // monthly buckets, and current/prior Composition slices.
         let recent = try fetchRecentUsageRollup(
             db: db, provider: provider,
@@ -216,11 +216,11 @@ extension Aggregator {
             SELECT
                 COALESCE(SUM(value_usd), 0)  AS total_value,
                 COALESCE(SUM(total_tokens), 0) AS total_tokens,
-                COUNT(*)                     AS total_events,
-                MIN(timestamp)               AS first_at,
-                MAX(timestamp)               AS last_at
-            FROM usage_events
-            \(scope.whereClause(table: "usage_events"))
+                COALESCE(SUM(event_count), 0) AS total_events,
+                (SELECT MIN(timestamp) FROM usage_events \(scope.whereClause(table: "usage_events"))) AS first_at,
+                (SELECT MAX(timestamp) FROM usage_events \(scope.whereClause(table: "usage_events"))) AS last_at
+            FROM dashboard_usage_buckets b
+            \(scope.whereClause(table: "b"))
             """)
         let sessionCount = try Int.fetchOne(db, sql: """
             SELECT COUNT(*) FROM sessions
@@ -442,25 +442,10 @@ extension Aggregator {
         let conservativeQueryStart = queryStart.addingTimeInterval(-24 * 60 * 60)
         let lowerBound = String(
             ISO8601.fractional.string(from: conservativeQueryStart).prefix(10))
-        let cacheRead = cacheReadTokensExpression(table: "ue")
-        let cacheEligibleInput = cacheEligibleInputExpression(table: "ue")
-        let rows = try Row.fetchCursor(db, sql: """
-            SELECT
-                ue.timestamp,
-                ue.provider,
-                ue.session_id,
-                ue.model_id,
-                ue.codex_service_tier_preference,
-                COALESCE(pc.display_name, ue.model_id) AS model_label,
-                ue.value_usd,
-                ue.total_tokens,
-                \(cacheRead) AS cache_read_tokens,
-                \(cacheEligibleInput) AS cache_eligible_input_tokens
-            FROM usage_events ue
-            LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id
-            WHERE ue.timestamp >= ?
-            \(scope.clause(table: "ue"))
-            """, arguments: [lowerBound])
+        let edges = DashboardUsageBuckets.splitHours(
+            cutoffs: Array(cutoffs.values) + [monthlyStart, prior30Lower],
+            from: earliestCutoff, to: now, calendar: calendar)
+        let rows = try DashboardUsageBuckets.recentRows(db: db, scope: scope, lowerBound: lowerBound, splitHours: edges)
 
         var accumulators: [RollingTrendWindow: RollingTrendAccumulator] = [:]
         var prior30DayValueUSD = 0.0
@@ -524,14 +509,14 @@ extension Aggregator {
                         modelKey: modelKey,
                         displayName: modelLabel,
                         valueUSD: valueUSD,
-                        tokens: tokens)
+                        tokens: tokens, eventCount: row["event_count"])
                 } else if date >= prior30Lower, date < prior30Upper {
                     addModelShare(
                         to: &modelSharesPrior30d,
                         modelKey: modelKey,
                         displayName: modelLabel,
                         valueUSD: valueUSD,
-                        tokens: tokens)
+                        tokens: tokens, eventCount: row["event_count"])
                     prior30DayValueUSD += valueUSD
                 }
             }
@@ -611,13 +596,14 @@ extension Aggregator {
         modelKey: String,
         displayName: String,
         valueUSD: Double,
-        tokens: Int64
+        tokens: Int64,
+        eventCount: Int
     ) {
         var total = totals[modelKey] ?? RecentModelShareTotal(
             displayName: displayName)
         total.valueUSD += valueUSD
         total.tokens += tokens
-        total.eventCount += 1
+        total.eventCount += eventCount
         totals[modelKey] = total
     }
 
@@ -767,8 +753,8 @@ extension Aggregator {
               COALESCE(pc.display_name, ue.model_id) AS display_name,
               SUM(ue.value_usd)     AS value_usd,
               SUM(ue.total_tokens)  AS tokens,
-              COUNT(*)              AS event_count
-            FROM usage_events ue
+              SUM(ue.event_count)   AS event_count
+            FROM dashboard_usage_buckets ue
             LEFT JOIN pricing_catalog pc ON pc.model_id = ue.model_id
             \(scope.whereClause(table: "ue"))
             GROUP BY ue.model_id
