@@ -128,7 +128,8 @@ final class AppEnvironment {
     private var claudeFileWatchTrailingTask: Task<Void, Never>?
     var isLoadingDashboard = false
     var isLoadingDashboardActivity = false
-    @ObservationIgnored private var dashboardMountWaitingForScan = false
+    private enum DashboardAfterScan { case revalidateMount, warmSummaries }
+    @ObservationIgnored private var dashboardAfterScan: DashboardAfterScan?
     private var dashboardRefreshCoalescer = DashboardRefreshCoalescer()
     private var dashboardRefreshGeneration = RefreshGeneration()
     private var dashboardActivityRefreshGeneration = RefreshGeneration()
@@ -1354,18 +1355,33 @@ final class AppEnvironment {
             ])
         guard decision.needsRefresh else { return }
         if isScanning, decision.snapshot != nil, !isLoadingDashboard {
-            dashboardMountWaitingForScan = true
+            dashboardAfterScan = dashboardAfterScan ?? .revalidateMount
             return
         }
-        refreshDashboard(trigger: "mount")
+        // A cold mount cannot wait for the scanner. Let its first read cover
+        // the menu too so an unchanged scan can share the same payload.
+        refreshDashboard(includeMenuBar: isScanning && decision.snapshot == nil, trigger: "mount")
     }
 
-    /// A successful combined refresh consumes this request. A no-op or failed
-    /// scan still has to service a mount that displayed a stale snapshot.
-    func resumeDashboardMountAfterScan() {
-        guard dashboardMountWaitingForScan else { return }
-        dashboardMountWaitingForScan = false
-        ensureDashboardVisible()
+    func warmDashboardAfterScan(parentOperation: DeveloperLogOperation? = nil) {
+        if isScanning {
+            dashboardAfterScan = .warmSummaries
+        } else {
+            refreshDashboard(includeMenuBar: true, trigger: "scan-fallback", parentOperation: parentOperation)
+        }
+    }
+
+    /// Satisfy outstanding demand after either success or failure. A combined
+    /// refresh arranged by the scan will already have consumed the request.
+    func resumeDashboardAfterScan() {
+        let pending = dashboardAfterScan
+        dashboardAfterScan = nil
+        switch pending {
+        case .revalidateMount: ensureDashboardVisible()
+        case .warmSummaries:
+            refreshDashboard(includeMenuBar: true, trigger: "scan-fallback", forceTrailingRead: false)
+        case nil: break
+        }
     }
 
     /// Called only after a committed read-model mutation. Existing snapshots
@@ -1511,18 +1527,20 @@ final class AppEnvironment {
     func refreshDashboard(
         includeMenuBar: Bool = false,
         trigger: String = "internal",
-        parentOperation: DeveloperLogOperation? = nil
+        parentOperation: DeveloperLogOperation? = nil,
+        forceTrailingRead: Bool? = nil
     ) {
-        dashboardMountWaitingForScan = false
+        if includeMenuBar || dashboardAfterScan == .revalidateMount { dashboardAfterScan = nil }
         refreshQuotaCycles()
+        let cacheKey = currentDashboardCacheKey()
+        let readModelGeneration = dashboardReadModelGeneration
         let inputs = DashboardRefreshInputs(
             providerFilter: providerFilter,
             enabledProviders: dashboardSettings.enabledProviders,
-            includesMenuBar: includeMenuBar)
-        let cacheKey = currentDashboardCacheKey()
-        let readModelGeneration = dashboardReadModelGeneration
-        let requiresFreshPass = DashboardRefreshCoalescer.requiresFreshPass(
-            for: trigger)
+            includesMenuBar: includeMenuBar,
+            readModelGeneration: readModelGeneration,
+            timeZoneIdentifier: cacheKey.timeZoneIdentifier)
+        let requiresFreshPass = forceTrailingRead ?? DashboardRefreshCoalescer.requiresFreshPass(for: trigger)
         guard dashboardRefreshCoalescer.begin(
             inputs: inputs,
             requiresFreshPass: requiresFreshPass

@@ -22,6 +22,8 @@ struct DashboardRefreshInputs: Equatable, Sendable {
     let providerFilter: ProviderFilter
     let enabledProviders: Set<String>
     let includesMenuBar: Bool
+    var readModelGeneration = 0
+    var timeZoneIdentifier = TimeZone.current.identifier
 }
 
 /// Coalesces Dashboard reads without losing a newer scan/settings request.
@@ -47,6 +49,8 @@ struct DashboardRefreshCoalescer: Sendable {
 
         let differentData = activeInputs.providerFilter != inputs.providerFilter
             || activeInputs.enabledProviders != inputs.enabledProviders
+            || activeInputs.readModelGeneration != inputs.readModelGeneration
+            || activeInputs.timeZoneIdentifier != inputs.timeZoneIdentifier
         let needsAdditionalSurface = inputs.includesMenuBar && !activeInputs.includesMenuBar
         if differentData || needsAdditionalSurface || requiresFreshPass {
             hasPendingRefresh = true

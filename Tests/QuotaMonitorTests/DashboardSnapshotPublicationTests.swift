@@ -83,11 +83,24 @@ struct DashboardSnapshotPublicationTests {
         environment.ensureDashboardVisible()
         #expect(!environment.isLoadingDashboard)
         environment.isScanning = false
-        environment.resumeDashboardMountAfterScan()
+        environment.resumeDashboardAfterScan()
         #expect(environment.isLoadingDashboard)
         await waitForIdle(environment)
-        environment.resumeDashboardMountAfterScan()
+        environment.resumeDashboardAfterScan()
         #expect(!environment.isLoadingDashboard)
+    }
+
+    @Test("A foreground warmup during an existing scan waits for the shared read")
+    func foregroundWarmupDuringScan() async throws {
+        let (environment, _, _, _) = try makeEnvironment()
+        environment.isScanning = true
+        environment.warmDashboardAfterScan()
+        #expect(!environment.isLoadingDashboard)
+        environment.isScanning = false
+        environment.resumeDashboardAfterScan()
+        #expect(environment.isLoadingDashboard)
+        await waitForIdle(environment)
+        #expect(environment.menuBarSnapshot != nil)
     }
 
     @Test("An empty dashboard starts its first read even while an import is running")
@@ -99,6 +112,7 @@ struct DashboardSnapshotPublicationTests {
         environment.isScanning = false
         await waitForIdle(environment)
         #expect(environment.dashboardSnapshot != nil)
+        #expect(environment.menuBarSnapshot != nil, "Cold reads can cover the scan's menu request")
     }
 
     private func makeEnvironment() throws
