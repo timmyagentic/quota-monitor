@@ -34,6 +34,14 @@ window copy.
 
 ## [Unreleased]
 
+#### Summary
+
+- Codex usage updates while an active session keeps its transcript open.
+
+### Fixed
+
+- **Ongoing sessions.** The history importer observes live writes alongside file creation and archival, so the menu can stay closed.
+
 ## [1.0.18] — 2026-11-28
 
 #### Summary

@@ -147,7 +147,10 @@ actor ImportEngine {
         self.maxCheckpointBytes = max(0, maxCheckpointBytes)
     }
 
-    func performScan(progress: ScanProgressHandler? = nil) async throws -> ScanReport {
+    func performScan(
+        progress: ScanProgressHandler? = nil,
+        onDiscovery: (@Sendable ([SessionFile]) -> Void)? = nil
+    ) async throws -> ScanReport {
         guard !codexHomes.isEmpty else { return .empty }
 
         let scopedRoots = codexHomes.map {
@@ -166,6 +169,7 @@ actor ImportEngine {
         }
 
         let discoveredFiles = codexHomes.flatMap { SessionScanner.scan(codexHome: $0) }
+        onDiscovery?(discoveredFiles)
         let priorState: [String: ImportStateRecord] = try await database.pool.read { db in
             let rows = try ImportStateRecord.fetchAll(db)
             return Dictionary(uniqueKeysWithValues: rows.map { ($0.sourcePath, $0) })

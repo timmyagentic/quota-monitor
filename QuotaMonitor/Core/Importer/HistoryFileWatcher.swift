@@ -21,6 +21,8 @@ final class HistoryFileWatcher {
         ].filter { exists($0.path) }
     }
 
+    private(set) var rolloutWrites: CodexRolloutWriteObserver?
+    private let observesOpenRollouts: Bool
     private let directories: [URL]
     private let latency: TimeInterval
     // FSEvents needs an existing directory. When a history folder is first
@@ -81,6 +83,7 @@ final class HistoryFileWatcher {
         id: UUID = UUID(),
         directories: [URL],
         scopeRoots: [URL]? = nil,
+        observesOpenRollouts: Bool = false,
         latency: TimeInterval = 2.0,
         securityScopedAccess: (any SecurityScopedResourceAccessing)? = nil,
         onChange: @escaping @Sendable () -> Void
@@ -90,6 +93,7 @@ final class HistoryFileWatcher {
         self.latency = latency
         self.securityScopedAccess = securityScopedAccess
         self.scopeRoots = scopeRoots ?? directories
+        self.observesOpenRollouts = observesOpenRollouts
         self.onChange = onChange
     }
 
@@ -163,10 +167,17 @@ final class HistoryFileWatcher {
             return false
         }
         stream = created
+        if observesOpenRollouts {
+            let writes = CodexRolloutWriteObserver(directories: watched, onChange: onChange)
+            rolloutWrites = writes
+            writes.start()
+        }
         return true
     }
 
     func stop() {
+        rolloutWrites?.stop()
+        rolloutWrites = nil
         if let stream {
             FSEventStreamStop(stream)
             FSEventStreamInvalidate(stream)
