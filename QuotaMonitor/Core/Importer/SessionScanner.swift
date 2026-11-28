@@ -93,13 +93,13 @@ enum SessionScanner {
     static func scan(codexHome: URL) -> [SessionFile] {
         var results: [SessionFile] = []
         for root in historyDirectories(in: codexHome) {
-            let bucket = root.lastPathComponent == "sessions" ? "active" : "archived"
-            results.append(contentsOf: walk(root: root, bucket: bucket))
+            results.append(contentsOf: files(in: root))
         }
         return results
     }
 
-    private static func walk(root: URL, bucket: String) -> [SessionFile] {
+    static func files(in root: URL) -> [SessionFile] {
+        let bucket = root.lastPathComponent == "sessions" ? "active" : "archived"
         guard FileManager.default.fileExists(atPath: root.path),
               let enumerator = FileManager.default.enumerator(
                 at: root,

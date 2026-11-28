@@ -835,6 +835,79 @@ struct CodexIncrementalImportEngineTests {
             in: harness.database).map(\.totalTokens) == [45])
     }
 
+    @Test("An already open rollout imports successive writes before its writer closes")
+    func heldRolloutWriter() async throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        let writer = try FileHandle(forWritingTo: harness.rollout)
+        defer { try? writer.close() }
+        try writer.seekToEnd()
+        try writer.write(contentsOf: Data("\n".utf8))
+        _ = try await harness.engine.performScan()
+        let (events, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let watcher = HistoryFileWatcher(
+            directories: SessionScanner.historyDirectories(in: harness.codexHome), observesOpenRollouts: true, latency: 0.1
+        ) { continuation.yield(()) }
+        try #require(watcher.start())
+        let engine = harness.engine
+        let worker = Task {
+            for await _ in events { _ = try await engine.performScan() }
+        }
+        defer {
+            watcher.stop()
+            continuation.finish()
+            worker.cancel()
+        }
+        for i in 1...2 {
+            let delta = usage(input: 60, cached: 5, output: 8, reasoning: 2)
+            let line = tokenLine(
+                timestamp: "2026-07-19T00:00:0\(3 + i).000Z",
+                total: usage(input: 100 + 60 * i, cached: 20 + 5 * i,
+                             output: 10 + 8 * i, reasoning: 3 + 2 * i), last: delta)
+            try writer.write(contentsOf: Data((line + "\n").utf8))
+            let expected = [Int64(110)] + Array(repeating: Int64(68), count: i)
+            let deadline = ContinuousClock.now + .seconds(6)
+            while try await usageRows(in: harness.database).map(\.totalTokens) != expected {
+                try #require(ContinuousClock.now < deadline, "Append must arrive with the writer still open")
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
+        watcher.stop()
+        continuation.finish()
+        try await worker.value
+    }
+
+    @Test("A discovery pass rebinds an open-file watch after a same-path replacement")
+    func rebindOpenRollout() throws {
+        let harness = try makeHarness(lines: prefixLines())
+        defer { try? FileManager.default.removeItem(at: harness.root) }
+        let signal = DispatchSemaphore(value: 0)
+        let observer = CodexRolloutWriteObserver(
+            directories: SessionScanner.historyDirectories(in: harness.codexHome), limit: 1
+        ) { signal.signal() }
+        defer { observer.stop() }
+        observer.observe(SessionScanner.scan(codexHome: harness.codexHome))
+
+        let original = try FileHandle(forWritingTo: harness.rollout)
+        defer { try? original.close() }
+        let moved = harness.root.appendingPathComponent("retired")
+        try FileManager.default.moveItem(at: harness.rollout, to: moved)
+        try #require(signal.wait(timeout: .now() + 3) == .success)
+        try Data().write(to: harness.rollout)
+        observer.observe(SessionScanner.scan(codexHome: harness.codexHome))
+        while signal.wait(timeout: .now()) == .success { }
+        let replacement = try FileHandle(forWritingTo: harness.rollout)
+        defer { try? replacement.close() }
+        try replacement.write(contentsOf: Data("new".utf8))
+        #expect(signal.wait(timeout: .now() + 3) == .success)
+        observer.stop()
+        // A scan holding a retired observer after root revocation cannot rearm it.
+        observer.observe(SessionScanner.scan(codexHome: harness.codexHome))
+        while signal.wait(timeout: .now()) == .success { }
+        try replacement.write(contentsOf: Data("later".utf8))
+        #expect(signal.wait(timeout: .now() + 0.15) == .timedOut)
+    }
+
     @Test("File notifications import appended Codex usage before and after archival")
     func fileNotificationsImportCodexTails() async throws {
         let harness = try makeHarness(lines: prefixLines())
@@ -844,7 +917,7 @@ struct CodexIncrementalImportEngineTests {
         _ = try await engine.performScan()
         let (events, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
         let watcher = HistoryFileWatcher(
-            directories: SessionScanner.historyDirectories(in: harness.codexHome), latency: 0.1
+            directories: SessionScanner.historyDirectories(in: harness.codexHome), observesOpenRollouts: true, latency: 0.1
         ) { continuation.yield(()) }
         try #require(watcher.start())
         let worker = Task {

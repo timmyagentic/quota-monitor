@@ -557,6 +557,7 @@ final class AppEnvironment {
             let id = UUID()
             let watcher = HistoryFileWatcher(
                 id: id, directories: directories, scopeRoots: roots,
+                observesOpenRollouts: provider == .codex,
                 securityScopedAccess: scoped ? FoundationSecurityScopedResourceAccessing() : nil
             ) { [weak self] in
                 Task { @MainActor in
@@ -575,6 +576,8 @@ final class AppEnvironment {
             }
         }
     }
+
+    var codexRolloutWrites: CodexRolloutWriteObserver? { historyWatchers[.codex]?.rolloutWrites }
 
     /// Continuous writes get a leading read and at most one trailing request
     /// per provider. Drain pending writes through the same throttle after a scan.

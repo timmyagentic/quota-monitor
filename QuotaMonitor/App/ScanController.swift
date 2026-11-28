@@ -155,6 +155,7 @@ extension AppEnvironment {
                         "enabled_providers": .string(enabled.sorted().joined(separator: ",")),
                         "scan_providers": .string(scanProviders.sorted().joined(separator: ","))
                     ])
+                let rolloutWrites = self.codexRolloutWrites
                 let progressHandler: ScanProgressHandler = { [weak self] update in
                     await MainActor.run {
                         self?.handleScanProgressUpdate(update, runID: scanRunID)
@@ -174,7 +175,7 @@ extension AppEnvironment {
                     // active. Each importer prices its affected session in
                     // the same transaction that advances its import state.
                     async let codexReport = scanProviders.contains("codex")
-                        ? engine.performScan(progress: progressHandler)
+                        ? engine.performScan(progress: progressHandler, onDiscovery: { rolloutWrites?.observe($0) })
                         : ImportEngine.ScanReport.empty
                     // Run the Claude scan as its own task so the optional-
                     // chained `claude?.performScan()` doesn't interact
