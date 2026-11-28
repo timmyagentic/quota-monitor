@@ -81,6 +81,10 @@ enum SessionScanner {
         }
     }
 
+    static func historyDirectories(in home: URL) -> [URL] {
+        ["sessions", "archived_sessions"].map { home.appendingPathComponent($0, isDirectory: true) }
+    }
+
     /// Walk both `<codexHome>/sessions/` and `<codexHome>/archived_sessions/`
     /// and return rollout-*.jsonl entries from each. Codex moves rollouts to
     /// archived_sessions/ when the user uses the CLI's archive command;
@@ -88,8 +92,8 @@ enum SessionScanner {
     /// (verified locally: 14 archived files were invisible before this fix).
     static func scan(codexHome: URL) -> [SessionFile] {
         var results: [SessionFile] = []
-        for (folder, bucket) in [("sessions", "active"), ("archived_sessions", "archived")] {
-            let root = codexHome.appendingPathComponent(folder, isDirectory: true)
+        for root in historyDirectories(in: codexHome) {
+            let bucket = root.lastPathComponent == "sessions" ? "active" : "archived"
             results.append(contentsOf: walk(root: root, bucket: bucket))
         }
         return results

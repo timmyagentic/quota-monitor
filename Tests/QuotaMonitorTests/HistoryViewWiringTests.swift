@@ -77,7 +77,7 @@ struct HistoryViewWiringTests {
 
         #expect(normalizedBody.contains("let selectedDay = selection"))
         #expect(normalizedBody.contains("let selectedCalendar = historyCalendar"))
-        #expect(detailTask.contains(".task(id: selectedDay)"))
+        #expect(detailTask.contains(".task(id: DetailRequest(day: selectedDay, generation: env.sessionsDataGeneration))"))
         #expect(detailTask.contains(
             "await loadDetail(for: selectedDay, calendar: selectedCalendar)"))
         #expect(!detailTask.contains("for: selection"))

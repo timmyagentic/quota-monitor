@@ -37,12 +37,15 @@ window copy.
 #### Summary
 
 - The website uses its original layout, colors, and dashboard controls.
+- Codex usage history now updates as you work, including with the menu bar closed.
 
 ### Changed
 
 - **Website maintenance.** The official site now builds and deploys from the shared websites repository.
 
 - **Product website.** The menu-bar and dashboard views retain their original placement, with keyboard-operable showcase controls.
+
+- **Codex usage history.** Newly written and archived sessions appear automatically, including sessions in additional Codex folders.
 
 
 ## [1.0.17] — 2026-11-18

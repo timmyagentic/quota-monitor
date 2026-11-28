@@ -17,6 +17,11 @@ struct HistoryView: View {
     @State private var calendarRevision = 0
     @State private var detailRequestID: UUID?
 
+    private struct DetailRequest: Equatable {
+        let day: DaySummary.ID?
+        let generation: Int
+    }
+
     var body: some View {
         let pageRequest = pagination.inFlightRequest
         let selectedDay = selection
@@ -46,6 +51,7 @@ struct HistoryView: View {
                 try Task.checkCancellation()
                 let page = try await env.fetchHistoryPage(
                     before: request.cursor,
+                    refreshThrough: request.refreshThrough,
                     pageSize: request.pageSize,
                     now: Date(),
                     calendar: selectedCalendar,
@@ -66,7 +72,10 @@ struct HistoryView: View {
                 pagination.fail(String(describing: error), for: request)
             }
         }
-        .task(id: selectedDay) {
+        .onChange(of: env.sessionsDataGeneration) {
+            pagination.refreshAfterImport()
+        }
+        .task(id: DetailRequest(day: selectedDay, generation: env.sessionsDataGeneration)) {
             await loadDetail(for: selectedDay, calendar: selectedCalendar)
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -178,6 +187,7 @@ struct HistoryView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let detail {
             DayDetailView(detail: detail, calendar: historyCalendar)
+                .id(detail.summary.id)
         } else if let detailErrorMessage {
             Text(detailErrorMessage)
                 .font(.caption)
@@ -212,7 +222,7 @@ struct HistoryView: View {
         }
         let requestID = UUID()
         detailRequestID = requestID
-        loadingDetail = true
+        loadingDetail = detail?.summary.id != id
         do {
             let loaded = try await env.fetchDayDetail(
                 day: id,
@@ -404,7 +414,7 @@ private struct ExpandableSessionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Button(action: toggle) {
+            Button { expanded.toggle() } label: {
                 HStack(alignment: .firstTextBaseline) {
                     Image(systemName: expanded ? "chevron.down" : "chevron.right")
                         .font(.caption2)
@@ -467,6 +477,10 @@ private struct ExpandableSessionRow: View {
                 }
             }
         }
+        .task(id: expanded ? env.sessionsDataGeneration : nil) {
+            guard expanded else { return }
+            await loadEvents()
+        }
         .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -474,24 +488,19 @@ private struct ExpandableSessionRow: View {
         )
     }
 
-    private func toggle() {
-        expanded.toggle()
-        if expanded && events.isEmpty {
-            Task { await loadEvents() }
-        }
-    }
-
     private func loadEvents() async {
-        loadingEvents = true
-        defer { loadingEvents = false }
+        loadingEvents = events.isEmpty
         do {
-            events = try await env.fetchSessionEventsOnDay(
-                sessionId: session.sessionId,
-                day: day,
-                calendar: calendar)
+            let loaded = try await env.fetchSessionEventsOnDay(
+                sessionId: session.sessionId, day: day, calendar: calendar)
+            try Task.checkCancellation()
+            events = loaded
+            errorMessage = nil
         } catch {
+            guard !Task.isCancelled else { return }
             errorMessage = String(describing: error)
         }
+        loadingEvents = false
     }
 
     private func timeRange(started: String, ended: String?) -> String {

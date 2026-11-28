@@ -24,10 +24,36 @@ extension Aggregator {
     static func fetchHistoryPage(
         db: Database,
         before cursor: Date? = nil,
+        refreshThrough: Date? = nil,
         pageSize: Int = 7,
         provider: ProviderFilter = .all,
         now: Date = Date(),
         calendar: Calendar = .current
+    ) throws -> HistoryPage {
+        var page = try historyPage(db: db, before: cursor, pageSize: pageSize,
+                                   provider: provider, now: now, calendar: calendar)
+        guard let refreshThrough, page.nextCursor > refreshThrough else { return page }
+        // Revalidate exactly the span the reader has already opened. Keep the
+        // ordinary bounded, DST-aware queries and their gap jumps in one read.
+        var days = page.days
+        while page.hasMore, page.nextCursor > refreshThrough {
+            try Task.checkCancellation()
+            page = try historyPage(db: db, before: page.nextCursor, pageSize: pageSize,
+                                   provider: provider, now: now, calendar: calendar)
+            days.append(contentsOf: page.days)
+        }
+        let lower = max(page.nextCursor, refreshThrough)
+        let hasOlder = page.hasMore || days.contains { $0.date < lower }
+        return HistoryPage(days: days.filter { $0.date >= lower }, nextCursor: lower, hasMore: hasOlder)
+    }
+
+    private static func historyPage(
+        db: Database,
+        before cursor: Date?,
+        pageSize: Int,
+        provider: ProviderFilter,
+        now: Date,
+        calendar: Calendar
     ) throws -> HistoryPage {
         precondition(pageSize > 0)
         let today = calendar.startOfDay(for: now)

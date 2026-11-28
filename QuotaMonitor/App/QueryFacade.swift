@@ -76,6 +76,7 @@ extension AppEnvironment {
 
     func fetchHistoryPage(
         before cursor: Date? = nil,
+        refreshThrough: Date? = nil,
         pageSize: Int = 7,
         now: Date = Date(),
         calendar: Calendar,
@@ -113,6 +114,7 @@ extension AppEnvironment {
                     let page = try Aggregator.fetchHistoryPage(
                         db: conn,
                         before: cursor,
+                        refreshThrough: refreshThrough,
                         pageSize: pageSize,
                         provider: filter,
                         now: now,

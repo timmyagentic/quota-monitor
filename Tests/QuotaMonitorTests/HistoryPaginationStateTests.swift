@@ -379,6 +379,26 @@ struct HistoryPaginationStateTests {
         #expect(state.viewportFillPageCount == 0)
     }
 
+    @Test("Imports during pagination revalidate the final loaded span once and retain visible rows")
+    func importDuringNextPage() throws {
+        var state = HistoryPaginationState()
+        let initial = state.reset()
+        _ = state.complete(HistoryPage(days: [day("2026-07-15")],
+                                       nextCursor: Date(timeIntervalSince1970: 2000), hasMore: true), for: initial)
+        let requested = state.beginNextPage(trigger: .scroll)
+        let scroll = try #require(requested)
+        state.refreshAfterImport()
+        state.refreshAfterImport()
+        #expect(state.inFlightRequest == scroll)
+        let lower = Date(timeIntervalSince1970: 1000)
+        _ = state.complete(HistoryPage(days: [day("2026-07-08")], nextCursor: lower, hasMore: false), for: scroll)
+        let refresh = try #require(state.inFlightRequest)
+        #expect(refresh.refreshThrough == lower)
+        #expect(state.days.map(\.day) == ["2026-07-15", "2026-07-08"])
+        _ = state.complete(HistoryPage(days: state.days, nextCursor: lower, hasMore: false), for: refresh)
+        #expect(state.inFlightRequest == nil)
+    }
+
     @Test("next page requires pagination trigger cursor and more history")
     func nextPageGuards() {
         var state = HistoryPaginationState()
